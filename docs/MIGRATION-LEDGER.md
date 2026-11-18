@@ -1,6 +1,6 @@
 # Migration ledger — pi-atdd
 
-Status: initial adversarial source-level inventory, NOT a claim of full semantic parity. Existing consumers must retain the old toolkits until parity tests and a reviewed cutover pass.
+Status: initial adversarial source-level inventory, NOT full semantic parity. **Active V1 source conventions are ATDD-Bun and ATDD Flow; TypeScript owns the extension, resolver, CLI, and tests.** Existing consumers must retain the old toolkits until parity tests and a reviewed cutover pass.
 
 ## Immutable source anchors (2026-11-18 UTC)
 
@@ -57,7 +57,7 @@ The classification is about *responsibilities*, not whole files. A module may co
 | src/multiplexer.ts, multiplexer/**, src/overview.ts, src/adapters.ts | R/X | Display and process placement are optional projections, never a second project manager |
 | src/collaboration-policy.ts | P/I | Runtime prompt assembled from canonical convention; compare injected text with policy before migration |
 
-## ATDD Python core and Extensions
+## Legacy ATDD core and Extensions — historical comparison only
 
 | Files | Classification | Migration treatment |
 |---|---|---|
@@ -67,8 +67,8 @@ The classification is about *responsibilities*, not whole files. A module may co
 | src/atdd/substrate/{admission,coherence,installer,registry,resolver,staleness}.py | G/R | Preserve substrate semantics, not necessarily the provider runtime hierarchy |
 | src/atdd/planner/**, src/atdd/journey/** | G/V | Preserve plan schemas, acceptance meaning and journey proof, not only metadata labels |
 | src/atdd/train/**, src/atdd/coach/** | P/R/X | Separate lifecycle obligations from the legacy local issue, store and phase state machine |
-| atdd-extensions/official/atdd.extension.coder.base/conventions/** | P | Reuse existing YAML unchanged; language-specific realization is not universal |
-| atdd-extensions/official/atdd.workspace.python-pytest/implementations/** | V | Select Python checks by rule ID and impact; don't automatically run the whole suite |
+| atdd-extensions/official/atdd.extension.coder.base/conventions/** | P | Historical lineage only; NOT an active V1 convention source. Bun and Flow are canonical. |
+| atdd-extensions/official/atdd.workspace.python-pytest/implementations/** | V/X | Historical reference, not a dependency or runtime to port; V1 executes TypeScript tests. |
 
 ## ATDD-Linear
 
