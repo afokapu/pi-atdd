@@ -26,8 +26,26 @@ export type Comparison = {
   passDelta?:number; latencyDeltaMs?:number; tokenDelta?:number;
 };
 const nonEmpty=(x:string)=>typeof x==="string"&&x.length>0;
-function head(cwd:string):string {
-  return execFileSync("git",["rev-parse","HEAD"],{cwd,encoding:"utf8",timeout:4000}).trim();
+function git(cwd:string,args:string[]):string {
+  return execFileSync("git",args,{cwd,encoding:"utf8",timeout:4000,maxBuffer:500_000,
+    windowsHide:true}).trim();
+}
+function head(cwd:string):string { return git(cwd,["rev-parse","HEAD"]); }
+function trustedTestsUnmodified(trial:Trial):void {
+  if(git(trial.workspace,["status","--porcelain","--untracked-files=all"]))
+    throw new Error("trial worktree is dirty; claimed revision does not identify the tested code");
+  try {git(trial.workspace,["merge-base","--is-ancestor",trial.baseRevision,trial.resultRevision]);}
+  catch {throw new Error("trial base revision is not an ancestor of the result");}
+  for(const target of trial.testTargets){
+    if(target.startsWith("-")||target.startsWith("/")||target.includes(".."))
+      throw new Error("invalid trusted acceptance target");
+    const original=git(trial.workspace,["ls-tree","-r","--name-only",trial.baseRevision,"--",target]);
+    if(!original.split("\n").includes(target))
+      throw new Error("trusted acceptance target absent from immutable base: "+target);
+    const changed=git(trial.workspace,["diff","--no-ext-diff","--name-only",
+      trial.baseRevision,trial.resultRevision,"--",target]);
+    if(changed)throw new Error("trial mutated independently owned acceptance target: "+target);
+  }
 }
 export function verifyTrial(trial:Trial):TrialResult {
   if(!nonEmpty(trial.taskId)||!nonEmpty(trial.modelId)||!nonEmpty(trial.baseRevision)
@@ -38,6 +56,7 @@ export function verifyTrial(trial:Trial):TrialResult {
     throw new Error("trial is incomplete; do not score a claimed outcome");
   const actualRevision=head(trial.workspace);
   if(actualRevision!==trial.resultRevision)throw new Error("trial workspace revision does not match claimed result");
+  trustedTestsUnmodified(trial);
   const evidence=verifyTargets(trial.workspace,trial.testTargets);
   const passed=evidence.status==="passed";
   return {trial,passed,falseClaim:trial.claimedPassed&&!passed,
