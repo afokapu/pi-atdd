@@ -71,6 +71,9 @@ test("real Python resolver activates once per rule and exposes unresolved edits"
     assert.match(preflight.reason, /coder\.refactor\.nplus1/);
     assert.equal(await handlers.get("tool_call")(dbEdit, ctx), undefined);
 
+    await handlers.get("before_agent_start")(
+      { messageType: "user", prompt: "Update documentation" }, ctx,
+    );
     const noRule = { toolName: "edit", input: { path: "docs/index.md" } };
     const gap = await handlers.get("tool_call")(noRule, ctx);
     assert.equal(gap.block, true);
