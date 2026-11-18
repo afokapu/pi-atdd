@@ -18,7 +18,7 @@ test("the migration ledger records explicit source responsibilities and non-equi
     "src/linear-mirror.ts", "src/plan.ts",
   ]) assert.ok(ledger.includes(source), "no classification for " + source);
   for (const safety of [
-    "Exact-base fingerprint", "durable inbox", "not a second human task/thread store",
+    "Exact-base fingerprint", "durable inbox", "retire separate task/thread DB",
     "ATDD Flow", "ATDD-Bun", "Do not", "role",
   ]) assert.ok(ledger.toLowerCase().includes(safety.toLowerCase()), "missing warning: " + safety);
 });
