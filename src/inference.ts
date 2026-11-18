@@ -115,7 +115,9 @@ export class PositiveReasoner {
     const { record, created } = this.getOrCreate(fact);
     const id = JSON.stringify([rule.id, ...premises]);
     if (record.derivations.has(id)) return { created, support: false };
-    record.derivations.set(id, { id, rule: rule.id, source: rule.source, premises });
+    // Join recursion mutates its scratch array. A support must own an immutable
+    // snapshot or later branches silently rewrite proof premises and reverse edges.
+    record.derivations.set(id, { id, rule: rule.id, source: rule.source, premises: [...premises] });
     for (const premise of premises) {
       const descendants = this.reverse.get(premise) ?? new Set<string>();
       descendants.add(key); this.reverse.set(premise, descendants);
