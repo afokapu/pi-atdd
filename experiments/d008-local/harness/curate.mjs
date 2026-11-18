@@ -27,20 +27,20 @@ for (const s of prereg.schedule) {
   const rv = existsSync(join(d, "review.json")) ? JSON.parse(readFileSync(join(d, "review.json"), "utf8")) : null;
   for (const f of files(d)) hashes["trials/" + relative(d, f).replace(/^/, s.trialId + "/")] = sha256File(f);
   if (rv) for (const f of files(join(E, "reviews", rv.blindId))) hashes["reviews/" + rv.blindId + "/" + relative(join(E, "reviews", rv.blindId), f)] = sha256File(f);
-  const outside = (t.coder?.bashCommands || []).concat(t.coder?.readPaths || []).filter(c => {
-    const paths = String(c).match(/(?:~|\/Users|\/home|\/tmp|\.\.\/)[^\s'"]*/g) || [];
-    return paths.some(p => !p.includes("/trials/" + s.trialId + "/ws"));
-  });
-  const reviewerOutside = (rv?.bashCommands || []).filter(c => /\.\.\/|\/trials\/|plt-78-evaluator|blind-map/.test(String(c)));
+  // Audit: any tool argument referencing evaluator/oracle/reference/other trials/reviews/extension source/home config.
+  const SENSITIVE = /(plt-78-evaluator|blind-map|oracle|reference-trials|pi-atdd-extension-snapshot|\/trials\/t\d\d|\/reviews\/|Github|\.pi\/)/g;
+  const audit = (file, own) => existsSync(file) ? readFileSync(file, "utf8").split("\n").flatMap(l => { try { const e = JSON.parse(l); if (e.type !== "tool_execution_start") return []; return (JSON.stringify(e.args).match(SENSITIVE) || []).filter(h => !h.includes(own)); } catch { return []; } }) : [];
+  const outside = [...new Set(audit(join(d, "coder.jsonl"), "/trials/" + s.trialId))];
+  const reviewerOutside = rv ? [...new Set(audit(join(E, "reviews", rv.blindId, "reviewer.jsonl"), "/reviews/" + rv.blindId))] : [];
   const accepted = Boolean(ev?.testsAccepted && rv?.verdict?.verdict === "ACCEPT");
   const falseGreen = Boolean(rv?.verdict?.report_claims_success && ev && ev.oracle_.status !== "passed");
   const row = {
     ...s, status: "RUN", model: t.model, exit: t.run?.exit, timedOut: t.run?.timedOut, wallMs: t.run?.wallMs,
     toolExecuted: t.coder?.toolExecuted, byTool: t.coder?.byTool, toolErrors: t.coder?.toolErrors, toolNotRun: t.coder?.toolNotRun,
     blockedByAtdd: t.coder?.blockedByAtdd, fakeToolTextMessages: t.coder?.fakeToolTextMessages, turns: t.coder?.assistantTurns,
-    usage: t.coder?.usage, graph: t.coder?.graphActivation && { delivered: t.coder.graphActivation.deliveredRuleIds,
+    usage: t.coder?.usage, graph: t.coder?.graphActivation && { delivered: t.coder.graphActivation.deliveredRuleIds, targetDelivered: t.coder.graphActivation.targetRuleDelivered,
       targetBeforeEdit: t.coder.graphActivation.targetRuleDeliveredBeforeFirstSuccessfulEdit, injectedEstTokens: t.coder.graphActivation.injectedEstTokens,
-      receipts: t.coder.graphActivation.receipts, unknownFacts: t.coder.graphActivation.unknownFacts },
+      receipts: t.coder.graphActivation.receipts, unknownFacts: [...new Set(t.coder.graphActivation.unknownFacts.map(u => u.split(/\\n|\n/)[0]))] },
     exactBase: t.exactBase, resultRevision: t.resultRevision, changedPaths: t.changedPaths, unauthorizedChangedPaths: t.unauthorizedChangedPaths,
     diffSha256: t.diffSha256, integrity: ev?.integrity, visiblePassed: ev?.visible?.passed ?? null,
     oracle: ev && { status: ev.oracle_.status, pass: ev.oracle_.pass, fail: ev.oracle_.fail, failing: ev.oracle_.failing },

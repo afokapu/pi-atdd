@@ -21,11 +21,12 @@ const isRef = process.argv.includes("--reference");
 const dir = join(E, isRef ? "reference-trials" : "trials", trialId);
 const trial = JSON.parse(readFileSync(join(dir, "trial.json"), "utf8"));
 const task = tasks.tasks.find(t => t.taskId === trial.taskId);
-const mapFile = join(E, "../plt-78-evaluator", isRef ? "blind-map-reference.json" : "blind-map.json");
-const map = existsSync(mapFile) ? JSON.parse(readFileSync(mapFile, "utf8")) : {};
-if (Object.values(map).includes(trialId)) throw new Error("trial already reviewed; reviews are never re-run in place");
+// One map file per trial (concurrency-safe; a shared JSON map lost entries under parallel reviews).
+const mapDir = join(E, "../plt-78-evaluator", isRef ? "blind-map-reference.d" : "blind-map.d");
+mkdirSync(mapDir, { recursive: true });
+if (existsSync(join(mapDir, trialId))) throw new Error("trial already reviewed; reviews are never re-run in place");
 const blindId = "s-" + randomBytes(4).toString("hex");
-map[blindId] = trialId; writeFileSync(mapFile, JSON.stringify(map, null, 2) + "\n");
+writeFileSync(join(mapDir, trialId), blindId + "\n", { flag: "wx" });
 
 const rdir = join(E, isRef ? "reviews-reference" : "reviews", blindId), sub = join(rdir, "submission");
 mkdirSync(sub, { recursive: true });
