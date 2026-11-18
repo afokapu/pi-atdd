@@ -38,3 +38,14 @@ test("the acceptance schema rejects absent proof fields, not just malformed YAML
   assert.equal(validate(incomplete), false);
   assert.ok(validate.errors?.some(e => e.instancePath.startsWith("/then")));
 });
+
+test("every acceptance has an explicit test binding, not just a generated YAML record", () => {
+  const plan = join(root, "plan/acceptances");
+  const expected = readdirSync(plan).filter(f => f.endsWith(".acceptance.yaml")).map(f =>
+    (readYaml(join(plan, f)).identity as { urn: string }).urn);
+  const tests = readdirSync(join(root, "tests")).filter(f => f.endsWith(".test.ts") || f.endsWith("-smoke.ts"));
+  const text = tests.map(path => readFileSync(join(root, "tests", path), "utf8")).join("\n");
+  for (const urn of expected) {
+    assert.ok(text.includes("// Acceptance: " + urn), "acceptance lacks a test binding: " + urn);
+  }
+});
