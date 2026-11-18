@@ -1,3 +1,4 @@
+// Acceptance: acc:pi-atdd:E001-UNIT-005
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
