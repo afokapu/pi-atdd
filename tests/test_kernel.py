@@ -34,6 +34,7 @@ def test_upstream_snapshot_preserves_rule_id_and_semantics(tmp_path):
     }
     assert graph.rules["coder.security.missing-auth"].status == "active"
     assert graph.rules["coder.security.missing-auth"].kind == "rule"
+    assert len(graph.rules["coder.security.missing-auth"].exceptions) >= 1
     assert graph.rules["coder.performance.perf"].kind == "principle"
     assert graph.provenance[0]["sha256"] == source_digest(root)
 
@@ -53,6 +54,8 @@ def test_relevant_edit_activates_rule_but_unrelated_edit_does_not(tmp_path):
     _, graph = catalog(tmp_path)
     ctx = resolve(graph, selectors(), "Add pagination", ["src/myapp/routes/users.py"], "edit")
     assert ctx["matching_ids"] == ["coder.security.missing-auth"]
+    assert ctx["rules"][0]["source_file"].endswith("coder.security.missing-auth.convention.yaml")
+    assert ctx["rules"][0]["exceptions"]
     irrelevant = resolve(graph, selectors(), "Update readme", ["docs/readme.md"], "edit")
     assert irrelevant["status"] == "unresolved"
     assert irrelevant["unresolved_paths"] == ["docs/readme.md"]
