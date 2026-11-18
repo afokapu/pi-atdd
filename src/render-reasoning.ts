@@ -50,8 +50,17 @@ function section(item:Activation, r:Reconciliation):string {
       "observed behavior; context delivery does not establish compliance.",
   ].filter(Boolean).join("\n");
 }
-export function renderReasoned(r:Reconciliation, ids?:readonly string[],maxChars=14_000):string {
-  if(maxChars<1200)throw new Error("reasoning budget too small for safety warnings");
+/** Explicit page receipt; no activation is "delivered" merely because it was
+ * requested for rendering. This is a presentation receipt, not proof of reading.
+ */
+export type RenderedPage = {
+  text:string;
+  emittedIds:string[];
+  omittedIds:string[];
+};
+export function renderReasonedPage(r:Reconciliation,ids?:readonly string[],maxChars=14_000):RenderedPage {
+  if(!Number.isInteger(maxChars)||maxChars<1200)
+    throw new Error("reasoning budget too small for safety warnings");
   const warnings=[
     "ATDD graph reasoning — positive provenance-backed derivations, not a merge verdict.",
     "Task scope: "+r.scope+"; state: "+r.status.toUpperCase(),
@@ -63,17 +72,35 @@ export function renderReasoned(r:Reconciliation, ids?:readonly string[],maxChars
     !r.activations.length?"ATDD applicability unresolved (UNKNOWN). No activation is not proof that no conventions apply; review applicability.":"",
     "Rules are not waived by alternatives; an independent reviewer and CI verify binding obligations.",
   ].filter(Boolean).join("\n");
-  if(warnings.length>=maxChars) return warnings.slice(0,maxChars-150)+"\nWARNING: incomplete context budget";
-  const selected = ids?new Set(ids):null;
+  const selected=ids?new Set(ids):null;
   const activations=r.activations.filter(x=>!selected||selected.has(x.id));
+  const emittedIds:string[]=[],omittedIds:string[]=[];
+  const reserve=300;
+  if(warnings.length>maxChars-reserve)
+    return {text:warnings.slice(0,maxChars-150)+"\nWARNING: context overflow; no convention was delivered.",
+      emittedIds,omittedIds:activations.map(a=>a.id)};
   let text=warnings;
-  let clipped=0;
-  for(const a of activations) {
+  for(const a of activations){
     const item="\n\n"+section(a,r);
-    if(text.length+item.length>maxChars-170){clipped++;continue}
-    text+=item;
+    if(text.length+item.length>maxChars-reserve) {
+      omittedIds.push(a.id);
+    } else {
+      text+=item;
+      emittedIds.push(a.id);
+    }
   }
-  if(clipped) text+="\n\nATTENTION: "+clipped+" activated convention(s) were omitted by context budget. "+
-    "Consult full local source; do not treat this excerpt as complete.";
-  return text;
+  if(omittedIds.length) {
+    text+="\n\nATTENTION: "+omittedIds.length+" activated convention(s) omitted by budget. "+
+      "Their content has NOT been delivered or acknowledged. Retries must receive "+
+      "remaining reasoning before the edit can proceed.";
+    if(!emittedIds.length)
+      text+=" No complete convention fit the budget: use the full canonical source or enlarge context.";
+  }
+  return {text,emittedIds,omittedIds};
+}
+/** Backwards-compatible text renderer. State transitions must use
+ * renderReasonedPage() instead; the text function cannot confirm delivery.
+ */
+export function renderReasoned(r:Reconciliation,ids?:readonly string[],maxChars=14_000):string {
+  return renderReasonedPage(r,ids,maxChars).text;
 }
