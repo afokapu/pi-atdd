@@ -60,7 +60,7 @@ function git(cwd:string):RepositorySnapshot {
     if (relativePath) files.set(relativePath,fingerprint(cwd,relativePath));
   }
   // Ignored untracked files (including files inside ignored source directories
-  // such as src/generated/) are observed by size+mtime. Dependency and VCS
+  // such as src/generated/) are observed by content fingerprint. Dependency and VCS
   // metadata directories are excluded; an oversized listing is a reported gap.
   const gaps:string[]=[];
   const untracked=new Set(untrackedList.map(p=>safe(cwd,p)).filter((p):p is string=>!!p));
@@ -73,8 +73,7 @@ function git(cwd:string):RepositorySnapshot {
       const relativePath=safe(cwd,path);
       if (!relativePath) continue;
       untracked.add(relativePath);
-      try { const st=statSync(resolve(cwd,relativePath)); files.set(relativePath,"ignored:"+st.size+":"+st.mtimeMs); }
-      catch { files.set(relativePath,"unreadable"); }
+      files.set(relativePath,fingerprint(cwd,relativePath));
     }
   } catch { gaps.push("ignored files could not be listed"); }
   return {kind:"git",revision,dirty:files,untracked,...(gaps.length?{gaps}:{})};
@@ -118,7 +117,17 @@ export function observeRepository(cwd:string,previous?:RepositorySnapshot):Repos
       }
     }
   }
-  const created=[...changed].filter(path=>current.untracked?.has(path)&&!previous?.dirty.has(path)
-    &&fingerprint(cwd,path)!=="deleted").sort();
+  // Created = exists now, and existed neither in the previous dirty set nor at
+  // the previous revision (staged or unstaged; independent of current status).
+  const existedAt=(revision:string|null,path:string)=>{
+    if(!revision)return false;
+    try{
+      if(current.kind==="git")execFileSync("git",["cat-file","-e",revision+":"+path],{cwd,stdio:"ignore",timeout:2500});
+      else return args("jj",["file","list","-r",revision,"--",path],cwd).trim().length>0;
+      return true;
+    }catch{return false;}
+  };
+  const created=previous?[...changed].filter(path=>!previous.dirty.has(path)&&fingerprint(cwd,path)!=="deleted"
+    &&!existedAt(previous.revision,path)).sort():[];
   return {status:"observed",changedPaths:[...changed].sort(),createdPaths:created,snapshot:current};
 }

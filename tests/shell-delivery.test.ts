@@ -8,7 +8,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync, statSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import atdd from "../extensions/atdd.ts";
@@ -333,4 +333,94 @@ test("review2#2: an opaque file creation gets creation-specific rules, like writ
     x.tool("bash", { command: "node scripts/gen.mjs" }, () => writeFileSync(join(cwd, "src/pricing/domain/quote.ts"), "export const q = 2;\n"));
     assert.ok(!has(x.delivered.slice(before), "new.file"));
   } finally { x.cleanup(); }
+});
+
+// --- Blind code review (PR #5, round 3) regressions ---
+
+/** Replace the bundled catalog with custom rules (each large) and selectors. */
+function customCatalog(cwd: string, rules: Record<string, number>, selectors: string[]) {
+  const conventions = join(cwd, "extra/conventions");
+  mkdirSync(conventions, { recursive: true });
+  for (const [id, lines] of Object.entries(rules)) writeFileSync(join(conventions, id + ".convention.yaml"), [
+    "rule_id: " + id, "kind: rule", "status: active", "statement: Obligation " + id + ".", "content:",
+    "  summary: Preserve " + id + ".", "  fix_hint: |",
+    ...Array(lines).fill("    Inspect the boundary, the tests and the observed change before approving this work."), ""].join("\n"));
+  writeFileSync(join(cwd, "atdd-pi.yaml"), ["schema: pi-atdd/config/v2", "sources:", "  - id: Extra", "    kind: extension",
+    "    path: extra", "    sha256: " + digestSource(join(cwd, "extra"), "extension"), "selectors: extra-selectors.yaml", ""].join("\n"));
+  writeFileSync(join(cwd, "extra-selectors.yaml"), ["schema: pi-atdd/selectors/v1", "selectors:", ...selectors, ""].join("\n"));
+  execFileSync("git", ["add", "."], { cwd }); execFileSync("git", ["commit", "-qm", "config"], { cwd });
+}
+
+test("review3#1: rules omitted by a post-tool page budget are delivered on the next tool result", () => {
+  const x = sandbox();
+  try {
+    customCatalog(x.cwd, { "aaa.target": 30, "zzz.target": 30 }, ["  - id: all-src", "    paths: [\"src/**\"]", "    rules: [aaa.target, zzz.target]"]);
+    x.start("Update");
+    x.tool("bash", { command: "node scripts/gen.mjs" }, () => writeFileSync(join(x.cwd, "src/a.ts"), "export const a = 1;\n"));
+    const first = x.delivered.filter(d => d.channel.startsWith("tool_result:"));
+    assert.ok(has(first, "aaa.target") !== has(first, "zzz.target"), "precondition: one rule omitted by budget");
+    x.tool("bash", { command: "true" }, () => {});
+    const all = x.delivered.filter(d => d.channel.startsWith("tool_result:"));
+    assert.ok(has(all, "aaa.target") && has(all, "zzz.target"), "omitted rule delivered on the next tool result");
+    const n = x.delivered.length;
+    x.tool("read", { path: "README.md" }, () => {});
+    assert.equal(x.delivered.length, n, "nothing pending afterwards");
+  } finally { x.cleanup(); }
+});
+
+test("review3#2: a staged opaque creation is classified as create", () => {
+  const x = sandbox();
+  try {
+    customCatalog(x.cwd, { "create.only": 2 }, ["  - id: creations", "    operations: [create]", "    paths: [\"src/**\"]", "    rules: [create.only]"]);
+    x.start("Update");
+    x.tool("bash", { command: "node scripts/gen.mjs" }, () => {
+      writeFileSync(join(x.cwd, "src/new.ts"), "export const n = 1;\n");
+      execFileSync("git", ["add", "src/new.ts"], { cwd: x.cwd });
+    });
+    assert.ok(has(x.delivered.filter(d => d.channel.startsWith("tool_result:")), "create.only"));
+  } finally { x.cleanup(); }
+});
+
+test("review3#3: a bash overwrite of an existing file gets the same rules as the write tool", () => {
+  const a = sandbox(), b = sandbox();
+  try {
+    for (const x of [a, b]) {
+      customCatalog(x.cwd, { "create.only": 2 }, ["  - id: creations", "    operations: [create]", "    paths: [\"src/**\"]", "    rules: [create.only]"]);
+      x.start("Update");
+    }
+    const viaWrite = a.tool("write", { path: "src/pricing/domain/quote.ts", content: "x" }, () => {});
+    const viaBash = b.tool("bash", { command: "echo changed > src/pricing/domain/quote.ts" }, () => {});
+    assert.equal(viaWrite.blocked, true); assert.equal(viaBash.blocked, true);
+    assert.match(viaBash.reason!, /Convention create\.only —/);
+    const append = sandbox();
+    try {
+      customCatalog(append.cwd, { "create.only": 2 }, ["  - id: creations", "    operations: [create]", "    paths: [\"src/**\"]", "    rules: [create.only]"]);
+      append.start("Update");
+      const r = append.tool("bash", { command: "echo more >> src/pricing/domain/quote.ts" }, () => {});
+      assert.ok(!r.blocked || !/Convention create\.only —/.test(r.reason!), "append is an in-place edit, not a creation");
+    } finally { append.cleanup(); }
+  } finally { a.cleanup(); b.cleanup(); }
+});
+
+test("review3#4: a timestamp-preserving rewrite of an ignored source file is detected", () => {
+  const x = sandbox();
+  try {
+    writeFileSync(join(x.cwd, ".gitignore"), "src/generated/\n");
+    mkdirSync(join(x.cwd, "src/generated/domain"), { recursive: true });
+    const f = join(x.cwd, "src/generated/domain/a.ts");
+    writeFileSync(f, "AAAA\n");
+    execFileSync("git", ["add", ".gitignore"], { cwd: x.cwd }); execFileSync("git", ["commit", "-qm", "ignore"], { cwd: x.cwd });
+    x.start("Update pricing");
+    const { mtime, atime } = statSync(f);
+    x.tool("bash", { command: "node scripts/gen.mjs" }, () => { writeFileSync(f, "BBBB\n"); utimesSync(f, atime, mtime); });
+    assert.match(x.delivered.filter(d => d.channel.startsWith("tool_result:")).map(d => d.text).join("\n"), /Changed file src\/generated\/domain\/a\.ts/);
+  } finally { x.cleanup(); }
+});
+
+test("review3#5: path tokens without short extensions are still paths", () => {
+  for (const text of ["src/pricing/integration/README", "src/pricing/integration/foo.typescript", "src/pricing/integration/foo.ts#L10",
+    "pricing/integration/tax-rates.ts:12", "a/b/integration/c"])
+    assert.equal(termMatches(text, "integration/"), false, text);
+  assert.equal(termMatches("red/green/refactor", "green"), true);
+  assert.equal(termMatches("rebase onto integration/feature-tax", "integration/"), true);
 });

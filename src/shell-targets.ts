@@ -33,10 +33,23 @@ export function stripHeredocBodies(command: string): string {
   return kept.join("\n");
 }
 
+export type ShellWriteTarget = { path: string; mode: "write" | "edit" };
+/** Targets only (compatibility). */
 export function shellWriteTargets(command: string): string[] {
+  return shellWriteTargetModes(command).map(t => t.path);
+}
+/**
+ * Targets with their write mode: "write" replaces the whole file (like Pi's
+ * write tool: `>`, heredoc, `tee`, cp/mv/install destination, writeFileSync),
+ * "edit" modifies it in place (`>>`, `tee -a`, sed/perl -i, append, patch).
+ */
+export function shellWriteTargetModes(command: string): ShellWriteTarget[] {
   if (typeof command !== "string" || !command) return [];
-  const out = new Set<string>();
-  const add = (raw: string | undefined) => {
+  const modes = new Map<string, "write" | "edit">();
+  let mode: "write" | "edit" = "write";
+  const out = { add: (t: string) => { if (modes.get(t) !== "write") modes.set(t, mode); } };
+  const add = (raw: string | undefined, m: "write" | "edit" = "write") => {
+    mode = m;
     if (!raw) return;
     const t = unquote(raw.trim());
     if (!t || t.startsWith("-") || t.startsWith("&") || /[$`*?{}\s]/.test(t)) return;
@@ -47,7 +60,8 @@ export function shellWriteTargets(command: string): string[] {
   const shell = stripHeredocBodies(command);
 
   // Output redirections: > file, >> file, 1> file, &> file (not >&2, not 2>&1).
-  for (const m of shell.matchAll(/(?:^|[^<>&=\-0-9])(?:[0-9]?>>?|&>>?)\|?\s*('[^']*'|"[^"]*"|[^\s;&|<>()]+)/g)) add(m[1]);
+  for (const m of shell.matchAll(/(?:^|[^<>&=\-0-9])([0-9]?>>?|&>>?)\|?\s*('[^']*'|"[^"]*"|[^\s;&|<>()]+)/g))
+    add(m[2], m[1]!.endsWith(">>") ? "edit" : "write");
 
   // Simple commands, split on control operators.
   for (const segment of shell.split(/\n|;|&&|\|\||\|/)) {
@@ -57,8 +71,9 @@ export function shellWriteTargets(command: string): string[] {
     const cmd = tokens[0] ? unquote(tokens[0]).split("/").at(-1)! : "";
     const args = tokens.slice(1);
     const operands = args.filter(a => !a.startsWith("-"));
-    if (cmd === "tee" || cmd === "touch" || cmd === "rm" || cmd === "unlink" || cmd === "truncate" || cmd === "shred")
-      operands.forEach(add);
+    if (cmd === "tee") operands.forEach(o => add(o, args.some(a => /^-[a-z]*a/.test(a) || a === "--append") ? "edit" : "write"));
+    else if (cmd === "touch" || cmd === "rm" || cmd === "unlink" || cmd === "truncate" || cmd === "shred")
+      operands.forEach(o => add(o, "edit"));
     else if (["cp", "mv", "install", "ln", "rsync", "dd"].includes(cmd)) {
       if (cmd === "dd") args.filter(a => a.startsWith("of=")).forEach(a => add(a.slice(3)));
       else add(operands.at(-1));
@@ -71,19 +86,20 @@ export function shellWriteTargets(command: string): string[] {
         if (p === "-e" || p === "-f" || p === "--expression" || p === "--file") { scriptSkipped = true; continue; }
         if (p === "-i" && cmd !== "perl" && (a === "''" || a === '""')) continue; // BSD sed empty backup suffix
         if (!scriptSkipped && !args.some(x => x === "-e" || x === "-f")) { scriptSkipped = true; continue; }
-        add(a);
+        add(a, "edit");
       }
     }
   }
 
   // Inline scripts (node -e, python -c, heredoc-fed interpreters): the full text, bodies included.
-  for (const m of command.matchAll(/\b(?:writeFileSync|appendFileSync|writeFile|appendFile|createWriteStream|rmSync|unlinkSync|truncateSync)\s*\(\s*(['"`])([^'"`\n]+)\1/g)) add(m[2]);
+  for (const m of command.matchAll(/\b(writeFileSync|appendFileSync|writeFile|appendFile|createWriteStream|rmSync|unlinkSync|truncateSync)\s*\(\s*(['"`])([^'"`\n]+)\2/g))
+    add(m[3], /^(?:writeFileSync|writeFile|createWriteStream)$/.test(m[1]!) ? "write" : "edit");
   for (const m of command.matchAll(/\bopenSync\s*\(\s*(['"`])([^'"`\n]+)\1\s*,\s*(['"`])[^'"`]*[wa+][^'"`]*\3/g)) add(m[2]);
   for (const m of command.matchAll(/\b(?:copyFileSync|renameSync|cpSync|copyFile|rename)\s*\(\s*(['"`])[^'"`\n]+\1\s*,\s*(['"`])([^'"`\n]+)\2/g)) add(m[3]);
   for (const m of command.matchAll(/\bopen\(\s*(['"])([^'"\n]+)\1\s*,\s*(['"])[^'"]*[wax+][^'"]*\3/g)) add(m[2]);
   for (const m of command.matchAll(/\bPath\(\s*(['"])([^'"\n]+)\1\s*\)\s*\.(?:write_text|write_bytes|unlink|touch)\b/g)) add(m[2]);
   // Unified diffs fed to patch / git apply.
-  for (const m of command.matchAll(/^\+\+\+ (?:[ab]\/)?(\S+)/gm)) if (m[1] !== "/dev/null") add(m[1]);
-  for (const m of command.matchAll(/^diff --git a\/\S+ b\/(\S+)/gm)) add(m[1]);
-  return [...out];
+  for (const m of command.matchAll(/^\+\+\+ (?:[ab]\/)?(\S+)/gm)) if (m[1] !== "/dev/null") add(m[1], "edit");
+  for (const m of command.matchAll(/^diff --git a\/\S+ b\/(\S+)/gm)) add(m[1], "edit");
+  return [...modes].map(([path, m]) => ({ path, mode: m }));
 }

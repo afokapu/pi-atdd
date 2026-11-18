@@ -11,7 +11,7 @@ import { loadCatalog, loadConfig, type Catalog, type Selector } from "./catalog.
 import { ReasoningSession, type ContextObservation } from "./reasoning-context.ts";
 import { renderReasonedPage, type RenderedPage } from "./render-reasoning.ts";
 import { observeRepository, type RepositorySnapshot } from "./repository-observer.ts";
-import { shellWriteTargets } from "./shell-targets.ts";
+import { shellWriteTargetModes } from "./shell-targets.ts";
 
 function scopedPath(cwd:string,supplied:string):string|null {
   const abs=resolve(cwd,supplied), p=relative(cwd,abs);
@@ -43,11 +43,15 @@ export default function atdd(pi:ExtensionAPI):void {
   let observationWarning=false;
   const delivered=new Map<string,string>();
   const unresolvedPaths=new Set<string>();
+  /** Post-tool pages whose budget omitted rules; delivered on the next tool result. */
+  type Pending={path:string;operation:"edit"|"create";provenance:string};
+  const pendingPostTool=new Map<string,Pending>();
   const key=(scope:string,id:string)=>scope+"\u0000"+id;
   const digest=(value:unknown)=>createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
   function reset():void{
     reasoning=undefined;delivered.clear();unresolvedPaths.clear();observationWarning=false;
+    pendingPostTool.clear();
   }
   function ensure(cwd:string):ReasoningSession{
     if(!catalog||cwdKey!==cwd){
@@ -170,15 +174,22 @@ export default function atdd(pi:ExtensionAPI):void {
       // at runtime are caught by post-tool observation below.
       const command=(event.input as {command?:unknown}).command;
       if(typeof command!=="string")return;
-      const targets=[...new Set(shellWriteTargets(command)
-        .map(t=>scopedPath(ctx.cwd,t)).filter((p):p is string=>p!==null))];
+      // "write" (whole-file replacement) maps to the write tool's "create"
+      // operation, in-place modification to "edit" — the same rule sets.
+      const byPath=new Map<string,"edit"|"create">();
+      for(const t of shellWriteTargetModes(command)){
+        const p=scopedPath(ctx.cwd,t.path);
+        if(p===null)continue;
+        const op=t.mode==="write"||!existsSync(resolve(ctx.cwd,p))?"create":"edit";
+        if(byPath.get(p)!=="create")byPath.set(p,op);
+      }
+      const targets=[...byPath.keys()];
       const reasons:string[]=[];
       let remaining=12_000;
       try{
         for(const path of targets){
           if(remaining<2_500)break; // targets not yet delivered are preflighted on retry
-          const operation=existsSync(resolve(ctx.cwd,path))?"edit":"create";
-          const r=preflightPath(ctx.cwd,path,operation,"Pi pre-shell tool_call (static write target)",
+          const r=preflightPath(ctx.cwd,path,byPath.get(path)!,"Pi pre-shell tool_call (static write target)",
             remaining,false);
           if(r){reasons.push(r.reason);remaining-=r.reason.length;}
         }
@@ -205,6 +216,25 @@ export default function atdd(pi:ExtensionAPI):void {
    * API and return reconciliation texts for changed files. Each page ranks
    * file-specific rules first, so the target rule is never the one dropped.
    */
+  /** Render one post-tool page; rules omitted by the budget stay queued. */
+  function postToolPage(cwd:string,item:Pending,budget:number):string|undefined{
+    const result=observe(cwd,item.operation,"repository-observation",item.provenance,item.path);
+    const fresh=newlyRelevant(result);
+    if(!fresh.length&&result.status==="matched"){pendingPostTool.delete(item.path);return undefined;}
+    const page=renderReasonedPage(result,fresh,budget);
+    recordActualDelivery(result,page);
+    if(page.omittedIds.length)pendingPostTool.set(item.path,item);else pendingPostTool.delete(item.path);
+    return "ATDD post-tool reconciliation. Changed file "+item.path+":\n"+page.text;
+  }
+  /** Deliver rules a previous post-tool page omitted by budget (next tool result, any tool). */
+  function drainPending(cwd:string):string[]{
+    const texts:string[]=[];
+    for(const item of [...pendingPostTool.values()]){
+      try{const t=postToolPage(cwd,item,4_500);if(t)texts.push(t.replace("ATDD post-tool reconciliation.","ATDD post-tool reconciliation (continued)."));}
+      catch(e){pendingPostTool.delete(item.path);texts.push("ATDD post-tool continuation failed for "+item.path+": "+String(e));}
+    }
+    return texts;
+  }
   function reconcile(cwd:string,toolName:string):string[]{
     const texts:string[]=[];
     const report=observeRepository(cwd,observedRepo);
@@ -228,14 +258,9 @@ export default function atdd(pi:ExtensionAPI):void {
     for(const path of report.changedPaths){
       try{
         const created=report.createdPaths?.includes(path)??false;
-        const result=observe(cwd,created?"create":"edit","repository-observation",
-          "Git/JJ post-tool observed "+toolName+(created?" (created)":""),path);
-        const fresh=newlyRelevant(result);
-        if(fresh.length||result.status!=="matched"){
-          const page=renderReasonedPage(result,fresh,perPath);
-          texts.push("ATDD post-tool reconciliation. Changed file "+path+":\n"+page.text);
-          recordActualDelivery(result,page);
-        }
+        const text=postToolPage(cwd,{path,operation:created?"create":"edit",
+          provenance:"Git/JJ post-tool observed "+toolName+(created?" (created)":"")},perPath);
+        if(text)texts.push(text);
       }catch(e){
         reset();
         texts.push("ATDD post-tool observation failed for "+path+": "+String(e)+
@@ -250,9 +275,12 @@ export default function atdd(pi:ExtensionAPI):void {
   // model reads it before it continues (Pi: tool_result can modify the result).
   pi.on("tool_result",(event,ctx)=>{
     if(!ctx.isProjectTrusted())return;
-    if(READ_ONLY_TOOLS.has(event.toolName))return;
-    if(event.toolCallId)reconciledCalls.add(event.toolCallId);
-    const texts=reconcile(ctx.cwd,event.toolName);
+    let texts:string[];
+    try{texts=drainPending(ctx.cwd);}catch{texts=[];}
+    if(!READ_ONLY_TOOLS.has(event.toolName)){
+      if(event.toolCallId)reconciledCalls.add(event.toolCallId);
+      texts.push(...reconcile(ctx.cwd,event.toolName));
+    }
     if(!texts.length)return;
     return {content:[...(event.content??[]),{type:"text" as const,text:texts.join("\n\n")}]};
   });

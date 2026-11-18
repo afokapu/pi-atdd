@@ -140,13 +140,18 @@ export function loadCatalog(sources: SourceSpec[], cwd: string): Catalog {
 const WORD_CHAR = /[a-z0-9_]/;
 const TOKEN_TRIM = /^[\s()[\]{}"'`,;:<>]+|[\s()[\]{}"'`,;:<>.?!]+$/g;
 /** A whitespace-delimited token that names a file or directory path, not prose. */
+const PATH_ROOTS = new Set(["src", "tests", "test", "lib", "app", "apps", "packages", "e2e", "scripts", "docs",
+  "internal", "cmd", "pkg", "vendor", "dist", "build", "config", "bin", "spec", "fixtures"]);
 function isPathToken(token: string): boolean {
-  const t = token.replace(TOKEN_TRIM, "");
-  if (!t.includes("/") && !/\.[a-z0-9]{1,5}$/.test(t)) return false;
-  return /^(?:\.{1,2}\/|\/|~\/)/.test(t)              // ./x, ../x, /abs, ~/x
-    || /\/[^/\s]*\.[a-z0-9]{1,5}$/.test(t)            // dir/file.ext
-    || /^[^/\s]+\.[a-z0-9]{1,5}$/.test(t) && /[a-z]/.test(t.split(".").pop()!) // file.ext
-    || (t.endsWith("/") && t.slice(0, -1).includes("/")); // a/b/ (directory)
+  const t = token.replace(TOKEN_TRIM, "").replace(/#.*$/, "").replace(/:\d+(?::\d+)?$/, "");
+  if (/^(?:\.{1,2}\/|\/|~\/)/.test(t)) return true;          // ./x, ../x, /abs, ~/x
+  const segments = t.split("/");
+  const named = segments.filter(Boolean);
+  if (segments.length < 2) return /^[^\s]+\.[a-z][a-z0-9]{0,9}$/.test(t) && !/^[a-z]\.[a-z]\.?$/.test(t); // file.ext (not e.g.)
+  if (PATH_ROOTS.has(named[0] ?? "")) return true;              // src/..., tests/...
+  if (named.slice(1).some(seg => /\.[a-z0-9]{1,10}$/.test(seg))) return true; // dir/file.ext
+  if (named.length >= 4) return true;                           // a/b/c/d is a path, not prose
+  return t.endsWith("/") && named.length >= 2;                  // a/b/ (directory)
 }
 /**
  * Selector term match on word boundaries (case-insensitive). A term never
