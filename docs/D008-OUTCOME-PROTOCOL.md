@@ -39,3 +39,18 @@ The TypeScript src/effectiveness.ts API re-runs the named tests in each result w
 D008 stays **NOT RUN / FAIL TO ESTABLISH IMPROVEMENT** until a balanced, externally verifiable weak/strong model comparison is collected. The review must publish both negative and positive outcomes, changes in correctness, missing requirements, false-green claims, tool/retry counts, elapsed time and injected tokens. Do not choose an acceptance threshold after looking at results; set the minimum beneficial outcome in a separate reviewed decision before the trial.
 
 This experiment does **not** authorize changing canonical YAML, weakening merge-required tests, or retiring ATDD-Bun/Flow. CI passing the scoring harness proves the harness works against fixtures, not that either model improved.
+
+
+## Reviewer-mandated acceptance manifest integrity (PR #2 review 5954595568)
+
+The evaluator must provide the acceptance oracle independently of the coding agent:
+
+- manifest schema pi-atdd/acceptance-manifest/v1 with task ID, base revision, acceptance IDs, exact test targets, policy SHA-256, test runner, and an explicit allowlist of implementation files that the agent may change;
+- a trusted evaluator adapter validates the manifest and its SHA-256 digest. A string in a model transcript or Linear comment is not authentication;
+- verifyTrial(trial, manifest, trustedAuthority) rejects trial-selected targets that differ from the evaluator's targets, wrong task/base, dirty worktrees, unapproved changes to **any** tracked file, and absent evaluator acceptance targets at base;
+- files outside the allowlist are immutable for D008, including tests, test fixtures and imported helpers. A model changing the test-helper implementation to make an unchanged test pass is rejected;
+- compareTrials() requires identical attested manifests, acceptances, targets and policy digest for both baseline and graph conditions. Different tests cannot yield a comparable effectiveness delta.
+
+The strict change allowlist is intentional for the *fixed D008 scenarios*. Changes outside that scope must be separately approved by the evaluator, not retroactively treated as test success. Manifest authority authentication remains unimplemented in production: the current regression tests use a synthetic verifier that exercises the boundary only.
+
+D008 is **NOT RUN against real models**, notwithstanding passing proof-integrity regressions. A real evaluator must first approve the manifest and the balanced trial protocol, and then run independent acceptance and blind semantic review before any effectiveness conclusion.
