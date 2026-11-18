@@ -81,6 +81,16 @@ export class PositiveReasoner {
   private readonly reverse = new Map<string, Set<string>>();
   private readonly asserted = new Map<string, Fact>();
   private readonly maxSteps: number;
+  private poisoned: Error | null = null;
+  private ensureHealthy():void {
+    if(this.poisoned)throw new Error("inference engine invalidated after failed mutation; reconstruct from authoritative facts: "+this.poisoned.message);
+  }
+  private mutate<T>(fn:()=>T):T {
+    try{return fn();}catch(error){
+      this.poisoned=error instanceof Error?error:new Error(String(error));
+      throw error;
+    }
+  }
 
   constructor(rules: readonly Rule[], maxSteps = 300_000) {
     if (!Number.isInteger(maxSteps) || maxSteps < 1) throw new Error("invalid reasoning step bound");
@@ -198,6 +208,7 @@ export class PositiveReasoner {
   }
 
   assert(fact: Fact): Delta {
+    this.ensureHealthy();
     if (!fact || !fact.id || !fact.source) throw new Error("fact needs stable id and source");
     validateAtom({ predicate: fact.predicate, terms: fact.args }, false);
     if (fact.args.some(x => typeof x !== "string" || !x)) throw new Error("all fact arguments must be nonempty strings");
@@ -207,6 +218,7 @@ export class PositiveReasoner {
         throw new Error("changed fact assertion requires explicit retraction: " + fact.id);
       return { added: [], removed: [], changed: [], scans: 0, supports: 0, affected: 0 };
     }
+    return this.mutate(()=>{
     this.asserted.set(fact.id, { ...fact, args: [...fact.args] });
     const { record, created } = this.getOrCreate({ predicate: fact.predicate, args: [...fact.args] });
     record.assertions.set(fact.id, fact);
@@ -214,10 +226,13 @@ export class PositiveReasoner {
     return { added: [...(created ? [groundKey(fact.predicate, fact.args)] : []), ...delta.added],
       removed: [], changed: created ? [] : [groundKey(fact.predicate, fact.args)],
       scans: delta.scans, supports: delta.supports, affected: 0 };
+    });
   }
   retract(id: string): Delta {
+    this.ensureHealthy();
     const fact = this.asserted.get(id);
     if (!fact) return { added: [], removed: [], changed: [], scans: 0, supports: 0, affected: 0 };
+    return this.mutate(()=>{
     const key = groundKey(fact.predicate, fact.args);
     this.asserted.delete(id);
     const affected = new Set<string>([key]), queue = [key];
@@ -259,14 +274,17 @@ export class PositiveReasoner {
     const removed = [...affected].filter(k => !this.records.has(k)).sort();
     const changed = [...affected].filter(k => this.records.has(k)).sort();
     return { added: [], removed, changed, scans: derivation.scans, supports: derivation.supports, affected: affected.size };
+    });
   }
   facts(predicate?: string): Ground[] {
+    this.ensureHealthy();
     return [...this.records.entries()].filter(([, rec]) => !predicate || rec.fact.predicate === predicate)
       .sort(([a], [b]) => a.localeCompare(b)).map(([, rec]) => ({ ...rec.fact, args: [...rec.fact.args] }));
   }
-  has(predicate: string, args: readonly string[]): boolean { return this.records.has(groundKey(predicate, args)); }
+  has(predicate: string, args: readonly string[]): boolean { this.ensureHealthy(); return this.records.has(groundKey(predicate, args)); }
   /** Absent facts are UNKNOWN, not negated facts. */
   query(predicate: string, args: string[]): { status: "true" | "unknown"; proof?: Proof } {
+    this.ensureHealthy();
     const key = groundKey(predicate, args);
     return this.records.has(key) ? { status: "true", proof: this.explainKey(key) } : { status: "unknown" };
   }
@@ -289,6 +307,6 @@ export class PositiveReasoner {
     }));
     return proof;
   }
-  get assertedCount(): number { return this.asserted.size; }
-  get materializedCount(): number { return this.records.size; }
+  get assertedCount(): number { this.ensureHealthy(); return this.asserted.size; }
+  get materializedCount(): number { this.ensureHealthy(); return this.records.size; }
 }
