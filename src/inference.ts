@@ -43,7 +43,7 @@ function validateRule(rule: Rule): void {
   const bound = new Set<string>();
   for (const atom of rule.body) {
     validateAtom(atom, true);
-    atom.terms.filter(s => s.startsWith("?")).forEach(s => bound.add(s));
+    atom.terms.filter((s: string) => s.startsWith("?")).forEach((s: string) => bound.add(s));
   }
   for (const term of rule.head.terms) {
     if (term.startsWith("?") && !bound.has(term)) throw new Error("unsafe unbound head variable: " + term);
