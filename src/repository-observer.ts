@@ -5,7 +5,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync, realpathSync } from "node:fs";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 
 export type RepositorySnapshot = {
@@ -28,6 +28,8 @@ function fingerprint(cwd:string,path:string):string {
   try {
     const full=resolve(cwd,path);
     if (!existsSync(full)) return "deleted";
+    const physical=realpathSync(full), root=realpathSync(cwd), rel=relative(root,physical);
+    if(rel===".."||rel.startsWith(".."+sep)||isAbsolute(rel))return "external-symlink";
     const stat=statSync(full);
     if (!stat.isFile()) return "non-file";
     if (stat.size>2_000_000) return "large:"+stat.size+":"+stat.mtimeMs;
