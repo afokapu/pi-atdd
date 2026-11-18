@@ -66,7 +66,7 @@ test("a positive cycle remains supported by a different extensional root after r
   assert.equal(e.has("active",["a"]),true,"surviving b seed can still support a");
   assert.equal(e.has("active",["b"]),true);
   const proof=JSON.stringify(e.query("active",["a"]).proof);
-  assert.ok(proof.includes("seed-b"));
+  assert.ok(proof.includes("seed-b"), proof);
   assert.ok(!proof.includes("seed-a"));
   e.retract("seed-b");
   assert.equal(e.has("active",["a"]),false);
