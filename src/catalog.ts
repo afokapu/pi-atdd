@@ -135,9 +135,17 @@ export function loadCatalog(sources: SourceSpec[], cwd: string): Catalog {
   return { rules, edges, provenance, unresolvedEdges };
 }
 function matchesGlob(file: string, pattern: string): boolean {
-  const escaped = pattern.replace(/[.+^$`{}()|[\]\\]/g, "\\$&");
-  const regex = "^" + escaped.replaceAll("**/", "(?:.*/)?").replaceAll("**", ".*").replaceAll("*", "[^/]*").replaceAll("?", ".") + "$";
-  return new RegExp(regex).test(file.replaceAll("\\", "/"));
+  let regex = "^";
+  for (let i = 0; i < pattern.length;) {
+    const ch = pattern[i]!;
+    if (pattern.slice(i, i + 3) === "**/") { regex += "(?:.*/)?"; i += 3; continue; }
+    if (pattern.slice(i, i + 2) === "**") { regex += ".*"; i += 2; continue; }
+    if (ch === "*") { regex += "[^/]*"; i++; continue; }
+    if (ch === "?") { regex += "[^/]"; i++; continue; }
+    regex += /[\\.^$+{}()|[\]]/.test(ch) ? "\\" + ch : ch;
+    i++;
+  }
+  return new RegExp(regex + "$").test(file.replaceAll("\\", "/"));
 }
 export function validateSelectors(catalog: Catalog, selectors: Selector[]): void {
   const ids = new Set<string>();
