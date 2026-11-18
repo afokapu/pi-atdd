@@ -33,9 +33,13 @@ export function verifyTargets(cwd: string, targets: string[], options: { runner?
     ? ["--experimental-strip-types", "--test", ...files]
     : ["test", ...files];
   const start = performance.now();
+  // Node's own test harness injects NODE_TEST_CONTEXT. Propagating it into
+  // a child test runner causes the child to silently skip all tests and exit 0.
+  const env = { ...process.env };
+  delete env.NODE_TEST_CONTEXT;
   const result = spawnSync(binary, args, {
     cwd, encoding: "utf8", timeout: timeoutMs, maxBuffer: 1024 * 1024,
-    shell: false, windowsHide: true,
+    shell: false, windowsHide: true, env,
   });
   const timedOut = Boolean(result.error && "code" in result.error && result.error.code === "ETIMEDOUT");
   return {
