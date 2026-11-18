@@ -84,6 +84,8 @@ class Rule:
     kind: str
     status: str
     disposition: str | null
+    file: str
+    exceptions: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -133,6 +135,9 @@ def load_catalog(sources: Iterable[dict[str, str]], repo: Path) -> Catalog:
             if id_ in rules:
                 raise GraphError(f"{file}: duplicate rule_id {id_} (previously {rules[id_].path})")
             body = entry.get("content") if isinstance(entry.get("content"), dict) else {}
+            exceptions = body.get("exceptions", entry.get("exceptions", []))
+            if not isinstance(exceptions, list) or not all(isinstance(ex, str) for ex in exceptions):
+                raise GraphError(f"{file}: exceptions must be an array of strings")
             metadata = entry.get("metadata") if isinstance(entry.get("metadata"), dict) else {}
             disposition = metadata.get("disposition")
             if disposition is not None and disposition not in {"strict", "advisory", "suppress-and-clean", "documentation-only"}:
@@ -145,6 +150,8 @@ def load_catalog(sources: Iterable[dict[str, str]], repo: Path) -> Catalog:
                 kind=str(entry.get("kind") or "rule"),
                 status=str(entry.get("status") or "active"),
                 disposition=disposition,
+                file=str(file),
+                exceptions=tuple(exceptions),
             )
             local_nodes.add(id_)
         graph_file = root / "relationships.yaml"
@@ -232,6 +239,8 @@ def resolve(catalog: Catalog, selectors: list[dict], task: str, paths: list[str]
             if edge.source != origin or edge.type != "requires" or edge.constraint != "mandatory":
                 continue
             target = edge.target
+            if catalog.rules[target].status != "active":
+                raise GraphError(f"required convention {target!r} is not active")
             if target not in selected:
                 selected.add(target)
                 pending.append(target)
@@ -247,7 +256,10 @@ def resolve(catalog: Catalog, selectors: list[dict], task: str, paths: list[str]
              "summary": catalog.rules[id_].summary,
              "fix_hint": catalog.rules[id_].fix_hint[:1200],
              "reasons": sorted(set(reasons[id_])), "kind": catalog.rules[id_].kind,
-             "disposition": catalog.rules[id_].disposition}
+             "disposition": catalog.rules[id_].disposition,
+             "source_file": catalog.rules[id_].file,
+             "exceptions": list(catalog.rules[id_].exceptions)[:5],
+             "exceptions_truncated": len(catalog.rules[id_].exceptions) > 5}
             for id_ in shown
         ],
         "matching_ids": rules_sorted,
