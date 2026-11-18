@@ -1,0 +1,72 @@
+schema_version: 1.1.0
+rule_id: coder.bun.duplication-intra-layer
+kind: rule
+status: active
+name: No duplicated code fragments within one architectural layer
+statement: >-
+  No run of 7 or more non-trivial normalized lines may appear in two different TypeScript files of the
+  SAME architectural layer. Stack-neutral obligation, NATIVE BUN detector transcribed from the python-
+  pytest sibling `coder.duplication.no-intra-layer-code-typescript`, including the normalization table and
+  the sha256-prefix fingerprint. Realized by `bun_ts_metrics_detector` (core alias DUPLICATION-TS-001).
+terms:
+- term_id: normalized_fragment
+  text: >-
+    a window of 7 non-trivial lines with comments stripped, string literals folded to "S",
+    numbers to 0 and non-keyword identifiers to ID, so renaming a variable cannot hide a
+    duplicate.
+- term_id: intra_layer
+  text: >-
+    within one architectural layer. The same shape in two different layers is usually two
+    obligations that happen to look alike.
+content:
+  summary: >-
+    Each line is normalized — comments stripped, string literals folded to "S", numbers to 0, non-keyword
+    identifiers to ID — trivial lines dropped, then every sliding window of 7 lines is fingerprinted and
+    compared within a layer.
+  normative_text: |
+    Normalization is what makes the rule useful: because identifiers are folded, renaming a variable does not hide a duplicate, so the fingerprint tracks STRUCTURE rather than text.
+    The intra-layer restriction is equally deliberate. The same shape appearing in `domain/` and in `presentation/` is usually two different obligations that happen to look alike, and merging them couples layers that should move independently. Twice inside one layer is the shape that genuinely wanted extracting.
+    Treat a duplicate fingerprint as a sensor that two sites may share one responsibility or change reason. The goal is not to make the fingerprints differ; it is to decide whether the two fragments represent one concept that should be owned once or two concepts whose real semantic differences should remain independent.
+  fix_hint: |
+    Compare the duplicated sites semantically before extracting anything.
+
+    Diagnose:
+      * determine whether both fragments implement the same responsibility and should change for the same reason,
+      * identify the smallest stable behavior they genuinely share,
+      * check that the shared behavior belongs inside the same architectural layer.
+
+    Prefer:
+      * extract a focused function or module within that layer when both sites represent one concept,
+      * give the shared behavior a domain- or responsibility-revealing name,
+      * when the sites represent different responsibilities, preserve their independence and express any real semantic differences directly.
+
+    Avoid:
+      * renaming identifiers, changing literals, reordering harmless statements, or making other cosmetic edits solely to defeat normalization,
+      * creating a cross-layer abstraction just because two layers contain similar-shaped code,
+      * extracting a highly parameterized generic helper that obscures the two callers' intent,
+      * forcing distinct responsibilities into one abstraction merely to remove the finding.
+
+    Verify:
+      * existing behavior and tests remain green,
+      * the duplicate is removed because ownership became clearer or because genuine semantic differences are now explicit,
+      * dependency direction and layer boundaries remain valid,
+      * the extracted abstraction has one coherent reason to change,
+      * the refactor introduces no new ATDD Bun violations.
+  exceptions:
+  - Test, spec, and `.d.ts` files are excluded, as are `index.ts` barrels and `__tests__` directories.
+  - Trivial lines (bare braces, closing punctuation) are not counted toward the 7.
+  - Import and re-export declarations are not counted, because two files importing the same names from one shared module match because the logic was shared, which is the fix this rule asks for.
+  - Property signatures inside a `type X = {` or `interface X {` body (optional `readonly`, a name, optional `?`, `:` a type, ending `;` or `,`), including the members of nested object types, are not counted, because two unrelated records with the same number of same-typed fields match once identifiers are folded and neither coupling them nor a cosmetic edit is a fix. Executable statements, object literals, class fields, enum bodies, and method bodies still count.
+  - Files whose layer cannot be determined are not judged, because with no established layer there is no intra-layer comparison and unclassified paths are never compared with each other.
+metadata:
+  aliases:
+  # DUPLICATION-TS-001 is the SHARED core alias, also carried by the agnostic node and by
+  # its python-pytest realization. One obligation, two detectors, two runtimes.
+  - DUPLICATION-TS-001
+  severity: 2
+  # strict: atdd-bun fails on every finding; it has no advisory mode and no ratchet baseline.
+  disposition: strict
+  introduced_in: 0.1.0
+implementation:
+  type: validator
+  ref: bun_ts_metrics_detector
