@@ -83,6 +83,7 @@ export default function atdd(pi:ExtensionAPI):void {
       return {message:{customType:"pi-atdd-inference",
         content:renderReasoned(result,undefined,12_000),display:false}};
     }catch(e){
+      reset(); // no partially materialized conclusions survive a failed inference
       return {message:{customType:"pi-atdd-error",
         content:"ATDD reasoning failed: "+String(e)+
           ". Unknown obligations are not waivers; repair graph before governed completion.",display:true}};
@@ -110,7 +111,7 @@ export default function atdd(pi:ExtensionAPI):void {
         return {block:true,reason:renderReasoned(result,undefined,4_000)+
           "\nInspect canonical rules before retrying; this gap does not certify compliance."};
       }
-    }catch(e){return {block:true,reason:"ATDD rule activation failed: "+String(e)};}
+    }catch(e){reset();return {block:true,reason:"ATDD rule activation failed: "+String(e)};}
   });
   pi.on("tool_execution_end",(event,ctx)=>{
     if(!ctx.isProjectTrusted())return;
@@ -141,6 +142,7 @@ export default function atdd(pi:ExtensionAPI):void {
             renderReasoned(result,fresh.length?fresh:undefined,5_500));
         }
       }catch(e){
+        reset();
         results.push("ATDD post-tool observation failed for "+path+": "+String(e)+
           ". Independent verification remains mandatory.");
       }
