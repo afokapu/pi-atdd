@@ -60,7 +60,7 @@ export default function atdd(pi: ExtensionAPI) {
     },
   });
   pi.on("before_agent_start", (event, ctx) => {
-    if (!ctx.isProjectTrusted() || !ready(ctx.cwd)) return;
+    if (!ctx.isProjectTrusted()) return;
     if (event.messageType === "user") {
       task = event.prompt || "";
       sent.clear(); unresolvedPaths.clear();
@@ -77,7 +77,7 @@ export default function atdd(pi: ExtensionAPI) {
     }
   });
   pi.on("tool_call", (event, ctx) => {
-    if (!ctx.isProjectTrusted() || !ready(ctx.cwd)) return;
+    if (!ctx.isProjectTrusted()) return;
     if (event.toolName !== "edit" && event.toolName !== "write") return;
     const input = event.input as { path?: unknown };
     if (typeof input.path !== "string") return { block: true, reason: "ATDD edit path is missing." };
