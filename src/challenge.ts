@@ -67,9 +67,25 @@ export function proposeChallenge(catalog: Catalog, proposal: ChallengeRequest): 
   const id = hash(JSON.stringify({data,affectedRelationships}));
   return {schema:"pi-atdd/challenge/v1",id,...data,affectedRelationships,status:"pending_review"};
 }
+function expectedId(record:ChallengeRecord):string {
+  const data:ChallengeRequest={
+    ruleId:record.ruleId,sourceDigest:record.sourceDigest,requester:record.requester,
+    counterexample:record.counterexample,proposedRealization:record.proposedRealization,
+    assumptions:record.assumptions,evidence:record.evidence,
+  };
+  return hash(JSON.stringify({data,affectedRelationships:record.affectedRelationships}));
+}
+function verifyRecord(record:ChallengeRecord):void {
+  const allowed=["schema","id","ruleId","sourceDigest","requester","counterexample",
+    "proposedRealization","assumptions","evidence","affectedRelationships","status"].sort();
+  if(Object.keys(record).sort().join(",")!==allowed.join(",")||
+      record.schema!=="pi-atdd/challenge/v1"||record.status!=="pending_review"||
+      record.id!==expectedId(record)) throw new Error("challenge record was modified or malformed");
+}
 const challengePath = (root:string,id:string) => join(resolve(root),".atdd","pi-atdd","challenges",id+".json");
 export function publishChallenge(root:string,record:ChallengeRecord):string {
-  if (!/^[a-f0-9]{64}$/.test(record.id) || record.status!=="pending_review") throw new Error("invalid immutable challenge record");
+  if (!/^[a-f0-9]{64}$/.test(record.id)) throw new Error("invalid challenge id");
+  verifyRecord(record);
   const file = challengePath(root,record.id);
   mkdirSync(join(resolve(root),".atdd","pi-atdd","challenges"),{recursive:true});
   writeFileSync(file,JSON.stringify(record,null,2)+"\n",{flag:"wx",encoding:"utf8"});
@@ -78,12 +94,14 @@ export function publishChallenge(root:string,record:ChallengeRecord):string {
 export function readChallenge(root:string,id:string):ChallengeRecord {
   if (!/^[a-f0-9]{64}$/.test(id)) throw new Error("invalid challenge id");
   const value = JSON.parse(readFileSync(challengePath(root,id),"utf8")) as ChallengeRecord;
-  if (value.id!==id || value.status!=="pending_review" || value.schema!=="pi-atdd/challenge/v1")
-    throw new Error("challenge record corrupt");
+  if (value.id!==id)throw new Error("challenge ID/path mismatch");
+  verifyRecord(value);
   return value;
 }
 export async function publishExternalReview(root:string,record:ChallengeRecord,
     decision:ReviewDecision,adapter:TrustedReviewAdapter):Promise<string> {
+  const recorded=readChallenge(root,record.id);
+  if(JSON.stringify(recorded)!==JSON.stringify(record))throw new Error("review challenge differs from stored record");
   if (decision.schema!=="pi-atdd/external-review/v1" || decision.challengeId!==record.id
       || decision.sourceDigest!==record.sourceDigest || decision.reviewer===record.requester
       || !["ACCEPT_ALTERNATIVE","RETURN","ESCALATE"].includes(decision.verdict))
