@@ -73,6 +73,28 @@ test("a positive cycle remains supported by a different extensional root after r
   assert.equal(e.has("active",["b"]),false);
 });
 
+test("stored derivation premises are immutable across later join matches",()=>{
+  const rules:Rule[]=[
+    {id:"seed",source:"test",head:atom("active","?x"),body:[atom("seed","?x")]},
+    {id:"edge",source:"test",head:atom("active","?y"),body:[atom("active","?x"),atom("edge","?x","?y")]},
+  ];
+  const e=new PositiveReasoner(rules);
+  for(const [id,pred,a,b] of [
+    ["ab","edge","a","b"],["cd","edge","c","d"],["be","edge","b","e"],["ac","edge","a","c"],
+  ])e.assert(fact(id,pred,a,b));
+  e.assert(fact("root-a","seed","a"));
+  e.assert(fact("root-c","seed","c"));
+  const first=JSON.stringify(e.query("active",["b"]).proof);
+  assert.ok(first.includes('"a"'));
+  assert.ok(first.includes("root-a"));
+  assert.ok(!first.includes("root-c"));
+  e.retract("root-c");
+  assert.equal(e.has("active",["b"]),true);
+  const next=JSON.stringify(e.query("active",["b"]).proof);
+  assert.ok(next.includes("root-a"));
+  assert.ok(!next.includes("root-c"));
+});
+
 test("independent supports survive retraction, but obsolete explanations disappear", () => {
   const rules: Rule[] = [
     { id: "selector", source: "fixture", head: atom("active","?scope","?rule"),
