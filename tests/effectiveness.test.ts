@@ -53,6 +53,21 @@ test("D008 re-runs real acceptance tests and detects a fake-green agent claim",(
     // No real model was invoked; do not claim graph-driven model improvement.
   } finally{f.cleanup();}
 });
+test("D008 rejects dirty worktrees and acceptance tests rewritten to manufacture green",()=>{
+  const f=fixture();
+  try{
+    writeFileSync(join(f.graph.workspace,"app.mjs"),"export const authorized = false;\n");
+    assert.throws(()=>verifyTrial(f.graph),/worktree is dirty/);
+    const git=(...args:string[])=>execFileSync("git",args,{cwd:f.graph.workspace,encoding:"utf8"});
+    git("checkout","--","app.mjs");
+    const fakeTest="import {test} from 'node:test';test('fake accepted',()=>{});\n";
+    writeFileSync(join(f.graph.workspace,"behavior.test.mjs"),fakeTest);
+    git("add","behavior.test.mjs");git("commit","-qm","forged acceptance");
+    const changed={...f.graph,resultRevision:git("rev-parse","HEAD").trim()};
+    assert.throws(()=>verifyTrial(changed),/mutated independently owned acceptance target/);
+  }finally{f.cleanup();}
+});
+
 test("D008 refuses stale revisions, absent pairs, and fabricated completeness",()=>{
   const f=fixture();
   try{
