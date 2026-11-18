@@ -1,0 +1,31 @@
+diff --git a/src/orders/routes/order-routes.ts b/src/orders/routes/order-routes.ts
+index 7ffd663..29280a8 100644
+--- a/src/orders/routes/order-routes.ts
++++ b/src/orders/routes/order-routes.ts
+@@ -1,10 +1,12 @@
+ import { Router } from "../../http/router.ts";
+ import { withCustomer, type SessionStore } from "../../http/auth.ts";
+ import type { InMemoryOrderStore } from "../integration/order-store.ts";
++import { cancel } from "../domain/order.ts";
+ 
+ export type OrderRouteDeps = { orders: InMemoryOrderStore; sessions: SessionStore };
+ 
+ /** Customer-facing order API. */
++
+ export function orderRoutes(router: Router, deps: OrderRouteDeps): Router {
+   router.add("GET", "/orders/:id", withCustomer(deps.sessions, (_req, params, customer) => {
+     const order = deps.orders.get(params.id!);
+@@ -22,5 +24,13 @@ export function orderRoutes(router: Router, deps: OrderRouteDeps): Router {
+     return { status: 201, body: order };
+   }));
+ 
++  router.add("POST", "/orders/:id/cancel", withCustomer(deps.sessions, (_req, params, customer) => {
++    const order = deps.orders.get(params.id!);
++    if (!order || order.customerId !== customer.id) return { status: 404, body: { error: "order not found" } };
++    const cancelledOrder = cancel(order);
++    deps.orders.save(cancelledOrder);
++    return { status: 200, body: cancelledOrder };
++  }));
++
+   return router;
+ }
