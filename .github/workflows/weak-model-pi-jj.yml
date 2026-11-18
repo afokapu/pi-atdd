@@ -79,6 +79,33 @@ jobs:
             exit 1
           fi
           echo "Local weak model is accepting inference requests."
+      - name: Verify local inference is not artificially limited to one output token
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS http://127.0.0.1:8080/v1/chat/completions \
+            -H 'Content-Type: application/json' \
+            -d '{"model":"weak-coder","messages":[{"role":"user","content":"Write one short English sentence about cats."}],"stream":false,"max_tokens":64}' \
+            -o "$RUNNER_TEMP/direct-model.json"
+          node -e '
+            const response = require(process.argv[1]);
+            const content = response.choices?.[0]?.message?.content || "";
+            const out = response.usage?.completion_tokens ?? 0;
+            console.log("Direct model tokens:", out, "text:", content.slice(0,150));
+            if (!out || out < 2) process.exit(1);
+          ' "$RUNNER_TEMP/direct-model.json"
+      - name: Record Pi model request parameters without raw prompts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p experiments/weak-model-pi-jj/results
+          PROXY_LOG_PATH="$GITHUB_WORKSPACE/experiments/weak-model-pi-jj/results/pi-request-metadata.jsonl" \
+            node experiments/weak-model-pi-jj/proxy.mjs > "$RUNNER_TEMP/proxy.log" 2>&1 &
+          for n in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8081/health > /dev/null 2>&1; then exit 0; fi
+            sleep 1
+          done
+          echo "Diagnostic model proxy not ready"; exit 1
       - name: Run two actual Pi agents on independent JJ workspaces
         shell: bash
         run: bash experiments/weak-model-pi-jj/run.sh
