@@ -71,22 +71,25 @@ function evidenceOf(p:Proof,out:string[]=[],seen=new Set<string>()):string[]{
  * (selector or typed applicability rules) count file-specific evidence: a
  * mandatory prerequisite does not inherit the path evidence of the rule that
  * requires it, so it can never outrank its directly targeted rule.
- *   path selector evidence +4, typed layer/path fact +2 (direct only);
- *   prerequisite-only activation 1; task-wording-only activation 0.
+ *   any direct derivation 1, +4 path selector evidence, +2 typed layer fact;
+ *   prerequisite-only activation 0. A directly selected rule therefore always
+ *   outranks a rule that is active only as its prerequisite.
  */
 export function relevance(a:Activation):number {
-  let best=-1;
+  let best=0;
   for(const d of a.proof.derivations){
-    if(d.rule==="pi-atdd.mandatory-prerequisites"){best=Math.max(best,1);continue;}
+    if(d.rule==="pi-atdd.mandatory-prerequisites")continue; // prerequisite-only: 0
     const ev=d.premises.flatMap(x=>evidenceOf(x));
-    let score=0;
-    if(ev.some(r=>r.startsWith("path:")))score+=4;
-    if(d.rule.startsWith("pi-atdd.typed-")||ev.some(r=>r.startsWith("layer:")))score+=2;
-    best=Math.max(best,score===0?0:score+2);
+    let score=1;                                             // direct (e.g. task wording)
+    if(ev.some(r=>r.startsWith("path:")))score+=4;            // file-specific path selector
+    if(d.rule.startsWith("pi-atdd.typed-")||ev.some(r=>r.startsWith("layer:")))score+=2; // typed layer fact
+    best=Math.max(best,score);
   }
-  return Math.max(best,0);
+  return best;
 }
-const MIN_COMPACT=400;
+const MIN_COMPACT=250;
+/** Room kept for the top rule; with maxChars >= 2000 the top rule is always delivered. */
+const COMPACT_ROOM=900;
 export function rankActivations(list:readonly Activation[]):Activation[] {
   return [...list].sort((x,y)=>relevance(y)-relevance(x)||(x.id<y.id?-1:x.id>y.id?1:0));
 }
@@ -111,8 +114,10 @@ function compactSection(item:Activation,r:Reconciliation,budget:number):string {
 export function renderReasonedPage(r:Reconciliation,ids?:readonly string[],maxChars=14_000):RenderedPage {
   if(!Number.isInteger(maxChars)||maxChars<1200)
     throw new Error("reasoning budget too small for safety warnings");
-  const warnings=[
-    "ATDD graph reasoning — positive provenance-backed derivations, not a merge verdict.",
+  const header="ATDD graph reasoning — positive provenance-backed derivations, not a merge verdict.";
+  const noWaiver="Rules are not waived by alternatives; an independent reviewer and CI verify binding obligations.";
+  const fullWarnings=[
+    header,
     "Task scope: "+r.scope+"; state: "+r.status.toUpperCase(),
     r.unknownFacts.length?"Unknown context facts (NOT assumed false): "+r.unknownFacts.join(", "):"",
     r.unresolvedGraphEdges.length?"Graph has "+r.unresolvedGraphEdges.length+
@@ -120,8 +125,20 @@ export function renderReasonedPage(r:Reconciliation,ids?:readonly string[],maxCh
     ...r.gaps.slice(0,8).map(g=>"MISSING mandatory graph dependency: "+g.missingId),
     r.gaps.length>8?"Other missing mandatory dependencies remain in the full reasoning report.":"",
     !r.activations.length?"ATDD applicability unresolved (UNKNOWN). No activation is not proof that no conventions apply; review applicability.":"",
-    "Rules are not waived by alternatives; an independent reviewer and CI verify binding obligations.",
+    noWaiver,
   ].filter(Boolean).join("\n");
+  // Bounded form of the same safety warnings, used when the full form would
+  // leave no room for the most relevant rule (long scopes, many gaps).
+  const compactWarnings=[
+    header,
+    "Task scope: "+clip(r.scope,120)+"; state: "+r.status.toUpperCase(),
+    r.unknownFacts.length?"Unknown context facts (NOT assumed false): "+clip(r.unknownFacts.join(", "),80):"",
+    r.unresolvedGraphEdges.length?"Graph has "+r.unresolvedGraphEdges.length+
+      " external unresolved edges; completeness is NOT established.":"",
+    r.gaps.length?clip("MISSING "+r.gaps.length+" mandatory graph dependencies: "+r.gaps.map(g=>g.missingId).join(", "),220):"",
+    noWaiver,
+  ].filter(Boolean).join("\n");
+  const warnings=r.activations.length&&maxChars-320-fullWarnings.length<COMPACT_ROOM?compactWarnings:fullWarnings;
   const selected=ids?new Set(ids):null;
   // Highest relevance first, so a bounded page drops lower-relevance rules first.
   const activations=rankActivations(r.activations.filter(x=>!selected||selected.has(x.id)));

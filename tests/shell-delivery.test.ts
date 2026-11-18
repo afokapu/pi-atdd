@@ -186,10 +186,12 @@ test("static shell write-target extraction covers common edit idioms and ignores
 });
 
 test("termMatches: word boundaries, path segments and simple plurals", () => {
-  const yes: Array<[string, string]> = [["the red test", "red"], ["red/green/refactor", "red"], ["push integration/feature-x", "integration/"],
+  const yes: Array<[string, string]> = [["the red test", "red"], ["red/green/refactor", "red"], ["red/green/refactor", "green"],
+    ["red/green/refactor", "refactor"], ["-red test", "red"], ["push integration/feature-x", "integration/"],
     ["add routes", "route"], ["the route.", "route"], ["Acceptance PRC-TAX-001", "acceptance"], ["review imports", "imports"]];
   const no: Array<[string, string]> = [["configured", "red"], ["preferred", "red"], ["src/pricing/integration/tax-rates.ts", "integration/"],
-    ["src/orders/routes/order-routes.ts", "route"], ["route.ts", "route"], ["reviewer", "review"]];
+    ["src/orders/routes/order-routes.ts", "route"], ["route.ts", "route"], ["reviewer", "review"],
+    ["see src/pricing/integration/ for rates", "integration/"], ["(src/pricing/integration/tax-rates.ts).", "integration/"]];
   for (const [text, term] of yes) assert.equal(termMatches(text, term), true, term + " in " + text);
   for (const [text, term] of no) assert.equal(termMatches(text, term), false, term + " in " + text);
 });
@@ -210,9 +212,9 @@ test("review#1: every changed file is reconciled, none dropped past a count cap"
   } finally { x.cleanup(); }
 });
 
-test("review#2: a mandatory prerequisite never outranks the directly targeted rule", () => {
+function rankingRepo(selector: string[]) {
   const cwd = mkdtempSync(join(tmpdir(), "pi-atdd-rank-"));
-  try {
+  {
     mkdirSync(join(cwd, "extra/conventions"), { recursive: true });
     const conv = (id: string, lines: number) => [
       "rule_id: " + id, "kind: rule", "status: active",
@@ -230,21 +232,45 @@ test("review#2: a mandatory prerequisite never outranks the directly targeted ru
     const checksum = digestSource(join(cwd, "extra"), "extension");
     writeFileSync(join(cwd, "atdd-pi.yaml"), ["schema: pi-atdd/config/v2", "sources:", "  - id: Extra", "    kind: extension",
       "    path: extra", "    sha256: " + checksum, "selectors: extra-selectors.yaml", ""].join("\n"));
-    writeFileSync(join(cwd, "extra-selectors.yaml"), ["schema: pi-atdd/selectors/v1", "selectors:", "  - id: domain-files",
-      "    paths: [\"src/**/domain/*.ts\"]", "    rules: [zzz.target]", ""].join("\n"));
+    writeFileSync(join(cwd, "extra-selectors.yaml"), ["schema: pi-atdd/selectors/v1", "selectors:", "  - id: target-selector",
+      ...selector, "    rules: [zzz.target]", ""].join("\n"));
+    return cwd;
+  }
+}
+function assertTargetFirst(cwd: string, task: string, path: string) {
+  const cfg = loadConfig(cwd), catalog = loadCatalog(cfg.sources, cwd);
+  const session = new ReasoningSession(catalog, cfg.selectors);
+  const r = session.observe({ scope: "pi-run:1:file:" + path, task, operation: "edit", path,
+    origin: "repository-observation", provenance: "Git/JJ post-tool observed bash" });
+  const target = r.activations.find(a => a.id === "zzz.target")!, pre = r.activations.find(a => a.id === "aaa.prerequisite")!;
+  assert.ok(target && pre, "both activate");
+  assert.ok(relevance(target) > relevance(pre), "target " + relevance(target) + " vs prerequisite " + relevance(pre));
+  for (const budget of [2_000, 3_000, 4_500, 12_000]) {
+    const page = renderReasonedPage(r, undefined, budget);
+    assert.ok(page.text.length <= budget, "bound " + budget);
+    assert.equal(page.emittedIds[0], "zzz.target", "budget " + budget);
+  }
+}
+
+test("review#2: a mandatory prerequisite never outranks the directly targeted rule (path- or term-selected)", () => {
+  const byPath = rankingRepo(["    paths: [\"src/**/domain/*.ts\"]"]);
+  const byTerm = rankingRepo(["    terms: [\"update\"]"]);
+  try {
+    assertTargetFirst(byPath, "update", "src/pricing/domain/quote.ts");
+    assertTargetFirst(byTerm, "update", "src/pricing/domain/quote.ts");
+    // A very long scope/path must not crowd the top rule out of a 2,000-char page.
+    const deep = "src/" + Array.from({ length: 60 }, (_, i) => "segment" + i).join("/") + "/domain/quote.ts";
+    assertTargetFirst(byPath, "update", deep);
+  } finally { rmSync(byPath, { recursive: true, force: true }); rmSync(byTerm, { recursive: true, force: true }); }
+});
+
+test("review#2b: ranking repo helper keeps the prerequisite page bounded at 1,200", () => {
+  const cwd = rankingRepo(["    paths: [\"src/**/domain/*.ts\"]"]);
+  try {
     const cfg = loadConfig(cwd), catalog = loadCatalog(cfg.sources, cwd);
-    const session = new ReasoningSession(catalog, cfg.selectors);
-    const r = session.observe({ scope: "s", task: "update", operation: "edit", path: "src/pricing/domain/quote.ts",
-      origin: "repository-observation", provenance: "test" });
-    const target = r.activations.find(a => a.id === "zzz.target")!, pre = r.activations.find(a => a.id === "aaa.prerequisite")!;
-    assert.ok(target && pre, "both activate");
-    assert.ok(relevance(target) > relevance(pre), "target " + relevance(target) + " vs prerequisite " + relevance(pre));
-    for (const budget of [1_200, 2_000, 3_000, 4_500]) {
-      const page = renderReasonedPage(r, undefined, budget);
-      assert.ok(page.text.length <= budget, "bound " + budget);
-      if (page.emittedIds.length) assert.equal(page.emittedIds[0], "zzz.target", "budget " + budget);
-    }
-    assert.deepEqual(renderReasonedPage(r, undefined, 4_500).emittedIds.slice(0, 1), ["zzz.target"]);
+    const r = new ReasoningSession(catalog, cfg.selectors).observe({ scope: "s", task: "update", operation: "edit",
+      path: "src/pricing/domain/quote.ts", origin: "repository-observation", provenance: "test" });
+    assert.ok(renderReasonedPage(r, undefined, 1_200).text.length <= 1_200);
   } finally { rmSync(cwd, { recursive: true, force: true }); }
 });
 
@@ -266,4 +292,45 @@ test("review#4: shell extraction handles adjacent redirection, quoted sed operan
   assert.deepEqual(shellWriteTargets("sed -i -e 's/a/b/' -e 's/c/d/' src/a.ts \"src/b.ts\""), ["src/a.ts", "src/b.ts"]);
   assert.deepEqual(shellWriteTargets("node -e \"require('fs').openSync('src/domain/x.ts', 'r')\""), []);
   assert.deepEqual(shellWriteTargets("node -e \"require('fs').openSync('src/domain/x.ts', 'w')\""), ["src/domain/x.ts"]);
+});
+
+test("review2#1: an opaque write inside an ignored source directory is still observed", () => {
+  const x = sandbox();
+  try {
+    writeFileSync(join(x.cwd, ".gitignore"), "src/generated/\n");
+    execFileSync("git", ["add", ".gitignore"], { cwd: x.cwd }); execFileSync("git", ["commit", "-qm", "ignore"], { cwd: x.cwd });
+    x.start("Update pricing");
+    x.tool("bash", { command: "node scripts/gen.mjs" }, () => {
+      mkdirSync(join(x.cwd, "src/generated/domain"), { recursive: true });
+      writeFileSync(join(x.cwd, "src/generated/domain/a.ts"), "export const v = 1;\n");
+    });
+    const post = x.delivered.filter(d => d.channel.startsWith("tool_result:"));
+    assert.match(post.map(p => p.text).join("\n"), /Changed file src\/generated\/domain\/a\.ts/);
+    assert.ok(has(post, TARGET));
+  } finally { x.cleanup(); }
+});
+
+test("review2#2: an opaque file creation gets creation-specific rules, like write", () => {
+  const x = sandbox();
+  try {
+    // Replace the default selectors with one that applies only to creations.
+    const cwd = x.cwd;
+    const conventions = join(cwd, "extra/conventions");
+    mkdirSync(conventions, { recursive: true });
+    writeFileSync(join(conventions, "new.file.convention.yaml"), ["rule_id: new.file", "kind: rule", "status: active",
+      "statement: New source files must be registered.", "content:", "  summary: Register new files.", ""].join("\n"));
+    writeFileSync(join(cwd, "atdd-pi.yaml"), ["schema: pi-atdd/config/v2", "sources:", "  - id: Extra", "    kind: extension",
+      "    path: extra", "    sha256: " + digestSource(join(cwd, "extra"), "extension"), "selectors: extra-selectors.yaml", ""].join("\n"));
+    writeFileSync(join(cwd, "extra-selectors.yaml"), ["schema: pi-atdd/selectors/v1", "selectors:", "  - id: creations",
+      "    operations: [create]", "    paths: [\"src/**\"]", "    rules: [new.file]", ""].join("\n"));
+    execFileSync("git", ["add", "."], { cwd }); execFileSync("git", ["commit", "-qm", "config"], { cwd });
+    x.start("Update pricing");
+    x.tool("bash", { command: "node scripts/gen.mjs" }, () => writeFileSync(join(cwd, "src/b.ts"), "export const b = 1;\n"));
+    const post = x.delivered.filter(d => d.channel.startsWith("tool_result:"));
+    assert.ok(has(post, "new.file"), "creation via opaque shell must get the create-only rule");
+    // An edit of an existing tracked file does not get the create-only rule.
+    const before = x.delivered.length;
+    x.tool("bash", { command: "node scripts/gen.mjs" }, () => writeFileSync(join(cwd, "src/pricing/domain/quote.ts"), "export const q = 2;\n"));
+    assert.ok(!has(x.delivered.slice(before), "new.file"));
+  } finally { x.cleanup(); }
 });

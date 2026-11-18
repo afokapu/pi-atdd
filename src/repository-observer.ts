@@ -11,9 +11,15 @@ import { isAbsolute, relative, resolve, sep } from "node:path";
 export type RepositorySnapshot = {
   kind: "git" | "jj"; revision: string | null;
   dirty: Map<string,string>;
+  /** Paths not tracked at the snapshot revision (new files), when known. */
+  untracked?: Set<string>;
+  /** Areas that could not be observed; reported, never treated as unchanged. */
+  gaps?: string[];
 };
 export type RepositoryDelta = {
   status: "observed" | "unknown"; changedPaths: string[];
+  /** Subset of changedPaths that did not exist before (created, untracked). */
+  createdPaths?: string[];
   snapshot?: RepositorySnapshot; reason?: string;
 };
 const args = (name:string, arguments_: string[], cwd:string) =>
@@ -36,25 +42,42 @@ function fingerprint(cwd:string,path:string):string {
     return createHash("sha256").update(readFileSync(full)).digest("hex");
   } catch { return "unreadable"; }
 }
+/** Ignored directories that are dependency/VCS metadata, not governed source. */
+const UNOBSERVED_IGNORED=["node_modules",".jj",".git"];
+const MAX_IGNORED=5_000;
 function git(cwd:string):RepositorySnapshot {
   if (args("git",["rev-parse","--is-inside-work-tree"],cwd).trim()!=="true")
     throw new Error("not a Git worktree");
   const revision=args("git",["rev-parse","HEAD"],cwd).trim();
+  const untrackedList=pathsFrom(args("git",["ls-files","--others","--exclude-standard","-z"],cwd));
   const dirty=new Set([
     ...pathsFrom(args("git",["diff","--no-ext-diff","--no-textconv","--name-only","-z","HEAD","--"],cwd)),
-    ...pathsFrom(args("git",["ls-files","--others","--exclude-standard","-z"],cwd)),
-    // Ignored individual files (e.g. an ignored source file written by a script)
-    // are observed too. Whole ignored directories (node_modules/, .jj/, dist/)
-    // are collapsed by --directory and NOT observed: a known, documented gap.
-    ...pathsFrom(args("git",["ls-files","--others","--ignored","--exclude-standard","--directory","-z"],cwd))
-      .filter(path=>!path.endsWith("/")),
+    ...untrackedList,
   ]);
   const files=new Map<string,string>();
   for (const path of dirty) {
     const relativePath=safe(cwd,path);
     if (relativePath) files.set(relativePath,fingerprint(cwd,relativePath));
   }
-  return {kind:"git",revision,dirty:files};
+  // Ignored untracked files (including files inside ignored source directories
+  // such as src/generated/) are observed by size+mtime. Dependency and VCS
+  // metadata directories are excluded; an oversized listing is a reported gap.
+  const gaps:string[]=[];
+  const untracked=new Set(untrackedList.map(p=>safe(cwd,p)).filter((p):p is string=>!!p));
+  try {
+    const ignored=pathsFrom(execFileSync("git",["ls-files","--others","--ignored","--exclude-standard","-z","--",".",
+      ...UNOBSERVED_IGNORED.flatMap(d=>[":(exclude)"+d,":(exclude)**/"+d])],
+      {cwd,encoding:"utf8",timeout:2500,maxBuffer:4_000_000,windowsHide:true}));
+    if (ignored.length>MAX_IGNORED) gaps.push(ignored.length+" ignored files exceed the observation limit ("+MAX_IGNORED+")");
+    else for (const path of ignored) {
+      const relativePath=safe(cwd,path);
+      if (!relativePath) continue;
+      untracked.add(relativePath);
+      try { const st=statSync(resolve(cwd,relativePath)); files.set(relativePath,"ignored:"+st.size+":"+st.mtimeMs); }
+      catch { files.set(relativePath,"unreadable"); }
+    }
+  } catch { gaps.push("ignored files could not be listed"); }
+  return {kind:"git",revision,dirty:files,untracked,...(gaps.length?{gaps}:{})};
 }
 function jj(cwd:string):RepositorySnapshot {
   const revision=args("jj",["log","-r","@","--no-graph","-T","commit_id"],cwd).trim();
@@ -95,5 +118,7 @@ export function observeRepository(cwd:string,previous?:RepositorySnapshot):Repos
       }
     }
   }
-  return {status:"observed",changedPaths:[...changed].sort(),snapshot:current};
+  const created=[...changed].filter(path=>current.untracked?.has(path)&&!previous?.dirty.has(path)
+    &&fingerprint(cwd,path)!=="deleted").sort();
+  return {status:"observed",changedPaths:[...changed].sort(),createdPaths:created,snapshot:current};
 }

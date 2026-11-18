@@ -138,34 +138,47 @@ export function loadCatalog(sources: SourceSpec[], cwd: string): Catalog {
   return { rules, edges, provenance, unresolvedEdges };
 }
 const WORD_CHAR = /[a-z0-9_]/;
+const TOKEN_TRIM = /^[\s()[\]{}"'`,;:<>]+|[\s()[\]{}"'`,;:<>.?!]+$/g;
+/** A whitespace-delimited token that names a file or directory path, not prose. */
+function isPathToken(token: string): boolean {
+  const t = token.replace(TOKEN_TRIM, "");
+  if (!t.includes("/") && !/\.[a-z0-9]{1,5}$/.test(t)) return false;
+  return /^(?:\.{1,2}\/|\/|~\/)/.test(t)              // ./x, ../x, /abs, ~/x
+    || /\/[^/\s]*\.[a-z0-9]{1,5}$/.test(t)            // dir/file.ext
+    || /^[^/\s]+\.[a-z0-9]{1,5}$/.test(t) && /[a-z]/.test(t.split(".").pop()!) // file.ext
+    || (t.endsWith("/") && t.slice(0, -1).includes("/")); // a/b/ (directory)
+}
 /**
  * Selector term match on word boundaries (case-insensitive). A term never
- * matches inside a longer word (`red` in `configured`) or as a segment of a
- * file path (`integration/` in `src/pricing/integration/x.ts`, `route` in
- * `order-routes.ts`). A simple plural (`routes`, `imports`) still matches, and a
- * term may be followed by `/` (`red/green`, `integration/feature-x`).
+ * matches inside a longer word (`red` in `configured`) or inside a token that
+ * names a file path (`integration/` in `src/pricing/integration/x.ts`, `route`
+ * in `src/orders/routes/order-routes.ts`). Prose separators still delimit words
+ * (`red/green/refactor`, `-red`, `integration/feature-x`), and a simple plural
+ * (`routes`, `imports`) matches.
  */
 export function termMatches(text: string, term: string): boolean {
   const hay = text.toLowerCase(), needle = term.toLowerCase();
   if (!needle) return false;
   const startsWord = WORD_CHAR.test(needle[0]!), endsWord = WORD_CHAR.test(needle.at(-1)!);
-  const beforeOk = (i: number) => {
-    if (!startsWord || i === 0) return true;
-    const c = hay[i - 1]!;
-    return !WORD_CHAR.test(c) && !"/.-\\".includes(c);
+  const tokenAt = (i: number) => {
+    let s = i, e = i;
+    while (s > 0 && !/\s/.test(hay[s - 1]!)) s--;
+    while (e < hay.length && !/\s/.test(hay[e]!)) e++;
+    return hay.slice(s, e);
   };
+  const beforeOk = (i: number) => !startsWord || i === 0 || !WORD_CHAR.test(hay[i - 1]!);
   const afterOk = (k: number) => {
     if (!endsWord) return true;
     const c = hay[k];
-    if (c === undefined) return true;
-    if (WORD_CHAR.test(c)) return false;
-    return !(c === "." && WORD_CHAR.test(hay[k + 1] ?? "")); // file extension, e.g. route.ts
+    return c === undefined || !WORD_CHAR.test(c);
   };
   for (let i = hay.indexOf(needle); i >= 0; i = hay.indexOf(needle, i + 1)) {
     if (!beforeOk(i)) continue;
     const end = i + needle.length;
     const ends = endsWord ? [end, ...(hay[end] === "s" ? [end + 1] : []), ...(hay.startsWith("es", end) ? [end + 2] : [])] : [end];
-    if (ends.some(afterOk)) return true;
+    if (!ends.some(afterOk)) continue;
+    if (isPathToken(tokenAt(i))) continue;
+    return true;
   }
   return false;
 }

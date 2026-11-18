@@ -199,6 +199,7 @@ export default function atdd(pi:ExtensionAPI):void {
   });
   const READ_ONLY_TOOLS=new Set(["read","ls","find","grep"]);
   const reconciledCalls=new Set<string>();
+  const reportedGaps=new Set<string>();
   /**
    * Observe the repository after a tool that may write without Pi's edit/write
    * API and return reconciliation texts for changed files. Each page ranks
@@ -215,14 +216,20 @@ export default function atdd(pi:ExtensionAPI):void {
       }
       observedRepo=report.snapshot;return texts;
     }
+    for(const gap of report.snapshot?.gaps??[])if(!reportedGaps.has(gap)){
+      reportedGaps.add(gap);
+      texts.push("ATDD POST-TOOL OBSERVATION GAP: "+gap+
+        ". Changes there are NOT observed and receive no guidance; mandatory CI and review still apply.");
+    }
     observedRepo=report.snapshot;
     // Every changed path is reconciled (none is skipped by a count cap); with
     // many changed files each page is smaller, but still keeps its top rule.
     const perPath=report.changedPaths.length>8?2_000:4_500;
     for(const path of report.changedPaths){
       try{
-        const result=observe(cwd,"edit","repository-observation",
-          "Git/JJ post-tool observed "+toolName,path);
+        const created=report.createdPaths?.includes(path)??false;
+        const result=observe(cwd,created?"create":"edit","repository-observation",
+          "Git/JJ post-tool observed "+toolName+(created?" (created)":""),path);
         const fresh=newlyRelevant(result);
         if(fresh.length||result.status!=="matched"){
           const page=renderReasonedPage(result,fresh,perPath);
