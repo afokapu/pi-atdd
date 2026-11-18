@@ -11,6 +11,8 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const schema = JSON.parse(readFileSync(join(root, "tests/fixtures/schema/acceptance.schema.json"), "utf8"));
 const ajv = new Ajv({ allErrors: true, strict: false });
 addFormats(ajv);
+const appendix = JSON.parse(readFileSync(join(root, "tests/fixtures/schema/appendix.schema.json"), "utf8"));
+ajv.addSchema(appendix, "appendix.schema.json");
 const validate = ajv.compile(schema);
 
 test("all seven implementation acceptance criteria follow the existing ATDD-Bun V2 template", () => {
