@@ -49,6 +49,30 @@ test("retracting the only root of a cycle removes self-supported recursive concl
   assert.equal(engine.query("active",["a"]).status,"unknown");
 });
 
+test("a positive cycle remains supported by a different extensional root after retraction",()=>{
+  const rules:Rule[]=[
+    {id:"base",source:"fixture",head:atom("active","?x"),body:[atom("seed","?x")]},
+    {id:"next",source:"fixture",head:atom("active","?y"),
+      body:[atom("active","?x"),atom("edge","?x","?y")]},
+  ];
+  const e=new PositiveReasoner(rules);
+  e.assert(fact("ab","edge","a","b"));
+  e.assert(fact("ba","edge","b","a"));
+  e.assert(fact("seed-a","seed","a"));
+  e.assert(fact("seed-b","seed","b"));
+  assert.equal(e.has("active",["a"]),true);
+  assert.equal(e.has("active",["b"]),true);
+  e.retract("seed-a");
+  assert.equal(e.has("active",["a"]),true,"surviving b seed can still support a");
+  assert.equal(e.has("active",["b"]),true);
+  const proof=JSON.stringify(e.query("active",["a"]).proof);
+  assert.ok(proof.includes("seed-b"));
+  assert.ok(!proof.includes("seed-a"));
+  e.retract("seed-b");
+  assert.equal(e.has("active",["a"]),false);
+  assert.equal(e.has("active",["b"]),false);
+});
+
 test("independent supports survive retraction, but obsolete explanations disappear", () => {
   const rules: Rule[] = [
     { id: "selector", source: "fixture", head: atom("active","?scope","?rule"),
