@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { isAbsolute, join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseDocument } from "yaml";
 
 export class GraphError extends Error {}
-export type SourceKind = "bun" | "flow";
+export type SourceKind = "bun" | "flow" | "extension";
 export type SourceSpec = { id: string; path: string; kind: SourceKind; sha256: string; revision?: string };
 export type Convention = {
   id: string; file: string; source: string; statement: string; kind: string;
@@ -47,10 +48,10 @@ function fileTree(folder: string): string[] {
 function filesFor(root: string, kind: SourceKind): string[] {
   const folders = kind === "bun" ? ["conventions", "planner-nodes/nodes"] : ["conventions"];
   const files = folders.flatMap(folder => fileTree(join(root, folder)));
-  if (kind === "bun") {
+  if (kind === "bun" || kind === "extension") {
     const graph = join(root, "relationships.yaml");
-    if (!existsSync(graph)) throw new GraphError("missing Bun relationship graph: " + graph);
-    files.push(graph);
+    if (kind === "bun" && !existsSync(graph)) throw new GraphError("missing Bun relationship graph: " + graph);
+    if (existsSync(graph)) files.push(graph);
   }
   if (!files.some(f => f.endsWith(".convention.yaml"))) throw new GraphError("no conventions in " + root);
   return files.sort();
@@ -89,8 +90,8 @@ export function loadCatalog(sources: SourceSpec[], cwd: string): Catalog {
   const edges: Relation[] = [];
   const provenance: Catalog["provenance"] = [];
   for (const src of sources) {
-    if (!src.id || !src.path || !["bun", "flow"].includes(src.kind))
-      throw new GraphError("source needs id/path and kind bun|flow");
+    if (!src.id || !src.path || !["bun", "flow", "extension"].includes(src.kind))
+      throw new GraphError("source needs id/path and kind bun|flow|extension");
     if (!/^[a-f0-9]{64}$/.test(src.sha256)) throw new GraphError("source must have exact sha256: " + src.id);
     const root = resolve(cwd, src.path);
     if (!existsSync(root) || !lstatSync(root).isDirectory()) throw new GraphError("missing convention directory " + root);
@@ -114,13 +115,13 @@ export function loadCatalog(sources: SourceSpec[], cwd: string): Catalog {
       });
       localIds.add(id);
     }
-    if (src.kind !== "bun") continue;
+    if (src.kind === "flow" || (src.kind === "extension" && !existsSync(join(root, "relationships.yaml")))) continue;
     const path = join(root, "relationships.yaml");
     const graph = readYaml(path), nodes = graph.nodes, relations = graph.edges;
     if (!Array.isArray(nodes) || !nodes.every(n => typeof n === "string") || new Set(nodes).size !== nodes.length)
       throw new GraphError(path + ": invalid node registry");
     if (nodes.length !== localIds.size || nodes.some(n => !localIds.has(n)))
-      throw new GraphError(path + ": registry does not match shipped Bun convention nodes");
+      throw new GraphError(path + ": node registry does not match source convention nodes");
     if (!Array.isArray(relations)) throw new GraphError(path + ": missing relationship list");
     for (const value of relations) {
       const e = obj(value), source = str(e.source_ref), target = str(e.target_ref), type = str(e.type);
@@ -208,13 +209,61 @@ export function resolveContext(catalog: Catalog, selectors: Selector[], task: st
       : "Unresolved applicability is a coverage gap; do not assume there are no obligations.",
   };
 }
+/** Fixed, audited snapshots included in the Pi package; no runtime network dependency. */
+export const packageRoot = fileURLToPath(new URL("../", import.meta.url));
+export function bundledSources(): SourceSpec[] {
+  return [
+    { id: "ATDD-Bun", path: join(packageRoot, "vendor/atdd-bun"), kind: "bun",
+      revision: "5945d97e18310e7c862c08e73985400935d21346",
+      sha256: "b48f2ff3353d3455e05c49feb0a04e8e778c70ba2b929787f696bbd6ec6d561a" },
+    { id: "ATDD-Flow", path: join(packageRoot, "vendor/atdd-flow"), kind: "flow",
+      revision: "2a66019a5ecf2b7a9f999ebfa04d04c9f548f19a",
+      sha256: "0571b25f78330f68673916cfb810cd1f93c4f2296bd6019936d5d5a7db46e4e0" },
+  ];
+}
+function selectorFile(file: string): Selector[] {
+  const data = readYaml(file);
+  if (data.schema !== "pi-atdd/selectors/v1" || !Array.isArray(data.selectors))
+    throw new GraphError("invalid selectors schema: " + file);
+  return data.selectors as Selector[];
+}
 export function loadConfig(cwd: string): { sources: SourceSpec[]; selectors: Selector[] } {
-  const cfg = readYaml(resolve(cwd, "atdd-pi.yaml"));
-  if (cfg.schema !== "pi-atdd/config/v2" || !Array.isArray(cfg.sources) || typeof cfg.selectors !== "string")
-    throw new GraphError("invalid atdd-pi.yaml schema (expected v2)");
-  const selectorsFile = resolve(cwd, cfg.selectors);
-  if (isAbsolute(cfg.selectors) || relative(cwd, selectorsFile).startsWith("..")) throw new GraphError("selector path outside project");
-  const list = readYaml(selectorsFile);
-  if (list.schema !== "pi-atdd/selectors/v1" || !Array.isArray(list.selectors)) throw new GraphError("invalid selectors schema");
-  return { sources: cfg.sources as SourceSpec[], selectors: list.selectors as Selector[] };
+  const configPath = resolve(cwd, "atdd-pi.yaml");
+  const defaults = bundledSources();
+  const defaultSelectors = join(packageRoot, "selectors/default.yaml");
+  if (!existsSync(configPath)) {
+    return { sources: defaults, selectors: selectorFile(defaultSelectors) };
+  }
+  const cfg = readYaml(configPath);
+  if (cfg.schema !== "pi-atdd/config/v2") throw new GraphError("invalid atdd-pi.yaml schema (expected v2)");
+  // Explicit 'sources' is supported for controlled source parity tests; regular
+  // consumers use the embedded catalog plus optional extraSources.
+  if (cfg.sources !== undefined && !Array.isArray(cfg.sources))
+    throw new GraphError("sources must be an array");
+  if (cfg.extraSources !== undefined && !Array.isArray(cfg.extraSources))
+    throw new GraphError("extraSources must be an array");
+  const sources: SourceSpec[] = [
+    ...((cfg.sources as SourceSpec[] | undefined) ?? defaults),
+    ...((cfg.extraSources as SourceSpec[] | undefined) ?? []),
+  ];
+  const localSelectorPath = cfg.selectors;
+  if (localSelectorPath !== undefined && typeof localSelectorPath !== "string")
+    throw new GraphError("selectors must be a local path");
+  const selectorPath = localSelectorPath === undefined ? defaultSelectors : resolve(cwd, localSelectorPath);
+  if (localSelectorPath !== undefined && (
+      isAbsolute(localSelectorPath) || relative(cwd, selectorPath) === ".."
+      || relative(cwd, selectorPath).startsWith("../")))
+    throw new GraphError("selector path outside project");
+  const selectors = selectorFile(selectorPath);
+  if (cfg.extraSelectors !== undefined) {
+    if (!Array.isArray(cfg.extraSelectors) || !cfg.extraSelectors.every(x => typeof x === "string"))
+      throw new GraphError("extraSelectors must be local path strings");
+    for (const file of cfg.extraSelectors) {
+      const path = resolve(cwd, file);
+      if (isAbsolute(file) || relative(cwd, path) === ".." || relative(cwd, path).startsWith("../"))
+        throw new GraphError("extra selector path outside project");
+      selectors.push(...selectorFile(path));
+    }
+  }
+  return { sources, selectors };
 }
