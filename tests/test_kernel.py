@@ -8,7 +8,7 @@ import shutil
 import pytest
 
 from pi_atdd.cli import main
-from pi_atdd.graph import GraphError, load_catalog, read_selectors, resolve, source_digest
+from pi_atdd.graph import GraphError, load_catalog, read_selectors, validate_selectors, resolve, source_digest
 from pi_atdd.verify import verify_pytest
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -141,3 +141,23 @@ def test_cli_requires_source_lock_and_reports_context(tmp_path, capsys):
 def test_no_pytest_target_means_no_implicit_full_suite(tmp_path):
     with pytest.raises(ValueError, match="explicit pytest targets"):
         verify_pytest(tmp_path, [])
+
+
+
+def test_dormant_selector_typo_is_rejected_before_work(tmp_path):
+    _, graph = catalog(tmp_path)
+    # This selector would never activate on the current task, but must still fail.
+    broken = selectors() + [{
+        "id": "dormant-typo", "operations": ["edit"], "paths": ["not-used/**.py"],
+        "rules": ["coder.nonexistent"],
+    }]
+    with pytest.raises(GraphError, match="unknown convention"):
+        validate_selectors(graph, broken)
+
+
+def test_invalid_activation_predicate_rejected(tmp_path):
+    _, graph = catalog(tmp_path)
+    with pytest.raises(GraphError, match="no activation predicate"):
+        validate_selectors(graph, [{
+            "id": "empty", "rules": ["coder.security.missing-auth"],
+        }])
