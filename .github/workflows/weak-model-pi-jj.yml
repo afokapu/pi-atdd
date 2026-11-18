@@ -1,0 +1,92 @@
+name: two-Pi-agent weak-model JJ experiment
+on:
+  push:
+    branches: [experiment/weak-model-pi-jj]
+    paths: [.github/workflows/weak-model-pi-jj.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  weak-model-pi-jj:
+    name: Qwen 0.5B / Pi coder and reviewer / JJ
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Pi dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Install pinned JJ v0.45.1
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 2 --max-time 120 \
+            https://github.com/jj-vcs/jj/releases/download/v0.45.1/jj-v0.45.1-x86_64-unknown-linux-musl.tar.gz \
+            -o "$RUNNER_TEMP/jj.tar.gz"
+          mkdir -p "$RUNNER_TEMP/jj"
+          tar -xzf "$RUNNER_TEMP/jj.tar.gz" -C "$RUNNER_TEMP/jj"
+          JJ="$(find "$RUNNER_TEMP/jj" -type f -name jj -print -quit)"
+          test -n "$JJ"
+          sudo cp "$JJ" /usr/local/bin/jj
+          jj --version
+      - name: Install pinned llama.cpp CPU runtime b12503
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 2 --max-time 120 \
+            https://github.com/ggml-org/llama.cpp/releases/download/b12503/llama-b12503-bin-ubuntu-x64.tar.gz \
+            -o "$RUNNER_TEMP/llama.tar.gz"
+          mkdir -p "$RUNNER_TEMP/llama"
+          tar -xzf "$RUNNER_TEMP/llama.tar.gz" -C "$RUNNER_TEMP/llama"
+          SERVER="$(find "$RUNNER_TEMP/llama" -type f -name llama-server -print -quit)"
+          test -n "$SERVER"
+          echo "LLAMA_SERVER=$SERVER" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$(dirname "$SERVER")" >> "$GITHUB_ENV"
+      - name: Download independently published weak coding model
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 --retry-delay 2 --connect-timeout 30 --max-time 420 \
+            https://huggingface.co/Qwen/Qwen2.5-Coder-0.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-0.5b-instruct-q4_k_m.gguf \
+            -o "$RUNNER_TEMP/weak-coder.gguf"
+          echo "1d9614638d18024d0fbb36575a15f1302a3adf044df10345688ec4f6e1c4ff32  $RUNNER_TEMP/weak-coder.gguf" | sha256sum -c
+      - name: Start local OpenAI-compatible model server
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$LLAMA_SERVER" --model "$RUNNER_TEMP/weak-coder.gguf" \
+            --alias weak-coder --host 127.0.0.1 --port 8080 \
+            --ctx-size 4096 --threads 4 --jinja \
+            > "$RUNNER_TEMP/llama-server.log" 2>&1 &
+          echo $! > "$RUNNER_TEMP/llama-server.pid"
+          READY=false
+          for count in $(seq 1 75); do
+            if curl -fsS http://127.0.0.1:8080/health > /dev/null 2>&1; then
+              READY=true
+              break
+            fi
+            sleep 2
+          done
+          if [ "$READY" != true ]; then
+            echo "Local model server failed to become ready"
+            tail -35 "$RUNNER_TEMP/llama-server.log"
+            exit 1
+          fi
+          echo "Local weak model is accepting inference requests."
+      - name: Run two actual Pi agents on independent JJ workspaces
+        shell: bash
+        run: bash experiments/weak-model-pi-jj/run.sh
+      - name: Upload evidence (no model credentials used)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weak-model-two-agent-evidence
+          path: experiments/weak-model-pi-jj/results/
+          if-no-files-found: warn
+          retention-days: 7
