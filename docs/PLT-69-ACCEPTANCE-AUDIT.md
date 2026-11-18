@@ -38,3 +38,22 @@ The D008 checker was also tightened to reject uncommitted worktree changes, resu
 ## Current verified CI
 
 [GitHub Actions run 44279189265](https://github.com/afokapu/pi-atdd/actions/runs/44279189265) passed after the immutable-support correction, including TypeScript typechecks, unit/integration tests, the full pinned catalog, actual Pi RPC registration and local package installation. Subsequent documentation-only changes require a fresh status check at the final PR revision. **D008 remains NOT RUN with real models.**
+
+
+## Independent review reconciliation — 2026-11-18 (PR #2, review 5954595568)
+
+Independent reviewer verdict: **RETURN / changes required**, not APPROVE. The five inline findings were reproduced or bounded with five additional canonical GWT acceptance records in plan/acceptances/E003-* and executable tests.
+
+| Finding | Code response | Regression witness |
+|---|---|---|
+| Omitted conventions marked as delivered | renderReasonedPage() returns exact emitted/omitted IDs; Pi records only emitted proof signatures, pages remaining guidance across blocked retries | tests/pi-activation.test.ts, E003-UNIT-201, 18 simultaneously applicable synthetic rules |
+| D008 trial-selected unrelated passing tests or mutated helpers | verifyTrial() requires an independently attested acceptance manifest with exact task/base/acceptance targets and a strict allowlist for every changed tracked file; all other files, including imported test helpers, remain protected | tests/effectiveness.test.ts, E003-INTEGRATION-202 |
+| Baseline and graph use different evaluator targets | compareTrials() rejects unequal manifest digests, target lists, policy digests, acceptance IDs or run classes, instead of computing passDelta | tests/effectiveness.test.ts, E003-INTEGRATION-203 |
+| Symlink-parent path escape | Pi pre-edit containment traverses the existing path components using lstat and rejects symlinks, including symlink targets | tests/pi-activation.test.ts, E003-UNIT-204 |
+| Inference exception can expose partial facts | After any exception during a mutation, PositiveReasoner is poisoned; read, query, update and counters reject reuse until reconstruction | tests/inference.test.ts, E003-UNIT-205 |
+
+**Verified CI:** [GitHub Actions 44288561019](https://github.com/afokapu/pi-atdd/actions/runs/44288561019) passed on the tested revision, including TypeScript checks, bundled Bun/Flow source verification, real Pi RPC and local package installation. The source itself remains subject to reviewer reconciliation on the final head.
+
+### What this does *not* close
+
+D008 remains **NOT RUN** with actual weak and strong coding models. The trusted manifest verifier is only an interface; a real authenticated evaluator, independent semantic review and recorded equal-base trials remain required. A mocked verifier used in a regression does not attest real trials. The physical path check reduces symlink escapes but does not eliminate time-of-check/time-of-use races, alternate mount namespaces or malicious tools. The Pi rendering receipt proves delivery of text to Pi, not that the agent read or followed it. The original 44 unresolved external graph edges, incomplete activation selectors and Flow/Bun migration gates remain explicit.
