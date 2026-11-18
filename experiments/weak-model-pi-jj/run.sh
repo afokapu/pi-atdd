@@ -11,7 +11,7 @@ cat > "$HOME/.pi/agent/models.json" <<'JSON'
 {
  "providers": {
    "local-weak": {
-     "baseUrl":"http://127.0.0.1:8080/v1","api":"openai-completions","apiKey":"local-only",
+     "baseUrl":"http://127.0.0.1:8081/v1","api":"openai-completions","apiKey":"local-only",
      "compat":{"supportsDeveloperRole":false,"supportsReasoningEffort":false},
      "models":[{"id":"weak-coder","name":"Qwen2.5-Coder-0.5B-Instruct-Q4_K_M",
        "reasoning":false,"input":["text"],
@@ -123,6 +123,7 @@ function inspect(file) {
 const summary={
   kind:'real-local-weak-model-attempt',
   model:'Qwen2.5-Coder-0.5B-Instruct-Q4_K_M',
+  diagnosticProxy:true,
   agentRuntime:'two independent Pi CLI processes against same local llama.cpp server',
   baselineAcceptanceRed:true,
   coder:{exit:Number(process.env.CODER_EXIT),acceptanceExit:Number(process.env.CODER_TESTS_EXIT),...inspect('coder.jsonl')},
