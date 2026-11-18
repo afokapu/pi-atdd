@@ -9,7 +9,7 @@ const child = spawn(cli, ["--offline", "--approve", "-e", resolve("extensions/at
 });
 let stdout = "", stderr = "", resolved = false;
 const timeout = setTimeout(() => stop(new Error("Pi RPC did not answer get_commands")), 25_000);
-function stop(error?: Error) {
+function stop(error) {
   if (resolved) return;
   resolved = true;
   clearTimeout(timeout);
