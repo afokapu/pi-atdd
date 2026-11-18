@@ -10,7 +10,7 @@ const sources: SourceSpec[] = [
 ];
 const catalog = loadCatalog(sources, process.cwd());
 assert.equal(catalog.rules.size, 358, "Pinned Bun catalog has 356 rules and Flow has 2");
-assert.equal(catalog.edges.length, 429, "Pinned Bun graph has 429 authored relationships");
+assert.equal(catalog.edges.length, 508, "Pinned Bun graph has 508 authored relationships");
 for (const id of [
   "coder.bun.phase-discipline", "atdd-bun.review.behavioral-reconciliation",
   "atdd-bun.review.owner-inspectability", "atdd-flow.collaboration",
