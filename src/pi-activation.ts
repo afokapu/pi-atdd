@@ -5,12 +5,13 @@
  */
 import { createHash } from "node:crypto";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
-import { lstatSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, realpathSync } from "node:fs";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadCatalog, loadConfig, type Catalog, type Selector } from "./catalog.ts";
 import { ReasoningSession, type ContextObservation } from "./reasoning-context.ts";
 import { renderReasonedPage, type RenderedPage } from "./render-reasoning.ts";
 import { observeRepository, type RepositorySnapshot } from "./repository-observer.ts";
+import { shellWriteTargets } from "./shell-targets.ts";
 
 function scopedPath(cwd:string,supplied:string):string|null {
   const abs=resolve(cwd,supplied), p=relative(cwd,abs);
@@ -137,77 +138,123 @@ export default function atdd(pi:ExtensionAPI):void {
           ". Unknown obligations are not waivers; repair graph before governed completion.",display:true}};
     }
   });
+  /** Same preflight for a governed path whether it is edited via edit/write or the shell. */
+  function preflightPath(cwd:string,path:string,operation:"edit"|"create",provenance:string,
+    budget:number,blockUnknown:boolean):{block:true;reason:string}|undefined{
+    const result=observe(cwd,operation,"pi-event",provenance,path);
+    const fresh=newlyRelevant(result);
+    if(result.status==="incomplete"){
+      const page=renderReasonedPage(result,fresh,budget);
+      recordActualDelivery(result,page);
+      return {block:true,reason:page.text+
+        "\nMandatory graph dependencies unresolved. Do not proceed until authoritative sources are available."};
+    }
+    if(fresh.length){
+      const page=renderReasonedPage(result,fresh,budget);
+      recordActualDelivery(result,page);
+      return {block:true,reason:"ATDD contextual preflight for "+path+"; read reasoning before retrying:\n\n"+
+        page.text};
+    }
+    if(blockUnknown&&result.status==="unknown"&&!unresolvedPaths.has(result.scope)){
+      unresolvedPaths.add(result.scope);
+      return {block:true,reason:renderReasonedPage(result,undefined,4_000).text+
+        "\nInspect canonical rules before retrying; this gap does not certify compliance."};
+    }
+    return undefined;
+  }
   pi.on("tool_call",(event,ctx)=>{
     if(!ctx.isProjectTrusted())return;
+    if(event.toolName==="bash"){
+      // Shell writes get the same rule set as edit/write for every statically
+      // visible in-repository target, before the command runs. Targets computed
+      // at runtime are caught by post-tool observation below.
+      const command=(event.input as {command?:unknown}).command;
+      if(typeof command!=="string")return;
+      const targets=[...new Set(shellWriteTargets(command)
+        .map(t=>scopedPath(ctx.cwd,t)).filter((p):p is string=>p!==null))];
+      const reasons:string[]=[];
+      let remaining=12_000;
+      try{
+        for(const path of targets.slice(0,8)){
+          if(remaining<2_500)break; // remaining targets are preflighted on retry
+          const operation=existsSync(resolve(ctx.cwd,path))?"edit":"create";
+          const r=preflightPath(ctx.cwd,path,operation,"Pi pre-shell tool_call (static write target)",
+            remaining,false);
+          if(r){reasons.push(r.reason);remaining-=r.reason.length;}
+        }
+      }catch(e){reset();return {block:true,reason:"ATDD rule activation failed: "+String(e)};}
+      if(reasons.length)return {block:true,reason:"ATDD shell-write preflight: this command writes "+
+        targets.join(", ")+". Read the reasoning, then retry the command.\n\n"+reasons.join("\n\n")};
+      return;
+    }
     if(event.toolName!=="edit"&&event.toolName!=="write")return;
     const input=event.input as {path?:unknown};
     if(typeof input.path!=="string")return {block:true,reason:"ATDD requires a file path for edits."};
     const path=scopedPath(ctx.cwd,input.path);
     if(path===null)return {block:true,reason:"ATDD cannot govern edits outside the repository."};
     try{
-      const result=observe(ctx.cwd,event.toolName==="write"?"create":"edit","pi-event",
-        "Pi pre-edit tool_call",path);
-      const fresh=newlyRelevant(result);
-      if(result.status==="incomplete"){
-        const page=renderReasonedPage(result,fresh,12_000);
-        recordActualDelivery(result,page);
-        return {block:true,reason:page.text+
-          "\nMandatory graph dependencies unresolved. Do not proceed until authoritative sources are available."};
-      }
-      if(fresh.length){
-        const page=renderReasonedPage(result,fresh,12_000);
-        recordActualDelivery(result,page);
-        return {block:true,reason:"ATDD contextual preflight; read reasoning before retrying:\n\n"+
-          page.text};
-      }
-      if(result.status==="unknown"&&!unresolvedPaths.has(result.scope)){
-        unresolvedPaths.add(result.scope);
-        return {block:true,reason:renderReasonedPage(result,undefined,4_000).text+
-          "\nInspect canonical rules before retrying; this gap does not certify compliance."};
-      }
+      return preflightPath(ctx.cwd,path,event.toolName==="write"?"create":"edit",
+        "Pi pre-edit tool_call",12_000,true);
     }catch(e){reset();return {block:true,reason:"ATDD rule activation failed: "+String(e)};}
   });
-  pi.on("tool_execution_end",(event,ctx)=>{
-    if(!ctx.isProjectTrusted())return;
-    // Custom and shell tools may write without using Pi's edit/write API.
-    if(["read","ls","find","grep"].includes(event.toolName))return;
-    const report=observeRepository(ctx.cwd,observedRepo);
+  const READ_ONLY_TOOLS=new Set(["read","ls","find","grep"]);
+  const reconciledCalls=new Set<string>();
+  /**
+   * Observe the repository after a tool that may write without Pi's edit/write
+   * API and return reconciliation texts for changed files. Each page ranks
+   * file-specific rules first, so the target rule is never the one dropped.
+   */
+  function reconcile(cwd:string,toolName:string):string[]{
+    const texts:string[]=[];
+    const report=observeRepository(cwd,observedRepo);
     if(report.status==="unknown"){
       if(!observationWarning){
         observationWarning=true;
-        pi.sendMessage({
-          customType:"pi-atdd-observation-gap",display:false,
-          content:"ATDD POST-TOOL OBSERVATION UNKNOWN: "+report.reason+
-            ". No changed files observed is NOT proof of no changes. Mandatory CI still applies.",
-        },{deliverAs:"steer"});
+        texts.push("ATDD POST-TOOL OBSERVATION UNKNOWN: "+report.reason+
+          ". No changed files observed is NOT proof of no changes. Mandatory CI still applies.");
       }
-      observedRepo=report.snapshot;return;
+      observedRepo=report.snapshot;return texts;
     }
     observedRepo=report.snapshot;
-    if(!report.changedPaths.length)return;
     for(const path of report.changedPaths.slice(0,8)){
       try{
-        const result=observe(ctx.cwd,"edit","repository-observation",
-          "Git/JJ post-tool observed "+event.toolName,path);
+        const result=observe(cwd,"edit","repository-observation",
+          "Git/JJ post-tool observed "+toolName,path);
         const fresh=newlyRelevant(result);
         if(fresh.length||result.status!=="matched"){
           const page=renderReasonedPage(result,fresh,4_500);
-          pi.sendMessage({customType:"pi-atdd-post-tool-reconciliation",
-            content:("Changed file "+path+":\n"+page.text).slice(0,5_000),
-            display:false},{deliverAs:"steer"});
-          recordActualDelivery(result,page); // Only after a message was sent
+          texts.push("ATDD post-tool reconciliation. Changed file "+path+":\n"+page.text);
+          recordActualDelivery(result,page);
         }
       }catch(e){
         reset();
-        pi.sendMessage({customType:"pi-atdd-post-tool-reconciliation",display:false,
-          content:"ATDD post-tool observation failed for "+path+": "+String(e)+
-            ". Independent verification remains mandatory."},{deliverAs:"steer"});
+        texts.push("ATDD post-tool observation failed for "+path+": "+String(e)+
+          ". Independent verification remains mandatory.");
       }
     }
-    if(report.changedPaths.length>8)pi.sendMessage({
-      customType:"pi-atdd-post-tool-reconciliation",display:false,
-      content:"ATDD observed "+(report.changedPaths.length-8)+
-        " additional changed files. Broader independent impact review is required.",
-    },{deliverAs:"steer"});
+    if(report.changedPaths.length>8)texts.push("ATDD observed "+(report.changedPaths.length-8)+
+      " additional changed files. Broader independent impact review is required.");
+    return texts;
+  }
+  // Primary channel: attach reconciliation to the tool result itself, so the
+  // model reads it before it continues (Pi: tool_result can modify the result).
+  pi.on("tool_result",(event,ctx)=>{
+    if(!ctx.isProjectTrusted())return;
+    if(READ_ONLY_TOOLS.has(event.toolName))return;
+    if(event.toolCallId)reconciledCalls.add(event.toolCallId);
+    const texts=reconcile(ctx.cwd,event.toolName);
+    if(!texts.length)return;
+    return {content:[...(event.content??[]),{type:"text" as const,text:texts.join("\n\n")}]};
+  });
+  // Fallback: tools whose result was not reconciled above (e.g. ended without a
+  // tool_result) are still observed and steered before the next model call.
+  pi.on("tool_execution_end",(event,ctx)=>{
+    if(!ctx.isProjectTrusted())return;
+    if(READ_ONLY_TOOLS.has(event.toolName))return;
+    if(event.toolCallId&&reconciledCalls.delete(event.toolCallId))return;
+    for(const text of reconcile(ctx.cwd,event.toolName)){
+      const custom=text.startsWith("ATDD POST-TOOL OBSERVATION UNKNOWN")?"pi-atdd-observation-gap":"pi-atdd-post-tool-reconciliation";
+      pi.sendMessage({customType:custom,content:text,display:false},{deliverAs:"steer"});
+    }
   });
 }

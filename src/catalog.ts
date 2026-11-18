@@ -137,6 +137,38 @@ export function loadCatalog(sources: SourceSpec[], cwd: string): Catalog {
   const unresolvedEdges = edges.filter(e => !rules.has(e.source) || !rules.has(e.target));
   return { rules, edges, provenance, unresolvedEdges };
 }
+const WORD_CHAR = /[a-z0-9_]/;
+/**
+ * Selector term match on word boundaries (case-insensitive). A term never
+ * matches inside a longer word (`red` in `configured`) or as a segment of a
+ * file path (`integration/` in `src/pricing/integration/x.ts`, `route` in
+ * `order-routes.ts`). A simple plural (`routes`, `imports`) still matches, and a
+ * term may be followed by `/` (`red/green`, `integration/feature-x`).
+ */
+export function termMatches(text: string, term: string): boolean {
+  const hay = text.toLowerCase(), needle = term.toLowerCase();
+  if (!needle) return false;
+  const startsWord = WORD_CHAR.test(needle[0]!), endsWord = WORD_CHAR.test(needle.at(-1)!);
+  const beforeOk = (i: number) => {
+    if (!startsWord || i === 0) return true;
+    const c = hay[i - 1]!;
+    return !WORD_CHAR.test(c) && !"/.-\\".includes(c);
+  };
+  const afterOk = (k: number) => {
+    if (!endsWord) return true;
+    const c = hay[k];
+    if (c === undefined) return true;
+    if (WORD_CHAR.test(c)) return false;
+    return !(c === "." && WORD_CHAR.test(hay[k + 1] ?? "")); // file extension, e.g. route.ts
+  };
+  for (let i = hay.indexOf(needle); i >= 0; i = hay.indexOf(needle, i + 1)) {
+    if (!beforeOk(i)) continue;
+    const end = i + needle.length;
+    const ends = endsWord ? [end, ...(hay[end] === "s" ? [end + 1] : []), ...(hay.startsWith("es", end) ? [end + 2] : [])] : [end];
+    if (ends.some(afterOk)) return true;
+  }
+  return false;
+}
 export function matchesGlob(file: string, pattern: string): boolean {
   let regex = "^";
   for (let i = 0; i < pattern.length;) {
@@ -177,7 +209,7 @@ export function resolveContext(catalog: Catalog, selectors: Selector[], task: st
     if (item.operations?.length && !item.operations.includes(operation)) continue;
     const evidence = [
       ...paths.flatMap(path => (item.paths || []).filter(pattern => matchesGlob(path, pattern)).map(p => "path:" + p)),
-      ...(item.terms || []).filter(term => task.toLowerCase().includes(term.toLowerCase())).map(t => "term:" + t),
+      ...(item.terms || []).filter(term => termMatches(task, term)).map(t => "term:" + t),
       ...(item.always ? ["always"] : []),
     ];
     if (!evidence.length) continue;

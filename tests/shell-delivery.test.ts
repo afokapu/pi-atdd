@@ -12,6 +12,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync, readFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import atdd from "../extensions/atdd.ts";
+import { shellWriteTargets } from "../src/shell-targets.ts";
+import { termMatches } from "../src/catalog.ts";
 
 const TARGET = "coder.bun.design-hierarchy-import";
 /** Verbatim PLT-78 T2-ARCH prompt (trial t10). */
@@ -159,6 +161,33 @@ test("the post-tool page budget keeps the target rule and drops lower-relevance 
     const text = post.map(p => p.text).join("\n");
     const first = text.match(/Convention ([a-z0-9_.-]+) —/)?.[1];
     assert.equal(first, TARGET, "highest-relevance (file-specific) rule is rendered first");
-    if (/omitted by budget/.test(text)) assert.ok(!/omitted[^\n]*design-hierarchy-import/.test(text));
+    assert.match(text, /omitted by budget/, "the scenario must actually exceed the page budget");
+    assert.ok(!/omitted[^\n]*design-hierarchy-import/.test(text), "target rule is never the one omitted");
   } finally { x.cleanup(); }
+});
+
+test("static shell write-target extraction covers common edit idioms and ignores read-only commands", () => {
+  const cases: Array<[string, string[]]> = [
+    [T10_COMMAND, ["src/pricing/domain/quote.ts"]],
+    ["cat > src/a.ts <<'EOF'\nconst x = a > b ? 1 : 2;\nEOF", ["src/a.ts"]],
+    ["sed -i '' 's/a/b/' src/x.ts", ["src/x.ts"]],
+    ["perl -pi -e 's/x/y/' src/q.ts", ["src/q.ts"]],
+    ["printf 'x' | tee -a src/t.ts", ["src/t.ts"]],
+    ["cp a.ts src/c.ts && mv x.ts src/y.ts", ["src/c.ts", "src/y.ts"]],
+    ["node -e \"require('fs').writeFileSync('src/p/domain/q.ts', 'x')\"", ["src/p/domain/q.ts"]],
+    ["python3 - <<'PY'\nopen('src/z.py','w').write('x')\nPY", ["src/z.py"]],
+    ["git apply <<'EOF'\ndiff --git a/src/k.ts b/src/k.ts\n--- a/src/k.ts\n+++ b/src/k.ts\nEOF", ["src/k.ts"]],
+    ["ls -R src tests; cat README.md src/pricing/domain/quote.ts", []],
+    ["npm test 2>&1 | grep -E 'fail' > /dev/null; node --test x.test.ts 2>&1 | tail -8", []],
+  ];
+  for (const [command, expected] of cases) assert.deepEqual(shellWriteTargets(command).sort(), expected.sort(), command);
+});
+
+test("termMatches: word boundaries, path segments and simple plurals", () => {
+  const yes: Array<[string, string]> = [["the red test", "red"], ["red/green/refactor", "red"], ["push integration/feature-x", "integration/"],
+    ["add routes", "route"], ["the route.", "route"], ["Acceptance PRC-TAX-001", "acceptance"], ["review imports", "imports"]];
+  const no: Array<[string, string]> = [["configured", "red"], ["preferred", "red"], ["src/pricing/integration/tax-rates.ts", "integration/"],
+    ["src/orders/routes/order-routes.ts", "route"], ["route.ts", "route"], ["reviewer", "review"]];
+  for (const [text, term] of yes) assert.equal(termMatches(text, term), true, term + " in " + text);
+  for (const [text, term] of no) assert.equal(termMatches(text, term), false, term + " in " + text);
 });

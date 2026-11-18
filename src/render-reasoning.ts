@@ -58,6 +58,42 @@ export type RenderedPage = {
   emittedIds:string[];
   omittedIds:string[];
 };
+/**
+ * Relevance of an activation to the observed subject, from its proof reasons:
+ * file-specific evidence (path selector, typed layer fact) outranks a mandatory
+ * prerequisite, which outranks activation by task wording alone. Used so that a
+ * bounded page drops lower-relevance rules first.
+ */
+export function relevance(a:Activation):number {
+  const reasons=a.reasons;
+  let score=0;
+  if(reasons.some(r=>r.startsWith("path:")))score+=4;
+  if(reasons.some(r=>r.startsWith("layer:")||r.startsWith("pi-atdd.typed-")))score+=2;
+  if(a.requiredPath.length)score+=1;
+  return score;
+}
+const MIN_COMPACT=400;
+export function rankActivations(list:readonly Activation[]):Activation[] {
+  return [...list].sort((x,y)=>relevance(y)-relevance(x)||(x.id<y.id?-1:x.id>y.id?1:0));
+}
+/** Minimal rendering that still carries the obligation, its source and guidance. */
+function compactSection(item:Activation,r:Reconciliation,budget:number):string {
+  const rule=item.convention;
+  const source=r.provenance.find(p=>p.id===rule.source);
+  const suffix=rule.file.slice(rule.source.length+1);
+  const path=source?join(source.path,suffix):rule.file;
+  const head=[
+    "Convention "+item.id+" — "+clip(rule.statement,500),
+    "Canonical source: "+path,
+    "Pinned provenance SHA-256: "+(source?.digest??"UNKNOWN"),
+    "Activation evidence: "+item.reasons.slice(0,4).map(s=>clip(s,120)).join("; "),
+  ].join("\n");
+  const tail="\n[compact rendering under page budget: read the full canonical file]";
+  const room=budget-head.length-tail.length-60;
+  const guidance=rule.guidance&&room>120?"\nOriginal guidance: "+clip(rule.guidance,room):"";
+  const text=head+guidance+tail;
+  return text.length<=budget?text:text.slice(0,Math.max(0,budget-tail.length))+tail;
+}
 export function renderReasonedPage(r:Reconciliation,ids?:readonly string[],maxChars=14_000):RenderedPage {
   if(!Number.isInteger(maxChars)||maxChars<1200)
     throw new Error("reasoning budget too small for safety warnings");
@@ -73,28 +109,36 @@ export function renderReasonedPage(r:Reconciliation,ids?:readonly string[],maxCh
     "Rules are not waived by alternatives; an independent reviewer and CI verify binding obligations.",
   ].filter(Boolean).join("\n");
   const selected=ids?new Set(ids):null;
-  const activations=r.activations.filter(x=>!selected||selected.has(x.id));
+  // Highest relevance first, so a bounded page drops lower-relevance rules first.
+  const activations=rankActivations(r.activations.filter(x=>!selected||selected.has(x.id)));
   const emittedIds:string[]=[],omittedIds:string[]=[];
-  const reserve=300;
+  const reserve=320;
   if(warnings.length>maxChars-reserve)
     return {text:warnings.slice(0,maxChars-150)+"\nWARNING: context overflow; no convention was delivered.",
       emittedIds,omittedIds:activations.map(a=>a.id)};
   let text=warnings;
-  for(const a of activations){
+  for(const [i,a] of activations.entries()){
     const item="\n\n"+section(a,r);
-    if(text.length+item.length>maxChars-reserve) {
-      omittedIds.push(a.id);
-    } else {
+    if(omittedIds.length) {
+      omittedIds.push(a.id); // strict relevance order: never skip a rule to fit a less relevant one
+    } else if(text.length+item.length<=maxChars-reserve) {
       text+=item;
       emittedIds.push(a.id);
+    } else if(i===0&&maxChars-reserve-text.length-2>=MIN_COMPACT) {
+      // The most relevant rule is not dropped while a compact rendering fits.
+      text+="\n\n"+compactSection(a,r,maxChars-reserve-text.length-2);
+      emittedIds.push(a.id);
+    } else {
+      omittedIds.push(a.id);
     }
   }
   if(omittedIds.length) {
-    text+="\n\nATTENTION: "+omittedIds.length+" activated convention(s) omitted by budget. "+
+    const attention="\n\nATTENTION: "+omittedIds.length+" activated convention(s) omitted by budget (lower relevance first). "+
       "Their content has NOT been delivered or acknowledged. Retries must receive "+
-      "remaining reasoning before the edit can proceed.";
-    if(!emittedIds.length)
-      text+=" No complete convention fit the budget: use the full canonical source or enlarge context.";
+      "remaining reasoning before the edit can proceed."+
+      (!emittedIds.length?" No complete convention fit the budget: use the full canonical source or enlarge context.":"");
+    const listed=" Omitted: "+omittedIds.join(", ")+".";
+    text+=attention.length+listed.length+text.length<=maxChars?attention+listed:attention;
   }
   return {text,emittedIds,omittedIds};
 }
