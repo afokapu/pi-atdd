@@ -13,7 +13,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import atdd from "../extensions/atdd.ts";
 import { shellWriteTargets } from "../src/shell-targets.ts";
-import { termMatches } from "../src/catalog.ts";
+import { termMatches, digestSource, loadConfig, loadCatalog } from "../src/catalog.ts";
+import { ReasoningSession } from "../src/reasoning-context.ts";
+import { relevance, renderReasonedPage } from "../src/render-reasoning.ts";
 
 const TARGET = "coder.bun.design-hierarchy-import";
 /** Verbatim PLT-78 T2-ARCH prompt (trial t10). */
@@ -190,4 +192,78 @@ test("termMatches: word boundaries, path segments and simple plurals", () => {
     ["src/orders/routes/order-routes.ts", "route"], ["route.ts", "route"], ["reviewer", "review"]];
   for (const [text, term] of yes) assert.equal(termMatches(text, term), true, term + " in " + text);
   for (const [text, term] of no) assert.equal(termMatches(text, term), false, term + " in " + text);
+});
+
+// --- Blind code review (PR #5, round 1) regressions ---
+
+test("review#1: every changed file is reconciled, none dropped past a count cap", () => {
+  const x = sandbox();
+  try {
+    x.start("Update pricing");
+    const files = Array.from({ length: 9 }, (_, i) => "src/pricing/domain/f" + i + ".ts");
+    x.tool("bash", { command: "node scripts/gen.mjs" }, () => files.forEach(f => writeFileSync(join(x.cwd, f), "export const v = 1;\n")));
+    const text = x.delivered.filter(d => d.channel.startsWith("tool_result:")).map(d => d.text).join("\n");
+    for (const f of files) assert.match(text, new RegExp("Changed file " + f.replaceAll(".", "\\.") + ":\\n"), f);
+    const pages = text.split("ATDD post-tool reconciliation. Changed file ").slice(1);
+    assert.equal(pages.length, 9);
+    for (const page of pages) assert.match(page, /Convention coder\.bun\.design-hierarchy-import —/);
+  } finally { x.cleanup(); }
+});
+
+test("review#2: a mandatory prerequisite never outranks the directly targeted rule", () => {
+  const cwd = mkdtempSync(join(tmpdir(), "pi-atdd-rank-"));
+  try {
+    mkdirSync(join(cwd, "extra/conventions"), { recursive: true });
+    const conv = (id: string, lines: number) => [
+      "rule_id: " + id, "kind: rule", "status: active",
+      "statement: Obligation " + id + " applies to the observed file.",
+      "content:", "  summary: Preserve " + id + ".", "  fix_hint: |",
+      ...Array(lines).fill("    Inspect the boundary, the tests and the observed change before approving this work."), "",
+    ].join("\n");
+    writeFileSync(join(cwd, "extra/conventions/aaa.prerequisite.convention.yaml"), conv("aaa.prerequisite", 14));
+    writeFileSync(join(cwd, "extra/conventions/zzz.target.convention.yaml"), conv("zzz.target", 14));
+    writeFileSync(join(cwd, "extra/relationships.yaml"), [
+      "schema_version: 1.0.0", "graph_id: extra", "nodes:", "  - aaa.prerequisite", "  - zzz.target", "edges:",
+      "  - source_ref: zzz.target", "    target_ref: aaa.prerequisite", "    type: requires", "    constraint: mandatory",
+      "    control: internal", "    reason: target needs prerequisite", "",
+    ].join("\n"));
+    const checksum = digestSource(join(cwd, "extra"), "extension");
+    writeFileSync(join(cwd, "atdd-pi.yaml"), ["schema: pi-atdd/config/v2", "sources:", "  - id: Extra", "    kind: extension",
+      "    path: extra", "    sha256: " + checksum, "selectors: extra-selectors.yaml", ""].join("\n"));
+    writeFileSync(join(cwd, "extra-selectors.yaml"), ["schema: pi-atdd/selectors/v1", "selectors:", "  - id: domain-files",
+      "    paths: [\"src/**/domain/*.ts\"]", "    rules: [zzz.target]", ""].join("\n"));
+    const cfg = loadConfig(cwd), catalog = loadCatalog(cfg.sources, cwd);
+    const session = new ReasoningSession(catalog, cfg.selectors);
+    const r = session.observe({ scope: "s", task: "update", operation: "edit", path: "src/pricing/domain/quote.ts",
+      origin: "repository-observation", provenance: "test" });
+    const target = r.activations.find(a => a.id === "zzz.target")!, pre = r.activations.find(a => a.id === "aaa.prerequisite")!;
+    assert.ok(target && pre, "both activate");
+    assert.ok(relevance(target) > relevance(pre), "target " + relevance(target) + " vs prerequisite " + relevance(pre));
+    for (const budget of [1_200, 2_000, 3_000, 4_500]) {
+      const page = renderReasonedPage(r, undefined, budget);
+      assert.ok(page.text.length <= budget, "bound " + budget);
+      if (page.emittedIds.length) assert.equal(page.emittedIds[0], "zzz.target", "budget " + budget);
+    }
+    assert.deepEqual(renderReasonedPage(r, undefined, 4_500).emittedIds.slice(0, 1), ["zzz.target"]);
+  } finally { rmSync(cwd, { recursive: true, force: true }); }
+});
+
+test("review#3: an opaque write to an ignored (untracked) source file is still observed", () => {
+  const x = sandbox();
+  try {
+    writeFileSync(join(x.cwd, ".gitignore"), "src/pricing/domain/ignored.ts\n");
+    execFileSync("git", ["add", ".gitignore"], { cwd: x.cwd }); execFileSync("git", ["commit", "-qm", "ignore"], { cwd: x.cwd });
+    x.start("Update pricing");
+    x.tool("bash", { command: "node scripts/gen.mjs" }, () => writeFileSync(join(x.cwd, "src/pricing/domain/ignored.ts"), "export const v = 1;\n"));
+    const post = x.delivered.filter(d => d.channel.startsWith("tool_result:"));
+    assert.ok(has(post, TARGET), "ignored file write must be reconciled");
+  } finally { x.cleanup(); }
+});
+
+test("review#4: shell extraction handles adjacent redirection, quoted sed operands and read-only openSync", () => {
+  assert.deepEqual(shellWriteTargets("echo x>src/domain/x.ts"), ["src/domain/x.ts"]);
+  assert.deepEqual(shellWriteTargets("sed -i 's/a/b/' 'src/domain/x.ts'"), ["src/domain/x.ts"]);
+  assert.deepEqual(shellWriteTargets("sed -i -e 's/a/b/' -e 's/c/d/' src/a.ts \"src/b.ts\""), ["src/a.ts", "src/b.ts"]);
+  assert.deepEqual(shellWriteTargets("node -e \"require('fs').openSync('src/domain/x.ts', 'r')\""), []);
+  assert.deepEqual(shellWriteTargets("node -e \"require('fs').openSync('src/domain/x.ts', 'w')\""), ["src/domain/x.ts"]);
 });

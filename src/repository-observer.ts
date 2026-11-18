@@ -43,6 +43,11 @@ function git(cwd:string):RepositorySnapshot {
   const dirty=new Set([
     ...pathsFrom(args("git",["diff","--no-ext-diff","--no-textconv","--name-only","-z","HEAD","--"],cwd)),
     ...pathsFrom(args("git",["ls-files","--others","--exclude-standard","-z"],cwd)),
+    // Ignored individual files (e.g. an ignored source file written by a script)
+    // are observed too. Whole ignored directories (node_modules/, .jj/, dist/)
+    // are collapsed by --directory and NOT observed: a known, documented gap.
+    ...pathsFrom(args("git",["ls-files","--others","--ignored","--exclude-standard","--directory","-z"],cwd))
+      .filter(path=>!path.endsWith("/")),
   ]);
   const files=new Map<string,string>();
   for (const path of dirty) {

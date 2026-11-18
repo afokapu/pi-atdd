@@ -58,19 +58,33 @@ export type RenderedPage = {
   emittedIds:string[];
   omittedIds:string[];
 };
+/** Provenance strings of every assertion inside one proof subtree. */
+function evidenceOf(p:Proof,out:string[]=[],seen=new Set<string>()):string[]{
+  if(seen.has(p.key))return out;
+  seen.add(p.key);
+  for(const a of p.assertions)out.push(a.provenance??a.source);
+  for(const d of p.derivations){out.push(d.rule);d.premises.forEach(x=>evidenceOf(x,out,seen));}
+  return out;
+}
 /**
- * Relevance of an activation to the observed subject, from its proof reasons:
- * file-specific evidence (path selector, typed layer fact) outranks a mandatory
- * prerequisite, which outranks activation by task wording alone. Used so that a
- * bounded page drops lower-relevance rules first.
+ * Relevance of an activation to the observed subject. Only DIRECT derivations
+ * (selector or typed applicability rules) count file-specific evidence: a
+ * mandatory prerequisite does not inherit the path evidence of the rule that
+ * requires it, so it can never outrank its directly targeted rule.
+ *   path selector evidence +4, typed layer/path fact +2 (direct only);
+ *   prerequisite-only activation 1; task-wording-only activation 0.
  */
 export function relevance(a:Activation):number {
-  const reasons=a.reasons;
-  let score=0;
-  if(reasons.some(r=>r.startsWith("path:")))score+=4;
-  if(reasons.some(r=>r.startsWith("layer:")||r.startsWith("pi-atdd.typed-")))score+=2;
-  if(a.requiredPath.length)score+=1;
-  return score;
+  let best=-1;
+  for(const d of a.proof.derivations){
+    if(d.rule==="pi-atdd.mandatory-prerequisites"){best=Math.max(best,1);continue;}
+    const ev=d.premises.flatMap(x=>evidenceOf(x));
+    let score=0;
+    if(ev.some(r=>r.startsWith("path:")))score+=4;
+    if(d.rule.startsWith("pi-atdd.typed-")||ev.some(r=>r.startsWith("layer:")))score+=2;
+    best=Math.max(best,score===0?0:score+2);
+  }
+  return Math.max(best,0);
 }
 const MIN_COMPACT=400;
 export function rankActivations(list:readonly Activation[]):Activation[] {

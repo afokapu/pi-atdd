@@ -175,8 +175,8 @@ export default function atdd(pi:ExtensionAPI):void {
       const reasons:string[]=[];
       let remaining=12_000;
       try{
-        for(const path of targets.slice(0,8)){
-          if(remaining<2_500)break; // remaining targets are preflighted on retry
+        for(const path of targets){
+          if(remaining<2_500)break; // targets not yet delivered are preflighted on retry
           const operation=existsSync(resolve(ctx.cwd,path))?"edit":"create";
           const r=preflightPath(ctx.cwd,path,operation,"Pi pre-shell tool_call (static write target)",
             remaining,false);
@@ -216,13 +216,16 @@ export default function atdd(pi:ExtensionAPI):void {
       observedRepo=report.snapshot;return texts;
     }
     observedRepo=report.snapshot;
-    for(const path of report.changedPaths.slice(0,8)){
+    // Every changed path is reconciled (none is skipped by a count cap); with
+    // many changed files each page is smaller, but still keeps its top rule.
+    const perPath=report.changedPaths.length>8?2_000:4_500;
+    for(const path of report.changedPaths){
       try{
         const result=observe(cwd,"edit","repository-observation",
           "Git/JJ post-tool observed "+toolName,path);
         const fresh=newlyRelevant(result);
         if(fresh.length||result.status!=="matched"){
-          const page=renderReasonedPage(result,fresh,4_500);
+          const page=renderReasonedPage(result,fresh,perPath);
           texts.push("ATDD post-tool reconciliation. Changed file "+path+":\n"+page.text);
           recordActualDelivery(result,page);
         }
@@ -232,8 +235,8 @@ export default function atdd(pi:ExtensionAPI):void {
           ". Independent verification remains mandatory.");
       }
     }
-    if(report.changedPaths.length>8)texts.push("ATDD observed "+(report.changedPaths.length-8)+
-      " additional changed files. Broader independent impact review is required.");
+    if(report.changedPaths.length>8)texts.push("ATDD observed "+report.changedPaths.length+
+      " changed files in one tool call. Broader independent impact review is required.");
     return texts;
   }
   // Primary channel: attach reconciliation to the tool result itself, so the

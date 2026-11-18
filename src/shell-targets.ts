@@ -15,7 +15,6 @@ function unquote(token: string): string {
     return token.slice(1, -1);
   return token;
 }
-const quoted = (token: string) => /^['"]/.test(token);
 
 /** Remove here-document bodies so their contents are not parsed as commands. */
 export function stripHeredocBodies(command: string): string {
@@ -48,7 +47,7 @@ export function shellWriteTargets(command: string): string[] {
   const shell = stripHeredocBodies(command);
 
   // Output redirections: > file, >> file, 1> file, &> file (not >&2, not 2>&1).
-  for (const m of shell.matchAll(/(?:^|[^<>&=\-0-9A-Za-z])(?:[0-9]?>>?|&>>?)\|?\s*('[^']*'|"[^"]*"|[^\s;&|<>()]+)/g)) add(m[1]);
+  for (const m of shell.matchAll(/(?:^|[^<>&=\-0-9])(?:[0-9]?>>?|&>>?)\|?\s*('[^']*'|"[^"]*"|[^\s;&|<>()]+)/g)) add(m[1]);
 
   // Simple commands, split on control operators.
   for (const segment of shell.split(/\n|;|&&|\|\||\|/)) {
@@ -64,20 +63,22 @@ export function shellWriteTargets(command: string): string[] {
       if (cmd === "dd") args.filter(a => a.startsWith("of=")).forEach(a => add(a.slice(3)));
       else add(operands.at(-1));
     } else if ((cmd === "sed" || cmd === "perl" || cmd === "gsed") && args.some(a => /^-[a-zA-Z]*i/.test(a))) {
-      const hasScriptFlag = args.some(a => a === "-e" || a === "-f");
-      let scriptSkipped = hasScriptFlag;
+      // sed [-i ''|-i.bak|-i] [-e script ...|script] file...; perl -pi -e script file...
+      let scriptSkipped = false, prev = "";
       for (const a of args) {
+        const p = prev; prev = a;
         if (a.startsWith("-")) continue;
-        if (quoted(a)) { if (!scriptSkipped && unquote(a)) scriptSkipped = true; continue; }
-        if (!scriptSkipped) { scriptSkipped = true; continue; }
-        if (/^s(.).*\1.*\1[a-z0-9]*$/.test(a)) continue;
+        if (p === "-e" || p === "-f" || p === "--expression" || p === "--file") { scriptSkipped = true; continue; }
+        if (p === "-i" && cmd !== "perl" && (a === "''" || a === '""')) continue; // BSD sed empty backup suffix
+        if (!scriptSkipped && !args.some(x => x === "-e" || x === "-f")) { scriptSkipped = true; continue; }
         add(a);
       }
     }
   }
 
   // Inline scripts (node -e, python -c, heredoc-fed interpreters): the full text, bodies included.
-  for (const m of command.matchAll(/\b(?:writeFileSync|appendFileSync|writeFile|appendFile|createWriteStream|rmSync|unlinkSync|truncateSync|openSync)\s*\(\s*(['"`])([^'"`\n]+)\1/g)) add(m[2]);
+  for (const m of command.matchAll(/\b(?:writeFileSync|appendFileSync|writeFile|appendFile|createWriteStream|rmSync|unlinkSync|truncateSync)\s*\(\s*(['"`])([^'"`\n]+)\1/g)) add(m[2]);
+  for (const m of command.matchAll(/\bopenSync\s*\(\s*(['"`])([^'"`\n]+)\1\s*,\s*(['"`])[^'"`]*[wa+][^'"`]*\3/g)) add(m[2]);
   for (const m of command.matchAll(/\b(?:copyFileSync|renameSync|cpSync|copyFile|rename)\s*\(\s*(['"`])[^'"`\n]+\1\s*,\s*(['"`])([^'"`\n]+)\2/g)) add(m[3]);
   for (const m of command.matchAll(/\bopen\(\s*(['"])([^'"\n]+)\1\s*,\s*(['"])[^'"]*[wax+][^'"]*\3/g)) add(m[2]);
   for (const m of command.matchAll(/\bPath\(\s*(['"])([^'"\n]+)\1\s*\)\s*\.(?:write_text|write_bytes|unlink|touch)\b/g)) add(m[2]);
