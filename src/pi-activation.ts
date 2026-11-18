@@ -4,7 +4,8 @@
  * bypasses. Neither constitutes independent proof of compliance.
  */
 import { createHash } from "node:crypto";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { lstatSync, realpathSync } from "node:fs";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadCatalog, loadConfig, type Catalog, type Selector } from "./catalog.ts";
 import { ReasoningSession, type ContextObservation } from "./reasoning-context.ts";
@@ -14,6 +15,23 @@ import { observeRepository, type RepositorySnapshot } from "./repository-observe
 function scopedPath(cwd:string,supplied:string):string|null {
   const abs=resolve(cwd,supplied), p=relative(cwd,abs);
   if(!p||p===".."||p.startsWith(".."+sep)||isAbsolute(p))return null;
+  // Lexical containment alone is insufficient: an existing in-tree symlink
+  // can make the target physically outside the governed checkout.
+  try{
+    let cursor=realpathSync(cwd);
+    const parts=p.split(sep);
+    for(const [i,component] of parts.entries()){
+      cursor=join(cursor,component);
+      try {
+        const stat=lstatSync(cursor);
+        if(stat.isSymbolicLink())return null; // even in-tree symlinks can be swapped after preflight
+        if(i<parts.length-1&&!stat.isDirectory())return null;
+      } catch(e){
+        if((e as NodeJS.ErrnoException).code==="ENOENT")break;
+        return null;
+      }
+    }
+  }catch{return null;}
   return p.replaceAll("\\","/");
 }
 export default function atdd(pi:ExtensionAPI):void {
