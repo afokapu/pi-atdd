@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 import sys
 
-from .graph import GraphError, load_catalog, read_selectors, resolve, source_digest, yaml_mapping
+from .graph import GraphError, load_catalog, read_selectors, validate_selectors, resolve, source_digest, yaml_mapping
 from .verify import verify_pytest
 
 
@@ -60,6 +60,7 @@ def main(argv: list[str] | None = None) -> int:
             sources, selector_path = _config(repo, args.config)
             catalog = load_catalog(sources, repo)
             selectors = read_selectors(selector_path)
+            validate_selectors(catalog, selectors)
             result = resolve(catalog, selectors, args.task, args.path, args.operation, args.limit)
         print(json.dumps(result, ensure_ascii=False, sort_keys=True))
         if args.command == "context" and result["status"] == "unresolved":
