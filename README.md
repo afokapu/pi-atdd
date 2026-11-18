@@ -1,81 +1,82 @@
 # pi-atdd
 
-**TypeScript-only Pi extension** for on-demand engineering conventions. ATDD-Bun and ATDD Flow are the canonical convention sources; this package reads their original YAML and graph by a pinned content digest. No Python kernel, Python subprocess, pytest or code-generation copy of the source conventions is required.
+A **TypeScript-only Pi extension** containing a versioned, offline catalog of ATDD engineering conventions and their authored relationships. The extension does not require Python, a separate ATDD-Bun/Flow checkout, or internet access **at runtime**.
 
-Implementation task: [PLT-64](https://linear.app/forge100/issue/PLT-64). Architecture/migration program: [PLT-63](https://linear.app/forge100/issue/PLT-63).
+[PLT-64](https://linear.app/forge100/issue/PLT-64) · [Draft PR #1](https://github.com/afokapu/pi-atdd/pull/1) · [Migration program PLT-63](https://linear.app/forge100/issue/PLT-63)
 
-## What the first PR implements
+## Included conventions
 
-- Native Pi package discovery via `pi.extensions` and a real Pi RPC smoke test that verifies the `/atdd` command.
-- TypeScript resolver for ATDD-Bun convention files, planner nodes and `relationships.yaml`, plus ATDD Flow convention files.
-- Immutable source SHA-256 locks, duplicate-key/ID detection and recorded unresolved external graph references.
-- Task/operation/path-based selectors; required `requires` traversal (other edge types never silently imply mandatory prerequisites).
-- Pi lifecycle hooks to supply context at task start and the first newly relevant edit, with original rule text, rationale, exceptions, and disposition.
-- A standalone TypeScript CLI for graph queries and explicit TypeScript test targets. Tests are never automatically run on every commit.
-- Template-aligned Given/When/Then acceptance YAML validated against ATDD-Bun's unchanged V2 acceptance schema.
+The package vendors **unchanged, byte-for-byte** YAML from reviewed source revisions:
 
-**Not yet implemented:** complete full-corpus selector coverage, semantic alternative verification, traceability parity, Jujutsu integration workspaces, Linear adapter, durable multi-agent messaging or consumer cutover. These are tracked separately; the old toolkits must not be uninstalled yet.
+| Catalog | Commit | Contents |
+|---|---|---|
+| [ATDD-Bun](https://github.com/afokapu/atdd-bun) | `5945d97e18310e7c862c08e73985400935d21346` | 356 conventions plus the original 508-edge relationship graph |
+| [ATDD Flow](https://github.com/afokapu/atdd-flow) | `2a66019a5ecf2b7a9f999ebfa04d04c9f548f19a` | 2 conventions |
 
-## Pi installation
+The files are committed under `vendor/atdd-bun/` and `vendor/atdd-flow/`. Original folder structures, YAML, terminology, exceptions and disposition are preserved. `vendor/catalog.lock.json` records provenance, while `src/catalog.ts` independently pins content SHA-256 digests.
 
-A trusted user can install a published Git package with:
+No network access is needed to resolve rules after installation. A package update can import newer upstream conventions in a reviewed PR; it must pass exact-source parity and graph integrity tests.
+
+**Graph limitation:** the original 508 Bun edges include **44 edges referencing external rule IDs** not present in these two catalogs. They remain visible as unresolved references. A required unresolved dependency blocks its resolution; they have not been invented, ignored or silently waived. The Flow rules are loaded but are not automatically joined to Bun's graph by invented edges.
+
+## Setup and use
+
+A reviewed version can be installed with Pi:
 
 ```sh
 pi install --local git:github.com/afokapu/pi-atdd@<reviewed-tag>
 ```
 
-For development in this repository:
+This Git/package installation initially needs access to the package source; **subsequent Pi sessions do not need to reach GitHub or npm to read conventions**. The package contains its own YAML.
+
+For a local development checkout:
 
 ```sh
 npm install
 npm run check
 npm run smoke:pi
+npm run smoke:install
 ```
 
-The smoke test actually starts the Pi RPC runtime, loads the TypeScript extension, queries `get_commands`, and requires the `atdd` command to be present.
+No consumer `atdd-pi.yaml` or sibling repositories are required. The Pi extension automatically uses its embedded catalog and initial activation selectors in trusted projects.
 
-## A consumer configuration
-
-Keep checked-out, reviewed versions of ATDD-Bun and ATDD Flow available locally. Obtain each content digest with the standalone TypeScript CLI:
+The standalone TypeScript CLI can also query the catalog without Pi:
 
 ```sh
-npm run atdd -- --repo . digest --source ../atdd-bun --kind bun
-npm run atdd -- --repo . digest --source ../atdd-flow --kind flow
+npm run atdd -- context --task "Review integration branch" --path src/workspace/driver.ts --operation edit
+npm run atdd -- verify --target tests/payments.test.ts
 ```
 
-Create `atdd-pi.yaml` under the consumer repository:
+The first command returns 3 if no selector matches; that means an **applicability gap**, not permission to ignore conventions. The tests are targeted; independent CI must still perform mandatory gates.
+
+## Adding conventions
+
+Keep bundled upstream rules unchanged. Additional rules can be authored separately in the project or bundled in a later reviewed package release.
+
+For project-specific additions, create `extra/conventions/local.checkpoint.convention.yaml` and optionally `extra/relationships.yaml`, using the existing convention YAML format. An extra relationship may refer to an existing bundled rule.
+
+Declare an additive catalog and selectors:
 
 ```yaml
+# atdd-pi.yaml, optional
 schema: pi-atdd/config/v2
-sources:
-  - id: atdd-bun
-    kind: bun
-    path: ../atdd-bun
-    revision: <reviewed-git-commit>
-    sha256: <exact-computed-digest>
-  - id: atdd-flow
-    kind: flow
-    path: ../atdd-flow
-    revision: <reviewed-git-commit>
-    sha256: <exact-computed-digest>
-selectors: atdd-selectors.yaml
+extraSources:
+  - id: my-project
+    kind: extension
+    path: extra
+    sha256: <exact-sha256-of-extra>
+extraSelectors:
+  - extra-selectors.yaml
 ```
 
-Create a selector registry mapping task and file signals to the original rule IDs (the sample in `tests/fixtures/selectors.yaml` illustrates the schema). The existing convention YAML remains unchanged.
+Use `npm run atdd -- digest --source extra --kind extension` in a development checkout to compute the hash. Define `extra-selectors.yaml` with `schema: pi-atdd/selectors/v1` and `selectors: [ ... ]`. IDs must be unique; no supplied custom source can overwrite an existing bundled convention. A source hash change requires deliberate revalidation.
 
-```sh
-npm run atdd -- --repo . context --task "Review the integration branch" --path src/workspace/driver.ts --operation edit
-npm run atdd -- --repo . verify --target tests/payment.test.ts
-```
+`sources:` and `selectors:` remain supported for explicit testing/migration overrides, but are not needed for normal installation. New package-wide conventions should be added as reviewed, versioned YAML and tested for graph references and applicability.
 
-`context` returns 0 on a match, 3 for an applicability coverage gap and 2 on invalid policy. `verify` executes explicitly selected Node test targets, with a nonzero exit on failure. For Bun consumers, pass `--runner bun`. A source revision or digest change requires revalidation and review; a success response is never an independent compliance certificate.
+## Current scope and exclusions
 
-## Migration and review
+Implemented: TypeScript graph parser, locked offline bundle, on-demand context resolution through Pi, pre-edit guidance, explicit test runner, Given/When/Then acceptance records validated against ATDD-Bun V2, real Pi package-install smoke, source-level migration ledger and adversarial tests.
 
-- [Source-level migration ledger](docs/MIGRATION-LEDGER.md)
-- [Code-embedded convention proposals](docs/CONVENTION-CANDIDATES.md)
-- [Adversarial test plan](docs/ADVERSARIAL-TEST-PLAN.md)
-- [Adapter interface contracts](docs/ADAPTER-CONTRACTS.md)
-- [Acceptance-by-acceptance self-review](docs/ACCEPTANCE-AUDIT.md)
+Not yet proven: complete rule activation for all 358 nodes, closure of external graph dependencies, extraction of code-embedded policies, acceptance traceability parity, Jujutsu integration branches, durable agent messaging, Linear integration, or a safe consumer cutover. Existing ATDD-Bun and Flow consumers remain unchanged. PR #1 is a draft; **do not treat catalog presence as full graph or verification parity**.
 
-PR #1 is intentionally a draft. A green test run is not permission to merge or remove ATDD Flow/Bun. The source review and real Pi runtime proof must be completed before independent review.
+[Acceptance audit](docs/ACCEPTANCE-AUDIT.md) · [Migration ledger](docs/MIGRATION-LEDGER.md) · [Code-to-convention candidates](docs/CONVENTION-CANDIDATES.md) · [Adversarial checks](docs/ADVERSARIAL-TEST-PLAN.md)
