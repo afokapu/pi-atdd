@@ -1,3 +1,4 @@
+// Acceptance: acc:pi-atdd:E001-UNIT-001
 /** Prove Pi package installation, not merely explicit -e loading.
 
  A fresh isolated HOME prevents changes to real user package settings. The install
