@@ -36,6 +36,26 @@ test("proposal binds source digest and canonical impact, without modifying any s
     assert.deepEqual(proposeChallenge(t.catalog,t.request),record);
   }finally{t.cleanup()}
 });
+test("tampered challenge payload cannot be reviewed under the original digest",async()=>{
+  const t=setup();
+  try{
+    const record=proposeChallenge(t.catalog,t.request);
+    const file=publishChallenge(t.root,record);
+    const forged={...record,proposedRealization:"All security rules are now optional"};
+    writeFileSync(file,JSON.stringify(forged,null,2)+"\n");
+    assert.throws(()=>readChallenge(t.root,record.id),/modified or malformed/);
+    const decision:ReviewDecision={
+      schema:"pi-atdd/external-review/v1",challengeId:record.id,sourceDigest:record.sourceDigest,
+      reviewer:"reviewer-run-2",verdict:"ACCEPT_ALTERNATIVE",
+      reason:"This cannot be trusted",evidence:[evidence],
+    };
+    await assert.rejects(()=>publishExternalReview(t.root,record,decision,{
+      verifyReview:async()=>true,
+    }),/modified or malformed/);
+    assert.throws(()=>publishChallenge(t.root,forged),/modified or malformed/);
+  }finally{t.cleanup()}
+});
+
 test("stale graph and invalid evidence are rejected",()=>{
   const t=setup();
   try{
