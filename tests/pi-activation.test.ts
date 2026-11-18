@@ -78,3 +78,19 @@ test("a new Pi user task resets task-scoped supports rather than inheriting stal
     assert.equal(start({messageType:"user",prompt:"Perform review"},untrusted),undefined);
   } finally{x.cleanup();}
 });
+
+test("Pi session-tree restoration invalidates old supports and reconstructs a verified task prompt",()=>{
+  const x=sandbox();
+  try{
+    const start=x.handlers.get("before_agent_start")!;
+    start({messageType:"user",prompt:"Implement authorization"},x.ctx);
+    const resumed={...x.ctx,sessionManager:{getBranch:()=>[
+      {type:"message",message:{role:"user",content:[{type:"text",text:"Perform final behavioral review"}]}},
+    ]}};
+    x.handlers.get("session_tree")!({},resumed);
+    const result=start({messageType:"extension",prompt:""},resumed);
+    assert.match(result.message.content,/atdd-bun\.review\.behavioral-reconciliation/);
+    assert.ok(!result.message.content.includes("coder.bun.security-missing-auth"));
+    assert.equal(start({messageType:"extension",prompt:""},resumed),undefined);
+  }finally{x.cleanup();}
+});
