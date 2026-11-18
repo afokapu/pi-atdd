@@ -36,7 +36,7 @@ The TypeScript src/effectiveness.ts API re-runs the named tests in each result w
 
 ## Stage 0 — real tool-use qualification and valid comparisons (2026-11-18 correction)
 
-Before running D008 outcomes, qualify each model/provider/transport with a **separate, unscored** Pi task that requires an actual read and tool-mediated file edit or shell action. Verify top-level Pi \`tool_execution_start\` and \`tool_execution_end\` events **and** the corresponding filesystem/test effect. JSON-shaped text that merely *describes* a tool call is not an execution. Record the exact API mode, model revision/quantization, context/completion budgets and runtime version; a response of one completion token is an invalid configuration, not a model-quality score.
+Before running D008 outcomes, qualify each model/provider/transport with a **separate, unscored** Pi task that requires an actual read and tool-mediated file edit or shell action. Verify top-level Pi `tool_execution_start` and `tool_execution_end` events **and** the corresponding filesystem/test effect. JSON-shaped text that merely *describes* a tool call is not an execution. Record the exact API mode, model revision/quantization, context/completion budgets and runtime version; a response of one completion token is an invalid configuration, not a model-quality score.
 
 For every *scored* trial, independently establish:
 
@@ -46,9 +46,9 @@ For every *scored* trial, independently establish:
 - Re-runnable independent tests and a blind, authenticated behavioral review of both outcomes; tool counts, non-executed tool requests, changed files, failures, attempts, wall time and context/tokens for both conditions.
 - Repeated matched scenarios for both weak and strong models, with a preregistered benefit threshold and the complete set of negative or invalid outcomes. Do not choose, discard or change acceptance cases based on graph-vs-control results.
 
-**Validity categories:** \`INVALID_HARNESS\` when model, base/fixture, runner or JJ premises fail; \`UNQUALIFIED_TOOL_USE\` when either condition cannot perform real Pi tool execution; \`TOOL_USE_OBSERVED\` for a qualified exploratory smoke only; and **D008 NOT ESTABLISHED** until independently attested, equal-base weak/strong outcome pairs have been reviewed. A zero-tool pair is not scored as a graph tie or a negative effect. Replace the 0.5B transport/model with the *smallest verified tool-call-capable* candidate before claiming a meaningful comparison; do not assume any particular small model qualifies without a witnessed probe.
+**Validity categories:** `INVALID_HARNESS` when model, base/fixture, runner or JJ premises fail; `UNQUALIFIED_TOOL_USE` when either condition cannot perform real Pi tool execution; `TOOL_USE_OBSERVED` for a qualified exploratory smoke only; and **D008 NOT ESTABLISHED** until independently attested, equal-base weak/strong outcome pairs have been reviewed. A zero-tool pair is not scored as a graph tie or a negative effect. Replace the 0.5B transport/model with the *smallest verified tool-call-capable* candidate before claiming a meaningful comparison; do not assume any particular small model qualifies without a witnessed probe.
 
-The exploratory \`experiments/weak-model-pi-jj/assess.mjs\` emits \`pair-validity.json\` from actual Pi JSONL and JJ/test summaries. Its successful execution means **the instrumentation ran**, not the agents completed the task. The existing 2026-11-18 pilot is retained as a negative feasibility result; no historical result is upgraded to D008 evidence.
+The exploratory `experiments/weak-model-pi-jj/assess.mjs` emits `pair-validity.json` from actual Pi JSONL and JJ/test summaries. Its successful execution means **the instrumentation ran**, not the agents completed the task. The existing 2026-11-18 pilot is retained as a negative feasibility result; no historical result is upgraded to D008 evidence.
 
 ## Completion gate
 
