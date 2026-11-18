@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { digestSource, GraphError, loadCatalog, readYaml, resolveContext, validateSelectors, type SourceSpec } from "../src/catalog.ts";
-import atdd from "../extensions/atdd.ts";
+import atdd, { explain } from "../extensions/atdd.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 function workspace(): { cwd: string; sources: SourceSpec[]; selectors: any[]; cleanup: () => void } {
@@ -140,4 +140,26 @@ test("the repository's user-facing runtime contains no Python dependency", () =>
   const pkg = JSON.parse(readFileSync(join(here, "../package.json"), "utf8"));
   assert.ok(pkg.pi.extensions.includes("./extensions/atdd.ts"));
   assert.ok(!JSON.stringify(pkg).toLowerCase().includes("python"));
+});
+
+
+test("reviewed reasoning package delivers original guidance, graph rationale and executable evidence reference", () => {
+  const w = workspace();
+  try {
+    const graph = loadCatalog(w.sources, w.cwd);
+    const context = resolveContext(graph, w.selectors, "Final behavioral review", [], "task");
+    const text = explain(context);
+    assert.match(text, /Original implementation guidance:/);
+    assert.match(text, /canonical source/i);
+    assert.match(text, /atdd-bun.review.behavioral-reconciliation/);
+    assert.match(text, /Related obligation:/);
+    assert.match(text, /owner.inspection evidence is checked before final behavioral reconciliation/);
+    assert.match(text, /Source digest: [a-f0-9]{64}/);
+    assert.match(text, /Verification: select relevant acceptance/);
+    const flowContext = resolveContext(graph, w.selectors, "Jujutsu integration branch handover", [], "task");
+    const flow = explain(flowContext);
+    assert.match(flow, /Original implementation guidance:/);
+    assert.match(flow, /runtime binding/i);
+    assert.match(flow, /No executable detector reference declared/);
+  } finally { w.cleanup(); }
 });
