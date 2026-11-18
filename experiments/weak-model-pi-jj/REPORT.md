@@ -44,3 +44,9 @@ Linear can be accessed through the existing agent-side MCP workflow; no work-man
 Next viable experiment: use the smallest **tool-call-capable** model, run the same paired baseline/graph task with independently held acceptance, capture genuine Pi tool executions and revisions, and only then judge agent quality and guidance impact. Keep any real-model comparison separate from D008's required weak/strong model balanced design.
 
 The experimental branch `experiment/weak-model-pi-jj` does not change `main`, production consumers, legacy ATDD-Bun/Flow or external task state.
+
+## Tool-use validity gate added after the recorded experiment
+
+The experimental follow-up now runs `experiments/weak-model-pi-jj/assess.mjs` after the two agent conditions. It counts top-level Pi `tool_execution_start` and `tool_execution_end` records and emits `results/pair-validity.json`. Fake JSON-shaped assistant text never counts as tool execution. `UNQUALIFIED_TOOL_USE` is the expected classification for the recorded 0.5B pilot; `TOOL_USE_OBSERVED` would qualify only this exploratory smoke, **not D008 effectiveness**. A future workflow run must publish its own result; this guard does not retroactively produce new model evidence.
+
+The next trial needs the smallest separately witnessed tool-call-capable model, identical immutable base/acceptance manifests, isolated matched baseline/graph trials, and independently reviewed code outcomes. See [D008 protocol](../../docs/D008-OUTCOME-PROTOCOL.md). No reported success is inferred from a green evidence-collection workflow.
