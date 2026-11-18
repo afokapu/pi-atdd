@@ -83,6 +83,7 @@ class Rule:
     fix_hint: str
     kind: str
     status: str
+    disposition: str | null
 
 
 @dataclass(frozen=True)
@@ -132,6 +133,10 @@ def load_catalog(sources: Iterable[dict[str, str]], repo: Path) -> Catalog:
             if id_ in rules:
                 raise GraphError(f"{file}: duplicate rule_id {id_} (previously {rules[id_].path})")
             body = entry.get("content") if isinstance(entry.get("content"), dict) else {}
+            metadata = entry.get("metadata") if isinstance(entry.get("metadata"), dict) else {}
+            disposition = metadata.get("disposition")
+            if disposition is not None and disposition not in {"strict", "advisory", "suppress-and-clean", "documentation-only"}:
+                raise GraphError(f"{file}: unknown convention treatment {disposition!r}")
             rules[id_] = Rule(
                 id=id_, path=f"{origin}/{file.relative_to(root).as_posix()}",
                 statement=str(entry.get("statement") or ""),
@@ -139,6 +144,7 @@ def load_catalog(sources: Iterable[dict[str, str]], repo: Path) -> Catalog:
                 fix_hint=str(body.get("fix_hint") or ""),
                 kind=str(entry.get("kind") or "rule"),
                 status=str(entry.get("status") or "active"),
+                disposition=disposition,
             )
             local_nodes.add(id_)
         graph_file = root / "relationships.yaml"
@@ -175,6 +181,8 @@ def load_catalog(sources: Iterable[dict[str, str]], repo: Path) -> Catalog:
 
 def _match_selector(selector: dict, task: str, paths: list[str], operation: str) -> tuple[bool, list[str]]:
     operations = selector.get("operations", [])
+    if not isinstance(operations, list) or not all(isinstance(x, str) for x in operations):
+        raise GraphError(f"selector {selector.get('id')}: operations must be an array of strings")
     if operations and operation not in operations:
         return False, []
     globs = selector.get("paths", [])
@@ -210,6 +218,8 @@ def resolve(catalog: Catalog, selectors: list[dict], task: str, paths: list[str]
         for id_ in ids:
             if id_ not in catalog.rules:
                 raise GraphError(f"selector {selector['id']}: unknown convention {id_!r}")
+            if catalog.rules[id_].status != "active":
+                raise GraphError(f"selector {selector['id']}: inactive convention {id_!r}")
             seeds.setdefault(id_, []).extend(f"{selector['id']}:{e}" for e in evidence)
     selected = set(seeds)
     reasons = {id_: list(dict.fromkeys(v)) for id_, v in seeds.items()}
@@ -236,7 +246,8 @@ def resolve(catalog: Catalog, selectors: list[dict], task: str, paths: list[str]
             {"id": id_, "path": catalog.rules[id_].path, "statement": catalog.rules[id_].statement,
              "summary": catalog.rules[id_].summary,
              "fix_hint": catalog.rules[id_].fix_hint[:1200],
-             "reasons": sorted(set(reasons[id_])), "kind": catalog.rules[id_].kind}
+             "reasons": sorted(set(reasons[id_])), "kind": catalog.rules[id_].kind,
+             "disposition": catalog.rules[id_].disposition}
             for id_ in shown
         ],
         "matching_ids": rules_sorted,
