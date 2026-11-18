@@ -7,6 +7,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync, symlinkSync, readFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import atdd from "../extensions/atdd.ts";
+import { digestSource } from "../src/catalog.ts";
 
 function sandbox() {
   const cwd=mkdtempSync(join(tmpdir(),"pi-atdd-pi-live-"));
@@ -120,4 +121,57 @@ test("pre-edit path guard rejects symlinked parent directories escaping the proj
     assert.match(file.reason,/outside the repository|cannot govern/);
     assert.equal(readFileSync(outsideFile,"utf8"),"export const privateValue = 1;\n");
   }finally{x.cleanup();rmSync(external,{recursive:true,force:true});}
+});
+
+
+test("budget-clipped pre-edit rules are paged and cannot be silently skipped on retry",()=>{
+  const x=sandbox();
+  try{
+    mkdirSync(join(x.cwd,"extra/conventions"),{recursive:true});
+    const ids=Array.from({length:18},(_,i)=>"extra.context."+String(i).padStart(2,"0"));
+    for(const id of ids){
+      writeFileSync(join(x.cwd,"extra/conventions",id+".convention.yaml"),[
+        "rule_id: "+id,
+        "kind: rule",
+        "status: active",
+        "statement: The agent must examine evidence and affected behavior before implementation for "+id+".",
+        "content:",
+        "  summary: Preserve the obligation expressed in "+id+".",
+        "  fix_hint: |",
+        ...Array(17).fill("    Inspect the actual boundary, tests, and observed changes before approving this work."),
+        "",
+      ].join("\n"));
+    }
+    const checksum=digestSource(join(x.cwd,"extra"),"extension");
+    writeFileSync(join(x.cwd,"atdd-pi.yaml"),[
+      "schema: pi-atdd/config/v2","sources:","  - id: Extra","    kind: extension",
+      "    path: extra","    sha256: "+checksum,"selectors: extra-selectors.yaml","",
+    ].join("\n"));
+    writeFileSync(join(x.cwd,"extra-selectors.yaml"),[
+      "schema: pi-atdd/selectors/v1","selectors:","  - id: every-rule",
+      "    always: true","    rules:",...ids.map(id=>"      - "+id),"",
+    ].join("\n"));
+    const initial=x.handlers.get("before_agent_start")!({
+      messageType:"user",prompt:"Implement a task with many applicable conventions",
+    },x.ctx);
+    assert.match(initial.message.content,/omitted by budget/);
+    const displayed=new Set<string>();
+    const event={toolName:"edit",input:{path:"src/orders/routes/create.ts"}};
+    let pages=0,allowed=false;
+    for(let attempt=0;attempt<20;attempt++){
+      const response=x.handlers.get("tool_call")!(event,x.ctx);
+      if(response===undefined){allowed=true;break;}
+      pages++;
+      assert.equal(response.block,true);
+      for(const match of response.reason.matchAll(/Convention (extra\.context\.\d+)/g)){
+        displayed.add(match[1]!);
+      }
+      if(displayed.size<ids.length)
+        assert.match(response.reason,/preflight|omitted by budget/);
+    }
+    assert.equal(allowed,true,"must eventually allow after all complete convention pages are delivered");
+    assert.ok(pages>=2,"a single context page must not claim to contain all 18 rules");
+    assert.deepEqual([...displayed].sort(),ids);
+    assert.equal(x.handlers.get("tool_call")!(event,x.ctx),undefined);
+  }finally{x.cleanup();}
 });
