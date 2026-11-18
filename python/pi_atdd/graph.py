@@ -262,6 +262,36 @@ def resolve(catalog: Catalog, selectors: list[dict], task: str, paths: list[str]
     }
 
 
+def validate_selectors(catalog: Catalog, selectors: list[dict]) -> None:
+    """Audit every selector up front, not only those activated by today's task."""
+    if not isinstance(selectors, list):
+        raise GraphError("selector registry must be an array")
+    found: set[str] = set()
+    for item in selectors:
+        if not isinstance(item, dict):
+            raise GraphError("selector must be a mapping")
+        id_ = item.get("id")
+        if not isinstance(id_, str) or not id_ or id_ in found:
+            raise GraphError(f"selector ID missing or duplicated: {id_!r}")
+        found.add(id_)
+        rules = item.get("rules")
+        if not isinstance(rules, list) or not rules or not all(isinstance(r, str) for r in rules):
+            raise GraphError(f"selector {id_}: rules must be nonempty string IDs")
+        for rule in rules:
+            if rule not in catalog.rules:
+                raise GraphError(f"selector {id_}: unknown convention {rule!r}")
+            if catalog.rules[rule].status != "active":
+                raise GraphError(f"selector {id_}: inactive convention {rule!r}")
+        for field in ("paths", "terms", "operations"):
+            values = item.get(field, [])
+            if not isinstance(values, list) or not all(isinstance(v, str) and v for v in values):
+                raise GraphError(f"selector {id_}: {field} must be an array of nonempty strings")
+        if not any((item.get("paths"), item.get("terms"), item.get("always") is True)):
+            raise GraphError(f"selector {id_}: no activation predicate")
+        if item.get("always", False) not in (False, True):
+            raise GraphError(f"selector {id_}: always must be boolean")
+
+
 def read_selectors(path: Path) -> list[dict]:
     payload = yaml_mapping(path)
     if payload.get("schema") != "pi-atdd/selectors/v1":
