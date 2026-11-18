@@ -25,7 +25,7 @@ These are blockers or unresolved questions, not completed work. Severity reflect
 
 ## First PR tests
 
-The first slice addresses R02, R12, R13 and the no-silent-waiver part of R10. Fixture tests use unchanged conventions from **ATDD-Bun and ATDD Flow**; the curated graph includes an upstream-authored reviewer -> owner-inspection mandatory requires edge. CI additionally checks the **full pinned source trees** (356 Bun convention nodes, 2 Flow nodes, 429 Bun relationship edges).
+The first slice addresses R02, R12, R13 and the no-silent-waiver part of R10. Fixture tests use unchanged conventions from **ATDD-Bun and ATDD Flow**; the curated graph includes an upstream-authored reviewer -> owner-inspection mandatory requires edge. CI additionally checks the **full pinned source trees** (356 Bun convention nodes, 2 Flow nodes, 508 Bun relationship edges).
 
 * Positive: review task activates Bun behavioral reconciliation and its mandatory owner-inspection prerequisite; Flow coordinator task activates workflow lifecycle.
 * Negative: docs-only edit returns 'unresolved', not 'no applicable conventions'.
