@@ -34,6 +34,8 @@ test("Pi delivers typed graph reasoning automatically at task start and first ed
     assert.match(initial.message.content,/coder\.bun\.security-missing-auth/);
     assert.match(initial.message.content,/Canonical source:/);
     assert.match(initial.message.content,/Original guidance:/);
+    assert.equal(x.handlers.get("before_agent_start")!({messageType:"extension",prompt:""},x.ctx),undefined,
+      "same task facts should not inject redundant reasoning every run");
     const event={toolName:"edit",input:{path:"src/orders/routes/create.ts"}};
     const pre=x.handlers.get("tool_call")!(event,x.ctx);
     assert.equal(pre.block,true);
