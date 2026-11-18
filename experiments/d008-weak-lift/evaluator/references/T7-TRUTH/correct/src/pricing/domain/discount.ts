@@ -1,0 +1,9 @@
+/** Pricing domain: supported cart discounts, in cents. */
+export class UnknownDiscountCodeError extends Error {}
+
+export function discountedSubtotal(subtotalCents: number, code?: string): number {
+  if (code === undefined) return subtotalCents;
+  if (code === "SAVE10") return Math.max(0, subtotalCents - Math.round(subtotalCents * 0.1));
+  if (code === "FLAT5") return Math.max(0, subtotalCents - 500);
+  throw new UnknownDiscountCodeError("unknown discount code: " + code);
+}

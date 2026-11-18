@@ -1,0 +1,64 @@
+diff --git a/src/orders/domain/order.ts b/src/orders/domain/order.ts
+index cb107bb..319690b 100644
+--- a/src/orders/domain/order.ts
++++ b/src/orders/domain/order.ts
+@@ -3,6 +3,21 @@ export type Order = { id: string; customerId: string; status: OrderStatus; items
+ 
+ export class OrderStateError extends Error {}
+ 
++/** Domain rule: merge a source order into a target order.
++ * Items of the source are appended to the target; the source is cancelled.
++ * Both orders must belong to the same customer and be pending. */
++export function merge(source: Order, target: Order): { merged: Order; cancelled: Order } {
++  if (source.id === target.id) throw new OrderStateError("cannot merge an order into itself");
++  if (source.customerId !== target.customerId)
++    throw new OrderStateError("orders belong to different customers");
++  if (source.status !== "pending") throw new OrderStateError("order " + source.id + " is " + source.status);
++  if (target.status !== "pending") throw new OrderStateError("order " + target.id + " is " + target.status);
++  return {
++    merged: { ...target, items: [...target.items, ...source.items] },
++    cancelled: cancel(source),
++  };
++}
++
+ /** Domain rule: only pending orders can be cancelled. Returns the new order value. */
+ export function cancel(order: Order): Order {
+   if (order.status !== "pending") throw new OrderStateError("order " + order.id + " is " + order.status);
+diff --git a/src/orders/routes/order-routes.ts b/src/orders/routes/order-routes.ts
+index 7ffd663..3d08ca4 100644
+--- a/src/orders/routes/order-routes.ts
++++ b/src/orders/routes/order-routes.ts
+@@ -1,6 +1,7 @@
+ import { Router } from "../../http/router.ts";
+ import { withCustomer, type SessionStore } from "../../http/auth.ts";
+ import type { InMemoryOrderStore } from "../integration/order-store.ts";
++import { merge, OrderStateError } from "../domain/order.ts";
+ 
+ export type OrderRouteDeps = { orders: InMemoryOrderStore; sessions: SessionStore };
+ 
+@@ -12,6 +13,25 @@ export function orderRoutes(router: Router, deps: OrderRouteDeps): Router {
+     return { status: 200, body: order };
+   }));
+ 
++  router.add("POST", "/orders/merge", withCustomer(deps.sessions, (req, _params, customer) => {
++    const { sourceId, targetId } = (req.body ?? {}) as { sourceId?: unknown; targetId?: unknown };
++    if (typeof sourceId !== "string" || typeof targetId !== "string")
++      return { status: 400, body: { error: "sourceId and targetId required" } };
++    const source = deps.orders.get(sourceId);
++    const target = deps.orders.get(targetId);
++    if (!source || !target || source.customerId !== customer.id || target.customerId !== customer.id)
++      return { status: 404, body: { error: "order not found" } };
++    try {
++      const { merged, cancelled } = merge(source, target);
++      deps.orders.save(merged);
++      deps.orders.save(cancelled);
++      return { status: 200, body: merged };
++    } catch (err) {
++      if (err instanceof OrderStateError) return { status: 409, body: { error: err.message } };
++      throw err;
++    }
++  }));
++
+   router.add("POST", "/orders", withCustomer(deps.sessions, (req, _params, customer) => {
+     const items = (req.body as { items?: unknown })?.items;
+     if (!Array.isArray(items) || !items.every(i => typeof i === "string") || items.length === 0)

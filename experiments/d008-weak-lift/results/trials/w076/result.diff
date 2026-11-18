@@ -1,0 +1,31 @@
+diff --git a/src/orders/routes/order-routes.ts b/src/orders/routes/order-routes.ts
+index 7ffd663..abce44b 100644
+--- a/src/orders/routes/order-routes.ts
++++ b/src/orders/routes/order-routes.ts
+@@ -1,6 +1,7 @@
+ import { Router } from "../../http/router.ts";
+ import { withCustomer, type SessionStore } from "../../http/auth.ts";
+ import type { InMemoryOrderStore } from "../integration/order-store.ts";
++import { cancel, OrderStateError } from "../domain/order.ts";
+ 
+ export type OrderRouteDeps = { orders: InMemoryOrderStore; sessions: SessionStore };
+ 
+@@ -22,5 +23,18 @@ export function orderRoutes(router: Router, deps: OrderRouteDeps): Router {
+     return { status: 201, body: order };
+   }));
+ 
++  router.add("POST", "/orders/:id/cancel", withCustomer(deps.sessions, (_req, params, customer) => {
++    const order = deps.orders.get(params.id!);
++    if (!order || order.customerId !== customer.id) return { status: 404, body: { error: "order not found" } };
++    try {
++      const cancelled = cancel(order);
++      deps.orders.save(cancelled);
++      return { status: 200, body: cancelled };
++    } catch (e) {
++      if (e instanceof OrderStateError) return { status: 409, body: { error: e.message } };
++      throw e;
++    }
++  }));
++
+   return router;
+ }

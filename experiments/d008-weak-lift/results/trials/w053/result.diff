@@ -1,0 +1,33 @@
+diff --git a/src/orders/routes/order-routes.ts b/src/orders/routes/order-routes.ts
+index 7ffd663..4af7d58 100644
+--- a/src/orders/routes/order-routes.ts
++++ b/src/orders/routes/order-routes.ts
+@@ -1,6 +1,7 @@
+ import { Router } from "../../http/router.ts";
+-import { withCustomer, type SessionStore } from "../../http/auth.ts";
++import { currentCustomer, withCustomer, type SessionStore } from "../../http/auth.ts";
+ import type { InMemoryOrderStore } from "../integration/order-store.ts";
++import { cancel, OrderStateError } from "../domain/order.ts";
+ 
+ export type OrderRouteDeps = { orders: InMemoryOrderStore; sessions: SessionStore };
+ 
+@@ -22,5 +23,19 @@ export function orderRoutes(router: Router, deps: OrderRouteDeps): Router {
+     return { status: 201, body: order };
+   }));
+ 
++  router.add("POST", "/orders/:id/cancel", withCustomer(deps.sessions, (req, params, customer) => {
++    if (!currentCustomer(req, deps.sessions)) return { status: 401, body: { error: "authentication required" } };
++    const order = deps.orders.get(params.id!);
++    if (!order || order.customerId !== customer.id) return { status: 404, body: { error: "order not found" } };
++    try {
++      const cancelled = cancel(order);
++      deps.orders.save(cancelled);
++      return { status: 200, body: cancelled };
++    } catch (err) {
++      if (err instanceof OrderStateError) return { status: 409, body: { error: err.message } };
++      throw err;
++    }
++  }));
++
+   return router;
+ }

@@ -1,0 +1,52 @@
+diff --git a/src/orders/domain/order.ts b/src/orders/domain/order.ts
+index cb107bb..f6f332a 100644
+--- a/src/orders/domain/order.ts
++++ b/src/orders/domain/order.ts
+@@ -8,3 +8,13 @@ export function cancel(order: Order): Order {
+   if (order.status !== "pending") throw new OrderStateError("order " + order.id + " is " + order.status);
+   return { ...order, status: "cancelled" };
+ }
++
++/** Domain rule: merge source order items into target order and cancel source. Returns both new order values. */
++export function merge(source: Order, target: Order): { source: Order; target: Order } {
++  if (source.status !== "pending") throw new OrderStateError("source order " + source.id + " is " + source.status);
++  if (target.status !== "pending") throw new OrderStateError("target order " + target.id + " is " + target.status);
++  return {
++    source: { ...source, status: "cancelled" },
++    target: { ...target, items: [...target.items, ...source.items] }
++  };
++}
+diff --git a/src/orders/routes/order-routes.ts b/src/orders/routes/order-routes.ts
+index 7ffd663..3ef94ce 100644
+--- a/src/orders/routes/order-routes.ts
++++ b/src/orders/routes/order-routes.ts
+@@ -1,6 +1,7 @@
+ import { Router } from "../../http/router.ts";
+ import { withCustomer, type SessionStore } from "../../http/auth.ts";
+ import type { InMemoryOrderStore } from "../integration/order-store.ts";
++import { merge } from "../domain/order.ts";
+ 
+ export type OrderRouteDeps = { orders: InMemoryOrderStore; sessions: SessionStore };
+ 
+@@ -22,5 +23,21 @@ export function orderRoutes(router: Router, deps: OrderRouteDeps): Router {
+     return { status: 201, body: order };
+   }));
+ 
++  router.add("POST", "/orders/merge", withCustomer(deps.sessions, (req, _params, customer) => {
++    const { sourceId, targetId } = req.body as { sourceId?: unknown; targetId?: unknown };
++    if (typeof sourceId !== "string" || typeof targetId !== "string")
++      return { status: 400, body: { error: "sourceId and targetId required" } };
++    const sourceOrder = deps.orders.get(sourceId);
++    const targetOrder = deps.orders.get(targetId);
++    if (!sourceOrder || sourceOrder.customerId !== customer.id)
++      return { status: 404, body: { error: "source order not found" } };
++    if (!targetOrder || targetOrder.customerId !== customer.id)
++      return { status: 404, body: { error: "target order not found" } };
++    const { source, target } = merge(sourceOrder, targetOrder);
++    deps.orders.save(source);
++    deps.orders.save(target);
++    return { status: 200, body: { sourceId: source.id, targetId: target.id } };
++  }));
++
+   return router;
+ }

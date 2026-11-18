@@ -1,0 +1,55 @@
+diff --git a/src/orders/domain/order.ts b/src/orders/domain/order.ts
+index cb107bb..ee47329 100644
+--- a/src/orders/domain/order.ts
++++ b/src/orders/domain/order.ts
+@@ -8,3 +8,11 @@ export function cancel(order: Order): Order {
+   if (order.status !== "pending") throw new OrderStateError("order " + order.id + " is " + order.status);
+   return { ...order, status: "cancelled" };
+ }
++
++/** Domain rule: merge source order items into target order. Source order must be cancelled separately. */
++export function mergeItems(target: Order, source: Order): Order {
++  if (source.status !== "pending" || target.status !== "pending") {
++    throw new OrderStateError("both orders must be pending");
++  }
++  return { ...target, items: [...target.items, ...source.items] };
++}
+diff --git a/src/orders/routes/order-routes.ts b/src/orders/routes/order-routes.ts
+index 7ffd663..580e92b 100644
+--- a/src/orders/routes/order-routes.ts
++++ b/src/orders/routes/order-routes.ts
+@@ -1,6 +1,7 @@
+ import { Router } from "../../http/router.ts";
+-import { withCustomer, type SessionStore } from "../../http/auth.ts";
++import { withCustomer, type SessionStore, currentCustomer } from "../../http/auth.ts";
+ import type { InMemoryOrderStore } from "../integration/order-store.ts";
++import { cancel, mergeItems } from "../domain/order.ts";
+ 
+ export type OrderRouteDeps = { orders: InMemoryOrderStore; sessions: SessionStore };
+ 
+@@ -22,5 +23,25 @@ export function orderRoutes(router: Router, deps: OrderRouteDeps): Router {
+     return { status: 201, body: order };
+   }));
+ 
++  router.add("POST", "/orders/merge", (req) => {
++    const customer = currentCustomer(req, deps.sessions);
++    if (!customer) return { status: 401, body: { error: "authentication required" } };
++    const sourceId = (req.body as { sourceId?: unknown })?.sourceId;
++    const targetId = (req.body as { targetId?: unknown })?.targetId;
++    if (typeof sourceId !== "string" || typeof targetId !== "string")
++      return { status: 400, body: { error: "sourceId and targetId required" } };
++    const source = deps.orders.get(sourceId);
++    const target = deps.orders.get(targetId);
++    if (!source || !target)
++      return { status: 404, body: { error: "order not found" } };
++    if (source.customerId !== customer.id || target.customerId !== customer.id)
++      return { status: 403, body: { error: "order not owned by customer" } };
++    const mergedTarget = mergeItems(target, source);
++    const cancelledSource = cancel(source);
++    deps.orders.save(mergedTarget);
++    deps.orders.save(cancelledSource);
++    return { status: 200, body: { merged: true } };
++  });
++
+   return router;
+ }
