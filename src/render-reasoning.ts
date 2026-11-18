@@ -22,6 +22,7 @@ function proofLines(root:Proof,max=8):string[] {
         " ("+derivation.source+")");
       derivation.premises.forEach(p=>walk(p,depth+1));
     }
+    seen.delete(node.key); // shared DAG evidence is not a cycle
   };
   walk(root,0);
   return out.slice(0,max);
