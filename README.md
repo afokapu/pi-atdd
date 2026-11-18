@@ -80,3 +80,19 @@ Implemented: TypeScript graph parser, locked offline bundle, on-demand context r
 Not yet proven: complete rule activation for all 358 nodes, closure of external graph dependencies, extraction of code-embedded policies, acceptance traceability parity, Jujutsu integration branches, durable agent messaging, Linear integration, or a safe consumer cutover. Existing ATDD-Bun and Flow consumers remain unchanged. PR #1 is a draft; **do not treat catalog presence as full graph or verification parity**.
 
 [Acceptance audit](docs/ACCEPTANCE-AUDIT.md) · [Migration ledger](docs/MIGRATION-LEDGER.md) · [Code-to-convention candidates](docs/CONVENTION-CANDIDATES.md) · [Adversarial checks](docs/ADVERSARIAL-TEST-PLAN.md)
+
+
+## PLT-69 — incremental inference (stacked draft PR #2)
+
+The Pi adapter now uses a **positive, typed, provenance-aware inference engine** instead of keyword/path matching alone. Existing selectors emit explicit evidence facts; TypeScript inference derives applicable rules and transitive mandatory requirements. Adapter-authored facts include observed task/operation/file/layer and (only from a trusted provider) phase/authority. Absent facts remain UNKNOWN, not false or waived.
+
+The engine materializes finite recursive positive rules, keeps independent proof supports, and performs dependency-directed deletion plus local rederivation to remove obsolete evidence—including recursive cycles without surviving base facts. The original offline Bun/Flow YAML, dispositions, and 508 relationship edges remain byte-identical; the 44 external references are still reported and missing mandatory dependencies make a context INCOMPLETE.
+
+Pi sends the relevant original guidance, canonical source, provenance digest, proof facts and authored relationship reasons within a bounded context. First-edit guidance is not an enforcement claim. A read-only Git/JJ observer attempts to notice changes made via shell/custom tools after execution and informs Pi; if the repository cannot be inspected, the result is UNKNOWN and CI remains authoritative.
+
+- **Engine:** src/inference.ts; src/reasoning-context.ts
+- **Pi:** src/pi-activation.ts, src/render-reasoning.ts, src/repository-observer.ts
+- **Challenge:** src/challenge.ts (write-once, pending independent authenticated review; no self-waiver)
+- **Mandatory outcome:** [D008 experiment](docs/D008-OUTCOME-PROTOCOL.md) and [PLT-69 acceptance audit](docs/PLT-69-ACCEPTANCE-AUDIT.md)
+
+**D008 remains NOT RUN against actual weak/strong models.** Fixture tests prove that the checker catches false-green assertions; they do not prove that graph-driven guidance improves model decisions. This stacked PR must remain draft until the required independent model trials and outstanding integration gaps are judged.

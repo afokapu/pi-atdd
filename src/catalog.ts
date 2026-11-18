@@ -137,7 +137,7 @@ export function loadCatalog(sources: SourceSpec[], cwd: string): Catalog {
   const unresolvedEdges = edges.filter(e => !rules.has(e.source) || !rules.has(e.target));
   return { rules, edges, provenance, unresolvedEdges };
 }
-function matchesGlob(file: string, pattern: string): boolean {
+export function matchesGlob(file: string, pattern: string): boolean {
   let regex = "^";
   for (let i = 0; i < pattern.length;) {
     const ch = pattern[i]!;
