@@ -1,5 +1,4 @@
 /** Pi-native context activation. The Pi extension contains no Python process or toolchain. */
-import { existsSync } from "node:fs";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadCatalog, loadConfig, resolveContext, type Catalog, type Selector } from "../src/catalog.ts";
@@ -37,7 +36,6 @@ export default function atdd(pi: ExtensionAPI) {
   const sent = new Set<string>();
   const unresolvedPaths = new Set<string>();
 
-  const ready = (cwd: string): boolean => existsSync(resolve(cwd, "atdd-pi.yaml"));
   function ensure(cwd: string): void {
     if (catalog && cwdKey === cwd) return;
     const config = loadConfig(cwd);
@@ -50,8 +48,8 @@ export default function atdd(pi: ExtensionAPI) {
   pi.registerCommand("atdd", {
     description: "Show ATDD convention activation status for the current project",
     handler: async (_args, ctx) => {
-      if (!ctx.isProjectTrusted() || !ready(ctx.cwd)) {
-        ctx.ui.notify("ATDD not configured or project not trusted", "warning");
+      if (!ctx.isProjectTrusted()) {
+        ctx.ui.notify("ATDD requires a trusted project", "warning");
         return;
       }
       try {
