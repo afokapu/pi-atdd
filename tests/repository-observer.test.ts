@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { observeRepository } from "../src/repository-observer.ts";
@@ -42,4 +42,17 @@ test("absent VCS returns UNKNOWN, never 'no changed files'",()=>{
     assert.equal(r.status,"unknown");
     assert.ok(r.reason?.includes("cannot be independently observed"));
   } finally {rmSync(cwd,{recursive:true,force:true});}
+});
+
+test("repo observation refuses to read through symlinks leaving the checkout",()=>{
+  const t=setup();
+  const outside=mkdtempSync(join(tmpdir(),"pi-atdd-outside-"));
+  try{
+    const privateFile=join(outside,"private.ts");
+    writeFileSync(privateFile,"const private_secret = 'do not read';\n");
+    symlinkSync(privateFile,join(t.cwd,"pointer.test.ts"));
+    const r=observeRepository(t.cwd);
+    assert.equal(r.status,"observed");
+    assert.equal(r.snapshot?.dirty.get("pointer.test.ts"),"external-symlink");
+  }finally{t.finish();rmSync(outside,{recursive:true,force:true});}
 });
