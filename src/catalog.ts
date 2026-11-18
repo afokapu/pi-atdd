@@ -10,6 +10,7 @@ export type SourceSpec = { id: string; path: string; kind: SourceKind; sha256: s
 export type Convention = {
   id: string; file: string; source: string; statement: string; kind: string;
   disposition: string | null; exceptions: string[]; summary: string; guidance: string;
+  implementationRef: string | null;
 };
 export type Relation = {
   source: string; target: string; type: string; constraint: string; control: string;
@@ -27,7 +28,7 @@ export type Selector = {
 export type Context = {
   status: "matched" | "unresolved"; rules: Array<Convention & { reasons: string[] }>;
   matchingIds: string[]; truncated: boolean; sourceLocks: Catalog["provenance"];
-  unresolvedReferences: Relation[]; note: string;
+  unresolvedReferences: Relation[]; relatedRelations: Relation[]; note: string;
 };
 const edgeTypes = new Set(["requires", "blocks", "enables", "follows", "awaits",
   "triggered_by", "starts_with", "runs_alongside", "finishes_with", "relieves"]);
@@ -103,7 +104,7 @@ export function loadCatalog(sources: SourceSpec[], cwd: string): Catalog {
     for (const file of files) {
       const yaml = readYaml(file), id = str(yaml.rule_id);
       if (!id || localIds.has(id) || rules.has(id)) throw new GraphError("missing/duplicate convention ID " + id + " at " + file);
-      const metadata = obj(yaml.metadata), content = obj(yaml.content), disposition = metadata.disposition ?? null;
+      const metadata = obj(yaml.metadata), content = obj(yaml.content), implementation = obj(yaml.implementation), disposition = metadata.disposition ?? null;
       if (disposition !== null && !dispositions.has(String(disposition))) throw new GraphError("unknown disposition " + String(disposition));
       const exceptions = yaml.exceptions ?? content.exceptions ?? [];
       if (!Array.isArray(exceptions) || !exceptions.every(e => typeof e === "string")) throw new GraphError(file + ": invalid exceptions");
@@ -112,6 +113,7 @@ export function loadCatalog(sources: SourceSpec[], cwd: string): Catalog {
         id, file: src.id + "/" + rel, source: src.id, statement: str(yaml.statement),
         kind: str(yaml.kind) || "rule", disposition: disposition === null ? null : String(disposition),
         exceptions, summary: str(content.summary), guidance: str(content.fix_hint) || str(content.canonical_policy) || str(content.normative_text),
+        implementationRef: str(implementation.ref) || null,
       });
       localIds.add(id);
     }
@@ -203,6 +205,7 @@ export function resolveContext(catalog: Catalog, selectors: Selector[], task: st
     status: matchingIds.length ? "matched" : "unresolved",
     matchingIds, truncated: matchingIds.length > limit, sourceLocks: catalog.provenance,
     unresolvedReferences: catalog.unresolvedEdges,
+    relatedRelations: catalog.edges.filter(edge => selected.has(edge.source) && selected.has(edge.target)),
     rules: matchingIds.slice(0, limit).map(id => ({ ...catalog.rules.get(id)!, reasons: [...reasons.get(id)!].sort() })),
     note: matchingIds.length
       ? "Context is guidance, not proof of compliance; validate required checks independently."
