@@ -28,3 +28,13 @@ The eight canonical Given/When/Then acceptance files are in plan/acceptances/E00
 ## Review boundary
 
 Request an independent semantic review only after code-specific acceptance cases are stable. Keep this PR a draft until D006 and D007 integration boundaries are explicit, D008 experiment results exist, unresolved graph references are governed, and the original PLT-64 branch reaches its own review boundary. A passing CI report is evidence of current test success, not approval.
+
+## Adversarial failure discovered during implementation
+
+The first recursive retraction regression test exposed **mutable-premise corruption**: the join evaluator stored references to its scratch match array rather than immutable copies. A later candidate could rewrite a previously recorded proof, sometimes making a live derivation appear to depend on itself. This would corrupt both explanation fidelity and reverse-dependency lineage. Fixed in src/inference.ts by snapshotting every derived support's premise array. Added a specific multi-root cyclic survival and cross-join lineage test; both pass in the corrected CI suite.
+
+The D008 checker was also tightened to reject uncommitted worktree changes, result revisions that do not descend from the trusted baseline, and acceptance test files changed by the coding agent. A passing test run against an agent-rewritten test is not independent evidence. Write-once challenge records now verify their content-derived IDs when read and before authenticated review.
+
+## Current verified CI
+
+[GitHub Actions run 44279189265](https://github.com/afokapu/pi-atdd/actions/runs/44279189265) passed after the immutable-support correction, including TypeScript typechecks, unit/integration tests, the full pinned catalog, actual Pi RPC registration and local package installation. Subsequent documentation-only changes require a fresh status check at the final PR revision. **D008 remains NOT RUN with real models.**
