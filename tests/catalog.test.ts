@@ -150,7 +150,7 @@ test("reviewed reasoning package delivers original guidance, graph rationale and
     const context = resolveContext(graph, w.selectors, "Final behavioral review", [], "task");
     const text = explain(context);
     assert.match(text, /Original implementation guidance:/);
-    assert.match(text, /canonical source/i);
+    assert.match(text, /Canonical file:/);
     assert.match(text, /atdd-bun.review.behavioral-reconciliation/);
     assert.match(text, /Related obligation:/);
     assert.match(text, /owner.inspection evidence is checked before final behavioral reconciliation/);
