@@ -16,7 +16,7 @@ cat > "$HOME/.pi/agent/models.json" <<'JSON'
      "models":[{"id":"weak-coder","name":"Qwen2.5-Coder-0.5B-Instruct-Q4_K_M",
        "reasoning":false,"input":["text"],
        "cost":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},
-       "contextWindow":4096,"maxTokens":768}]
+       "contextWindow":16384,"maxTokens":1024}]
    }
  }
 }
