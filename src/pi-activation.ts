@@ -73,15 +73,17 @@ export default function atdd(pi:ExtensionAPI):void {
   });
   pi.on("before_agent_start",(event,ctx)=>{
     if(!ctx.isProjectTrusted())return;
-    if(event.messageType==="user"){
+    const newTask=event.messageType==="user";
+    if(newTask){
       serial++;task=event.prompt||"unknown task";reset();
       observedRepo=observeRepository(ctx.cwd).snapshot;
     }
     try{
       const result=observe(ctx.cwd,"task","pi-event","Pi before_agent_start");
-      newlyRelevant(result);
+      const newRules=newlyRelevant(result);
+      if(!newTask&&!newRules.length)return; // do not replay identical guidance on repeated runs
       return {message:{customType:"pi-atdd-inference",
-        content:renderReasoned(result,undefined,12_000),display:false}};
+        content:renderReasoned(result,newRules.length?newRules:undefined,12_000),display:false}};
     }catch(e){
       reset(); // no partially materialized conclusions survive a failed inference
       return {message:{customType:"pi-atdd-error",
