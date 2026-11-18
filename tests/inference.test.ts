@@ -181,3 +181,45 @@ test("deletion rederivation costs less work than cold construction on unrelated 
   assert.equal(e.query("active",["step:45"]).status,"unknown");
   // The fixture is a cost sanity test, not a model-performance claim.
 });
+
+
+test("bounded insertion failure poisons the engine; no partial query or retry is permitted",()=>{
+  const e=new PositiveReasoner([{
+    id:"cross",source:"test",
+    head:atom("derived","?x"),
+    body:[atom("trigger","?x"),atom("candidate","?y")],
+  }],1);
+  e.assert(fact("candidate-1","candidate","a"));
+  e.assert(fact("candidate-2","candidate","b"));
+  assert.throws(()=>e.assert(fact("trigger-1","trigger","scope")),/join bound exceeded/);
+  assert.throws(()=>e.query("derived",["scope"]),/engine invalidated/);
+  assert.throws(()=>e.facts(),/engine invalidated/);
+  assert.throws(()=>e.has("trigger",["scope"]),/engine invalidated/);
+  assert.throws(()=>e.retract("candidate-1"),/engine invalidated/);
+  assert.throws(()=>e.assert(fact("third","candidate","c")),/engine invalidated/);
+  const rebuilt=new PositiveReasoner([{id:"single",source:"test",
+    head:atom("derived","?x"),body:[atom("trigger","?x")]}]);
+  rebuilt.assert(fact("fresh","trigger","scope"));
+  assert.equal(rebuilt.query("derived",["scope"]).status,"true");
+});
+
+test("bounded deletion failure poisons the engine after partial over-deletion",()=>{
+  const rules:Rule[]=[
+    {id:"seed-rule",source:"test",head:atom("active","?x"),body:[atom("seed","?x")]},
+    {id:"next-rule",source:"test",head:atom("active","?y"),
+      body:[atom("active","?x"),atom("edge","?x","?y")]},
+  ];
+  const e=new PositiveReasoner(rules,1000);
+  e.assert(fact("ab","edge","a","b"));
+  e.assert(fact("ba","edge","b","a"));
+  e.assert(fact("bc","edge","b","c"));
+  e.assert(fact("seed-a","seed","a"));
+  e.assert(fact("seed-b","seed","b"));
+  assert.equal(e.has("active",["a"]),true);
+  // Fault injection: lower the public engine's private cost guard after the
+  // initial valid materialization to exercise the deletion exception path.
+  (e as unknown as {maxSteps:number}).maxSteps=1;
+  assert.throws(()=>e.retract("seed-a"),/rederivation join bound exceeded/);
+  assert.throws(()=>e.query("active",["b"]),/engine invalidated/);
+  assert.throws(()=>e.assert(fact("seed-c","seed","c")),/engine invalidated/);
+});
