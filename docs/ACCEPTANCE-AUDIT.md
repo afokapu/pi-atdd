@@ -7,12 +7,12 @@
 | Criterion | Evidence | Status / gap |
 |---|---|---|
 | AC-UNIT-001 — real Pi install/discovery | `tests/pi-rpc-smoke.ts` starts the actual Pi RPC runtime with the extension and queries `get_commands`; `npm run typecheck` checks Pi SDK types | **PASS for real extension loading**, not proof of publishing to npm or installation across every supported host |
-| AC-UNIT-002 — Bun/Flow canonical conventions and graph | `tests/catalog.test.ts` exercises unchanged copies of Bun and Flow conventions and authored edge types; `tests/full-catalog-smoke.ts` loads the complete version-pinned upstream roots | **PARTIAL until complete upstream-source test passes**. Even once it passes, external graph references may remain unresolved, and every rule's activation applicability is not yet mapped |
+| AC-UNIT-002 — Bun/Flow canonical conventions and graph | `tests/catalog.test.ts` exercises unchanged copies of Bun and Flow conventions and authored edge types; `tests/full-catalog-smoke.ts` loads the complete version-pinned upstream roots | **PARTIAL**. Full-corpus source loading passed in CI (356 Bun nodes + 2 Flow; 508 Bun edges); external graph references remain unresolved, and individual rule applicability is not yet exhaustively mapped |
 | AC-UNIT-003 — context-on-demand | `extensions/atdd.ts` + `tests/catalog.test.ts`: real resolver invoked on task-start and pre-edit; one-shot newly relevant rules, deduplication and unknown-path behavior | **PARTIAL**. Applies only to built-in write/edit hooks and explicit selectors; edits through bash/custom tools or dynamically generated files can evade pre-edit activation. Neither hook-based guidance nor model behavior is an independent correctness gate |
 | AC-UNIT-004 — graph integrity | Negative cases for source hash drift, duplicate YAML fields, dormant selector typo and unresolved mandatory dependency in `tests/catalog.test.ts` | **PASS on current fixtures**; full-catalog closure and changing upstream source version require additional parity checks |
 | AC-UNIT-005 — TypeScript test verification | `src/verify.ts`, `src/cli.ts`, `tests/verify.test.ts`; passing target, unrelated failing target, traversal/option injection, timeout; scrub inherited `NODE_TEST_CONTEXT` to prevent false green | **PASS on explicit Node tests**; Bun runner remains unexercised and test-impact selection is not implemented |
 | AC-UNIT-006 — adversarial migration inventory | [MIGRATION-LEDGER](MIGRATION-LEDGER.md), [CONVENTION-CANDIDATES](CONVENTION-CANDIDATES.md), [ADVERSARIAL-TEST-PLAN](ADVERSARIAL-TEST-PLAN.md), original Flow lifecycle and Bun review conventions | **PARTIAL**. Source modules have been classified, but a rule-by-rule code-versus-YAML audit with examples and detection equivalence is not complete; PLT-65 owns exhaustive audit |
-| AC-INTEGRATION-007 — CI/review boundary | GitHub Actions performs TypeScript typecheck, unit tests, schema validation, upstream corpus smoke and actual Pi RPC discovery. Draft PR #1 cannot be merged as part of this author's work | **PARTIAL until all steps pass at the final revision**; no independent review is recorded |
+| AC-INTEGRATION-007 — CI/review boundary | GitHub Actions performs TypeScript typecheck, unit tests, schema validation, upstream corpus smoke and actual Pi RPC discovery. Draft PR #1 cannot be merged as part of this author's work | **PARTIAL**. Typecheck, TypeScript tests, full source loading and real Pi RPC all passed in CI at a tested revision; no independent review is recorded and later commits still require fresh CI |
 
 ## Adversarial findings from the corrected implementation
 
@@ -31,7 +31,7 @@
 
 ### Outstanding checks before reviewer request
 
-- Record final full-catalog smoke result against exact original commits.
+- Complete source-catalog smoke passed in CI at pinned ATDD-Bun and Flow commits; confirm it passes at the final revision.
 - Verify real Pi RPC startup on the same final commit.
 - Confirm there is no Python implementation/runtime file in PR1 and the README/Linear issue specify TypeScript only.
 - Record deliberate boundaries for untouched Linear/JJ/Flow runtime behavior rather than claim replacement.
