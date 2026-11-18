@@ -75,6 +75,7 @@ function instantiate(pattern: Atom, binding: ReadonlyMap<string, string>): Groun
 export class PositiveReasoner {
   private readonly rules: Rule[];
   private readonly bodyIndex = new Map<string, RuleIndex[]>();
+  private readonly headIndex = new Map<string, Rule[]>();
   private readonly records = new Map<string, RecordFact>();
   private readonly predicateIndex = new Map<string, Set<string>>();
   private readonly reverse = new Map<string, Set<string>>();
@@ -89,6 +90,8 @@ export class PositiveReasoner {
       validateRule(rule);
       if (ids.has(rule.id)) throw new Error("duplicate inference rule: " + rule.id);
       ids.add(rule.id);
+      this.headIndex.set(rule.head.predicate,
+        [...(this.headIndex.get(rule.head.predicate) ?? []),rule]);
       rule.body.forEach((atom, slot) => {
         const entries = this.bodyIndex.get(atom.predicate) ?? [];
         entries.push({ rule, slot });
@@ -153,6 +156,45 @@ export class PositiveReasoner {
     }
     return { added: added.sort(), scans, supports };
   }
+  /** Local DRed rederivation: regenerate only previously affected *ground heads*.
+   * Iterative positive joins start from surviving extensional facts and
+   * unaffected derived facts. A cyclic justification without a base cannot
+   * spontaneously resurrect itself.
+   */
+  private rederiveAffected(targets: ReadonlyMap<string, Ground>): { scans:number; supports:number } {
+    let scans=0,supports=0,progress=false;
+    do {
+      progress=false;
+      for(const [targetKey,target] of targets){
+        for(const rule of this.headIndex.get(target.predicate) ?? []){
+          const headBindings=unify(rule.head,target,new Map());
+          if(!headBindings)continue;
+          const matched=new Array<string>(rule.body.length);
+          const match=(index:number,bound:ReadonlyMap<string,string>):void=>{
+            if(index===rule.body.length){
+              const produced=instantiate(rule.head,bound);
+              if(groundKey(produced.predicate,produced.args)!==targetKey)return;
+              const output=this.support(target,rule,matched);
+              if(output.support){supports++;progress=true;}
+              return;
+            }
+            const pattern=rule.body[index]!;
+            for(const key of this.predicateIndex.get(pattern.predicate)??[]){
+              if(++scans>this.maxSteps)throw new Error("rederivation join bound exceeded (fail closed)");
+              const candidate=this.records.get(key)!;
+              const bindings=unify(pattern,candidate.fact,bound);
+              if(!bindings)continue;
+              matched[index]=key;
+              match(index+1,bindings);
+            }
+          };
+          match(0,headBindings);
+        }
+      }
+    }while(progress);
+    return {scans,supports};
+  }
+
   assert(fact: Fact): Delta {
     if (!fact || !fact.id || !fact.source) throw new Error("fact needs stable id and source");
     validateAtom({ predicate: fact.predicate, terms: fact.args }, false);
@@ -182,6 +224,11 @@ export class PositiveReasoner {
         if (!affected.has(dependent)) { affected.add(dependent); queue.push(dependent); }
       }
     }
+    const affectedGround = new Map<string, Ground>();
+    for(const target of affected){
+      const record=this.records.get(target);
+      if(record)affectedGround.set(target,record.fact);
+    }
     // Over-delete *all* affected materializations, including old cyclic
     // supports. Remaining assertions and unaffected derived facts form the
     // surviving, anchored base for local rederivation.
@@ -206,7 +253,7 @@ export class PositiveReasoner {
       const atom = { predicate: asserted.predicate, args: [...asserted.args] };
       if (affected.has(groundKey(atom.predicate, atom.args))) this.getOrCreate(atom).record.assertions.set(asserted.id, asserted);
     }
-    const derivation = this.infer([...this.records.keys()], affected);
+    const derivation = this.rederiveAffected(affectedGround);
     const removed = [...affected].filter(k => !this.records.has(k)).sort();
     const changed = [...affected].filter(k => this.records.has(k)).sort();
     return { added: [], removed, changed, scans: derivation.scans, supports: derivation.supports, affected: affected.size };
