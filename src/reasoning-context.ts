@@ -5,7 +5,7 @@
  * prerequisite; no inferred Flow↔Bun edges. Legacy text/path selectors emit
  * explicit evidence facts rather than acting as an undocumented oracle.
  */
-import { matchesGlob, type Catalog, type Convention, type Relation, type Selector } from "./catalog.ts";
+import { matchesGlob, validateSelectors, type Catalog, type Convention, type Relation, type Selector } from "./catalog.ts";
 import { PositiveReasoner, groundKey, type Fact, type Proof, type Rule, type Delta } from "./inference.ts";
 
 export type Phase = "RED" | "GREEN" | "REFACTOR" | "SMOKE";
@@ -130,6 +130,7 @@ export class ReasoningSession {
   private readonly catalog: Catalog;
   private readonly selectors: Selector[];
   constructor(catalog: Catalog, selectors: Selector[]) {
+    validateSelectors(catalog,selectors);
     this.catalog = catalog; this.selectors = selectors;
     this.engine = new PositiveReasoner([...selectorRules, ...typedRules(catalog)]);
     for (const selector of selectors) {
