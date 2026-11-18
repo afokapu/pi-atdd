@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync, symlinkSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import atdd from "../extensions/atdd.ts";
@@ -93,4 +93,31 @@ test("Pi session-tree restoration invalidates old supports and reconstructs a ve
     assert.ok(!result.message.content.includes("coder.bun.security-missing-auth"));
     assert.equal(start({messageType:"extension",prompt:""},resumed),undefined);
   }finally{x.cleanup();}
+});
+
+
+test("pre-edit path guard rejects symlinked parent directories escaping the project",()=>{
+  const x=sandbox();
+  const external=mkdtempSync(join(tmpdir(),"pi-atdd-physical-outside-"));
+  try{
+    x.handlers.get("before_agent_start")!({messageType:"user",prompt:"Update secrets"},x.ctx);
+    symlinkSync(external,join(x.cwd,"src","outside-link"),"dir");
+    const blocked=x.handlers.get("tool_call")!({
+      toolName:"write",input:{path:"src/outside-link/secrets.ts"},
+    },x.ctx);
+    assert.equal(blocked.block,true);
+    assert.match(blocked.reason,/outside the repository|cannot govern/);
+    assert.equal(x.handlers.get("tool_call")!({
+      toolName:"edit",input:{path:"src/outside-link/secrets.ts"},
+    },x.ctx).block,true,"retry may not authorize the symlink escape");
+    const outsideFile=join(external,"sensitive.ts");
+    writeFileSync(outsideFile,"export const privateValue = 1;\n");
+    symlinkSync(outsideFile,join(x.cwd,"src/orders/routes/alias.ts"),"file");
+    const file=x.handlers.get("tool_call")!({
+      toolName:"edit",input:{path:"src/orders/routes/alias.ts"},
+    },x.ctx);
+    assert.equal(file.block,true);
+    assert.match(file.reason,/outside the repository|cannot govern/);
+    assert.equal(readFileSync(outsideFile,"utf8"),"export const privateValue = 1;\n");
+  }finally{x.cleanup();rmSync(external,{recursive:true,force:true});}
 });
