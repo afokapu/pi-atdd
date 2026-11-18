@@ -60,6 +60,28 @@ export default function atdd(pi:ExtensionAPI):void {
     }
     return updated;
   }
+  function restoreFromBranch(ctx:{cwd:string;sessionManager:{getBranch:()=>unknown[]}}):void{
+    serial++;reset();
+    const entries=ctx.sessionManager.getBranch();
+    const last=[...entries].reverse().find(value=>{
+      const entry=value as {type?:string;message?:{role?:string}};
+      return entry.type==="message"&&entry.message?.role==="user";
+    }) as {message?:{content?:unknown}}|undefined;
+    const content=last?.message?.content;
+    const text=typeof content==="string"?content:Array.isArray(content)?
+      content.filter(x=>x?.type==="text"&&typeof x.text==="string").map(x=>x.text).join("\n"):"";
+    task=text||"unknown task (session resume requires authoritative task lookup)";
+    observedRepo=observeRepository(ctx.cwd).snapshot;
+  }
+  // Branch changes and session replacements invalidate a predecessor's
+  // ephemeral inference state. Reconstruct the last user task if available,
+  // but never infer an authenticated role or revision from chat text.
+  pi.on("session_start",(_event,ctx)=>{
+    if(ctx.isProjectTrusted())restoreFromBranch(ctx);
+  });
+  pi.on("session_tree",(_event,ctx)=>{
+    if(ctx.isProjectTrusted())restoreFromBranch(ctx);
+  });
   pi.registerCommand("atdd",{
     description:"Inspect ATDD reasoning activation and remaining graph gaps",
     handler:async(_args,ctx)=>{
