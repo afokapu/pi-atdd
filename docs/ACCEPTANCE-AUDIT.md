@@ -40,3 +40,11 @@
 ## Offline catalog packaging decision
 
 A reviewed snapshot of the unchanged Bun/Flow YAML is committed in `vendor/` and loaded by the TypeScript Pi extension automatically. It is byte-identical to the pinned upstream commits and does not require a second repository checkout, Python runtime, or internet access during rule lookup. Local `extraSources` and `extraSelectors` support additive conventions with their own SHA locks; duplicates fail. This resolves *deployment self-containment*, not the 44 unresolved external graph edges or full activation coverage.
+
+## Independent architecture review — 2026-11-18
+
+[PR review #5950499300](https://github.com/afokapu/pi-atdd/pull/1#pullrequestreview-5950499300) has state **COMMENTED**, not APPROVED. Its three findings are: (1) fact-driven recursive applicability instead of only keyword/path selectors, (2) full useful canonical reasoning in the Pi context, (3) lifecycle-aware supports with insertion/retraction rather than a sent-rule-ID set. It also warns that model-visible guidance is not independent verification, 44 cross-source edges are unresolved, and the two Flow nodes are not explicitly connected to Bun's authored graph.
+
+- **Context guidance correction implemented in PR1:** `extensions/atdd.ts::explain` now sends authored fix/policy guidance excerpts, canonical file path and checksum, exceptions, linked relationship reasons, and existing implementation/detector references. Tested in `tests/catalog.test.ts`. **This is a formatting/provenance fix, not a completed decision engine.**
+- **Full inference and lifecycle work OPEN:** [PLT-69](https://linear.app/forge100/issue/PLT-69/pr-2a-typed-incremental-convention-inference-truth-maintenance-and) specifies typed facts, positive recursive inference, multiple supporting derivations, retraction, unknown semantics, post-edit observation, challenges, and independent checking. It is a separate vertical slice of the same TypeScript kernel and offline catalog.
+- **Review disposition remains partial:** The review did not approve the PR, and the coder does not self-certify the outstanding semantics. Do not close review threads merely because CI passed.
