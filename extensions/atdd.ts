@@ -15,7 +15,7 @@ const runner = resolve(dirname(fileURLToPath(import.meta.url)), "../python/runne
 
 type GraphContext = {
   status: "matched" | "unresolved" | "error";
-  rules?: Array<{ id: string; statement: string; summary: string; reasons: string[] }>;
+  rules?: Array<{ id: string; statement: string; summary: string; reasons: string[]; source_file?: string; exceptions?: string[]; exceptions_truncated?: boolean; disposition?: string | null }>;
   matching_ids?: string[];
   truncated?: boolean;
   note?: string;
@@ -51,6 +51,10 @@ function guidance(data: GraphContext): string {
     "ATDD conventions selected for this work (guidance, NOT a verified compliance decision):",
     ...rules.map(rule => [
       "Rule " + rule.id + ": " + (rule.statement || rule.summary).slice(0, 900),
+      "Canonical source: " + (rule.source_file || "(unknown)") + " — read the full rule before claiming an alternative realization.",
+      "Original treatment: " + (rule.disposition || "unclassified; do not infer a gate"),
+      ...(rule.exceptions || []).map(exception => "Exception: " + exception.slice(0, 450)),
+      ...(rule.exceptions_truncated ? ["More exceptions exist in the source file."] : []),
       "Activated by: " + rule.reasons.join("; "),
     ].join("\n")),
     data.truncated ? "WARNING: the selection exceeds the context limit. Consult the complete graph before claiming compliance." : "",
