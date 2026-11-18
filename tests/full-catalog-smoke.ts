@@ -9,8 +9,8 @@ const sources: SourceSpec[] = [
   { id: "ATDD-Flow", path: flow, kind: "flow", revision: "2a66019a5ecf2b7a9f999ebfa04d04c9f548f19a", sha256: digestSource(flow, "flow") },
 ];
 const catalog = loadCatalog(sources, process.cwd());
-assert.ok(catalog.rules.size >= 400, "Bun's complete convention set must be present");
-assert.ok(catalog.edges.length >= 350, "Bun's complete relationship graph must be present");
+assert.equal(catalog.rules.size, 358, "Pinned Bun catalog has 356 rules and Flow has 2");
+assert.equal(catalog.edges.length, 429, "Pinned Bun graph has 429 authored relationships");
 for (const id of [
   "coder.bun.phase-discipline", "atdd-bun.review.behavioral-reconciliation",
   "atdd-bun.review.owner-inspectability", "atdd-flow.collaboration",
