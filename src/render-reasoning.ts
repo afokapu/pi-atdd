@@ -59,7 +59,7 @@ export function renderReasoned(r:Reconciliation, ids?:readonly string[],maxChars
       " external unresolved edges; completeness is NOT established.":"",
     ...r.gaps.slice(0,8).map(g=>"MISSING mandatory graph dependency: "+g.missingId),
     r.gaps.length>8?"Other missing mandatory dependencies remain in the full reasoning report.":"",
-    !r.activations.length?"NO activation is not proof that no conventions apply; review applicability.":"",
+    !r.activations.length?"ATDD applicability unresolved (UNKNOWN). No activation is not proof that no conventions apply; review applicability.":"",
     "Rules are not waived by alternatives; an independent reviewer and CI verify binding obligations.",
   ].filter(Boolean).join("\n");
   if(warnings.length>=maxChars) return warnings.slice(0,maxChars-150)+"\nWARNING: incomplete context budget";
