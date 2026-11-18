@@ -16,17 +16,20 @@ const appendix = JSON.parse(readFileSync(join(root, "tests/fixtures/schema/appen
 ajv.addSchema(appendix, "appendix.schema.json");
 const validate = ajv.compile(schema);
 
-test("all seven implementation acceptance criteria follow the existing ATDD-Bun V2 template", () => {
+test("all formal implementation criteria follow the existing ATDD-Bun V2 template", () => {
   const dir = join(root, "plan/acceptances");
   const files = readdirSync(dir).filter(file => file.endsWith(".acceptance.yaml")).sort();
-  assert.equal(files.length, 7);
+  assert.equal(files.length, 15);
   const urns = new Set<string>();
+  const ids = new Set<string>();
   for (const file of files) {
     const doc = readYaml(join(dir, file));
     assert.equal(validate(doc), true, file + " " + JSON.stringify(validate.errors));
-    const identity = doc.identity as { urn: string; phase: string };
+    const identity = doc.identity as { urn: string; phase: string; id: string };
     assert.ok(!urns.has(identity.urn), "duplicate acceptance " + identity.urn);
     urns.add(identity.urn);
+    assert.ok(!ids.has(identity.id), "duplicate acceptance ID " + identity.id);
+    ids.add(identity.id);
     assert.equal((doc.harness as { language_hint: string }).language_hint, "typescript");
     assert.equal(identity.phase, "GREEN");
   }
