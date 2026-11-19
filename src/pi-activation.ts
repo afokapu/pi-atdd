@@ -12,7 +12,9 @@ import { ReasoningSession, type ContextObservation } from "./reasoning-context.t
 import { renderReasonedPage, type RenderedPage } from "./render-reasoning.ts";
 import { observeRepository, type RepositorySnapshot } from "./repository-observer.ts";
 import { shellWriteTargetModes } from "./shell-targets.ts";
-import { MODE_FILE, modeFromText, recordMode, repositoryRoot, resolveMode, type Mode, type Resolution } from "./mode.ts";
+import { Type } from "typebox";
+import { StringEnum } from "@earendil-works/pi-ai";
+import { MODE_FILE, guardsAtdd, modeFromText, recordMode, repositoryRoot, resolveMode, type Mode, type Resolution } from "./mode.ts";
 
 function scopedPath(cwd:string,supplied:string):string|null {
   const abs=resolve(cwd,supplied), p=relative(cwd,abs);
@@ -52,6 +54,12 @@ function outsideRepository(cwd:string,supplied:string):boolean{
   }
   try{return outside(realpathSync(root),join(realpathSync(cursor),...rest));}catch{return false;}
 }
+/** PLT-94: the model reads intent; the extension only exposes the switch, guarded. */
+const INTENT_TOOL="set_atdd_mode";
+const INTENT_RULE="Use set_atdd_mode when the user signals, in any wording or language, that the work is exploratory, "+
+  "throwaway, a scratchpad, a spike or a prototype: propose plain mode (in a repository that declares ATDD, set_atdd_mode "+
+  "asks the user to confirm and refuses without a yes); never switch to plain to avoid a convention.";
+const oneLine=(s:string)=>s.replace(/\s+/g," ").trim().slice(0,160);
 const MODE_CHOICES=["ATDD — remember for this repo","Plain — remember for this repo",
   "ATDD — this session only","Plain — this session only"];
 export default function atdd(pi:ExtensionAPI):void {
@@ -71,14 +79,54 @@ export default function atdd(pi:ExtensionAPI):void {
   let current:Resolution|undefined;
   const active=(cwd:string)=>current?.mode==="atdd"&&repositoryRoot(cwd)!==null;
   type Notify={cwd:string;ui:{notify:(message:string,type?:"info"|"warning"|"error")=>void}};
-  function setMode(ctx:Notify,mode:Mode,source:string):void{
+  function setMode(ctx:Notify,mode:Mode,source:string,announce=true):boolean{
     const changed=current?.mode!==mode;
     current={mode,source};
-    if(!changed)return;
+    if(!changed)return false;
     reset(); // a mode switch starts from a fresh repository baseline
     if(active(ctx.cwd))observedRepo=observeRepository(ctx.cwd).snapshot;
-    ctx.ui.notify("ATDD mode: "+mode+" ("+source+")","info");
+    if(announce)ctx.ui.notify("ATDD mode: "+mode+" ("+source+")","info");
+    return true;
   }
+  type IntentCtx=Notify&{mode:string;hasUI:boolean;isProjectTrusted:()=>boolean;
+    ui:{confirm:(title:string,message:string)=>Promise<boolean>}};
+  /** set_atdd_mode: every call is announced in one line and logged; plain in an ATDD repo needs the user's yes. */
+  async function switchByIntent(ctx:IntentCtx,mode:Mode,rawReason:string){
+    const reason=oneLine(rawReason||"no reason given");
+    const finish=(outcome:"switched"|"unchanged"|"refused",text:string)=>{
+      ctx.ui.notify(text,outcome==="refused"?"warning":"info");
+      pi.appendEntry("pi-atdd-mode",{mode,reason,outcome,cwd:ctx.cwd});
+      return {content:[{type:"text" as const,text}],details:{mode,reason,outcome},
+        ...(outcome==="refused"?{isError:true}:{})};
+    };
+    if(ctx.mode!=="tui"||!ctx.hasUI||!ctx.isProjectTrusted())
+      return finish("refused","ATDD mode: "+INTENT_TOOL+" refused (non-interactive or untrusted run; "+
+        "mode comes from PI_ATDD_MODE or "+MODE_FILE+")");
+    const root=repositoryRoot(ctx.cwd);
+    if(mode==="plain"&&current?.mode!=="plain"&&root&&guardsAtdd(root)){
+      const yes=await ctx.ui.confirm("Switch this session to plain mode?",
+        "This repository declares ATDD. Plain mode applies no conventions or edit guards. Reason: "+reason);
+      if(!yes)return finish("refused","ATDD mode: plain refused (repository declares ATDD and the user did not confirm; "+
+        "ask the user in the conversation before trying again)");
+    }
+    const changed=setMode(ctx,mode,INTENT_TOOL+": "+reason,false);
+    return finish(changed?"switched":"unchanged","ATDD mode: "+mode+(changed?"":", unchanged")+" ("+INTENT_TOOL+": "+reason+")");
+  }
+  pi.registerTool({
+    name:INTENT_TOOL,label:"ATDD mode",
+    description:"Switch this session between ATDD mode (conventions and edit guards) and plain mode (none). "+
+      "Interactive sessions only. In a repository that declares ATDD (atdd-pi.yaml, a plan/ directory or a recorded atdd "+
+      "mode) it asks the user to confirm plain and refuses without a yes.",
+    promptSnippet:"Switch this session between ATDD and plain mode",
+    promptGuidelines:[INTENT_RULE],
+    parameters:Type.Object({
+      mode:StringEnum(["atdd","plain"] as const),
+      reason:Type.String({description:"The user's signal, in one short line"}),
+    }),
+    defaultActive:false,
+    executionMode:"sequential",
+    execute:async(_id,params,_signal,_onUpdate,ctx)=>switchByIntent(ctx as unknown as IntentCtx,params.mode as Mode,params.reason),
+  });
   async function ask(ctx:Notify&{ui:{select:(title:string,options:string[])=>Promise<string|undefined>}}):Promise<void>{
     const choice=await ctx.ui.select("ATDD or plain for this repository?",MODE_CHOICES);
     const mode:Mode=choice?.startsWith("Plain")?"plain":"atdd";
@@ -146,6 +194,9 @@ export default function atdd(pi:ExtensionAPI):void {
   // but never infer an authenticated role or revision from chat text.
   pi.on("session_start",(_event,ctx)=>{
     current=undefined;
+    // PLT-94 MI-005: the tool and its instruction exist only in interactive, trusted sessions.
+    const others=pi.getActiveTools().filter(name=>name!==INTENT_TOOL);
+    pi.setActiveTools(ctx.mode==="tui"&&ctx.hasUI&&ctx.isProjectTrusted()?[...others,INTENT_TOOL]:others);
     if(ctx.isProjectTrusted())restoreFromBranch(ctx);
   });
   pi.on("session_tree",(_event,ctx)=>{

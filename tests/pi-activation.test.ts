@@ -23,6 +23,7 @@ function sandbox() {
   const p={
     on:(name:string,fn:Function)=>{handlers.set(name,fn);},
     registerCommand:()=>{},
+    registerTool:()=>{},
     sendMessage:(message:{customType:string;content:string},options:unknown)=>messages.push({message,options}),
   };
   atdd(p as any);
