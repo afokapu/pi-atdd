@@ -66,10 +66,10 @@ EXPLICIT = {
         "acceptance -> test binding; the profile design gives traceability.* to the Tester"),
     "traceability.test.binding-resolves": ("tester.traceability.test-binding-resolves",
         "a test names a resolvable acceptance/WMBT/train; tester-authored"),
-    "traceability.source.tested-by-present": ("tester.traceability.source-tested-by-present",
-        "the coder writes the source witness header (coder.green-header.tested-by), the tester owns closure; tester per the profile design, could be shared"),
-    "traceability.source.tested-by-resolves": ("tester.traceability.source-tested-by-resolves",
-        "source witness resolves to a test; same split as tested-by-present; tester per the profile design, could be shared"),
+    "traceability.source.tested-by-present": ("shared.traceability.source-tested-by-present",
+        "owner decision 2026-11-19: shared, because the coder writes the source witness header and the tester owns closure"),
+    "traceability.source.tested-by-resolves": ("shared.traceability.source-tested-by-resolves",
+        "owner decision 2026-11-19: shared, same split as tested-by-present"),
 }
 
 

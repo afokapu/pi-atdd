@@ -311,7 +311,7 @@ export function bundledSources(): SourceSpec[] {
   return [
     { id: "ATDD-Bun", path: join(packageRoot, "vendor/atdd-bun"), kind: "bun",
       revision: "5945d97e18310e7c862c08e73985400935d21346",
-      sha256: "8021c960e3389d832eb7ce1b8dd5c424ad60f38766dbe683cf25159ef8280d17" },
+      sha256: "f0e56c3f03ce5bcc7d15286c3eee2d5a61996b217dc89416c43b32f777bc244a" },
     { id: "ATDD-Flow", path: join(packageRoot, "vendor/atdd-flow"), kind: "flow",
       revision: "2a66019a5ecf2b7a9f999ebfa04d04c9f548f19a",
       sha256: "61665ba225ffc6c0bed6952aa8f8c9d9c0e2f0d7df3982662a2cdf50eb327438" },

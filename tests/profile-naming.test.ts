@@ -95,6 +95,9 @@ test("N-003 selecting by profile prefix returns exactly the intended family; sha
       const p = n.split(".")[0] as typeof PROFILES[number];
       assert.ok(rulesForProfile(b.catalog, p).includes(n), o + " -> " + n);
     }
+    // owner decision 2026-11-19: the source tested-by rules are shared (coder writes the header, tester owns closure)
+    for (const id of ["shared.traceability.source-tested-by-present", "shared.traceability.source-tested-by-resolves"])
+      for (const p of PROFILES) assert.ok(rulesForProfile(b.catalog, p).includes(id), p + " misses " + id);
     // a coder no longer receives the planner family
     assert.ok(!rulesForProfile(b.catalog, "coder").some(id => id.startsWith("planner.")));
     assert.throws(() => rulesForProfile(b.catalog, "nobody" as any), /unknown profile/);
