@@ -1,0 +1,394 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/planner.telemetry/planner.telemetry.acceptance-decision.convention.yaml",
+    "sha256": "67dc840e0993c6940a431403b47439484ed557855a7dee82d75abd1479f3151e"
+  },
+  "rule_id": "planner.telemetry.acceptance-decision",
+  "kind": "rule",
+  "title": "Every acceptance makes an explicit telemetry decision",
+  "activation": {
+    "facts": [
+      {
+        "fact": "path_glob",
+        "values": [
+          "<telemetry root>/**"
+        ],
+        "observability": "observable_now",
+        "note": "Adoption alternative A: a telemetry root (tracking plan) exists in the repository. Repository-level predicate, checked directly by the existing validator planner_telemetry_plan. Adoption = A OR B; either alone activates the rule."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "acceptance declaring a telemetry block"
+        ],
+        "observability": "observable_now",
+        "note": "Adoption alternative B: any acceptance in the repository declares telemetry. Repository-level predicate, inspectable from acceptance artifacts. Adoption = A OR B; either alone activates the rule."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "acceptance",
+          "tracking-plan item"
+        ],
+        "observability": "observable_now",
+        "note": "Once adopted, the rule applies to every acceptance and every tracking-plan item that exists (zero or more of each), including untouched files; no edit/diff gate. Absence of plan items does not suspend the acceptance-decision obligation."
+      }
+    ],
+    "fires": [
+      "Telemetry is adopted and any acceptance in the repository (new or existing, untouched) has no telemetry block — including when no tracking-plan items exist yet.",
+      "An acceptance declares disposition missing or other than required / not-applicable.",
+      "An acceptance declares required with an empty list (zero URNs).",
+      "An acceptance declares required with a URN that is malformed, non-concrete, or absent from the tracking plan.",
+      "An acceptance declares not-applicable with no rationale or a rationale under 20 characters.",
+      "A tracking-plan item (including in tracking-plan-only changes, or when no acceptance declares telemetry) references an acceptance that no acceptance declares."
+    ],
+    "doesNotFire": [
+      "No telemetry root exists and no acceptance declares telemetry (capability not adopted).",
+      "A tracking-plan item serves acceptances beyond those that list it as required (lists need not mirror).",
+      "Diagnostic logs or internal spans that no acceptance requires have no dedicated test."
+    ]
+  },
+  "given": "Telemetry is adopted: a telemetry root exists, or any acceptance declares telemetry (either alone suffices).",
+  "when": "You plan or review any acceptance or tracking-plan item.",
+  "then": "Every acceptance declares disposition `required` listing at least one well-formed concrete telemetry URN that the acceptance demands be observed emitted and that exists as a tracking-plan item under the telemetry root, or disposition `not-applicable` with a rationale of at least 20 characters.",
+  "prefer": [
+    "Shape: `telemetry: {disposition: required, events: [<concrete telemetry:event:… URN from the tracking plan>]}` or `telemetry: {disposition: not-applicable, rationale: <considered reason, ≥20 chars>}`.",
+    "List required items by kind (events, metrics, traces, logs).",
+    "Treat not-applicable as a considered answer, not the absence of one.",
+    "Make every acceptance a tracking-plan item names resolve to a declared acceptance."
+  ],
+  "avoid": [
+    "Omitting the telemetry block once adopted — silence is not a disposition.",
+    "Malformed, non-concrete or unplanned URNs (the requirement is unplannable).",
+    "Token rationales under 20 characters that are not a real answer.",
+    "Requiring a test for every debug log or internal span.",
+    "Dangling tracking-plan acceptance references.",
+    "Forcing acceptance lists and plan references to mirror each other."
+  ],
+  "unless": [
+    "Diagnostic logs and internal spans are not automatically telemetry obligations; the decision is per acceptance.",
+    "Inert until adoption: no telemetry root and no acceptance telemetry declaration → nothing emitted (see planner.telemetry.tracking-plan-schema)."
+  ],
+  "why": "An explicit per-acceptance decision removes the false choice between testing every debug log and having no observability requirement; both-direction resolution keeps traceability intact.",
+  "evidence": [
+    "Every acceptance has a telemetry block with disposition required or not-applicable.",
+    "Each required declaration lists ≥1 URN; each is well-formed, concrete, and resolves to a tracking-plan item under the telemetry root.",
+    "Each not-applicable declaration carries a rationale of ≥20 characters.",
+    "Every acceptance reference in a tracking-plan item resolves to a declared acceptance.",
+    "Validator planner_telemetry_plan reports no findings."
+  ],
+  "verifier_detail": [
+    "Adoption gate: active if a telemetry root exists OR any acceptance declares telemetry; emit nothing only if there is no telemetry root and no acceptance telemetry declaration. Presence of tracking-plan items is not required for acceptance checks.",
+    "Decision = disposition plus, for required, concrete item lists (events, metrics, traces, logs); for not-applicable, rationale length ≥ 20 characters. Missing/invalid disposition or empty required list is a finding.",
+    "required_item = concrete telemetry URN the acceptance demands be observed emitted; must exist as a tracking-plan item under the telemetry root.",
+    "Resolution checked in both directions (acceptance → plan URNs, plan item → acceptance refs); lists are not required to be mirror images because an item may serve acceptances beyond those that first required it.",
+    "Severity 2; disposition strict (see policy.strict-disposition)."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active.",
+    "Alias: TELEMETRY-ACCEPTANCE-DECISION-001.",
+    "introduced_in 0.7.0.",
+    "implementation: validator, ref planner_telemetry_plan.",
+    "Source fix_hint verbatim: 'Decide, on every acceptance:' telemetry: {disposition: required, events: [telemetry:event:be:commons:response-invocation-accepted]} or telemetry: {disposition: not-applicable, rationale: No externally useful observable outcome beyond the tested return value.} — the URN and rationale are application-specific examples, generalised in prefer[0]."
+  ],
+  "splitSuggestion": [
+    {
+      "id": "planner.telemetry.plan-acceptance-refs-resolve",
+      "then": "Every acceptance reference in a tracking-plan item resolves to a declared acceptance (no dangling traceability links).",
+      "segments": [
+        "S006",
+        "S019",
+        "S020",
+        "S021",
+        "S022"
+      ]
+    }
+  ],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Strict disposition: the validator fails on every finding; there is no advisory mode and no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "split_suggestion",
+      "text": "The reverse-direction check (tracking-plan item acceptance references must resolve to declared acceptances) is an independent obligation; kept in prefer/avoid/evidence here, proposed as planner.telemetry.plan-acceptance-refs-resolve.",
+      "justification": "Rule 2: one obligation in then."
+    },
+    {
+      "field": "prefer",
+      "text": "prefer[0] replaces the source's application-specific example URN (S026) and rationale (S029) with neutral placeholders; originals kept in audit.",
+      "justification": "Rule 4: codebase-neutral guidance."
+    },
+    {
+      "field": "activation",
+      "text": "Activation split into two explicit OR alternatives (telemetry root path_glob; acceptance declaring telemetry) with a placeholder glob '<telemetry root>/**' because the source names the telemetry root abstractly.",
+      "justification": "Make the source's adoption gate (S032) machine-queryable without narrowing it."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "prefer[3]",
+        "evidence[3]"
+      ],
+      "note": "Reverse-direction clause also proposed as split."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "structure"
+      ],
+      "note": "Term id heading; content in S008 (verifier_detail[1])."
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "then",
+        "prefer[1]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "structure"
+      ],
+      "note": "Term id heading; content in S010/S011 (verifier_detail[2])."
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "then",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "then",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "why",
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "given",
+        "avoid[0]",
+        "activation"
+      ],
+      "note": "Adoption alone activates the obligation; no requirement that plan items exist."
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "then",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "avoid[1]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "then",
+        "avoid[2]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "avoid[4]",
+        "evidence[3]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "verifier_detail[3]",
+        "avoid[5]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "verifier_detail[3]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "prefer[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "prefer[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "prefer[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "prefer[0]",
+        "audit"
+      ],
+      "note": "Application-specific URN generalised to a placeholder concrete event URN in prefer[0]; verbatim in audit."
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "prefer[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "prefer[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "prefer[0]",
+        "audit"
+      ],
+      "note": "Example rationale kept verbatim in audit; prefer[0] only requires a considered ≥20-char reason."
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "unless[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "unless[0]",
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "given",
+        "unless[1]",
+        "activation",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "identity",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "audit",
+        "evidence[4]"
+      ]
+    }
+  ]
+}

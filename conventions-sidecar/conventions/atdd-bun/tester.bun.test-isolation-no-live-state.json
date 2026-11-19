@@ -1,0 +1,310 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/tester.bun/tester.bun.test-isolation-no-live-state.convention.yaml",
+    "sha256": "3488af16431ea461e9128d15dbb0ad86324f4446bf36d5a662fab73687e8860e"
+  },
+  "rule_id": "tester.bun.test-isolation-no-live-state",
+  "kind": "rule",
+  "title": "Tests do not write to shared live state",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "test"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Applies to ALL Bun test code (any file the Bun test runner executes, or code inside test/describe/it blocks), regardless of file name and regardless of whether the test is new or pre-existing. A test-context observer (runner config / test-block detection) is needed for full coverage."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "**/*.test.*",
+          "**/*.spec.*",
+          "**/__tests__/**",
+          "**/test/**",
+          "**/tests/**"
+        ],
+        "observability": "observable_now",
+        "note": "NON-EXHAUSTIVE examples used only as a fast pre-filter for test code; a test in a differently named file is still in scope via file_kind."
+      },
+      {
+        "fact": "language",
+        "values": [
+          "typescript",
+          "javascript"
+        ],
+        "observability": "observable_now",
+        "note": "Bun realization; Python sibling patterns do not apply."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "bun_tester_discipline_detector:test-isolation-no-live-state"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Detector finding over all test code (existing and changed): `process.env.X =` assignments and write-family fs calls with a literal path outside allowed temp/fixture scopes."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "process.env assignment in test code",
+          "write-family fs call in test code"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Optional diff-level observer used only as an optimization to surface new violations early; it does NOT restrict applicability — pre-existing tests that mutate env or write to live paths are equally in scope."
+      }
+    ],
+    "fires": [
+      "Any test assigns `process.env.SOME_VAR = ...`, for whatever purpose (configuration, feature flags, setup, or anything else).",
+      "Any test calls a write-family fs function (write, append, mkdir, rm, etc.) with a literal path outside any temp/fixture directory, for whatever purpose.",
+      "An existing (unchanged) test already contains such a mutation or write when the suite or file is checked."
+    ],
+    "doesNotFire": [
+      "A test only reads files or reads `process.env`.",
+      "A test writes to a literal path containing `tmpdir`, `/tmp`, `import.meta.dir`, `__fixtures__` or `.tmp`.",
+      "A test writes using a non-literal (computed) path — the detector cannot judge it and does not report it (detector limitation, not a permission).",
+      "Production (non-test) code sets environment variables or writes files."
+    ]
+  },
+  "given": "Any test code in a Bun stack (new or existing, any file name)",
+  "when": "The test mutates `process.env` or writes to the filesystem, for any purpose",
+  "then": "The test MUST NOT mutate `process.env` nor write to a filesystem path outside a temp directory (shared live state: anything a later test also sees).",
+  "prefer": [
+    "Scope every write to a temp directory the test owns and cleans up.",
+    "Pass configuration explicitly instead of mutating the environment, e.g. `const db = connect({ url: testUrl }); // explicit, scoped`."
+  ],
+  "avoid": [
+    "Mutating `process.env` in a test, e.g. `process.env.DATABASE_URL = \"postgres://live\"; // leaks into every later test` — it looks local but is global, and is the most common, least obviously wrong form of pollution.",
+    "Writing to repository or other shared filesystem paths that later tests also see."
+  ],
+  "unless": [
+    "The path contains `tmpdir`, `/tmp`, `import.meta.dir`, `__fixtures__` or `.tmp` (test-scoped, allowed).",
+    "The operation is a read; only the write family is in scope."
+  ],
+  "why": "A polluting test does not fail; it makes a DIFFERENT test fail later, often only under a different order, with the failure pointing at the victim rather than the culprit (displaced failure). That asymmetry is why this is the family's strict rule, matching core: finding one after the fact costs days.",
+  "evidence": [
+    "bun_tester_discipline_detector reports no `process.env.X =` assignments in test code.",
+    "bun_tester_discipline_detector reports no write-family fs calls whose literal path is outside the allowed temp/fixture scopes.",
+    "Suite passes regardless of test order (no displaced failures)."
+  ],
+  "verifier_detail": [
+    "Detector: bun_tester_discipline_detector (type: validator). Flags `process.env.X =` assignments and write-family `fs` calls whose literal path is not scoped to `tmpdir` / `/tmp` / `import.meta.dir` / `__fixtures__` / `.tmp`.",
+    "Allowed path markers (substring match): `tmpdir`, `/tmp`, `import.meta.dir`, `__fixtures__`, `.tmp`.",
+    "Reads are never flagged; only the write family.",
+    "A non-literal path cannot be judged by this detector and is not reported.",
+    "Severity 4; disposition strict (matching core) — fails on every finding."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "Aliases: BUN-TEST-ISOLATION-NO-LIVE-STATE-001.",
+    "Realized by `bun_tester_discipline_detector`; Bun realization of the core obligation `tester.test-isolation.no-polluting-patterns`.",
+    "Stack-neutral obligation, RE-REALIZED for this stack: core's sibling detects Python bare-mode-init patterns, which do not exist here.",
+    "implementation: {type: validator, ref: bun_tester_discipline_detector}.",
+    "Term ids: shared_live_state, displaced_failure."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "strict: the rule fails on every finding; there is no advisory mode and no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "Test-context file_kind fact, non-exhaustive example path globs, language values, optional change-observer note, and doesNotFire for production code.",
+      "justification": "Source scopes the rule to 'A test' with no filename or change prerequisite; facts make that observable without narrowing it."
+    },
+    {
+      "field": "evidence[2]",
+      "text": "Suite passes regardless of test order.",
+      "justification": "Derived from the displaced-failure reasoning; gives reviewers a behavioral check beyond the detector."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "verifier_detail[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ],
+      "note": "term id; definition placed in then"
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "then",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "audit"
+      ],
+      "note": "term id; definition placed in why"
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "why",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "why",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "prefer[0]",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "verifier_detail[3]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "identity",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

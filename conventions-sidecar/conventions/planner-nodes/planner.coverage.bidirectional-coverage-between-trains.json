@@ -1,0 +1,256 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.coverage.bidirectional-coverage-between-trains.convention.yaml",
+    "sha256": "224f994982f6c1073ea34eb09f4b974f254101ea19a6e4605908beca598c50a6"
+  },
+  "rule_id": "planner.coverage.bidirectional-coverage-between-trains",
+  "kind": "rule",
+  "title": "Keep train and wagon references bidirectional (Train - Wagon Coverage)",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "train",
+          "wagon_manifest",
+          "wagons_not_in_train_allow_list"
+        ],
+        "observability": "observable_now",
+        "note": "Train files, wagon manifests and the wagons_not_in_train allow-list are identifiable by path/kind in the plan tree."
+      },
+      {
+        "fact": "operation",
+        "values": [
+          "create",
+          "edit",
+          "delete",
+          "rename"
+        ],
+        "observability": "observable_now",
+        "note": "Any change to a train's participants, a wagon manifest, or the allow-list can create an orphan on either side."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "train participant added/removed",
+          "train added/removed",
+          "wagon manifest added/removed/renamed",
+          "wagon status changed from draft",
+          "wagon removed from wagons_not_in_train allow-list"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Diff-level observer over train participants, the wagon manifest set/status, and the allow-list entries is needed to scope precisely."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "test_all_wagons_in_at_least_one_train",
+          "test_all_train_wagon_refs_exist"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Validator failures from the two coverage tests; these fire even when one side (trains or wagons) is empty."
+      }
+    ],
+    "fires": [
+      "Planner adds a new non-draft wagon manifest, not listed in wagons_not_in_train, that no train lists in its participants.",
+      "Planner adds a wagon manifest while the plan has no trains at all, and the wagon is neither draft nor in wagons_not_in_train.",
+      "Planner adds a `wagon:` participant to a train for which no wagon manifest exists (including when the plan has no wagon manifests).",
+      "Planner renames or deletes a wagon manifest still referenced by a train participant.",
+      "Planner removes or edits a train so that a non-draft, non-allow-listed wagon is no longer in any train.",
+      "Planner promotes a wagon out of status:draft without adding it to any train, and it is not in wagons_not_in_train.",
+      "Planner removes from wagons_not_in_train a non-draft wagon that is not in any train."
+    ],
+    "doesNotFire": [
+      "A wagon with status:draft is not yet in any train.",
+      "A wagon listed in the wagons_not_in_train allow-list is not in any train.",
+      "Edits to wagon content (features, WMBTs, acceptances) that do not change wagon identity, status, allow-list membership, or train participants."
+    ]
+  },
+  "given": "A plan containing trains and/or wagon manifests (either side may be empty), plus the wagons_not_in_train allow-list",
+  "when": "the planner adds, removes, renames, or changes the status of a wagon; adds, removes, or edits a train's participants; or changes the wagons_not_in_train allow-list",
+  "then": "Keep train-wagon coverage bidirectional with no orphan: every wagon appears in at least one train's participants (wagon -> train), and every `wagon:` participant of a train has a wagon manifest (train -> wagon).",
+  "prefer": [
+    "When creating a wagon, add it as a participant of at least one train in the same change.",
+    "When adding a `wagon:` participant to a train, create or point to an existing wagon manifest in the same change.",
+    "When renaming or removing a wagon, update every train participant that references it.",
+    "When removing a wagon from wagons_not_in_train or promoting it from draft, add it to a train in the same change."
+  ],
+  "avoid": [
+    "Leaving an orphan on either side: a wagon in no train, or a train participant with no wagon manifest.",
+    "Adding a wagon to the wagons_not_in_train allow-list or marking it status:draft just to silence the coverage check."
+  ],
+  "unless": [
+    "wagon -> train direction only: the wagon is listed in the wagons_not_in_train allow-list or has status:draft."
+  ],
+  "why": "Bidirectional coverage means each side references the other with no orphan: every non-exempt wagon is reachable from a train, and every `wagon:` participant of a train resolves to a wagon manifest.",
+  "evidence": [
+    "test_all_wagons_in_at_least_one_train passes (wagon -> train: every wagon appears in at least one train's participants, excepting allow-listed or draft wagons).",
+    "test_all_train_wagon_refs_exist passes (train -> wagon: every `wagon:` participant has a wagon manifest)."
+  ],
+  "verifier_detail": [
+    "Direction wagon -> train: requirement 'Every wagon must appear in at least one train's participants'; exceptions: wagons_not_in_train allow-list or status:draft; validator test_all_wagons_in_at_least_one_train.",
+    "Direction train -> wagon: requirement 'Every wagon: participant must have a wagon manifest'; no exceptions; validator test_all_train_wagon_refs_exist.",
+    "Disposition: documentation-only.",
+    "Term bidirectional_coverage: each side references the other, no orphan."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "kind: rule; status: active",
+    "source: legacy_path src/atdd/planner/conventions/coverage.convention.yaml, legacy_section rules, legacy_sha 27e800378c584902, extraction_mode high_fidelity, legacy_rule_id planner.coverage.bidirectional-coverage-between-trains",
+    "aliases: COVERAGE-PLAN-2.1",
+    "parity: source_fragments_preserved true, examples_preserved false, implementation_preserved true, fix_hint_preserved false, reviewed_at 2026-06-16",
+    "Original name: Train - Wagon Coverage"
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "prefer",
+      "text": "Concrete preferred moves (add wagon to a train / create manifest / update references / add to a train when un-exempting, in the same change).",
+      "justification": "Source states only the invariant; these are the direct planner actions that satisfy it, adding no new obligation."
+    },
+    {
+      "field": "avoid",
+      "text": "Gaming the check via allow-list or draft status.",
+      "justification": "Metric-gaming guard over the source's own exceptions; does not add a new obligation."
+    },
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire scenarios, including empty-side plans and allow-list removals",
+      "justification": "Derived from the two directions and the authored exceptions to make activation concrete."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Name folded into title; original kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "then",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "then",
+        "verifier_detail[0]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "evidence[0]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "then",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "then",
+        "verifier_detail[1]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "evidence[1]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "identity",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "why",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "why",
+        "then",
+        "verifier_detail[3]"
+      ]
+    }
+  ]
+}

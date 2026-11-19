@@ -1,0 +1,260 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/atdd-bun.planner/atdd-bun.planner.identity-required.convention.yaml",
+    "sha256": "e96d7c1455d0c221072d82e7f2b55da1c4f9ceb17718eb6ed96affdeef37675b"
+  },
+  "rule_id": "atdd-bun.planner.identity-required",
+  "kind": "rule",
+  "title": "Give every plan artifact its canonical identity",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "plan artifact of a kind the planner recognizes"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Scope is every artifact of a planner-recognized kind in the plan set, whoever authored it and whether new, edited, or existing and unchanged. The source names validator planner_plan_integrity as the implementation but does not specify how it classifies artifact kinds; an observer that emits the recognized kind per artifact is not established by the supplied inputs."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "!**/node_modules/**",
+          "!**/dist/**",
+          "!**/build/**",
+          "!**/_generated/**"
+        ],
+        "observability": "observable_now",
+        "note": "Vendored and generated trees are never scanned (source exception)."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "recognized artifact lacks its canonical identity (field absent, empty, or not the canonical identity for its kind)"
+        ],
+        "observability": "llm_judged",
+        "note": "The obligation covers both a missing identity field and a present but noncanonical one. The supplied source does not establish which of these the validator detects; until its coverage is specified, canonicality of a present value is judged by a reviewer."
+      }
+    ],
+    "fires": [
+      "A new interlocking artifact is written without an `interlocking_id` field.",
+      "A journey artifact is edited and its `journey_id` is removed or left empty.",
+      "A recognized URN-identified plan artifact has no `urn`.",
+      "A recognized artifact carries an identity field, but it is a placeholder or another kind's field rather than its canonical identity.",
+      "During plan validation, an existing, unchanged recognized artifact (from any author) is found without its canonical identity."
+    ],
+    "doesNotFire": [
+      "The artifact sits under `node_modules`, `dist`, `build`, or `_generated`.",
+      "The artifact's kind is not one the planner recognizes."
+    ]
+  },
+  "given": "Any plan artifact whose kind the planner recognizes, outside vendored or generated trees, whether new, edited, or existing and unchanged",
+  "when": "the plan set is authored or validated",
+  "then": "The artifact carries its canonical identity for its kind: `train_id`, `interlocking_id`, `journey_id`, or `urn`.",
+  "prefer": [
+    "Add the identity field for the artifact's kind, e.g. `interlocking_id: interlocking:checkout`; when you find an existing artifact without one, add it.",
+    "Use the same identity in every other plan artifact that references this one."
+  ],
+  "avoid": [
+    "Adding a placeholder identity just to pass the check; the identity must be the canonical one others reference.",
+    "Using another kind's identity field (e.g. `urn` on an interlocking that needs `interlocking_id`)."
+  ],
+  "unless": [
+    "Vendored and generated trees (`node_modules`, `dist`, `build`, `_generated`) are never scanned."
+  ],
+  "why": "An artifact without an identity cannot be referenced, bound, or traced, and every rule that resolves references silently skips it, so its gaps go unseen.",
+  "evidence": [
+    "Every recognized plan artifact outside the excluded trees, including existing unchanged ones, shows the identity field for its kind (`train_id`, `interlocking_id`, `journey_id`, or `urn`) with a non-placeholder value.",
+    "The value is the identity other plan artifacts use to reference it.",
+    "planner_plan_integrity reports no identity finding for the plan set."
+  ],
+  "verifier_detail": [
+    "Implemented by validator `planner_plan_integrity` (type validator). Its exact finding format and kind classification are not specified in the source.",
+    "Recognized identity fields: `train_id`, `interlocking_id`, `journey_id`, `urn`. Kinds the planner does not recognize are out of scope. Scan every recognized artifact in the plan set, not only changed ones. Check that the field matches the artifact's kind, not only that some identity key is present.",
+    "Ordering (graph): atdd-bun.planner.parse enables this rule, since identity is read only once an artifact parses; this rule enables atdd-bun.planner.identity-unique. An unparseable artifact is reported by the parse rule; this ordering is not an exemption, and the artifact must still carry its identity once it parses.",
+    "Exclude path segments `node_modules`, `dist`, `build`, `_generated` from scanning.",
+    "Strict disposition, severity 3: every finding fails."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "Aliases: ATDD-BUN-PLANNER-IDENTITY-REQUIRED.",
+    "implementation: {type: validator, ref: planner_plan_integrity}.",
+    "Statement: 'Package rule, strict.'",
+    "Package rule (term package_rule): a rule of this package's own gates (`atdd-bun.*`), realized by a package guard rather than a canonical planner node. It is held to the same per-rule checks as every convention: a convention, strict, a failing fixture, relationship edges.",
+    "metadata: severity 3, disposition strict."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Strict: the rule fails on every finding; no advisory mode, no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "avoid",
+      "text": "Adding a placeholder identity just to pass the check; using another kind's identity field.",
+      "justification": "Metric-gaming anti-patterns required by the authoring rules; they spell out what 'canonical identity' (S006) excludes."
+    },
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire examples, including existing unchanged artifacts and present-but-noncanonical identities",
+      "justification": "Concrete boundaries derived from the source's universal statement ('every plan artifact whose kind the planner recognizes ... carries its canonical identity') and its single exception."
+    },
+    {
+      "field": "verifier_detail",
+      "text": "Parse → identity-required → identity-unique ordering, explicitly not an exemption",
+      "justification": "Taken from graph.json edges; kept as implementation ordering only, not as a scope limit."
+    },
+    {
+      "field": "evidence",
+      "text": "The value is the identity other plan artifacts use to reference it; field must match the kind.",
+      "justification": "Operationalises 'canonical' from S006 and the referencing reason in S012 so a reviewer can check a present value, not only presence."
+    },
+    {
+      "field": "prefer",
+      "text": "Use the same identity in every other plan artifact that references this one.",
+      "justification": "Follows from the source's reason (artifacts are referenced, bound, traced by identity); stated as a preferred move, not a new obligation."
+    },
+    {
+      "field": "when",
+      "text": "the plan set is authored or validated",
+      "justification": "Neutral trigger needed by the Given/When/Then form; it does not restrict operation or author."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ],
+      "note": "Title rephrased imperatively."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "then",
+        "activation",
+        "verifier_detail[1]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "identity",
+        "audit",
+        "shared:policy.strict-disposition",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "identity",
+        "then"
+      ],
+      "note": "Restates the statement."
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "unless[0]",
+        "activation",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "identity",
+        "audit",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "identity",
+        "audit",
+        "shared:policy.strict-disposition"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "audit",
+        "verifier_detail[0]"
+      ]
+    }
+  ]
+}

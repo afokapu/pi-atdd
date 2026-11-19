@@ -1,0 +1,245 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.artifact-naming.logical-physical-mapping.convention.yaml",
+    "sha256": "4e04a645447819d590a0003171991ab2ae4b3d107b985ad01a310dea758115bb"
+  },
+  "rule_id": "planner.artifact-naming.logical-physical-mapping",
+  "kind": "rule",
+  "title": "Map each logical artifact name to its contract path by splitting on ':' and '.'",
+  "activation": {
+    "facts": [
+      {
+        "fact": "task_term",
+        "values": [
+          "artifact",
+          "contract",
+          "schema",
+          "URN",
+          "produces",
+          "consumes"
+        ],
+        "observability": "observable_now",
+        "note": "Task or text names a logical artifact (colon/dot-separated name) in any context: plans, wagons, WMBTs, acceptances, docs, code, tooling or config."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "contracts/**",
+          "contracts/**/*.schema.json"
+        ],
+        "observability": "observable_now",
+        "note": "Any file or text (document, code, tooling, config) references, creates or checks a contract file or directory path. Not restricted to any document type."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "artifact name does not resolve to the stated contract path"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Needs a detector that splits each artifact name on ':' and '.' and compares it with the referenced or existing contract path."
+      }
+    ],
+    "fires": [
+      "Any task derives, references or checks the physical contract path for a logical artifact name, e.g. a plan or wagon stating where an artifact's schema lives.",
+      "An acceptance, doc, code, tooling or config references a contract path for a named artifact.",
+      "A new variant (dot suffix) or plural aspect is introduced and its schema location must be stated.",
+      "Naming or cardinality work that also states or derives the contract path of the artifact."
+    ],
+    "doesNotFire": [
+      "Text mentions a contract path with no logical artifact name to map from or to.",
+      "Deciding singular vs plural aspect (cardinality-from-aspect convention), provided no contract path is derived, referenced or checked in the same work.",
+      "Composing the artifact name itself (naming-pattern convention), provided no contract path is derived, referenced or checked in the same work."
+    ]
+  },
+  "given": "Any work (e.g. a plan, wagon, WMBT, acceptance, doc, code or tooling) involves a logical artifact name such as scenario:fragment or sensory:gesture.raw.",
+  "when": "You derive, reference or check the contract path where that artifact's schema lives.",
+  "then": "Derive the physical path by splitting the name on ':' and '.': each segment is a directory level under contracts/, the final segment the filename: <variant>.schema.json if a variant exists, else <aspect>.schema.json, or no file for a directory reference.",
+  "prefer": [
+    "Variant becomes the filename (gesture.raw -> gesture/raw.schema.json).",
+    "Singular aspect -> one object schema named after the aspect.",
+    "Plural aspect with a concrete collection -> array schema {type: array, items: $ref ../singular}.",
+    "Plural aspect that only groups related schemas -> directory reference, no schema file."
+  ],
+  "avoid": [
+    "Stating a contract path that does not follow the split rule for the named artifact.",
+    "Inventing a schema file for a directory reference, or naming the file after the aspect when a variant exists."
+  ],
+  "unless": [],
+  "why": "A deterministic mapping lets anyone locate an artifact's contract from its name alone, so names and files cannot drift.",
+  "evidence": [
+    "For each artifact name referenced, splitting on ':' and '.' yields exactly the referenced contract directory and filename.",
+    "Physical form matches the aspect: singular -> object schema, plural with array -> array schema whose items $ref ../singular, plural grouping -> directory with no schema file."
+  ],
+  "verifier_detail": [
+    "Algorithm: segments = split(artifact, /[:.]/); path = 'contracts/' + segments[0..-1].join('/'); file = variant ? variant+'.schema.json' : (directory_reference ? none : aspect+'.schema.json').",
+    "Reference examples: scenario:fragment -> contracts/scenario/fragment/fragment.schema.json (singular object); scenario:fragments -> contracts/scenario/fragments/fragments.schema.json (array schema); commons:ux:foundations -> contracts/commons/ux/foundations/ (directory reference, no file); sensory:gesture.raw -> contracts/sensory/gesture/raw.schema.json (variant becomes filename); commons:ux:foundations:color.primary -> contracts/commons/ux/foundations/color/primary.schema.json.",
+    "Term physical_form ('Three physical forms': how a plural/singular artifact materializes on disk): directory_reference = logical grouping, no concrete schema file (plural aspect referencing a collection of related schemas); array_schema = plural aspect with a concrete array schema ({type: array, items: $ref ../singular}); singular_schema = singular aspect = single object schema.",
+    "Per the examples, when no variant exists the aspect is both the last directory and the filename stem; when a variant exists the variant is the filename and is not a directory."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "kind: rule; status: active",
+    "Source name: 'Logical-to-physical mapping'.",
+    "source: legacy_path src/atdd/planner/conventions/artifact-naming.convention.yaml, legacy_section logical_vs_physical_mapping + urn_structure, legacy_sha eca68a67c92694c9, extraction_mode high_fidelity",
+    "parity: source_fragments_preserved true, examples_preserved true, implementation_preserved false, fix_hint_preserved false, reviewed_at 2026-06-16"
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "Activation facts, fires and doesNotFire lists; the document types listed in given/fires are examples only, not prerequisites.",
+      "justification": "Required by the target schema; derived from the source statement (which applies to any logical-to-physical mapping) and graph edges (naming-pattern, cardinality-from-aspect). Exclusions are conditional on no path being derived, so no applicability is narrowed."
+    },
+    {
+      "field": "evidence",
+      "text": "Evidence items describing how a reviewer checks the mapping.",
+      "justification": "Source has no explicit evidence section; items restate the source algorithm and physical forms as checks."
+    },
+    {
+      "field": "why",
+      "text": "Rationale that a deterministic mapping prevents name/file drift.",
+      "justification": "Source has no explicit why; added minimal engineering reason."
+    },
+    {
+      "field": "verifier_detail",
+      "text": "Note that without a variant the aspect is both last directory and filename stem.",
+      "justification": "Clarifies apparent tension between the statement ('final segment is the filename') and the examples/formula; derived from source examples only."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "then",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[2]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[2]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[2]",
+        "evidence[1]"
+      ]
+    }
+  ]
+}

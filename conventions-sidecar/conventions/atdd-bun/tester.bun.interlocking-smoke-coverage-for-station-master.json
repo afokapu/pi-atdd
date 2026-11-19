@@ -1,0 +1,457 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/tester.bun/tester.bun.interlocking-smoke-coverage-for-station-master.convention.yaml",
+    "sha256": "ae2e53865fe3f53982d5d1d9fca73dd116ee932e00c4c4f1184235415b1dd794"
+  },
+  "rule_id": "tester.bun.interlocking-smoke-coverage-for-station-master",
+  "kind": "rule",
+  "title": "Smoke-test every exposed Station Master action through the real entrypoint",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "interlocking declaration with entrypoint.exposed: true and entrypoint.actions"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Requires parsing each interlocking's `entrypoint` block to read `exposed` and `actions`; path/file kind alone does not tell exposed from internal. This standing fact alone activates the rule for every exposed action, changed or not."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "e2e/**/*.ts"
+        ],
+        "observability": "observable_now",
+        "note": "Location of the consumer's smoke tests that the detector scans for coverage."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "bun_interlocking_coverage: exposed action without Station Master smoke test"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Emitted by the JS detector of the bun_interlocking_coverage family. Illustrative signal of a violation, not a prerequisite for applicability."
+      },
+      {
+        "fact": "language",
+        "values": [
+          "typescript"
+        ],
+        "observability": "observable_now",
+        "note": "Bun stack; other stacks are owned by their own packages."
+      }
+    ],
+    "fires": [
+      "Any interlocking declares `entrypoint.exposed: true` with an action, and no `e2e/**/*.ts` file references that action name, a Station Master reference, InterlockingRunner and TrainRunner — whether or not the action was touched in the current change.",
+      "A new action is added to an exposed interlocking's `entrypoint.actions` without a matching smoke test.",
+      "An existing smoke test for an exposed action stops referencing one of the production runners (e.g. calls a train directly)."
+    ],
+    "doesNotFire": [
+      "An interlocking with `entrypoint.exposed: false` (internal-transition-only, library-only, planned-not-exposed).",
+      "An exposed action already covered by an `e2e/**/*.ts` file referencing the action, the Station Master and both runners.",
+      "Non-Bun stack renderings of the same interlocking obligation."
+    ]
+  },
+  "given": "An interlocking declares `entrypoint.exposed: true`, which requires at least one Station Master action (the user-facing route surface)",
+  "when": "Any such exposed action exists (e.g. added, edited, or flagged by the coverage detector)",
+  "then": "Each exposed action MUST have an `e2e/**/*.ts` smoke test driving it through the real entrypoint -> Station Master -> InterlockingRunner -> TrainRunner path.",
+  "prefer": [
+    "Call the real action endpoint; assert the Station Master chose the interlocking (InterlockingRunner) path, not a direct train.",
+    "Assert InterlockingRunner resolved a route, TrainRunner ran the selected train, and the trace records interlockingId/routeId/selectedTrainId.",
+    "If the interlocking is genuinely internal, set `entrypoint.exposed: false` with a reason; it leaves scope."
+  ],
+  "avoid": [
+    "Bypassing the real entrypoint/Station Master or invoking a train directly.",
+    "Merely naming the action, Station Master and runners without asserting route, train execution and trace ids.",
+    "Flipping a user-facing action to `exposed: false` to escape coverage."
+  ],
+  "unless": [
+    "`entrypoint.exposed: false` (internal-transition-only / library-only / planned-not-exposed): no Station Master action, out of scope."
+  ],
+  "why": "Exposed actions are critical user-facing routes; only an end-to-end smoke test proves the interlocking path and production runners execute. Criticality comes mechanically from `entrypoint.exposed`.",
+  "evidence": [
+    "For each `exposed: true` action, an `e2e/**/*.ts` file exists that references the action name, `StationMaster`/`stationMaster`, `InterlockingRunner` and `TrainRunner`.",
+    "The smoke test hits the real endpoint and asserts interlocking-path choice, route resolution, selected-train execution and trace fields interlockingId/routeId/selectedTrainId.",
+    "The bun_interlocking_coverage detector reports no uncovered exposed action."
+  ],
+  "verifier_detail": [
+    "JS detector (member of the `bun_interlocking_coverage` FAMILY) parses each interlocking's `entrypoint`; scans interlocking entrypoints and the consumer's `e2e/**/*.ts` tests.",
+    "Enforced minimum signature per exposed action: one `e2e/**/*.ts` file referencing the action name AND a Station Master reference (`StationMaster` or `stationMaster`) AND both production runners (`InterlockingRunner`, `TrainRunner`).",
+    "`entrypoint.exposed: true` requires at least one action (afokapu/atdd#1248); those action names are the Station Master actions checked. `exposed: false` interlockings carry no action and are never flagged.",
+    "An exposed action with a file matching the full signature is satisfied and not flagged.",
+    "Severity policy: this rule is strict (severity 1, disposition strict per policy.strict-disposition) for exposed (user-facing) actions; `exposed: false` -> out of scope. Derived from the core `entrypoint.exposed` field, mechanical, not a judgement call."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "implementation: {type: validator, ref: tester.bun.interlocking-smoke-coverage-for-station-master}.",
+    "Alias: BUN-TESTER-INTERLOCKING-SMOKE-STATION-MASTER-001.",
+    "Source name: Exposed interlocking Station Master actions have smoke coverage through real entrypoints (Bun).",
+    "Bun-stack realization of the agnostic core obligation `tester.interlocking.smoke-coverage-for-station-master`; rendered for the Bun application.",
+    "Per-stack renderings other than Bun are owned by their own workspace packages.",
+    "Core design refs: afokapu/atdd#1246, afokapu/atdd#1248 (entrypoint.exposed/actions), afokapu/atdd#1251 (entrypoint -> Station Master -> InterlockingRunner -> TrainRunner path).",
+    "Terms: exposed_action = a Station Master action name listed under an interlocking's `entrypoint.actions` when `entrypoint.exposed: true` (afokapu/atdd#1248); the user-facing route surface requiring smoke coverage; exposed: false interlockings have none. station_master_smoke_test = an `e2e/**/*.ts` smoke test driving an exposed action through the real entrypoint to the Station Master, proving the interlocking path was chosen, InterlockingRunner resolved a route, TrainRunner executed the selected train, and the trace recorded interlockingId/routeId/selectedTrainId."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Disposition strict: the rule fails on every finding; there is no advisory mode and no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "avoid",
+      "text": "Merely naming the action, Station Master and runners without real assertions; flipping a user-facing action to exposed: false to escape coverage.",
+      "justification": "Metric-gaming anti-patterns implied by the gap between the detector's minimum signature and the normative end-to-end proof, and by the fix_hint allowing exposed: false only for genuinely internal interlockings."
+    },
+    {
+      "field": "activation.fires",
+      "text": "Smoke test stops referencing a production runner (direct train call).",
+      "justification": "Concrete firing case derived from 'chooses the interlocking path (not a direct train)'."
+    },
+    {
+      "field": "when",
+      "text": "Examples of triggers (added, edited, detector-flagged) are illustrative; applicability is unconditional for every exposed action.",
+      "justification": "Given/When structure requires an event; the source imposes a standing obligation, so the event is phrased as existence."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Rephrased as title; original kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "then",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit",
+        "verifier_detail[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "why",
+        "unless[0]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[0]",
+        "verifier_detail[1]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "given",
+        "verifier_detail[2]"
+      ],
+      "note": "Given states exposed: true requires at least one action."
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "given",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "then",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "then",
+        "prefer[0]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "prefer[0]",
+        "avoid[0]",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "prefer[1]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "prefer[1]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "verifier_detail[1]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "verifier_detail[1]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "verifier_detail[4]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "verifier_detail[4]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "verifier_detail[4]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "then",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "prefer[0]",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "verifier_detail[4]"
+      ],
+      "note": "verifier_detail[4] states this rule is strict for exposed actions."
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "unless[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "verifier_detail[3]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "audit",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "identity",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "identity",
+        "verifier_detail[4]",
+        "shared:policy.strict-disposition"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S045",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S046",
+      "dest": [
+        "given",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S047",
+      "dest": [
+        "given",
+        "unless[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S048",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S049",
+      "dest": [
+        "then",
+        "prefer[1]",
+        "audit"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,302 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.bun/coder.bun.error-response-bare-string.convention.yaml",
+    "sha256": "c2c0f859f6dd12702edf225c4148849e72b6c25e6d7cd28edd5d644ba277a23c"
+  },
+  "rule_id": "coder.bun.error-response-bare-string",
+  "kind": "rule",
+  "title": "Return a structured, coded payload from 4xx/5xx Responses, never a bare string literal",
+  "activation": {
+    "facts": [
+      {
+        "fact": "language",
+        "values": [
+          "typescript",
+          "javascript"
+        ],
+        "observability": "observable_now",
+        "note": "Bun stack source files."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "source",
+          "!test"
+        ],
+        "observability": "observable_now",
+        "note": "Test files are excluded by the source."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "response_with_error_status_and_literal_body"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Code-level fact: changed non-test code contains a `Response` whose status is 4xx|5xx and whose body is a string literal, regardless of whether the body, the status, or neither was the edited part (e.g. a status changed from 200 to 500 on a literal body). Realized today by bun_security_hygiene_detector."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "ERROR-BARE-STRING-001"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Detector finding from bun_security_hygiene_detector flagging `new Response(\"<literal>\", { status: 4xx|5xx })`."
+      }
+    ],
+    "fires": [
+      "Non-test Bun source contains `new Response(\"<string literal>\", { status: 404 })` or any other 4xx/5xx status.",
+      "A change sets the status of a Response with a string-literal body from 200 to 500 (status-only change)."
+    ],
+    "doesNotFire": [
+      "A Response with a 2xx or 3xx status, whatever its body.",
+      "An error Response whose body is a variable or a rendered fragment.",
+      "Code in test files."
+    ]
+  },
+  "given": "Non-test Bun source contains a `Response` with a 4xx or 5xx status (an error_response)",
+  "when": "that error Response's body is a bare string literal, whether the body or the status was the part written or changed",
+  "then": "The error Response MUST carry a structured payload with an error code, not a bare string literal body.",
+  "prefer": [
+    "Return a coded payload and render a user-facing fragment separately, e.g. `return Response.json({ error_code: \"ORDER_NOT_FOUND\" }, { status: 404 });`."
+  ],
+  "avoid": [
+    "A bare string literal body on an error status, e.g. `return new Response(\"order not found\", { status: 404 });`."
+  ],
+  "unless": [
+    "The status is 2xx or 3xx (out of scope).",
+    "The body is a variable or a rendered fragment, which is not a bare literal.",
+    "The code is in a test file."
+  ],
+  "why": "htmx swaps the response body into the live DOM, so a bare error string is not merely unstructured data a client must parse but markup rendered to the user verbatim, including whatever internal detail it carries (a stack frame, a table name, an upstream message); the structured payload is both the machine-readable contract and the boundary that stops internals leaking into the page. This is sharper in an htmx app than in a JSON API, which is why it is enforced rather than advised.",
+  "evidence": [
+    "bun_security_hygiene_detector reports no ERROR-BARE-STRING-001 finding on changed non-test files.",
+    "Reviewer sees no changed non-test 4xx/5xx Response with a bare string literal body; where a literal body was replaced, it is a structured payload with an error code (e.g. `Response.json({ error_code: ... }, { status })`). Bodies that are variables or rendered fragments are not in scope."
+  ],
+  "verifier_detail": [
+    "Detector pattern: flag `new Response(\"<literal>\", { status: 4xx|5xx })` — first argument a string literal, status in 400–599.",
+    "error_response term: a `Response` carrying a 4xx or 5xx status; 2xx/3xx are ignored.",
+    "Do not flag when the body argument is a variable/identifier or a rendered fragment (non-literal expression).",
+    "Exclude test files.",
+    "Implementation: validator `bun_security_hygiene_detector`; finding alias ERROR-BARE-STRING-001.",
+    "rendered_verbatim term: what htmx does with a bare error string — swaps it into the live DOM, internal detail included; the structured payload is also the boundary that stops leakage."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "Aliases: [\"ERROR-BARE-STRING-001\"] — the shared core alias.",
+    "Severity 4; disposition strict.",
+    "Implementation: {type: validator, ref: bun_security_hygiene_detector}.",
+    "Stack-neutral obligation RE-REALIZED for Bun: the python-pytest sibling matches FastAPI's `HTTPException(detail=\"...\")`, which does not exist here — a Bun error IS a `Response` with a status.",
+    "Realized by `bun_security_hygiene_detector` (core alias ERROR-BARE-STRING-001)."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Strict disposition: the rule fails on every finding; it is enforced, not advisory."
+    }
+  ],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "Language facts typescript/javascript for the Bun stack and the activation fact names/observability classification.",
+      "justification": "Required by the author schema to make Given/When observable; the source implies Bun source code but does not name file languages."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ],
+      "note": "Rephrased as title."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit",
+        "given"
+      ],
+      "note": "Lineage to audit; 'a Bun error IS a Response with a status' informs given."
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "given"
+      ],
+      "note": "Term name used in given."
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "given",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "why",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "why",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "unless[0]",
+        "activation",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "unless[1]",
+        "activation",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "unless[2]",
+        "activation",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

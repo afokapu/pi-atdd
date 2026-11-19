@@ -1,0 +1,472 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/atdd-bun.review/atdd-bun.review.owner-inspectability.convention.yaml",
+    "sha256": "4986f3453d25f801559149ad2260e8d26f6766889c5b774b480814c66b7f5383"
+  },
+  "rule_id": "atdd-bun.review.owner-inspectability",
+  "kind": "rule",
+  "title": "Accept a delivery only on a read-only, candidate-bound, synthetic owner-inspection record",
+  "activation": {
+    "facts": [
+      {
+        "fact": "phase",
+        "values": [
+          "review",
+          "done"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Common prerequisite for every firing: Flow actually tracks the delivery with an owner-inspection/v1 record (acknowledged or not) AND the delivery is about to be accepted / marked done. Needs a workflow observer reading Flow state; the unacknowledged finding applies only in done mode."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "owner-inspection",
+          "owner-inspection/v1",
+          "owner inspection"
+        ],
+        "observability": "observable_now",
+        "note": "Discovery hint only; a task-term mention is not proof that Flow tracks the delivery and never fires the rule on its own."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "stale-candidate",
+          "evidence-digest-mismatch",
+          "non-local-target",
+          "non-synthetic-data",
+          "missing-teardown",
+          "invalid-not-applicable",
+          "unacknowledged"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Emitted by the read-only checkOwnerInspection capability over the record Flow already read and the candidate commit + tracked-file reader."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "candidate commit changed",
+          "tracked evidence file changed"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Diff/commit-level facts that make a previously published record stale."
+      }
+    ],
+    "fires": [
+      "A delivery Flow tracks with an owner-inspection/v1 record is about to be accepted.",
+      "A Flow-tracked delivery is about to be accepted and its record's provenance.commit differs from the candidate commit, or its merge record cites no candidate record.",
+      "A Flow-tracked delivery is about to be accepted and its record targets production, a URL other than a credential-free 127.0.0.1 or localhost URL, or a sandbox/preview target lacking explicit authorization of owner directive M-20261011T121147Z.",
+      "A Flow-tracked delivery is about to be marked done and operator@desk has not yet acknowledged its record (the rule fires and reports unacknowledged).",
+      "A Flow-tracked delivery of a served surface is about to be accepted and its record states rendered N/A."
+    ],
+    "doesNotFire": [
+      "A delivery that Flow does not track with an owner-inspection/v1 record, even if the task text mentions owner inspection.",
+      "Work on a Flow-tracked delivery that is not yet being accepted or marked done.",
+      "Judging whether a journey or its health/smoke evidence genuinely proves the stated scenario (owned by the checklist and atdd-bun.review.behavioral-reconciliation)."
+    ]
+  },
+  "given": "A delivery Flow tracks with an owner-inspection/v1 record that Flow owns and publishes and that Flow has already read (consumed by Bun via the exact-pinned @afokapu/atdd-flow type). Flow exclusively owns acknowledgement, which may still be missing; an unacknowledged record is in scope and must be checked.",
+  "when": "The delivery is about to be accepted or marked done for a candidate commit.",
+  "then": "Accept only if the record fits that exact candidate: published for its commit, tracked evidence digests matching, target a credential-free 127.0.0.1 or localhost URL, data_classification exactly `synthetic`, both a teardown reference and its digest present, N/A only for a toolkit surface with rationale and a Flow-defined direct evidence kind, and operator@desk acknowledgement before done.",
+  "prefer": [
+    "Report FAIL when any finding applies; report COULD_NOT_CHECK for evidence that is not a tracked path (e.g. a CI run URL) or a tracked path that cannot be read; PASS only when no finding applies and every evidence reference was verified against tracked bytes.",
+    "Require republishing through Flow when the candidate or an evidence file changed.",
+    "Require only synthetic data, a credential-free 127.0.0.1/localhost target, and recorded teardown evidence (reference + digest).",
+    "Confirm the record is read only via the exact-pinned @afokapu/atdd-flow type; treat `synthetic` as Bun applicability policy, not a Flow schema constraint (Flow's field is free text)."
+  ],
+  "avoid": [
+    "Editing, writing, publishing, storing or copying the record into Bun state, or creating parallel manifest/registry/schema/report/preview/acknowledgement/dependency state; Flow alone owns its shape, publication, acknowledgement and cleanup lifecycle, Bun only reports findings.",
+    "Production targets, deploys, implicit previews or fabricated URLs; sandbox/preview targets without explicit authorization of owner directive M-20261011T121147Z.",
+    "Promoting COULD_NOT_CHECK (untracked or unreadable evidence) to PASS.",
+    "Skipping the check for a record because it is not yet acknowledged."
+  ],
+  "unless": [
+    "A toolkit repository with no served surface states rendered N/A with an exact rationale and direct evidence of a Flow-defined N/A kind (CI run, gate report, or package listing); it is never given a fabricated URL."
+  ],
+  "why": "Owner inspection proves a delivery only if this exact candidate was inspected safely and the owner saw it; Bun reading, not writing, keeps Flow the single source of truth.",
+  "evidence": [
+    "checkOwnerInspection returns PASS only when no finding applies and every evidence reference was verified against tracked bytes.",
+    "Any finding returns FAIL.",
+    "Evidence that is not a tracked path (e.g. a CI run URL) or a tracked path that cannot be read returns COULD_NOT_CHECK, never PASS.",
+    "No Bun-side file writes, copies or parallel state for the record exist in the diff; the record is consumed only via the exact-pinned @afokapu/atdd-flow type.",
+    "Whether a journey or its health/smoke evidence genuinely proves the scenario (decorative journey) is not machine-checkable from a read-only record; that judgment stays with the checklist and the independent semantic review required by atdd-bun.review.behavioral-reconciliation."
+  ],
+  "verifier_detail": [
+    "Capability `checkOwnerInspection(record, candidate)`: a read-only consumer check over the Flow-owned inspection record. record = the atdd-workflow/owner-inspection/v1 record that Flow has already read (published through Flow; Flow exclusively owns its acknowledgement, which may be absent — in done mode an unacknowledged record yields the unacknowledged finding); Bun reads it via the exact-pinned @afokapu/atdd-flow type. candidate = commit + reader over tracked files.",
+    "Seven deterministic findings: stale-candidate (provenance.commit differs from candidate, or merge record cites no candidate record); evidence-digest-mismatch (tracked evidence path no longer matches recorded sha256); non-local-target (target not a credential-free 127.0.0.1 or localhost local URL; sandbox and preview targets reported citing owner directive M-20261011T121147Z); non-synthetic-data (data_classification not exactly `synthetic`); missing-teardown (teardown reference or its digest absent); invalid-not-applicable (rendered N/A on non-toolkit surface, without rationale, or without a Flow-defined direct N/A evidence kind); unacknowledged (done mode, operator@desk has not acknowledged).",
+    "`synthetic` is Bun applicability policy: Flow's data_classification field is free text and the policy is not a Flow schema constraint; compare exactly.",
+    "Result states: PASS / FAIL / COULD_NOT_CHECK; COULD_NOT_CHECK is never promoted to PASS.",
+    "The check applies no production target, deploy, implicit preview, or fabricated URL; sandbox/preview without explicit owner-directive M-20261011T121147Z authorization is a finding."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "source kind: policy",
+    "status: active",
+    "aliases: ATDD-BUN-REVIEW-OWNER-INSPECTABILITY-001",
+    "metadata.severity: 3",
+    "implementation: {\"type\":\"none\"}",
+    "Term ids: flow_owned_record, synthetic, findings."
+  ],
+  "splitSuggestion": [
+    {
+      "id": "atdd-bun.review.owner-inspection-read-only",
+      "then": "ATDD Bun never writes, publishes, stores, copies or edits the Flow-owned owner-inspection record nor creates parallel manifest/registry/schema/report/preview/acknowledgement/dependency state; Flow alone owns its lifecycle.",
+      "segments": [
+        "S007",
+        "S010",
+        "S038",
+        "S039"
+      ]
+    }
+  ],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "split_suggestion",
+      "text": "The read-only/Flow-ownership obligation (S007, S010, S038–S039) is independent of the candidate-acceptance obligation; kept in avoid[0] and proposed as atdd-bun.review.owner-inspection-read-only.",
+      "justification": "One obligation per then."
+    },
+    {
+      "field": "why",
+      "text": "Why sentence synthesized from statement/summary.",
+      "justification": "Source has no explicit rationale field; wording paraphrases source intent only."
+    },
+    {
+      "field": "avoid",
+      "text": "avoid[3]: do not skip the check for a record because it is not yet acknowledged.",
+      "justification": "Restates source S006/S022 (acknowledgement checked before done; unacknowledged is a finding) to prevent treating acknowledgement as an applicability prerequisite; no new obligation."
+    },
+    {
+      "field": "coder_length",
+      "text": "Coder-facing text exceeds ~1,000 characters because then enumerates all seven acceptance conditions with exact target allowlist and teardown reference+digest, and prefer states the PASS/FAIL/COULD_NOT_CHECK result semantics.",
+      "justification": "Losslessness wins over brevity; reviewers need exact thresholds."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "avoid[0]"
+      ],
+      "note": "Title keeps read-only, candidate-bound, synthetic."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "when",
+        "then",
+        "activation",
+        "avoid[3]"
+      ],
+      "note": "Acknowledgement is an acceptance condition in then, not a precondition in given."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "avoid[0]",
+        "given"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "given",
+        "verifier_detail[0]"
+      ],
+      "note": "Record is published through Flow; Flow owns acknowledgement, which may still be missing."
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "given",
+        "prefer[3]",
+        "avoid[0]",
+        "evidence[3]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "then",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "verifier_detail[1]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "verifier_detail[1]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "verifier_detail[1]",
+        "then",
+        "prefer[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "verifier_detail[1]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "verifier_detail[1]",
+        "then",
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "verifier_detail[1]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "verifier_detail[1]",
+        "verifier_detail[0]",
+        "activation",
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "why",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "avoid[2]",
+        "prefer[0]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "verifier_detail[0]",
+        "given"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "evidence[0]",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "evidence[0]",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "evidence[1]",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "evidence[2]",
+        "prefer[0]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "evidence[2]",
+        "prefer[0]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "evidence[4]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "evidence[4]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "evidence[4]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "evidence[4]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "avoid[1]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "avoid[1]",
+        "verifier_detail[4]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "prefer[1]",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "prefer[2]",
+        "then",
+        "unless[0]"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "then",
+        "unless[0]"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "unless[0]"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S045",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S046",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

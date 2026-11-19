@@ -1,0 +1,260 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.wagon.no-consume-cycle.convention.yaml",
+    "sha256": "5b8d65ed15e6c1c4d3e8ad806aad586fed2006cabe5f48aa98e5246977b64579"
+  },
+  "rule_id": "planner.wagon.no-consume-cycle",
+  "kind": "rule",
+  "title": "Keep the cross-wagon produce/consume graph acyclic",
+  "activation": {
+    "facts": [
+      {
+        "fact": "task_term",
+        "values": [
+          "wagon",
+          "produce",
+          "consume",
+          "plan",
+          "dependency"
+        ],
+        "observability": "observable_now",
+        "note": "Task or plan text mentions wagons or their produce/consume artifacts."
+      },
+      {
+        "fact": "operation",
+        "values": [
+          "create",
+          "edit",
+          "review"
+        ],
+        "observability": "observable_now",
+        "note": "Any authoring, editing or review of a plan whose wagons declare produce/consume entries. The invariant applies to the whole graph, so it fires even when the change does not touch produce/consume entries (pre-existing cycles remain violations)."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "consume_cycle"
+        ],
+        "observability": "needs_new_observer",
+        "note": "SCC detector over the name-keyed producer->consumer wagon graph; a finding is any SCC containing more than one wagon, whether pre-existing or newly introduced."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "produce entry added/renamed",
+          "consume entry added/renamed",
+          "wagon added/split/merged"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Diff-level observer only used to attribute whether a cycle was introduced by this change; not a precondition for firing."
+      }
+    ],
+    "fires": [
+      "A planner adds a consume entry to wagon A for an artifact name produced by wagon B, while A already (directly or transitively) feeds B by artifact name.",
+      "A planner splits a wagon and the two resulting wagons each consume an artifact name the other produces.",
+      "Two wagons have null contract fields but share produce/consume artifact names forming a loop.",
+      "A planner makes an unrelated edit (e.g. only to a contract field) in a plan whose wagon graph already contains a multi-wagon SCC: the existing cycle is still a violation."
+    ],
+    "doesNotFire": [
+      "A wagon produces and consumes artifact names only internally (an SCC of size one wagon).",
+      "Cross-wagon produce/consume edges exist but form a DAG (e.g. A->B->C with no path back).",
+      "The work involves no wagons or produce/consume entries at all."
+    ]
+  },
+  "given": "A plan's wagons declare produce/consume entries by artifact NAME, forming a directed graph with an edge producer-wagon -> consumer-wagon whenever a name produced by one wagon is consumed by another.",
+  "when": "You author, edit or review any plan containing such wagons, whether or not your change touches produce/consume entries.",
+  "then": "Ensure the name-keyed wagon graph is acyclic: no strongly-connected component may contain more than one wagon, including cycles that already existed.",
+  "prefer": [
+    "Before adding an edge producer B -> consumer A (A consumes a name B produces), check by artifact name whether a path A -> B already exists; if it does, the new edge would close a cycle.",
+    "When a loop exists, restructure wagon boundaries or artifact ownership so dependencies flow one way."
+  ],
+  "avoid": [
+    "Reasoning about wagon dependencies via the contract field; it is nullable corpus-wide, so edges must be keyed on the produce/consume artifact name.",
+    "Mutual or transitive produce/consume loops between two or more wagons (a consume_cycle).",
+    "Hiding a loop by nulling or renaming the contract field while the artifact names still loop."
+  ],
+  "unless": [],
+  "why": "A cross-wagon produce/consume cycle means no wagon in the loop can be delivered before the others; the graph must be a DAG so wagons can be ordered. Artifact names are the only reliable key because contract is nullable.",
+  "evidence": [
+    "SCC analysis of the name-keyed wagon graph (nodes = wagons, edges producer -> consumer by artifact name) reports no component with more than one wagon."
+  ],
+  "verifier_detail": [
+    "Nodes = wagons; directed edge producer-wagon -> consumer-wagon whenever an artifact NAME produced by one wagon is consumed by another wagon.",
+    "Run strongly-connected-component analysis; any SCC containing more than one wagon is a cross-wagon dependency cycle and a violation (term consume_cycle: a strongly-connected component of the directed wagon produce/consume graph whose size exceeds one wagon).",
+    "Key edges on produce/consume artifact name, never on the contract field (contract is nullable corpus-wide).",
+    "Severity 3; disposition strict."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "source kind: constraint",
+    "status: active",
+    "implementation: {type: validator, ref: conventions/acyclicity/test_no_cross_wagon_consume_cycle::test_fault_injection_convention_catches}",
+    "source: {legacy_path: docs/recompose, legacy_section: complexity-sizing, extraction_mode: summary}",
+    "parity: {source_fragments_preserved: true, examples_preserved: false, implementation_preserved: true, fix_hint_preserved: false, reviewed_at: 2026-06-18}",
+    "metadata.severity: 3; metadata.disposition: strict",
+    "Original name: No cross-wagon produce/consume cycle",
+    "Graph context: required by planner.wagon.definition; this is the exact (acyclicity) case of planner.wagon.complexity-model."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "metadata.disposition: strict."
+    }
+  ],
+  "additions": [
+    {
+      "field": "prefer",
+      "text": "Before adding edge producer B -> consumer A, check whether a path A -> B already exists by artifact name; when a loop exists, restructure wagon boundaries or artifact ownership so dependencies flow one way.",
+      "justification": "Source has no fix hint (fix_hint_preserved: false); these are codebase-neutral planner moves derived directly from the acyclicity obligation, not new obligations."
+    },
+    {
+      "field": "avoid",
+      "text": "Hiding a loop by nulling or renaming the contract field while the artifact names still loop.",
+      "justification": "Gaming anti-pattern implied by the name-not-contract keying rule; adds no new obligation."
+    },
+    {
+      "field": "why",
+      "text": "Ordering/delivery rationale for acyclicity.",
+      "justification": "Source states the invariant without explicit reasoning; rationale is the standard meaning of a DAG requirement and is linked to complexity-model in graph.json."
+    },
+    {
+      "field": "sharedNodes",
+      "text": "policy.strict-disposition is reused only with the source-supported content 'disposition: strict'; any wider generic meaning of that shared policy (e.g. no advisory mode, no ratchet baseline) is not specified by this source.",
+      "justification": "Declares the boundary of what this source contributes to the shared node."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit",
+        "activation"
+      ],
+      "note": "Active invariant: applies to any wagon graph, including pre-existing cycles."
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Rephrased as title; original kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "given"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ],
+      "note": "Implementation reference kept as provenance only; no claim about what it validates."
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "given",
+        "verifier_detail[0]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "then",
+        "verifier_detail[1]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "avoid[0]",
+        "verifier_detail[2]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "avoid[0]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "identity",
+        "verifier_detail[3]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "verifier_detail[3]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "avoid[1]",
+        "verifier_detail[1]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "verifier_detail[1]",
+        "then"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,371 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.bun/coder.bun.interlocking-delegates-to-trainrunner.convention.yaml",
+    "sha256": "43983a9d626d8c2285e09220383d1d9435713fb45526e0e629bb92d6792269e9"
+  },
+  "rule_id": "coder.bun.interlocking-delegates-to-trainrunner",
+  "kind": "rule",
+  "title": "Delegate train execution from InterlockingRunner to TrainRunner; never execute wagons in interlocking code",
+  "activation": {
+    "facts": [
+      {
+        "fact": "language",
+        "values": [
+          "typescript",
+          "javascript"
+        ],
+        "observability": "observable_now",
+        "note": "Bun-stack realization."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "interlocking_runner_module"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Needs an observer that classifies any module (anywhere in the Bun app) as InterlockingRunner-defining, vs. the TrainRunner module, which is exempt. The detector currently only scans src/trains/** (detector scope, see verifier_detail[0]); that path is not a prerequisite of the obligation."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "module_touched",
+          "wagon_import_added",
+          "runTrain_call_added",
+          "sequence_executor_loop_added"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Any change to an InterlockingRunner-defining module, including module-level imports outside the action-handling method; diff-level facts currently surfaced only by the interlocking_delegates.mjs detector findings."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "InterlockingRunner",
+          "interlocking",
+          "route control",
+          "resolveTrain"
+        ],
+        "observability": "observable_now",
+        "note": "Task text mentioning interlocking/route control."
+      }
+    ],
+    "fires": [
+      "Adding or editing any InterlockingRunner-defining module in a Bun application, wherever it lives",
+      "An InterlockingRunner-defining module gains an import of a src/<wagon>/wagon.ts module, anywhere in the module",
+      "Interlocking code calls runTrain(...) or iterates `for (... of <expr>.sequence)` to run steps"
+    ],
+    "doesNotFire": [
+      "Editing the production TrainRunner module, including its own step loop",
+      "Changes to wagon modules or other code that never defines an InterlockingRunner",
+      "A tree with no InterlockingRunner at all (covered by coder.bun.interlocking-runner-exists)"
+    ]
+  },
+  "given": "A Bun application module defines an InterlockingRunner",
+  "when": "you add or change anything in that module (imports, action handling, train execution)",
+  "then": "Resolve one admissible train and delegate its execution to `TrainRunner.execute(selectedTrainId, ...)`; the InterlockingRunner must never execute wagons itself.",
+  "prefer": [
+    "Delegate instead of executing:\n  execute(action, inputs, state) {\n    const res = this.resolveTrain(action, inputs, state);\n    return new TrainRunner(res.trainPath).execute(res.trainId, inputs);  // delegate, do not loop\n  }"
+  ],
+  "avoid": [
+    "Importing a `src/<wagon>/wagon.ts` module anywhere in the InterlockingRunner module",
+    "Calling `runTrain(...)` from interlocking code",
+    "Looping over `<expr>.sequence` (e.g. `train.sequence`) as a step executor",
+    "Otherwise invoking wagon steps, choosing the next step inside a train, or bypassing TrainRunner",
+    "Suppressing a new direct-execution finding: the rule is strict, not suppressible, and fails CI"
+  ],
+  "unless": [
+    "The production `TrainRunner` module is the legitimate wagon-step executor; its own step loop is exempt"
+  ],
+  "why": "Interlocking is route control, not execution: TrainRunner is the single component that runs wagons and carries Cargo between them; a second executor would compete with it.",
+  "evidence": [
+    "The interlocking_delegates detector reports no direct_wagon_execution finding in any InterlockingRunner-defining module",
+    "The InterlockingRunner's execute path returns the result of TrainRunner.execute(selectedTrainId, ...) for the resolved train"
+  ],
+  "verifier_detail": [
+    "Detector scope: the JS realization scans each InterlockingRunner-defining module under `src/trains/**`; the TrainRunner module is not scanned/flagged (its own step loop is legitimate). Which module is scanned and how patterns are recognized is the per-stack detector's concern.",
+    "Flag: (a) direct import of a `src/<wagon>/wagon.ts` wagon module, (b) a `runTrain(...)` call, (c) a `for (... of <expr>.sequence)` executor loop.",
+    "Term direct_wagon_execution: an InterlockingRunner module importing a wagon module, calling `runTrain(...)`, or looping over `<expr>.sequence` as a step executor — competing with TrainRunner.",
+    "Member of the `bun_interlocking_infrastructure` FAMILY detector (checks/interlocking_delegates.mjs).",
+    "Severity 4; disposition strict: a newly introduced direct-execution pattern is not suppressible and fails CI."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0",
+    "implementation: validator, ref coder.bun.interlocking-delegates-to-trainrunner",
+    "aliases: BUN-INTERLOCKING-DELEGATES-TRAINRUNNER-001",
+    "Bun-stack realization of the agnostic core obligation coder.train.interlocking-delegates-to-trainrunner (core afokapu/atdd#1251), an agnostic 'route-control, not execution' obligation rendered for the Bun application; the JS detector enforcing it is the atdd.workspace.bun implementation.",
+    "Normative source: core runtime spec afokapu/atdd#1251 (InterlockingRunner 'must not': execute wagon steps, choose the next train step inside a train, bypass TrainRunner, or duplicate TrainRunner's execution loop).",
+    "core_design_refs: afokapu/atdd#1246, afokapu/atdd#1251",
+    "Source name: InterlockingRunner delegates execution to TrainRunner and never executes wagons itself (Bun)"
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "evidence",
+      "text": "The InterlockingRunner's execute path returns the result of TrainRunner.execute(selectedTrainId, ...) for the resolved train",
+      "justification": "Reviewer-facing restatement of the source's positive delegation requirement (S016/fix_hint) as a checkable evidence item; no new obligation."
+    },
+    {
+      "field": "activation",
+      "text": "task_term values and doesNotFire entry for trees without an InterlockingRunner",
+      "justification": "Derived from source scope and the graph 'requires coder.bun.interlocking-runner-exists' edge to make activation concrete."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "avoid[0]",
+        "avoid[1]",
+        "avoid[2]",
+        "avoid[3]",
+        "why",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[0]",
+        "verifier_detail[1]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "audit",
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "avoid[2]",
+        "avoid[3]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "then"
+      ],
+      "note": "Sentence fragment 'It' (the InterlockingRunner); subject of S016, absorbed into then."
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "then",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "why"
+      ],
+      "note": "Article 'The' of the S018 sentence, absorbed into why."
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "verifier_detail[0]"
+      ],
+      "note": "Fragment 'WHICH' of the S020-S022 sentence, absorbed into verifier_detail[0]."
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "verifier_detail[0]",
+        "unless[0]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "avoid[0]",
+        "avoid[1]",
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "avoid[4]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "identity",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "identity",
+        "avoid[4]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "verifier_detail[2]",
+        "why"
+      ]
+    }
+  ]
+}

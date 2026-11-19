@@ -1,0 +1,384 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.bun/coder.bun.commons-domain-no-framework-import.convention.yaml",
+    "sha256": "e313fc5712c32bbeb2bd99e0d6945ec55c8c8228a5f10002216f9fc34c336b7d"
+  },
+  "rule_id": "coder.bun.commons-domain-no-framework-import",
+  "kind": "rule",
+  "title": "Domain modules import no runtime machinery",
+  "activation": {
+    "facts": [
+      {
+        "fact": "layer",
+        "values": [
+          "domain"
+        ],
+        "observability": "observable_now",
+        "note": "File path carries a `domain/` layer segment; files with no layer segment are out of scope. Applies to any in-scope domain module, whether the offending import is new or already present."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "**/domain/**"
+        ],
+        "observability": "observable_now",
+        "note": "Excluding test files and vendored/build directories, which are never scanned."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "import_present:bun:*",
+          "import_present:node:*",
+          "import_present:htmx",
+          "import_present:express",
+          "import_present:fastify",
+          "import_present:koa",
+          "bun_global_referenced"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Observer for import specifiers / `Bun.` global references present in a domain module (existing or newly added); currently established by bun_clean_architecture_detector findings."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "bun_clean_architecture_detector:domain-framework-import"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Detector finding surfaced to the agent."
+      }
+    ],
+    "fires": [
+      "A non-test module under `domain/` imports `bun:sqlite`, `node:fs` or any other `bun:*`/`node:*` specifier (newly added or already present).",
+      "A domain module imports `htmx`, `express`, `fastify` or `koa`.",
+      "A domain module references the `Bun.` global (e.g. `Bun.env`, `Bun.file`)."
+    ],
+    "doesNotFire": [
+      "A test file under `domain/` imports `bun:test`.",
+      "Files in vendored or build output directories.",
+      "A file whose path carries no layer segment.",
+      "An infrastructure or presentation module importing `bun:*`, `node:*` or an HTTP framework."
+    ]
+  },
+  "given": "A non-test, non-vendored/build module in the `domain/` layer",
+  "when": "it imports a specifier or references a global (new or existing)",
+  "then": "It MUST NOT import runtime machinery (`bun:*`, `node:*`, `htmx`, `express`, `fastify`, `koa`) nor reach the `Bun.` global.",
+  "prefer": [
+    "Keep domain code as data-in / data-out logic.",
+    "Move Bun, Node, htmx, server, or framework machinery to an outer layer and pass the needed value inward.",
+    "During GREEN: adapt at the nearest existing integration or presentation boundary, passing the smallest value or domain-facing collaborator the behavior needs; add a new boundary only when no existing one can express the current behavior correctly."
+  ],
+  "avoid": [
+    "Wrapping a framework API in a domain-named helper and keeping the coupling.",
+    "Redesigning adjacent layers.",
+    "Importing runtime machinery just to satisfy the acceptance quickly."
+  ],
+  "unless": [
+    "Test files and vendored/build directories are never scanned.",
+    "A file carrying no layer segment is outside these rules, not in violation."
+  ],
+  "why": "The domain expresses rules, not machinery; for a full-stack Bun app the machinery is the server and transport primitives. The domain must be runnable with no server started — `Bun.` in a domain module means it is not.",
+  "evidence": [
+    "bun_clean_architecture_detector reports no framework/runtime import specifier and no `Bun.` global use in any domain module.",
+    "The current behavioral acceptance passes.",
+    "The domain remains executable without runtime machinery (runnable with no server started)."
+  ],
+  "verifier_detail": [
+    "Flag framework/runtime import specifiers in a domain module, and any use of the `Bun.` global.",
+    "runtime_machinery = `bun:*`, `node:*`, an HTTP framework (`htmx`, `express`, `fastify`, `koa`), or the `Bun.` global — this stack's equivalent of the UI frameworks the Vite sibling forbids (react/preact/@tanstack/gsap); the obligation is identical and only the list of machinery changes with the stack.",
+    "server_free_domain = the practical test: the domain must be runnable with no server started.",
+    "Do not scan test files or vendored/build directories.",
+    "Bare npm specifiers resolve outside the project graph and are not layer-checked (layer-direction checks only apply to project-internal specifiers; the named framework specifiers above are still matched by this rule's list).",
+    "A file carrying no layer segment is out of scope, not a violation.",
+    "Severity 3; disposition strict."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "Bun realization mirroring `coder.vite.commons-domain-no-framework-import` (rule-for-rule); core obligation `coder.commons.domain-layer-purity`.",
+    "Vite sibling forbids react/preact/@tanstack/gsap because those are ITS frameworks.",
+    "Alias: BUN-COMMONS-DOMAIN-NO-FRAMEWORK-IMPORT-001.",
+    "Implementation: validator bun_clean_architecture_detector.",
+    "Severity 3, disposition strict."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.phase-loop",
+      "kind": "policy",
+      "text": "During GREEN: add a new boundary only when no existing one can express the current behavior correctly. Do not broaden: do not redesign adjacent layers. Prove: the current behavioral acceptance passes."
+    }
+  ],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire examples (e.g. `bun:test` in a test file, `Bun.env`, infrastructure modules importing machinery).",
+      "justification": "Concrete activation boundaries derived directly from the statement and exceptions; no new obligation."
+    },
+    {
+      "field": "verifier_detail",
+      "text": "Clarification that the bare-npm-specifier exception concerns layer-direction checks, not the named framework list.",
+      "justification": "Without it, S033 would contradict the htmx/express/fastify/koa bans, which are bare npm specifiers."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "given",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "verifier_detail[1]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[2]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[0]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "audit",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "why",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "why",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "structure"
+      ],
+      "note": "Heading for prefer[0..1]."
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "prefer[2]",
+        "shared:policy.phase-loop"
+      ],
+      "note": "GREEN qualifier kept as prefix of prefer[2] and in the shared node."
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "prefer[2]"
+      ],
+      "note": "Rule-specific: nearest existing integration or presentation boundary stays in this rule."
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "prefer[2]"
+      ],
+      "note": "Rule-specific: smallest value or domain-facing collaborator passed into the domain stays in this rule."
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "prefer[2]",
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "structure"
+      ],
+      "note": "Heading for avoid[0..2]."
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "avoid[1]",
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "structure"
+      ],
+      "note": "Heading for evidence[1..2]."
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "evidence[1]",
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[3]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[5]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "verifier_detail[6]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "verifier_detail[6]",
+        "audit"
+      ],
+      "note": "Kept as the bare source label 'strict' without added semantics."
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

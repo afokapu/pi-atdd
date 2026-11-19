@@ -1,0 +1,328 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/tester.bun/tester.bun.telemetry-test-binding.convention.yaml",
+    "sha256": "4566199fd401cd8666e08466cd3a5236f23ef356364e673b36a2e3c5ec78638d"
+  },
+  "rule_id": "tester.bun.telemetry-test-binding",
+  "kind": "rule",
+  "title": "Bind every telemetry test to the item and the acceptance that requires it",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "test"
+        ],
+        "observability": "observable_now",
+        "note": "Rule applies only to test files. The Bun realization (validator bun_telemetry_test, `//` header comments) is implementation context, not an activation gate."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "telemetry_header_present"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Needs a content observer that detects every real `Telemetry:` header line (not inside a string literal) in a test file, whether the test was edited or not; the bun_telemetry_test validator provides it."
+      },
+      {
+        "fact": "phase",
+        "values": [
+          "adopted"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Rule is inert until the repository adopts the telemetry rule family; needs an adoption-state observer."
+      }
+    ],
+    "fires": [
+      "A test file contains a `Telemetry:` header whose URN is malformed or does not resolve to a tracking-plan item.",
+      "A test file has a `Telemetry:` header but no `Acceptance:` header.",
+      "A test's `Acceptance:` binding names an acceptance not declared in the plan.",
+      "A test binds a telemetry item and one or more acceptances, but none of the bound acceptances' telemetry decisions lists that item.",
+      "An unchanged test's existing `Telemetry:` header becomes invalid after the tracking plan changes (item removed, acceptance removed, or decision no longer lists the item) and is found during validation."
+    ],
+    "doesNotFire": [
+      "A test is a telemetry test only by URN kind segment (TELEMETRY/EVENT/METRIC) or *.telemetry.test.* colocation, with no `Telemetry:` header (captured-sink and identity rules judge it).",
+      "The text `Telemetry:` appears only inside a string literal.",
+      "A spec file binds many acceptances and at least one of them requires the bound item.",
+      "The repository has not adopted the telemetry rule family."
+    ]
+  },
+  "given": "A test file contains a real `Telemetry:` header (a telemetry test) in a repository that has adopted the telemetry rule family",
+  "when": "the test is validated or its headers are written or changed, including unchanged tests re-judged after tracking-plan changes",
+  "then": "Each `Telemetry:` header must be a well-formed concrete URN resolving to a tracking-plan item, and the test must carry `Acceptance:` bindings to declared acceptances, at least one of whose telemetry decisions requires that item.",
+  "prefer": [
+    "Bind both ends of the proof: `// URN: test:commons:ingress:E001-UNIT-001` / `// Acceptance: acc:commons:E001-UNIT-001` / `// Telemetry: telemetry:event:be:commons:response-invocation-accepted`.",
+    "In a spec covering many acceptances, ensure at least one bound acceptance's decision lists the item."
+  ],
+  "avoid": [
+    "Binding an item with no acceptance — it proves something nobody required.",
+    "Binding an acceptance whose decision does not list the item — a test proves a requirement, not an acquaintance.",
+    "Non-concrete or unresolvable Telemetry URNs; Acceptance bindings absent from the plan."
+  ],
+  "unless": [
+    "Telemetry test only by URN segment or colocation (no `Telemetry:` header): judged by the captured-sink and identity rules instead.",
+    "Repository has not adopted this rule family (inert until adoption, like every rule in it)."
+  ],
+  "why": "This is the @covers edge of the telemetry graph (acceptance → item → test); without both bindings a test proves nothing required or a relationship the plan never declared.",
+  "evidence": [
+    "bun_telemetry_test validator reports no finding for any `Telemetry:` header line in the test file.",
+    "For each header: URN parses, resolves in the tracking-plan registry, Acceptance: bindings are present and exist in the plan, and ≥1 bound acceptance's telemetry decision lists the item."
+  ],
+  "verifier_detail": [
+    "telemetry_test = a test file with a Telemetry: header, a TELEMETRY/EVENT/METRIC URN kind segment, or *.telemetry.test.* colocation; this rule only judges files with a Telemetry: header.",
+    "bound_acceptance = the acceptance named by the test's Acceptance: header; its telemetry decision must list the bound item — a test proves a requirement, not an acquaintance.",
+    "Every Telemetry: header in a test file is judged on its own line, in order: concrete-URN grammar, registry resolution, presence of Acceptance: bindings, the bindings' existence in the plan, and at least ONE bound acceptance's decision actually requiring the bound item.",
+    "A spec file legitimately covers many acceptances (the two-level @covers model); the requiring one may be any of them, so the judgement is over the whole set — none requiring is the finding.",
+    "A header inside a string literal is not a header — ignore it.",
+    "Severity 2; disposition strict."
+  ],
+  "audit": [
+    "schema_version 1.1.0",
+    "kind: rule",
+    "status: active",
+    "aliases: TESTER-TELEMETRY-TEST-BINDING-001",
+    "introduced_in 0.7.0",
+    "implementation: validator, ref bun_telemetry_test",
+    "Source name: 'Telemetry tests bind the acceptance and the item they prove'",
+    "Term ids: telemetry_test, bound_acceptance"
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Disposition strict: atdd-bun fails on every finding; there is no advisory mode and no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "Activation facts, fires/doesNotFire lists and the `when` phrasing (every real Telemetry: header is judged on validation, including unchanged tests after tracking-plan changes, as well as on header edits).",
+      "justification": "Required by the target structure; derived from the source's terms, normative text ('Every Telemetry: header in a test file is judged') and exceptions, without narrowing scope."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Rephrased as title; original kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "given"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "verifier_detail[0]",
+        "activation",
+        "unless[0]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[1]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[1]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "avoid[0]",
+        "avoid[1]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[2]",
+        "then",
+        "avoid[2]",
+        "evidence[1]",
+        "when"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[2]",
+        "then",
+        "avoid[2]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "verifier_detail[2]",
+        "then",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "verifier_detail[3]",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "verifier_detail[3]",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "verifier_detail[3]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "verifier_detail[4]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "unless[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "unless[1]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "identity",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "identity",
+        "verifier_detail[5]",
+        "shared:policy.strict-disposition"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

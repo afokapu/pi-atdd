@@ -1,0 +1,375 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.htmx/coder.htmx.verb-mutation-signals-progress.convention.yaml",
+    "sha256": "ae85c5ea01a09a3c41b939988088a8e5da91848d2710a1f0a1e0c86308638ac9"
+  },
+  "rule_id": "coder.htmx.verb-mutation-signals-progress",
+  "kind": "rule",
+  "title": "Make every mutating htmx request signal that it is in flight",
+  "activation": {
+    "facts": [
+      {
+        "fact": "language",
+        "values": [
+          "htmx"
+        ],
+        "observability": "observable_now",
+        "note": "Bun/htmx stack workspace (atdd.workspace.bun). Applies to htmx markup wherever it appears (HTML files, templates, or markup embedded in source files); no file-kind restriction."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "htmx_hypermedia_detector: element with hx-post|hx-put|hx-patch|hx-delete declaring neither hx-indicator nor hx-disabled-elt"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Detector scans all in-scope markup (not only the diff), so pre-existing violations and signals removed from still-mutating elements are covered; finding must be exposed as an activation fact."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "markup containing an hx-post|hx-put|hx-patch|hx-delete attribute is touched, including removal of hx-indicator/hx-disabled-elt"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Diff-level observer for early firing; the finding fact remains authoritative for existing elements outside the diff."
+      }
+    ],
+    "fires": [
+      "Any element (form, button, etc.), new or pre-existing, carries hx-post, hx-put, hx-patch or hx-delete and declares neither hx-indicator nor hx-disabled-elt.",
+      "An element's verb changes from hx-get to a mutating verb with no progress signal.",
+      "A progress signal is removed from an element that still issues a mutating request.",
+      "A mutating htmx element without a signal lives in markup embedded in a source/template file rather than a standalone HTML file."
+    ],
+    "doesNotFire": [
+      "An element issuing only hx-get (idempotent read).",
+      "A mutating element that declares hx-indicator, hx-disabled-elt, or both."
+    ]
+  },
+  "given": "An element issues a mutating htmx request (hx-post, hx-put, hx-patch or hx-delete), which changes server state so a duplicate is not harmless.",
+  "when": "That element exists in the markup.",
+  "then": "The element issuing the mutation declares a progress signal: hx-indicator or hx-disabled-elt (either satisfies; both is fine).",
+  "prefer": [
+    "hx-disabled-elt (disables the control in flight, making double-submit impossible) where a duplicate is expensive, e.g. <form hx-post=\"…\" hx-disabled-elt=\"find button\">.",
+    "hx-indicator (spinner region in flight) to show something is happening, e.g. <form hx-post=\"…\" hx-indicator=\"#spinner\">."
+  ],
+  "avoid": [
+    "<form hx-post=\"…\">…</form> with no signal — invisible in flight.",
+    "hx-indicator alone where duplicates are expensive: it says wait but does not stop the user.",
+    "Treating a server idempotency key as an exemption: a real mitigation the rule cannot see.",
+    "Adding indicators to hx-get elements under this rule — a UX preference, out of scope."
+  ],
+  "unless": [
+    "The element issues only hx-get (idempotent; a duplicate is harmless)."
+  ],
+  "why": "htmx swaps fragments in place with no navigation, so the page looks identical while in flight; users correctly read 'nothing happened', click again, and a non-idempotent request runs twice (duplicate orders, charges, rows).",
+  "evidence": [
+    "htmx_hypermedia_detector reports no finding across the in-scope markup.",
+    "Every opening tag containing hx-post/hx-put/hx-patch/hx-delete also contains hx-indicator or hx-disabled-elt."
+  ],
+  "verifier_detail": [
+    "Zero-dependency Bun detector: find each mutating verb attribute (hx-post, hx-put, hx-patch, hx-delete), extract the enclosing opening tag, flag the element when it declares neither hx-indicator nor hx-disabled-elt.",
+    "Deduplicate findings per element: an element carrying two mutating verbs reports once.",
+    "hx-get is not scoped. An element declaring both signals passes; only declaring neither is a violation.",
+    "Server-driven idempotency (idempotency key on the endpoint) is a real mitigation but invisible to the detector and does not exempt the element from signalling progress to the user.",
+    "Severity 3; disposition strict (see policy.strict-disposition)."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "Alias: HTMX-MUTATION-PROGRESS-001.",
+    "Implementation: validator, ref htmx_hypermedia_detector.",
+    "Bun/htmx-stack realization of the agnostic \"an in-flight mutation is observable\" / \"in-flight mutations are visible\" obligation, enforced by the htmx_hypermedia_detector family implementation on atdd.workspace.bun.",
+    "Source term ids: mutating_request, progress_signal.",
+    "Source rationale: this is the single most common user complaint about htmx applications and is not a taste issue; full-page navigation used to give a free progress signal (browser spinner, page going blank), swapping a fragment in place gives none.",
+    "Source fix_hint examples used endpoint \"/orders\": <form hx-post=\"/orders\">…</form> ✗ invisible in flight; <form hx-post=\"/orders\" hx-indicator=\"#spinner\">…</form> ✓ shows progress; <form hx-post=\"/orders\" hx-disabled-elt=\"find button\">…</form> ✓ prevents re-submit."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Strict disposition: the workspace (atdd-bun) fails on every finding; there is no advisory mode and no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "Activation facts, fires and doesNotFire lists, including the explicit note that the rule covers all mutating elements (pre-existing included) and htmx markup embedded in any file kind.",
+      "justification": "Required by the target structure; derived from the source's universal scope ('Every element issuing a mutating htmx request'), the hx-get exclusion and the either/both signal clause."
+    },
+    {
+      "field": "when",
+      "text": "'That element exists in the markup.'",
+      "justification": "Required structural field; restates the source's universal applicability without narrowing to changed elements."
+    },
+    {
+      "field": "evidence",
+      "text": "Evidence items phrased as detector-clean / tag-level check.",
+      "justification": "Required structure; restates the source detector behaviour as a compliance check, no new obligation."
+    },
+    {
+      "field": "prefer/avoid",
+      "text": "Example endpoint \"/orders\" replaced by \"…\" in snippets; the full source snippets are preserved in audit.",
+      "justification": "Codebase-neutral phrasing per rule 4."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ],
+      "note": "Rephrased as imperative title."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "when",
+        "then",
+        "why",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit",
+        "activation"
+      ],
+      "note": "Stack/workspace scope used as language activation fact."
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "given",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "prefer[0]",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "prefer[0]",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "audit",
+        "why"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "unless[0]",
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "avoid[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "prefer[1]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "prefer[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "prefer[0]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "then",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "avoid[2]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "identity",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,266 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/atdd-bun.planner/atdd-bun.planner.train-wagon-resolves.convention.yaml",
+    "sha256": "6410e248351e701dcba38c671c07c4d8f6d67927984ed4d18e567abd1eb1f3f0"
+  },
+  "rule_id": "atdd-bun.planner.train-wagon-resolves",
+  "kind": "rule",
+  "title": "List only declared wagons in a train",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "train plan artifact",
+          "wagon plan artifact"
+        ],
+        "observability": "observable_now",
+        "note": "Any non-excluded plan artifact declaring a train (with a `wagons:` list) or a `wagon:<slug>` is in scope, whether or not it changed; recognizable by file kind / plan structure."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "planner_plan_integrity: unresolved train wagon"
+        ],
+        "observability": "observable_now",
+        "note": "The planner_plan_integrity validator scans every non-excluded train and reports wagons that resolve to no `wagon:<slug>` declaration, including pre-existing unresolved references in unchanged plans."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "train wagons list added or edited",
+          "wagon declaration renamed or removed"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Optional, for early warning only: a diff-level observer could flag edits that are likely to introduce an unresolved reference. Not a prerequisite for the rule to apply."
+      }
+    ],
+    "fires": [
+      "Checking any non-excluded train plan, including an unchanged one, whose `wagons:` list already names a slug with no matching `wagon:<slug>` declaration.",
+      "A planner edits only a wagon's content in a plan where some train already lists an undeclared wagon slug — the pre-existing unresolved reference is still a finding.",
+      "A planner adds a wagon slug to a train's `wagons:` list without a matching `wagon:<slug>` declaration in the plan.",
+      "A planner renames or deletes a wagon declaration while a train still lists the old slug.",
+      "A train lists a wagon slug with a typo that matches no declared wagon."
+    ],
+    "doesNotFire": [
+      "Every slug in every non-excluded train's `wagons:` list has a matching `wagon:<slug>` declaration.",
+      "Plan-like files inside vendored or generated trees (`node_modules`, `dist`, `build`, `_generated`).",
+      "Edits to a wagon's content that keep its `wagon:<slug>` declaration, provided every train wagon reference in the scanned plans resolves to a declared wagon (pre-existing unresolved references still fire)."
+    ]
+  },
+  "given": "A non-excluded plan contains a train whose `wagons:` list names wagon slugs (changed or not).",
+  "when": "The plan is authored, edited or checked — e.g. a train's `wagons:` list is written, a wagon declaration is renamed/removed, or existing plans are validated.",
+  "then": "Every wagon the train lists under `wagons:` is declared as `wagon:<slug>`.",
+  "prefer": [
+    "Declare the missing wagon as `wagon:<slug>`.",
+    "Or remove the wagon from the train.",
+    "When renaming or removing a wagon declaration, update every train that lists it in the same change."
+  ],
+  "avoid": [
+    "Listing a wagon in a train that has no `wagon:<slug>` declaration — a train ordering a wagon that does not exist cannot run.",
+    "Declaring an empty placeholder wagon solely to silence the check instead of planning the wagon or removing it from the train."
+  ],
+  "unless": [
+    "Vendored and generated trees (`node_modules`, `dist`, `build`, `_generated`) are never scanned."
+  ],
+  "why": "A train ordering a wagon that does not exist cannot run. Wagon membership is the train-specific case of reference resolution.",
+  "evidence": [
+    "The planner_plan_integrity validator reports no unresolved train wagon across all non-excluded plans.",
+    "For each slug in each train's `wagons:` list, a reviewer finds a matching `wagon:<slug>` declaration.",
+    "The rule has a failing fixture (train listing an undeclared wagon) that the package guard rejects."
+  ],
+  "verifier_detail": [
+    "Implementation: validator `planner_plan_integrity` (package guard, not a canonical planner node).",
+    "Resolution: each entry under a train's `wagons:` must match a declared `wagon:<slug>`; any unmatched entry is a finding. Applies to every scanned train, not only changed ones; pre-existing unresolved references are findings regardless of what the current edit touched.",
+    "Scan exclusion: never scan `node_modules`, `dist`, `build`, `_generated`.",
+    "Severity 3; disposition strict."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "Aliases: ATDD-BUN-PLANNER-TRAIN-WAGON-RESOLVES.",
+    "Name: Train wagons resolve. Summary: Train wagons resolve.",
+    "Statement tail: 'Package rule, strict.'",
+    "Term package_rule (Package rule): a rule of this package's own gates (`atdd-bun.*`), realized by a package guard rather than a canonical planner node; held to the same per-rule checks as every convention: a convention, strict, a failing fixture, relationship edges.",
+    "Implementation: {type: validator, ref: planner_plan_integrity}.",
+    "Metadata: severity 3; disposition strict."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Disposition: strict (as declared in the source metadata and statement 'Package rule, strict.')."
+    },
+    {
+      "id": "policy.package-rule",
+      "kind": "policy",
+      "text": "Package rule (term package_rule): a rule of this package's own gates (`atdd-bun.*`), realized by a package guard rather than a canonical planner node. It is held to the same per-rule checks as every convention: a convention, strict, a failing fixture, relationship edges."
+    }
+  ],
+  "additions": [
+    {
+      "field": "fires",
+      "text": "Concrete fire/does-not-fire situations (rename, typo, content-only edits with and without pre-existing unresolved references, unchanged plans with existing unresolved references).",
+      "justification": "Activation schema requires concrete situations; derived directly from the statement."
+    },
+    {
+      "field": "prefer[2]",
+      "text": "Update every train listing a wagon when renaming/removing it, in the same change.",
+      "justification": "Direct consequence of the fix hint applied to renames; no new obligation beyond the statement."
+    },
+    {
+      "field": "avoid[1]",
+      "text": "Do not declare empty placeholder wagons solely to silence the check.",
+      "justification": "Metric-gaming anti-pattern required by the schema; consistent with the normative intent that the train must be runnable."
+    },
+    {
+      "field": "why",
+      "text": "Wagon membership is the train-specific case of reference resolution.",
+      "justification": "Taken from the existing graph edge reason (runs_alongside atdd-bun.planner.reference-resolves), not the source YAML."
+    },
+    {
+      "field": "sharedNodes",
+      "text": "New shared node policy.package-rule.",
+      "justification": "The package_rule term definition recurs across every atdd-bun.* package rule; needs dedup review."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Title rendered imperatively; original name kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "identity",
+        "shared:policy.package-rule",
+        "shared:policy.strict-disposition",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "shared:policy.package-rule",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "shared:policy.package-rule",
+        "verifier_detail[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "shared:policy.package-rule",
+        "evidence[2]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "audit"
+      ],
+      "note": "Restates the name."
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "why",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "prefer[0]",
+        "prefer[1]"
+      ],
+      "note": "Two unconditional alternatives: declare the wagon, or remove it from the train."
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "identity",
+        "verifier_detail[3]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "verifier_detail[3]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "audit",
+        "verifier_detail[0]"
+      ]
+    }
+  ]
+}

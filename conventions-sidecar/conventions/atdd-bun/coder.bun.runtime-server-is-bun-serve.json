@@ -1,0 +1,438 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.bun/coder.bun.runtime-server-is-bun-serve.convention.yaml",
+    "sha256": "90df9fab879428e0dd50f8b7d97c8d83f0f35fabf03b807921af5a7d4dada8c2"
+  },
+  "rule_id": "coder.bun.runtime-server-is-bun-serve",
+  "kind": "rule",
+  "title": "Serve HTTP with Bun.serve, not a node-compat framework",
+  "activation": {
+    "facts": [
+      {
+        "fact": "language",
+        "values": [
+          "typescript",
+          "javascript"
+        ],
+        "observability": "observable_now",
+        "note": "Source of a full-stack Bun application (atdd.workspace.bun)."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "source"
+        ],
+        "observability": "observable_now",
+        "note": "All non-test application source, any layer; test files are excluded by the source exception."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "foreign_server_construction_added",
+          "foreign_server_construction_present",
+          "http_server_modified",
+          "http_route_or_handler_added_or_modified",
+          "http_middleware_added_or_modified"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Diff-level observer: a foreign server construction (express(), fastify(, new Koa(, http/https.createServer(, bare createServer() in non-test source with strings/comments masked, or the HTTP server, a route, handler or middleware is added or changed."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "bun_fullstack_detector:foreign_server"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Detector finding from bun_fullstack_detector."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "http server",
+          "route",
+          "handler",
+          "middleware",
+          "express",
+          "fastify",
+          "koa",
+          "createServer",
+          "Bun.serve"
+        ],
+        "observability": "llm_judged",
+        "note": "Task concerns serving HTTP."
+      }
+    ],
+    "fires": [
+      "Adding or modifying an HTTP route, handler or middleware in a full-stack Bun application",
+      "Changing the existing Bun.serve server (options, routing, upgrade, streaming)",
+      "Any non-test source file, in any layer, constructs express(), fastify(, new Koa(, http.createServer(, https.createServer( or a bare createServer(",
+      "Migrating an existing foreign-framework route to the Bun server as part of new work"
+    ],
+    "doesNotFire": [
+      "A throwaway server spun up inside a test file",
+      "A framework name appearing only inside a string literal or comment (e.g. migration note, error message)",
+      "Outgoing HTTP client calls (governed by a separate convention)",
+      "Projects that are not a full-stack Bun application"
+    ]
+  },
+  "given": "non-test source of a full-stack Bun application",
+  "when": "the HTTP server, a route, handler or middleware is added or modified",
+  "then": "Serve HTTP with Bun.serve; construct no Express, Fastify, Koa or node:http/node:https createServer server.",
+  "prefer": [
+    "Express middleware behavior as ordinary function composition around Bun.serve handlers",
+    "During GREEN: add only the route, handler or middleware composition the current acceptance requires; reuse the existing Bun.serve instance and routing pattern; when replacing a forbidden framework in new work, migrate only the path required for correct behavior",
+    "Assemble and post-process htmx fragments with HTMLRewriter in the Bun server"
+  ],
+  "avoid": [
+    "Introducing Express, Fastify, Koa or node:http for convenience",
+    "A compatibility abstraction over a forbidden server",
+    "Rewriting unrelated routes",
+    "Serving even one route via a foreign framework: its middleware ecosystem follows and the migration silently stops halfway"
+  ],
+  "unless": [
+    "Test files: a throwaway test server is not an application server",
+    "Non-HTTP createServer( (test double, unrelated factory): known name-match imprecision; rename it (no per-rule scope)"
+  ],
+  "why": "Not taste; load-bearing for the stack decision: only Bun.serve has native routing, WebSocket upgrade, streaming and HTMLRewriter (a streaming HTML transformer available only through the Bun server, used for htmx fragments). Running e.g. Express under Bun keeps the npm middleware surface, forfeits native primitives and breaks the deployment story ('bun run server.ts', no bundle, no node_modules at runtime) — silently, because the compat layer works.",
+  "evidence": [
+    "The current behavioral acceptance passes through the real Bun server",
+    "The application server remains Bun.serve",
+    "bun_fullstack_detector reports no foreign_server finding on non-test source"
+  ],
+  "verifier_detail": [
+    "foreign_server patterns: `express()`, `fastify(`, `new Koa(`, `http.createServer(`, `https.createServer(` or a bare `createServer(` — any construction that puts a node-compat HTTP server in front of the app.",
+    "Zero-dependency Bun detector scans source with strings and comments MASKED, so a framework name inside a migration note or error message never trips it; names in strings/comments are never flagged.",
+    "Test files are excluded from scanning.",
+    "Name-based match is imprecise for non-HTTP createServer( (test doubles, unrelated factories); remedy is renaming — atdd-bun has no per-rule scope.",
+    "node_compat_path: Bun's Node.js compatibility layer. It works, which is exactly why this drift is silent: the app runs, the tests pass, and the stack has quietly become \"Node with a faster interpreter\".",
+    "metadata: severity 2; disposition strict."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0",
+    "Aliases: BUN-NATIVE-SERVER-001",
+    "implementation: {type: validator, ref: bun_fullstack_detector}, family implementation on atdd.workspace.bun",
+    "Bun-stack realization of the agnostic \"the application uses its runtime's native primitives rather than a compatibility shim\" obligation",
+    "Summary: A \"the server is Bun.serve\" obligation.",
+    "metadata: severity 2; disposition strict."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "Activation facts, fires/doesNotFire lists, including 'outgoing HTTP client calls' as not-firing.",
+      "justification": "Required by the target structure; derived from source exceptions and graph edge to coder.bun.boundaries-http-client."
+    },
+    {
+      "field": "evidence",
+      "text": "bun_fullstack_detector reports no foreign_server finding on non-test source",
+      "justification": "Makes the source's detector-based enforcement an explicit compliance check."
+    },
+    {
+      "field": "note",
+      "text": "Coder-facing text exceeds ~1,000 chars.",
+      "justification": "Rule-specific GREEN guidance, exceptions and the stack-decision rationale must stay coder-facing; losslessness wins over brevity."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ],
+      "note": "title"
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "why",
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[4]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "why"
+      ],
+      "note": "'Not taste; load-bearing for the stack decision'"
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "why",
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "why",
+        "prefer[2]"
+      ],
+      "note": "why: 'a streaming HTML transformer available only through the Bun server'; prefer[2]: natural place to assemble fragments"
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "structure"
+      ],
+      "note": "heading for the canonical path expressed in then/prefer[0]"
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "then",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "prefer[1]"
+      ],
+      "note": "'During GREEN:' prefix kept literally"
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "structure"
+      ],
+      "note": "heading for the avoid list"
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "structure"
+      ],
+      "note": "heading for the evidence list"
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "verifier_detail[1]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "verifier_detail[5]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "verifier_detail[5]",
+        "audit"
+      ],
+      "note": "disposition strict kept literally"
+    },
+    {
+      "seg": "S045",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S046",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

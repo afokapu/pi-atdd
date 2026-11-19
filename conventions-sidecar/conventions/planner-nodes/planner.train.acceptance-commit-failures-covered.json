@@ -1,0 +1,205 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.train.acceptance-commit-failures-covered.convention.yaml",
+    "sha256": "54fcd5206e0f3a433f00d40be764a3d6176b859146b3cbbc442f6311f85ce9fc"
+  },
+  "rule_id": "planner.train.acceptance-commit-failures-covered",
+  "kind": "rule",
+  "title": "Cover every acceptance commit-failure cause in the train",
+  "activation": {
+    "facts": [
+      {
+        "fact": "phase",
+        "values": [
+          "planning"
+        ],
+        "observability": "observable_now",
+        "note": "Planner audience: fires while authoring or revising trains/wagons/WMBTs/acceptances."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "**/plan/**",
+          "**/trains/**",
+          "**/*.train.yaml"
+        ],
+        "observability": "observable_now",
+        "note": "Train and plan artefacts edited by the planner; exact globs depend on repository layout."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "acceptance commit",
+          "commit-failure",
+          "Acceptance Authority",
+          "version_conflict",
+          "authorization_refused",
+          "idempotency_conflict",
+          "authority_unavailable"
+        ],
+        "observability": "observable_now",
+        "note": "Task text naming the acceptance commit path or its failure causes."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "train flow reaches the acceptance commit / Acceptance Authority boundary"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Requires a dispatch-graph observer that knows whether a train's flow reaches the acceptance commit step."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "commit-failure cause not reachable / not registered / not resolvable / not terminating, and not validly deferred"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Validator binding is pending (owned by D5, #1089); until it is bound, per-cause coverage is reviewer-judged."
+      }
+    ],
+    "fires": [
+      "A planner authors a train whose flow reaches an acceptance commit through the Acceptance Authority (whether or not the commit is the final step) and must plan handling for each commit-failure cause.",
+      "A train's dispatch graph handles version_conflict and authorization_refused but has no path or valid deferral for idempotency_conflict or authority_unavailable.",
+      "A planner revises a train and removes or reroutes a commit-failure handler so a cause no longer terminates."
+    ],
+    "doesNotFire": [
+      "A train whose flow never reaches the acceptance commit / Acceptance Authority boundary.",
+      "Failure causes outside platform:acceptance:commit-failure.cause (e.g. generic step failures), which are handled by other coverage conventions.",
+      "A train in which every one of the four causes is either covered (reachable, registered, resolvable, terminating) or has an explicit tracked-and-expiring deferral; a deferral excuses only its own cause."
+    ]
+  },
+  "given": "A train whose flow reaches the acceptance commit at the Acceptance Authority boundary",
+  "when": "the planner authors or revises the train's dispatch graph and acceptances",
+  "then": "Each of the four platform:acceptance:commit-failure.cause values (version_conflict, authorization_refused, idempotency_conflict, authority_unavailable) is reachable, registered in the dispatch graph, resolvable, and terminating.",
+  "prefer": [
+    "Plan handling per cause: for each cause confirm its path (separate or shared) is registered, reachable, resolvable and terminating.",
+    "Treat commit-failure coverage as extending the train's coverage up to the Acceptance Authority boundary."
+  ],
+  "avoid": [
+    "Covering only some of the four causes, or folding them into an unregistered generic failure path.",
+    "Paths that are registered but unreachable, reachable but unresolved, or that never terminate.",
+    "Deferrals without a tracking reference or expiry used to make coverage look complete."
+  ],
+  "unless": [
+    "A specific cause has an explicit tracked-and-expiring deferral (excuses that cause only)."
+  ],
+  "why": "Acceptance commits can fail for four distinct reasons at the Acceptance Authority boundary; any cause that is unreachable, unregistered, unresolvable or non-terminating can strand the train.",
+  "evidence": [
+    "For each of the four causes, the dispatch graph contains a registered path (dedicated or shared) reachable from the acceptance commit, with a resolution and a terminal state.",
+    "Any uncovered cause has its own deferral record with a tracking reference and an expiry that has not passed."
+  ],
+  "verifier_detail": [
+    "Closed cause set: platform:acceptance:commit-failure.cause = {version_conflict, authorization_refused, idempotency_conflict, authority_unavailable}; check all four individually.",
+    "Four per-cause properties: reachable, registered in dispatch graph, resolvable, terminating. A shared handling path satisfies a cause if all four properties hold for that cause.",
+    "Deferral is valid only if explicit, tracked and expiring, and applies per cause.",
+    "Pending binding: validator owned by D5 (#1089). Until bound, compliance is reviewer-judged."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "kind: rule",
+    "status: draft",
+    "Source name: 'Acceptance commit failures covered'.",
+    "Pending binding - validator owned by D5 (#1089).",
+    "Term commit_failure_coverage (label 'Commit-failure coverage'): the four acceptance commit-failure causes are each reachable+resolvable+terminating, extending coverage to the Acceptance Authority boundary."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "Path globs, fires/doesNotFire scenarios and 'planning' phase fact.",
+      "justification": "Source has no activation; needed to make the rule fire for planner train authoring."
+    },
+    {
+      "field": "avoid[2]",
+      "text": "Deferrals without a tracking reference or expiry used to make coverage look complete.",
+      "justification": "Restates the inverse of the source's 'explicit tracked-and-expiring deferral' condition as an anti-gaming item."
+    },
+    {
+      "field": "why",
+      "text": "Any uncovered cause can strand the train.",
+      "justification": "Source gives no explicit reason; derived from the 'resolvable and terminating' requirement."
+    },
+    {
+      "field": "prefer[0]",
+      "text": "Per-cause planning check, allowing separate or shared paths.",
+      "justification": "Operationalises the source's per-cause properties for the planner without mandating any path architecture."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Title rephrased imperatively; original name kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "unless[0]",
+        "avoid[0]",
+        "avoid[1]",
+        "verifier_detail[0]",
+        "verifier_detail[1]",
+        "verifier_detail[2]",
+        "evidence[0]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "given",
+        "prefer[1]",
+        "audit"
+      ]
+    }
+  ]
+}

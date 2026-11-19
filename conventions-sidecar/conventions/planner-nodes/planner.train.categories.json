@@ -1,0 +1,254 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.train.categories.convention.yaml",
+    "sha256": "e75a4f6e38687b4a4ad4044f5e194b742101b37a0da7f9b9ed46cb9bca0a35bb"
+  },
+  "rule_id": "planner.train.categories",
+  "kind": "rule",
+  "title": "Classify each train with its category field",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "train"
+        ],
+        "observability": "observable_now",
+        "note": "Train definition files authored by the planner."
+      },
+      {
+        "fact": "operation",
+        "values": [
+          "create",
+          "modify"
+        ],
+        "observability": "observable_now",
+        "note": "Fires when a train is added or any part of it (category, identity, steps, acceptance, outcome) is edited."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "train",
+          "category",
+          "nominal",
+          "error",
+          "alternate",
+          "exception",
+          "reclassify"
+        ],
+        "observability": "observable_now",
+        "note": "Planning tasks that author, rename or reclassify trains."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "train category field set or changed",
+          "train name/id changed",
+          "train steps/acceptance/outcome changed"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Diff-level observer on train files: detects category edits, identity edits, and semantic edits that may require reclassification."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "category does not match the scenario's semantics",
+          "category encoded in train identity"
+        ],
+        "observability": "llm_judged",
+        "note": "Whether the domain ran / succeeded / refuses deterministically, and whether a name encodes the category, needs semantic judgement."
+      }
+    ],
+    "fires": [
+      "Planner authors a new train and must set its category.",
+      "Planner reclassifies an existing train (e.g. from error to exception).",
+      "Planner names or renames a train and might embed its category in the name/id.",
+      "Planner edits a train's steps or acceptance so the scenario now ends in a different kind of outcome (e.g. a success path becomes an in-domain refusal or an external fault), which may make the existing category wrong."
+    ],
+    "doesNotFire": [
+      "Authoring wagons, WMBTs or docs that do not define trains.",
+      "Classifying a train along the separate family axis (governed by planner.train.family).",
+      "Purely cosmetic edits to a train (typo, formatting) that change neither its outcome semantics, category nor identity."
+    ]
+  },
+  "given": "A planner is authoring or editing a train, including its steps, acceptance or outcome",
+  "when": "the train is created, named or renamed, or its scenario semantics change in a way that may alter its category",
+  "then": "Set the train's `category` field to exactly one of nominal, error, alternate or exception, chosen by the category definitions.",
+  "prefer": [
+    "nominal: the intended journey; the domain runs to completion and returns the outcome the job exists to produce.",
+    "alternate: another in-domain route to success (input mode, channel, configuration, persona); a success, not a failure.",
+    "exception: the domain ran and refused (negative verdict, the business rule working); retry is refused identically (validation, rule violations, policy denials).",
+    "error: fault outside the domain; domain never ran, no verdict or postcondition; retry may succeed once the fault clears (crashes, collaborator unavailability, infrastructure).",
+    "Reclassify by editing the category field, without a category-driven rename."
+  ],
+  "avoid": [
+    "Encoding the category in the train's name or id (category is metadata, not identity).",
+    "Labelling a business-rule refusal as error, or an alternate success as a failure."
+  ],
+  "unless": [],
+  "why": "Category is metadata, not identity, so a train is reclassified by changing a field rather than its name; the closed set keeps success, in-domain refusal and out-of-domain fault distinct.",
+  "evidence": [
+    "Each train has a `category` field whose value is one of nominal, error, alternate, exception; no other value is used.",
+    "The train's name/id does not encode its category, and a reclassification is expressed as a change of the category field without requiring a rename (other unrelated edits in the same change are fine).",
+    "Reviewer checks the chosen value against the definitions: did the domain run, did it succeed, is a refusal deterministic on retry; when steps/acceptance change the outcome, the category is re-checked."
+  ],
+  "verifier_detail": [
+    "Term `category` (label 'Test categories'), defined as name -> description: the four values of the train's `category` field. Closed set: nominal, error, alternate, exception; value keys are unchanged from legacy.",
+    "Full definitions. nominal: The intended journey - the domain runs to completion and returns the outcome the job exists to produce. error: Failure originating outside the modelled domain - the domain never ran, so no verdict exists and no domain postcondition holds; the identical request may succeed once the fault clears (crashes, collaborator unavailability, infrastructure faults). alternate: A different in-domain route to a successful outcome - another input mode, channel, configuration or persona; still a success, not a failure. exception: An in-domain refusal - the domain ran, evaluated the request and rendered a negative verdict, so the refusal is the business rule working; the identical request is refused identically on retry (validation failures, business rule violations, policy denials)."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "source kind: family; status: active",
+    "source: legacy_path src/atdd/planner/conventions/train.convention.yaml, legacy_section numbering.categories, legacy_sha 825602729f11a3a4, extraction_mode high_fidelity",
+    "parity: source_fragments_preserved false, examples_preserved true, implementation_preserved false, fix_hint_preserved false, reviewed_at 2026-07-28. Divergence: the four glosses are deliberately reworded away from the extraction (#1634). The legacy numbering.categories section no longer exists in train.convention.yaml, so this node is the sole definition and fidelity to the retired source is no longer checkable. Value keys and the closed set are unchanged."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "evidence",
+      "text": "Evidence items (closed set, identity does not encode category, semantic check against definitions including after outcome-changing edits).",
+      "justification": "Source has no evidence section; these restate the statement and definitions as checkable criteria."
+    },
+    {
+      "field": "avoid",
+      "text": "Labelling a refusal as error or an alternate success as a failure.",
+      "justification": "Inverse of the source glosses ('still a success, not a failure'; in-domain refusal vs outside-domain failure); no new obligation."
+    },
+    {
+      "field": "activation",
+      "text": "Activation facts, fires and doesNotFire, including outcome-changing edits to steps/acceptance.",
+      "justification": "Required by the schema; derived from the rule's subject and the definitions (a semantic change can invalidate the category); graph edge to planner.train.family."
+    },
+    {
+      "field": "split_suggestion",
+      "text": "No split proposed: 'never encoded in identity' is kept as avoid[0] with its rationale in why; then holds only the classification obligation.",
+      "justification": "Documents rule 2 consideration."
+    },
+    {
+      "field": "prefer",
+      "text": "Category glosses in prefer are compressed; full wording is kept in verifier_detail[1]. Coder-facing text is near the ~1,200 char limit.",
+      "justification": "The glosses are the sole definition of the categories (legacy source retired); losslessness preserved via verifier_detail."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ],
+      "note": "Title reworded imperatively."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "avoid[0]",
+        "prefer[4]",
+        "why",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[0]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[1]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "prefer[1]",
+        "avoid[1]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "prefer[2]",
+        "avoid[1]",
+        "verifier_detail[1]",
+        "evidence[2]"
+      ]
+    }
+  ]
+}

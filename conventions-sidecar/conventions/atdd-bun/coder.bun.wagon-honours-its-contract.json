@@ -1,0 +1,468 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.bun/coder.bun.wagon-honours-its-contract.convention.yaml",
+    "sha256": "712e8c8f3f3b1c0d7bb61c4b54a19823ff1c125a109b64db9cb48addd620581a"
+  },
+  "rule_id": "coder.bun.wagon-honours-its-contract",
+  "kind": "rule",
+  "title": "Name every plan-declared produce/consume artifact in the Bun code that moves it through Cargo",
+  "activation": {
+    "facts": [
+      {
+        "fact": "language",
+        "values": [
+          "typescript",
+          "javascript"
+        ],
+        "observability": "observable_now",
+        "note": "Necessary but not sufficient: TS/JS alone does not distinguish Bun from Node.js or Deno."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "stack_is_bun"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Bun stack identity needs a repo-level observer (e.g. the consumer's configured stack / Bun runtime markers); the rule is Bun-only."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "plan/**"
+        ],
+        "observability": "observable_now",
+        "note": "Wagon documents live under plan/**; their produce[].name / consume[].name entries define the contract."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "wagon_document",
+          "cargo_moving_module"
+        ],
+        "observability": "needs_new_observer",
+        "note": "A wagon implementation is recognised structurally (a module that moves artifacts through Cargo, e.g. cargo.get/cargo.put), not by filename; needs a structural observer."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "wagon_has_implementation"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Whether any wagon implementation exists (Cargo-moving code present) vs. contract declared with no implementation at all; needed to apply the NOT_APPLICABLE case. Wagon-to-module association is not explicit in the source detector, which checks names against Cargo-moving modules."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "declared_artifact_not_named_by_cargo_moving_code"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Emitted by the bun_interlocking_infrastructure family detector (checks/wagon_contract_honoured.mjs)."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "wagon_document_produce_consume_edited",
+          "cargo_moving_module_added_or_edited"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Diff-level facts: contract entries edited or Cargo-moving code changed."
+      }
+    ],
+    "fires": [
+      "In a Bun repository, a wagon document under plan/** declares a produce[] or consume[] artifact name that no Cargo-moving Bun module names, while an implementation of that wagon exists.",
+      "A Cargo-moving Bun module is edited and stops naming an artifact its wagon document still declares.",
+      "A wagon document gains a new produce[]/consume[] entry while a wagon implementation already exists, and no Cargo-moving Bun module names the newly declared artifact."
+    ],
+    "doesNotFire": [
+      "The consumer repository declares no wagon contract at all.",
+      "A wagon is declared in the plan but has no implementation anywhere (unimplemented feature, governed by another rule).",
+      "A contract entry is added and the Cargo-moving code already names (or is updated to name) that artifact.",
+      "Non-Bun stacks (including Node.js or Deno TypeScript/JavaScript).",
+      "Only the shape of the wagon document is wrong (core wagon.schema.json validation, not this rule)."
+    ]
+  },
+  "given": "A wagon document under plan/** declares its data contract — produce[]: artifacts the wagon owns; consume[]: artifacts it takes from other wagons — and Bun code moves Cargo for that wagon",
+  "when": "the wagon's Cargo-moving code or its declared contract is written or changed",
+  "then": "Name every declared produce[].name and consume[].name artifact in the Bun module(s) where that wagon moves Cargo, so declaration and carried data cannot drift apart.",
+  "prefer": [
+    "Plan-matching name constants used at the Cargo call sites: `export const CONSUMES = \"orders:priced-basket\"; // plan: consume[].name` / `export const PRODUCES = \"orders:confirmed-order\"; // plan: produce[].name`; in `runWagon(step, cargo)`: `const basket = cargo.get(CONSUMES); cargo.put(PRODUCES, { confirmed: true, basket });`.",
+    "If the wagon no longer owns an artifact, correct the plan instead.",
+    "Name your modules as you like; no particular filename is required — what matters is that the module moving the wagon's Cargo names its artifacts."
+  ],
+  "avoid": [
+    "Plan produce/consume lists diverging from what is actually put/got through Cargo.",
+    "Putting a wagon's declared names only in a shared or unrelated module that does not move that wagon's Cargo.",
+    "Trying to suppress a finding: it is not suppressible."
+  ],
+  "unless": [
+    "The consumer declares no wagon contract (NOT_APPLICABLE).",
+    "The wagon has no implementation anywhere: an unimplemented feature, not a broken contract; another rule governs it."
+  ],
+  "why": "Core wagon.schema.json only checks the contract is well formed; only a detector reading Bun source and its Cargo idiom can see whether the code carries the declared artifacts.",
+  "evidence": [
+    "For every wagon document under plan/** with an implementation, each produce[].name and consume[].name string appears in at least one Cargo-moving Bun module.",
+    "checks/wagon_contract_honoured.mjs reports no findings; CI passes (strict, not suppressible)."
+  ],
+  "verifier_detail": [
+    "Read every wagon document under plan/**; collect produce[].name and consume[].name artifact names; flag any name that no Cargo-moving module names.",
+    "Core wagon.schema.json requires both produce (artifacts the wagon owns) and consume (artifacts it takes from other wagons), each entry carrying an artifact `name` (and, for produce, a `contract` and `telemetry` URN); core validates that shape wherever the plan lives, but cannot know whether a Bun module puts those artifacts into Cargo, because that means reading Bun source and this stack's Cargo idiom.",
+    "Recognise the wagon implementation STRUCTURALLY — a module that moves artifacts through Cargo — never by filename. A `wagon.ts` naming heuristic is the kind of fitted check this hub has had to unpick more than once; consumers may name modules as they like.",
+    "NOT_APPLICABLE, deliberately, in two cases: (1) consumer declares no wagon contract — nothing to honour; (2) contract declared with no wagon implementation at all — an unimplemented feature, not a broken contract, belonging to whatever rule governs unimplemented plan; reporting it here would fire on every freshly planned repository. The rule judges code that exists against the contract it claims, not the absence of code.",
+    "Member of the bun_interlocking_infrastructure FAMILY detector (checks/wagon_contract_honoured.mjs). Severity 4, disposition strict: a wagon whose declared contract nothing implements is not suppressible and fails CI.",
+    "Term wagon_data_contract: the artifacts a wagon document declares under produce[] and consume[], each identified by an artifact `name`, which the wagon's Cargo-moving code must name."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.2.0.",
+    "implementation: {type: validator, ref: coder.bun.wagon-honours-its-contract}.",
+    "aliases: BUN-WAGON-CONTRACT-001.",
+    "core_design_refs: afokapu/atdd#1246, afokapu/atdd#1251.",
+    "Source name: \"A wagon's implementation moves the artifacts its plan document declares (Bun)\".",
+    "Summary: Binds a wagon's declared artifact contract to the Bun code that moves Cargo."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Strict disposition: a finding is not suppressible and fails CI."
+    }
+  ],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire scenarios and observability classification of facts, including the stack_is_bun and wagon_has_implementation observer facts.",
+      "justification": "Required by the target structure; derived from the source's Bun scope, NOT_APPLICABLE cases and detector description. language alone cannot distinguish Bun, and the no-implementation exception needs an observer."
+    },
+    {
+      "field": "avoid",
+      "text": "avoid[1]: do not put a wagon's declared names only in a shared or unrelated module that does not move that wagon's Cargo.",
+      "justification": "Makes explicit the source's 'where the wagon moves Cargo' (S007/S028) for repos with several wagons; the source detector itself only checks that some Cargo-moving module names each artifact."
+    },
+    {
+      "field": "evidence",
+      "text": "Evidence phrasing (each declared name appears in a Cargo-moving module; detector reports none).",
+      "justification": "Restates the source detector behaviour as a verifiable compliance check."
+    },
+    {
+      "field": "coder_text_length",
+      "text": "Coder-facing text exceeds ~1,000 characters.",
+      "justification": "The source fix_hint code snippet is kept in prefer[0] and the produce/consume ownership meanings in given, for losslessness."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Rephrased as title; original name kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "verifier_detail[1]",
+        "verifier_detail[5]"
+      ],
+      "note": "Ownership (produce) vs inter-wagon consumption (consume) meanings in given and verifier_detail[1]; core requires both lists in verifier_detail[1]."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "then",
+        "avoid[0]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit",
+        "then"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[0]",
+        "activation",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[4]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[1]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "verifier_detail[1]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "verifier_detail[1]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "verifier_detail[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "verifier_detail[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "verifier_detail[2]",
+        "prefer[2]"
+      ],
+      "note": "Coder only receives the naming freedom; detector history stays in verifier_detail."
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "verifier_detail[3]",
+        "unless[0]",
+        "unless[1]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "unless[0]",
+        "activation",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "unless[1]",
+        "activation",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "then",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "prefer[0]"
+      ],
+      "note": "Closing brace of the snippet; represented by the inline call form in prefer[0]."
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "avoid[2]",
+        "verifier_detail[4]",
+        "evidence[1]",
+        "shared:policy.strict-disposition"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "identity",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S045",
+      "dest": [
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S046",
+      "dest": [
+        "verifier_detail[5]",
+        "then"
+      ]
+    }
+  ]
+}

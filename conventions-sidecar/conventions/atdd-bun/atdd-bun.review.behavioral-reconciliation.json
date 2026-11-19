@@ -1,0 +1,1122 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/atdd-bun.review/atdd-bun.review.behavioral-reconciliation.convention.yaml",
+    "sha256": "e87958d918c7bec3f1428cfeff4862c324e383ba622a857d5b2def1628aa12af"
+  },
+  "rule_id": "atdd-bun.review.behavioral-reconciliation",
+  "kind": "rule",
+  "title": "Reconcile delivered behavior with declared intent before accepting a delivery",
+  "activation": {
+    "facts": [
+      {
+        "fact": "phase",
+        "values": [
+          "final_review"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Needs a phase observer that knows RED, GREEN and REFACTOR are complete and the delivery is offered for acceptance."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "deterministic_gates_green"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Needs a CI/gate-status observer reporting that required CI, tests, type checks, security checks and active strict convention checks pass."
+      },
+      {
+        "fact": "operation",
+        "values": [
+          "review",
+          "accept_delivery"
+        ],
+        "observability": "observable_now",
+        "note": "The harness knows when a final reviewer role is invoked on a delivery."
+      },
+      {
+        "fact": "task_has_acceptance",
+        "values": [
+          "true",
+          "false"
+        ],
+        "observability": "observable_now",
+        "note": "Acceptance artifacts are one intent source. Without them, wagon, train, interlocking, journey and delivery criteria are still read."
+      }
+    ],
+    "fires": [
+      "A delivery whose CI and strict ATDD Bun gates are all green is handed to the final reviewer for acceptance.",
+      "A refactor-only delivery that claims no externally observable behavior change reaches final review with green gates.",
+      "A delivery with green gates that changes routed behavior (an interlocking selecting a train) is about to be accepted."
+    ],
+    "doesNotFire": [
+      "A required CI, test, type, security or strict convention check is still failing. The delivery goes back to its implementation phase instead.",
+      "Work is in RED, GREEN or REFACTOR and the delivery is not yet offered for acceptance.",
+      "Static code-quality or style review that runs during an implementation phase."
+    ]
+  },
+  "given": "A delivery whose deterministic CI and convention gates are green is offered for final acceptance",
+  "when": "the final reviewer decides whether to accept it",
+  "then": "Produce a durable APPROVE, RETURN or ESCALATE decision on whether the delivered behavior of the assembled system is the intended behavior.",
+  "prefer": [
+    "Intent first: before relying on diff or implementation, read the acceptance criteria, wagon responsibilities, train sequence, interlocking route decisions, exposed journey and delivery criteria when available; state the externally meaningful behavior that should be observable if the delivery is correct.",
+    "Choose the highest meaningful assembled boundary: the real user-facing journey for human-facing behavior, the exposed assembled boundary for API/runtime behavior, the production interlocking and train path when routing is material.",
+    "Exercise the real production path (see unless[1]) with the minimum inputs needed; observe user-visible outcomes, API responses, persisted effects, emitted events, route selection plus its business outcome, or other effects the plan names.",
+    "Reconcile three sources independently; all must materially agree: (1) declared intent: what plan and delivery criteria require; (2) executable proof: what acceptance, smoke, route, train and journey tests actually prove; (3) observed runtime: what the assembled system does through the real boundary. No single source suffices: passing tests alone are insufficient because a test may have drifted with the implementation; observed runtime alone is insufficient if it no longer satisfies declared intent; a correct plan whose implementation is unexercised or unreachable is also incomplete.",
+    "Look for: missing required behavior; intended behavior unreachable through the assembled app; materially unexpected new behavior; interlocking selecting the wrong train; a train sequence yielding a different business outcome; a journey's final user-visible result differing from intent; passing tests proving a different behavior than the plan; acceptance/planning artifacts silently changed to match the implementation without authorized intent change.",
+    "Inspect diff and implementation only after expected behavior is set, to explain discrepancies, understand risk, or judge whether an observation is trustworthy.",
+    "APPROVE only when intent, proof and runtime materially agree, required behavior is reachable through the assembled system, and no material unintended behavior was found in reviewed scope. RETURN with the concrete behavioral discrepancy and evidence when behavior is missing, wrong, unreachable, materially contradicted, or proof does not match intent. ESCALATE when intent is ambiguous/contradictory or the observed need requires changing agreed product behavior.",
+    "When remediating a deficient review, re-run final review outside-in: Intent, Exercise, Observe, Reconcile, Decide."
+  ],
+  "avoid": [
+    "Starting final review while required CI, tests, type, security or active strict convention checks fail; return the failing gate to the responsible implementation phase before spending semantic-review reasoning.",
+    "Deriving expected behavior from the PR diff, implementation or a test body: they show what was built, not what was supposed to be built.",
+    "Treating passing tests, a clean diff, green CI or green convention checks as the final behavioral judgment; they are supporting evidence only. Treating a passing E2E test as proof without checking what it proves.",
+    "Moving inward to an internal function because it is easier to invoke; accepting internal calls, implementation objects, mocks or descriptive tokens instead of the declared observable result.",
+    "Reviewing only the lines changed in the PR.",
+    "Reopening naming, decomposition, abstraction, complexity, formatting or other design/style/refactoring questions that passed their governing phase, without concrete evidence of a behavioral defect or delivery risk.",
+    "Silently redefining or changing the plan to make the implementation appear correct; using final review to expand scope or redesign.",
+    "Approving from static inspection alone when the claim requires runtime observation.",
+    "Accepting or approving a delivery despite a material mismatch: a material mismatch blocks delivery."
+  ],
+  "unless": [
+    "A delivery intentionally changing no externally observable behavior still requires reconciliation; the reviewer may set the intended invariant to 'no behavioral change' and verify it with the relevant assembled proofs instead of inventing a new user journey.",
+    "If the behavior cannot be exercised safely against production dependencies, use the highest faithful environment and boundary the plan authorizes; static-only approval is still not allowed when the claim needs runtime observation.",
+    "Ambiguous or contradictory intent is not a reviewer failure and must not be resolved by inference; return ESCALATE so the responsible planning authority settles it."
+  ],
+  "why": "Tests and implementation can drift from the plan together while still agreeing with each other; only an intent-first, independent comparison of intent, proof and assembled runtime catches missing, unreachable or semantically drifted behavior that green gates cannot see.",
+  "evidence": [
+    "A durable review record covering: intent sources considered, boundary exercised, observations obtained (the externally meaningful result), discrepancies found, and the final decision (APPROVE, RETURN or ESCALATE).",
+    "Supporting runtime evidence: a browser result, response, persisted effect, emitted event, trace, route/train result plus business outcome, or equivalent proof. CI status, tests, a clean diff, convention checks, screenshots, traces and runtime output support the judgment but do not replace observing that delivered behavior matches the plan.",
+    "The record shows expected behavior was stated from intent artifacts before the diff or implementation was used as reference.",
+    "A RETURN names the concrete behavioral discrepancy with evidence. An ESCALATE names the ambiguous, contradictory or change-requiring intent."
+  ],
+  "verifier_detail": [
+    "No mechanical detector exists (implementation type: none). Compliance is judged by an LLM or human reviewer from the review record.",
+    "Reconciliation succeeds only when declared intent, executable proof and observed runtime describe the same material behavior, and no required outcome is missing or materially contradicted.",
+    "Passing tests alone are insufficient, because a test may have drifted with the implementation. Runtime behavior alone is insufficient if it no longer satisfies declared intent. A correct plan with an unexercised or unreachable implementation is also incomplete.",
+    "Decision mapping. APPROVE: intent, proof and observed behavior materially agree. RETURN: required behavior is missing, wrong, unreachable or unexpectedly changed, or is proved by tests that no longer correspond to the plan. ESCALATE: authoritative intent is ambiguous or contradictory, or must itself change before correctness can be judged.",
+    "Assembled boundary means the highest meaningful real product-facing boundary, e.g. a browser journey, an exposed HTTP/runtime boundary, a production interlocking and train path, or another assembled product-facing interface. An internal function chosen because it is easier to invoke does not qualify.",
+    "Fix-hint checklist structure: Intent (read criteria; state expected behavior before using diff as oracle), Exercise (gates green; highest boundary; real production path; minimum inputs), Observe (record externally meaningful result plus runtime evidence), Reconcile (intent vs tests, both vs observed; missing/unexpected behavior, unreachable paths, plan/test/implementation drift), Decide (APPROVE/RETURN/ESCALATE).",
+    "Severity 4: a material mismatch blocks delivery."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "source kind: policy (rendered here as kind 'rule')",
+    "status: active",
+    "alias: ATDD-BUN-REVIEW-BEHAVIORAL-RECONCILIATION-001",
+    "implementation: {\"type\":\"none\"}",
+    "source name: Final review reconciles delivered behavior with declared intent",
+    "source term ids: final_behavioral_review, declared_intent, assembled_boundary, behavioral_reconciliation, review_evidence, review_decision",
+    "summary: Close the ATDD delivery loop by independently reconciling original intent with the observable behavior of the assembled system after all deterministic gates are green."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.phase-loop",
+      "kind": "policy",
+      "text": "RED builds the executable proof of the intended behavior. GREEN implements the smallest compliant behavior. REFACTOR improves the implementation while preserving that behavior. Deterministic CI and the ATDD Bun profiles then establish that the delivery satisfies the machine-checkable obligations. Final review is a semantic delivery gate after that loop, not another implementation phase and not a repeat of RED, GREEN, REFACTOR or static code-quality review. It answers the remaining question: does the assembled running system actually behave as the delivery intended?"
+    }
+  ],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "Activation facts, fires and doesNotFire examples (phase=final_review, finding=deterministic_gates_green, operation=review).",
+      "justification": "The template requires these. They are derived from the source's ordering (post-CI, after REFACTOR) and its gate-prerequisite text. They add no new obligation."
+    },
+    {
+      "field": "split_suggestion",
+      "text": "No split proposed. 'then' carries the single obligation (durable decision on whether delivered behavior is intended); reconciliation procedure lives in prefer, mismatch-blocking in avoid[8], gate prerequisite in avoid[0].",
+      "justification": "All source MUSTs serve the one acceptance decision; they are steps of the same decision rather than independent conventions."
+    },
+    {
+      "field": "coder_length",
+      "text": "Coder-facing text exceeds about 1,000 characters.",
+      "justification": "Losslessness: the eight look-for items, three-way reconciliation with its single-source insufficiency warnings, decision definitions, real-production-path instruction and outside-in remediation must remain reviewer-facing, as the auditor required."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "when",
+        "then",
+        "prefer[3]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "avoid[2]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "prefer[0]",
+        "prefer[1]",
+        "prefer[3]",
+        "prefer[6]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "avoid[8]",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit"
+      ],
+      "note": "term id label"
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "given",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "shared:policy.phase-loop",
+        "avoid[5]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "audit"
+      ],
+      "note": "term id label"
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "audit"
+      ],
+      "note": "term id label"
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "verifier_detail[4]",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "verifier_detail[4]",
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "audit"
+      ],
+      "note": "term id label"
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "prefer[3]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "verifier_detail[1]",
+        "prefer[3]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "audit"
+      ],
+      "note": "term id label"
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "audit"
+      ],
+      "note": "term id label"
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "verifier_detail[3]",
+        "prefer[6]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "audit",
+        "why"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "avoid[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S045",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S046",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S047",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S048",
+      "dest": [
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S049",
+      "dest": [
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S050",
+      "dest": [
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S051",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S052",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S053",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S054",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S055",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S056",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S057",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S058",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S059",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S060",
+      "dest": [
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S061",
+      "dest": [
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S062",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S063",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S064",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S065",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S066",
+      "dest": [
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S067",
+      "dest": [
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S068",
+      "dest": [
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S069",
+      "dest": [
+        "prefer[3]"
+      ]
+    },
+    {
+      "seg": "S070",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S071",
+      "dest": [
+        "prefer[3]"
+      ]
+    },
+    {
+      "seg": "S072",
+      "dest": [
+        "prefer[3]"
+      ]
+    },
+    {
+      "seg": "S073",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S074",
+      "dest": [
+        "prefer[3]"
+      ]
+    },
+    {
+      "seg": "S075",
+      "dest": [
+        "prefer[3]"
+      ]
+    },
+    {
+      "seg": "S076",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S077",
+      "dest": [
+        "prefer[3]"
+      ]
+    },
+    {
+      "seg": "S078",
+      "dest": [
+        "prefer[3]"
+      ]
+    },
+    {
+      "seg": "S079",
+      "dest": [
+        "prefer[3]"
+      ]
+    },
+    {
+      "seg": "S080",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[2]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S081",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S082",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[2]"
+      ],
+      "note": "Reviewer-facing warning stated explicitly in prefer[3]: observed runtime alone is insufficient if it no longer satisfies declared intent."
+    },
+    {
+      "seg": "S083",
+      "dest": [
+        "prefer[3]",
+        "prefer[6]",
+        "verifier_detail[2]"
+      ],
+      "note": "Reviewer-facing warning stated explicitly in prefer[3]: a correct plan with an unexercised or unreachable implementation is incomplete; prefer[6] requires reachability for APPROVE."
+    },
+    {
+      "seg": "S084",
+      "dest": [
+        "prefer[4]"
+      ]
+    },
+    {
+      "seg": "S085",
+      "dest": [
+        "prefer[4]"
+      ]
+    },
+    {
+      "seg": "S086",
+      "dest": [
+        "prefer[4]"
+      ]
+    },
+    {
+      "seg": "S087",
+      "dest": [
+        "prefer[4]"
+      ]
+    },
+    {
+      "seg": "S088",
+      "dest": [
+        "prefer[4]"
+      ]
+    },
+    {
+      "seg": "S089",
+      "dest": [
+        "prefer[4]"
+      ]
+    },
+    {
+      "seg": "S090",
+      "dest": [
+        "prefer[4]"
+      ]
+    },
+    {
+      "seg": "S091",
+      "dest": [
+        "prefer[4]"
+      ]
+    },
+    {
+      "seg": "S092",
+      "dest": [
+        "prefer[4]"
+      ]
+    },
+    {
+      "seg": "S093",
+      "dest": [
+        "prefer[4]"
+      ]
+    },
+    {
+      "seg": "S094",
+      "dest": [
+        "prefer[5]"
+      ]
+    },
+    {
+      "seg": "S095",
+      "dest": [
+        "prefer[5]"
+      ]
+    },
+    {
+      "seg": "S096",
+      "dest": [
+        "prefer[5]"
+      ]
+    },
+    {
+      "seg": "S097",
+      "dest": [
+        "avoid[5]"
+      ]
+    },
+    {
+      "seg": "S098",
+      "dest": [
+        "avoid[5]"
+      ]
+    },
+    {
+      "seg": "S099",
+      "dest": [
+        "avoid[5]"
+      ]
+    },
+    {
+      "seg": "S100",
+      "dest": [
+        "then",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S101",
+      "dest": [
+        "prefer[6]"
+      ]
+    },
+    {
+      "seg": "S102",
+      "dest": [
+        "prefer[6]"
+      ]
+    },
+    {
+      "seg": "S103",
+      "dest": [
+        "prefer[6]"
+      ]
+    },
+    {
+      "seg": "S104",
+      "dest": [
+        "prefer[6]"
+      ]
+    },
+    {
+      "seg": "S105",
+      "dest": [
+        "prefer[6]"
+      ]
+    },
+    {
+      "seg": "S106",
+      "dest": [
+        "prefer[6]"
+      ]
+    },
+    {
+      "seg": "S107",
+      "dest": [
+        "prefer[6]"
+      ]
+    },
+    {
+      "seg": "S108",
+      "dest": [
+        "prefer[6]"
+      ]
+    },
+    {
+      "seg": "S109",
+      "dest": [
+        "prefer[6]",
+        "evidence[3]"
+      ]
+    },
+    {
+      "seg": "S110",
+      "dest": [
+        "prefer[6]",
+        "evidence[3]"
+      ]
+    },
+    {
+      "seg": "S111",
+      "dest": [
+        "prefer[6]"
+      ]
+    },
+    {
+      "seg": "S112",
+      "dest": [
+        "prefer[6]"
+      ]
+    },
+    {
+      "seg": "S113",
+      "dest": [
+        "prefer[6]"
+      ]
+    },
+    {
+      "seg": "S114",
+      "dest": [
+        "avoid[6]"
+      ]
+    },
+    {
+      "seg": "S115",
+      "dest": [
+        "avoid[6]"
+      ]
+    },
+    {
+      "seg": "S116",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S117",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S118",
+      "dest": [
+        "prefer[7]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S119",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S120",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S121",
+      "dest": [
+        "prefer[0]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S122",
+      "dest": [
+        "prefer[0]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S123",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S124",
+      "dest": [
+        "avoid[0]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S125",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S126",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S127",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S128",
+      "dest": [
+        "evidence[0]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S129",
+      "dest": [
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S130",
+      "dest": [
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S131",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S132",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S133",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S134",
+      "dest": [
+        "prefer[4]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S135",
+      "dest": [
+        "prefer[4]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S136",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S137",
+      "dest": [
+        "prefer[6]"
+      ]
+    },
+    {
+      "seg": "S138",
+      "dest": [
+        "prefer[6]"
+      ]
+    },
+    {
+      "seg": "S139",
+      "dest": [
+        "prefer[6]"
+      ]
+    },
+    {
+      "seg": "S140",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S141",
+      "dest": [
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S142",
+      "dest": [
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S143",
+      "dest": [
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S144",
+      "dest": [
+        "avoid[4]"
+      ]
+    },
+    {
+      "seg": "S145",
+      "dest": [
+        "avoid[5]"
+      ]
+    },
+    {
+      "seg": "S146",
+      "dest": [
+        "avoid[6]"
+      ]
+    },
+    {
+      "seg": "S147",
+      "dest": [
+        "unless[0]"
+      ]
+    },
+    {
+      "seg": "S148",
+      "dest": [
+        "unless[0]"
+      ]
+    },
+    {
+      "seg": "S149",
+      "dest": [
+        "unless[1]"
+      ]
+    },
+    {
+      "seg": "S150",
+      "dest": [
+        "unless[1]",
+        "avoid[7]"
+      ]
+    },
+    {
+      "seg": "S151",
+      "dest": [
+        "unless[2]"
+      ]
+    },
+    {
+      "seg": "S152",
+      "dest": [
+        "unless[2]",
+        "prefer[6]"
+      ]
+    },
+    {
+      "seg": "S153",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S154",
+      "dest": [
+        "identity",
+        "verifier_detail[6]",
+        "avoid[8]"
+      ]
+    },
+    {
+      "seg": "S155",
+      "dest": [
+        "audit",
+        "verifier_detail[0]"
+      ]
+    }
+  ]
+}

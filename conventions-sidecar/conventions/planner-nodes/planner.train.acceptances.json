@@ -1,0 +1,448 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.train.acceptances.convention.yaml",
+    "sha256": "dc33ec06492a6f1e2c447a0e728d6073d7e4fefdaa1418e3fb60127be9f152d4"
+  },
+  "rule_id": "planner.train.acceptances",
+  "kind": "rule",
+  "title": "Keep every train-level acceptance well-formed",
+  "activation": {
+    "facts": [
+      {
+        "fact": "path_glob",
+        "values": [
+          "plan/_trains/*.yaml",
+          "plan/_trains/**/*.yaml"
+        ],
+        "observability": "observable_now",
+        "note": "Train files, flat or subject-nested."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "train file declaring an acceptances[] block"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Needs a YAML observer that detects presence (not change) of an acceptances[] block in a train file; existing unchanged blocks are selected too."
+      },
+      {
+        "fact": "phase",
+        "values": [
+          "CONFIRM"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Validator runs confirm-blocking at CONFIRM over all selected train files."
+      }
+    ],
+    "fires": [
+      "At CONFIRM, any train file under plan/_trains/ (flat or subject-nested) that declares an acceptances[] block, whether or not that block was changed",
+      "Planner adds or edits a train-level acceptance",
+      "Planner copies the documented exemplar to author a new train acceptance"
+    ],
+    "doesNotFire": [
+      "Train file with no acceptances[] block (the block is optional)",
+      "WMBT-level acceptances outside plan/_trains/"
+    ]
+  },
+  "given": "A train file under plan/_trains/ (flat or subject-nested) declares the optional acceptances[] block (WMBT acceptance shape); each entry contributes a derived repo rule via the rule-binding walker.",
+  "when": "The planner authors, edits or keeps a train-level acceptance that is checked at CONFIRM.",
+  "then": "Every train-level acceptance must be well-formed per the train-acceptance constraints (see prefer[0]).",
+  "prefer": [
+    "Satisfy all four constraints: identity.urn matches the acc grammar (acc:<train-id>:<slug>); identity.purpose populated (becomes the rule description); identity.phase in RED|GREEN|SMOKE|REFACTOR; measurable via harness.type OR signal.metric+signal.threshold.",
+    "Copy the exemplar: identity {urn: acc:train:self-compliance:validate-lifecycle:idempotent-on-retry, id: AC-SMOKE-001, purpose: 'Re-running the train with the same idempotency key produces no duplicate side effects', phase: SMOKE}, harness {type: e2e}, signal {metric: duplicate_side_effects_on_retry, threshold: 0}.",
+    "Let the rule id derive: acc:<train-id>:<slug> -> repo.<train-id>.acc-<slug>."
+  ],
+  "avoid": [
+    "id: at acceptance-block top level (rule id derives, §3.3).",
+    "disposition: anywhere in repo YAML (walker sets strict, §4.4).",
+    "Retired URN schemes or examples failing the acc grammar/train schema.",
+    "signal.metric without signal.threshold (or vice versa) as sole measurability."
+  ],
+  "unless": [],
+  "why": "Each acceptance becomes a derived repo rule the walker sets to strict; a bad URN, missing purpose/phase or unmeasurable block yields an unbindable or meaningless rule, so a confirm-blocking validator checks well-formedness.",
+  "evidence": [
+    "Validator test_train_acceptances_wellformed::test_train_acceptances_are_wellformed passes at CONFIRM (confirm-blocking).",
+    "On failure the validator reports train_file, acceptance_urn, constraint, detail.",
+    "The authorable exemplar itself satisfies the acc URN grammar, parses as a valid typed-train parent, and validates against the train schema's acceptance definition.",
+    "Every validator constraint has a fault-injection test; a clean baseline over an empty selection (no trains with acceptances) proves nothing."
+  ],
+  "verifier_detail": [
+    "Family presence, template required_field_presence, variant planner_train_acceptances_wellformed, phase CONFIRM, enforcement confirm-blocking, subject_kind train_acceptance.",
+    "Selector: train files under plan/_trains/ (flat or subject-nested) declaring an acceptances[] block (presence, not change). Traversal: train file -> acceptances[] -> identity/harness/signal fields.",
+    "Constraints: identity.urn matches URNBuilder.PATTERNS['acc'] (train-acceptance shape); identity.purpose populated (becomes RuleMetadata.description); identity.phase populated (RED|GREEN|SMOKE|REFACTOR); EITHER harness.type OR (signal.metric AND signal.threshold) populated (measurability invariant §4.3).",
+    "Invariant: identity.urn matches the acc grammar, purpose and phase are populated, and the block is measurable via harness.type or signal.metric+threshold.",
+    "Excluded fields: id: at acceptance-block top level (rule-id derives mechanically, §3.3); disposition: anywhere in repo YAML (walker sets 'strict', §4.4).",
+    "rule_id derivation (spec v12 §3.3): acc:<train-id>:<slug> -> repo.<train-id>.acc-<slug>. Walker: atdd.coach.utils.rule_binding.find_repo_rules.",
+    "Failure evidence fields: train_file, acceptance_urn, constraint, detail.",
+    "Exemplar check: the authorable example must satisfy the acc URN grammar, parse as a valid typed-train parent, and validate against the train schema's acceptance definition."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; name 'Train-level acceptances'.",
+    "Terms: train_acceptance = an optional train-level acceptance; authorable_example (label 'The copy-paste train acceptance') = the exact train-level acceptance a human copies when authoring one.",
+    "implementation: validator, ref test_train_acceptances_wellformed::test_train_acceptances_are_wellformed.",
+    "source: legacy_path src/atdd/planner/conventions/train.convention.yaml, legacy_section acceptances, legacy_sha 825602729f11a3a4, extraction_mode high_fidelity.",
+    "parity: source_fragments_preserved true, examples_preserved true, implementation_preserved true, fix_hint_preserved false, reviewed_at 2026-07-29.",
+    "#1548: the node declared four constraints and bound nothing — no implementation, no validation block; the exemplar carried the URN scheme retired by #1421, so following the documentation produced an invalid artifact.",
+    "Now enforced by a real validator whose every constraint has a fault-injection test, because the real-repo baseline is 0 only for want of data (16 trains, 0 with acceptances; #1551 backfills), and a clean baseline over an empty selection proves nothing.",
+    "#1639: the authorable exemplar moved here from the deleted train.convention.yaml monolith.",
+    "metadata: severity 3, disposition strict."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Strict disposition: the rule fails on every finding; no advisory mode, no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "avoid",
+      "text": "signal.metric without signal.threshold (or vice versa) as sole measurability.",
+      "justification": "Restates the source's 'signal.metric AND signal.threshold' measurability constraint as an anti-pattern; no new obligation."
+    },
+    {
+      "field": "why",
+      "text": "a bad URN, missing purpose/phase or unmeasurable block yields an unbindable or meaningless rule",
+      "justification": "Engineering reason inferred from the source statement that each acceptance becomes a derived rule (purpose becomes its description, id derives from the URN); no new obligation."
+    },
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire situations and fact observability notes.",
+      "justification": "Required by schema; derived from the source selector (presence of acceptances[] block, CONFIRM phase) and the optional nature of the block."
+    },
+    {
+      "field": "note",
+      "text": "Coder-facing text may slightly exceed ~1,000 characters because the source exemplar and the four constraints are kept in prefer.",
+      "justification": "Losslessness of the authorable example and constraints wins over brevity."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "why"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "given",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "prefer[1]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "evidence[2]",
+        "verifier_detail[7]",
+        "avoid[2]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "evidence[3]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "audit",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "then",
+        "prefer[0]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "then",
+        "prefer[0]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "then",
+        "prefer[0]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "then",
+        "prefer[0]",
+        "avoid[3]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "avoid[0]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "avoid[1]",
+        "why",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "verifier_detail[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "verifier_detail[0]",
+        "evidence[0]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "activation",
+        "given",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "then",
+        "prefer[0]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S045",
+      "dest": [
+        "evidence[1]",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S046",
+      "dest": [
+        "evidence[1]",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S047",
+      "dest": [
+        "evidence[1]",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S048",
+      "dest": [
+        "evidence[1]",
+        "verifier_detail[6]"
+      ]
+    }
+  ]
+}

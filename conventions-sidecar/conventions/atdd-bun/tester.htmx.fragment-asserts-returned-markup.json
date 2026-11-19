@@ -1,0 +1,359 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/tester.htmx/tester.htmx.fragment-asserts-returned-markup.convention.yaml",
+    "sha256": "b8de8e893b582d8ec4b7c24acfa16da0eccd14e6e58e92baf9e9c10c9749ea0c"
+  },
+  "rule_id": "tester.htmx.fragment-asserts-returned-markup",
+  "kind": "rule",
+  "title": "Assert on the returned htmx fragment, not just the status",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "test"
+        ],
+        "observability": "observable_now",
+        "note": "Test files are identifiable by path/file kind."
+      },
+      {
+        "fact": "language",
+        "values": [
+          "typescript",
+          "javascript"
+        ],
+        "observability": "observable_now",
+        "note": "Bun test files are TS/JS; language alone does NOT establish the stack (see next fact)."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "bun_htmx_stack_test"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Activation prerequisite: the repository/test belongs to the Bun/htmx stack (e.g. test runner is bun:test and the app serves htmx fragments). Needs a stack observer; the rule is Bun/htmx-specific and has no counterpart in other stacks."
+      },
+      {
+        "fact": "operation",
+        "values": [
+          "actual_http_request_in_test_case"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Per-test-case AST analysis: the case performs a real HTTP request (e.g. fetch against the served app). A direct unit call of a handler function that returns a Response without performing an HTTP request does NOT satisfy this fact."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "status_asserted_body_never_reached"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Detector finding (htmx_tester_detector): case asserts on status or ok and never reaches .text()/.json()/toContain/toMatch/markup assertion."
+      }
+    ],
+    "fires": [
+      "In a Bun/htmx stack test file, a test case fetches an htmx endpoint over HTTP, asserts expect(res.status).toBe(200) and ends without reading the body.",
+      "In a Bun/htmx stack test file, a test case performs an HTTP request and asserts only on res.ok, with no .text(), .json(), toContain or toMatch on the response."
+    ],
+    "doesNotFire": [
+      "A test case that performs no HTTP request, including a direct unit call of a handler that returns a Response and asserts its status.",
+      "A test case that performs an HTTP request but never asserts on status or ok.",
+      "A test case that asserts on status/ok and also reaches the body via .text(), .json(), or a markup matcher.",
+      "Test suites outside the Bun/htmx stack (the rule has no counterpart in other stacks' tester extensions)."
+    ]
+  },
+  "given": "In a Bun/htmx stack test, a test case performs an actual HTTP request (not a direct handler call) and asserts on the response status or ok",
+  "when": "the tester writes or changes that test case",
+  "then": "The test case MUST also assert on the response BODY; reaching the body in any form (.text(), .json(), a markup matcher) satisfies the rule.",
+  "prefer": [
+    "Assert on the fragment, not just the status line:\n  expect(res.status).toBe(200);\n  const html = await res.text();\n  expect(html).toContain('id=\"order-1\"');   // the id a later oob swap targets",
+    "For htmx fragments, make the body assertion check the fragment contract (hx-attributes, ids later oob swaps target, structure), as in the example above."
+  ],
+  "avoid": [
+    "Status-only tests: asserting expect(res.status).toBe(200) or res.ok and stopping — proves the route exists and nothing about what the user will see."
+  ],
+  "unless": [
+    "The case does not perform an HTTP request (out of scope).",
+    "The case never asserts on status (out of scope). Note: asserting on res.ok counts as a status assertion, so an ok-only case is in scope."
+  ],
+  "why": "In a JSON API the contract is the payload and status plus a parsed field is a complete test; in htmx the contract is the markup (hx-attributes, ids later oob swaps target, structure) swapped into the live DOM. A status-only test misses a refactor dropping an id a sibling's hx-swap-oob needs, which fails silently at runtime (see coder.htmx.swap-oob-carries-id).",
+  "evidence": [
+    "Every Bun/htmx test case that performs an HTTP request and asserts on status/ok also reaches the body via .text(), .json(), or a markup matcher (toContain/toMatch/markup assertion).",
+    "htmx_tester_detector reports zero findings for the changed test files."
+  ],
+  "verifier_detail": [
+    "Flag a test case that fetches, asserts on `status`/`ok`, and never reaches `.text()` / `.json()` / a `toContain` / `toMatch` / markup assertion.",
+    "Reaching the body in any form — `.text()`, `.json()`, a markup matcher — satisfies the rule.",
+    "Skip cases that perform no HTTP request (including direct handler unit calls returning a Response); skip cases that never assert on status (status or ok).",
+    "Term status_only_test: a case asserting on status or ok and never reaching the body; it proves the route exists and nothing about what the user will see.",
+    "Term fragment_contract: the returned markup itself — hx-attributes, the element ids later out-of-band swaps target, and the structure. In htmx this IS the interface, where a JSON API has a payload.",
+    "Severity 3; disposition strict (see policy.strict-disposition).",
+    "Scope: Bun/htmx stack test files only."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "Alias: BUN-FRAGMENT-ASSERTS-MARKUP-001.",
+    "Bun/htmx-specific obligation with no counterpart in any other stack's tester extension; it exists because the stack moved the contract from the payload into the markup — the clearest case in this extension of an obligation that could not have been inherited from another stack.",
+    "Statement says realized by `bun_tester_discipline_detector`; implementation block says validator ref `htmx_tester_detector` (naming discrepancy retained for auditors).",
+    "Original name: 'htmx endpoint tests assert on the returned fragment'.",
+    "Severity 3; disposition strict (atdd-bun fails on every finding; no advisory mode, no ratchet baseline)."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "strict: fails on every finding; there is no advisory mode and no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "evidence",
+      "text": "htmx_tester_detector reports zero findings for the changed test files.",
+      "justification": "Makes the source's implementation reference (validator htmx_tester_detector) usable as a compliance check; adds no new obligation."
+    },
+    {
+      "field": "activation",
+      "text": "Explicit exclusion of direct handler unit calls returning a Response, and Bun/htmx stack prerequisite fact.",
+      "justification": "Clarifies the source's 'performs an HTTP request' scope (S006/S026) and its Bun/htmx-specific scope (S007) as auditor required; narrows, never broadens."
+    },
+    {
+      "field": "unless",
+      "text": "Note that asserting on res.ok counts as a status assertion.",
+      "justification": "Source defines status_only_test and the detector as 'status/ok' (S013, S015); clarifies exception S027 so ok-only cases are not wrongly exempted. No new waiver."
+    },
+    {
+      "field": "prefer",
+      "text": "For htmx fragments, make the body assertion check the fragment contract.",
+      "justification": "Restates the source's fix_hint and fragment_contract term (S010, S022–S025) as a preference; the obligation itself remains 'reach the body' per S028."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Title derived from name; original kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "then",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit",
+        "activation",
+        "given",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ],
+      "note": "Detector name differs from implementation ref; recorded."
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "why",
+        "verifier_detail[4]",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[4]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[3]",
+        "avoid[0]",
+        "unless[1]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[3]",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "why"
+      ],
+      "note": "Kept as descriptive JSON-vs-htmx comparison; not a prohibition."
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "then",
+        "verifier_detail[1]",
+        "evidence[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "identity",
+        "verifier_detail[5]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "audit",
+        "evidence[1]"
+      ]
+    }
+  ]
+}

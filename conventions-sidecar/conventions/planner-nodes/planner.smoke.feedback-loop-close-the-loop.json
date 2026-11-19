@@ -1,0 +1,267 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.smoke.feedback-loop-close-the-loop.convention.yaml",
+    "sha256": "ba738ca3f5baf7cb34a73491e9ab6b9a3fd7544524e0a2ed7a26cc6acd7f9a9c"
+  },
+  "rule_id": "planner.smoke.feedback-loop-close-the-loop",
+  "kind": "rule",
+  "title": "Feedback-loop features must close the loop in SMOKE",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "feature YAML",
+          "WMBT YAML",
+          "acceptance YAML"
+        ],
+        "observability": "observable_now",
+        "note": "Plan artifacts the planner authors; the feature YAML holds the kind: line, WMBTs hold SMOKE acceptances."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "feedback-loop",
+          "kind: feedback-loop",
+          "close the loop",
+          "smoke acceptance",
+          "consumer_reacted",
+          "drift_resolved"
+        ],
+        "observability": "observable_now",
+        "note": "Task wording that signals feedback-loop feature or SMOKE acceptance authoring."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "feature declares kind: feedback-loop",
+          "SMOKE acceptance added/edited on a feedback-loop feature"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Requires parsing the feature YAML kind: field and the acceptances of its WMBTs (the presence validator does this; the router does not yet)."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "feedback-loop feature with no SMOKE acceptance whose close_the_loop block carries both consumer_reacted and drift_resolved"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Emitted by the presence validator test_feedback_loop_convention_fault."
+      }
+    ],
+    "fires": [
+      "Planner authors or edits a feature marked kind: feedback-loop and its WMBT SMOKE acceptances.",
+      "A feedback-loop feature's only SMOKE acceptances assert artifact existence or schema validity of the producer output.",
+      "No SMOKE acceptance on a feedback-loop feature has a close_the_loop: block carrying both consumer_reacted and drift_resolved (e.g. the only close_the_loop blocks each miss one of the keys)."
+    ],
+    "doesNotFire": [
+      "Features whose kind is not feedback-loop.",
+      "A feedback-loop feature where at least one SMOKE acceptance has a close_the_loop: block with both consumer_reacted and drift_resolved, even if other SMOKE or non-SMOKE acceptances lack such a block or carry an incomplete one.",
+      "A feedback-loop feature whose kind: line carries an unexpired dated atdd:suppress(planner.smoke.feedback-loop-close-the-loop) UNTIL=YYYY-MM-DD hatch."
+    ]
+  },
+  "given": "A feature is marked `kind: feedback-loop`.",
+  "when": "The planner authors or revises its WMBTs and SMOKE acceptances.",
+  "then": "At least one SMOKE acceptance must declare a `close_the_loop:` block carrying both `consumer_reacted` (the consumer-side assertion the test makes) and `drift_resolved` (the convergence assertion).",
+  "prefer": [
+    "Add (or extend) a SMOKE acceptance on the feature's primary WMBT with a close_the_loop: block declaring consumer_reacted and drift_resolved.",
+    "Phrase them so the test asserts the consumer actually received the correction and a producer re-run yields 0 new corrections for the same drift."
+  ],
+  "avoid": [
+    "Producer-only SMOKE assertions (artifact existence, schema validation) as the sole SMOKE coverage.",
+    "A close_the_loop: block with only one of the two keys.",
+    "consumer_reacted satisfied by a fake send-history."
+  ],
+  "unless": [
+    "The kind: line carries the dated hatch `kind: feedback-loop  # atdd:suppress(planner.smoke.feedback-loop-close-the-loop) UNTIL=YYYY-MM-DD`; dated, so the debt expires."
+  ],
+  "why": "Producer-only smoke assertions give false-positive green CI while the loop's consumer end is never exercised.",
+  "evidence": [
+    "Every feature with kind: feedback-loop has ≥1 SMOKE acceptance whose acceptance block contains close_the_loop: with both consumer_reacted and drift_resolved keys.",
+    "The corresponding test asserts real consumer receipt of the correction (not a fake send-history) and that a producer re-run yields 0 new corrections for the same drift.",
+    "Otherwise, the feature kind: line carries an atdd:suppress(planner.smoke.feedback-loop-close-the-loop) marker with an UNTIL date not yet passed."
+  ],
+  "verifier_detail": [
+    "Detector: presence validator conventions/presence/test_feedback_loop_close_the_loop::test_feedback_loop_convention_fault.",
+    "Trigger: feature YAML kind == feedback-loop. Pass: at least one SMOKE acceptance whose acceptance block has a close_the_loop field containing both consumer_reacted and drift_resolved (term close_the_loop_block: the SMOKE acceptance field that proves the loop closed).",
+    "Suppression: inline comment on the feature YAML kind: line of the form `# atdd:suppress(planner.smoke.feedback-loop-close-the-loop) UNTIL=YYYY-MM-DD`; dated so the debt expires — expired markers no longer suppress.",
+    "Disposition suppress-and-clean, severity 3."
+  ],
+  "audit": [
+    "schema_version 1.0.0; kind rule; status active; introduced_in 3.79.0.",
+    "implementation: validator conventions/presence/test_feedback_loop_close_the_loop::test_feedback_loop_convention_fault.",
+    "source: legacy_path src/atdd/tester/conventions/smoke.convention.yaml, legacy_section feedback_loop_rules, legacy_rule_id planner.smoke.feedback-loop-close-the-loop, extraction_mode high_fidelity.",
+    "Motivating incident: #825.",
+    "Term ids: close_the_loop_block, suppression.",
+    "metadata: severity 3, disposition suppress-and-clean."
+  ],
+  "splitSuggestion": [
+    {
+      "id": "tester.smoke.feedback-loop-close-the-loop-assertions",
+      "then": "The SMOKE test implementing a close_the_loop acceptance must assert the consumer actually received the correction (not a fake send-history) and that re-running the producer yields 0 new corrections for the same drift.",
+      "segments": [
+        "S018"
+      ]
+    }
+  ],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "split_suggestion",
+      "text": "S018 is a test-implementation obligation (tester audience); kept here in prefer/avoid/evidence as the planner's phrasing of the acceptance, and proposed as separate tester convention tester.smoke.feedback-loop-close-the-loop-assertions.",
+      "justification": "One obligation per then; the planner declares the block, the tester implements the real assertions."
+    },
+    {
+      "field": "activation.doesNotFire",
+      "text": "Other SMOKE or non-SMOKE acceptances lacking a complete close_the_loop block do not fire the rule when at least one SMOKE acceptance qualifies.",
+      "justification": "Derived from the statement's existential 'at least one SMOKE acceptance' scope; makes activation boundary explicit."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "when",
+        "then",
+        "evidence[0]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "why",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "then",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[2]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "audit",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "why",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "prefer[1]",
+        "avoid[2]",
+        "evidence[1]"
+      ],
+      "note": "Also proposed as a separate tester convention in splitSuggestion."
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "identity",
+        "verifier_detail[3]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "identity",
+        "verifier_detail[3]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,286 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.wagon.coupling-complexity.convention.yaml",
+    "sha256": "3420297b76139340a09b5a822cdcbbff6ee8aadea63ad99757d4699657d0d508"
+  },
+  "rule_id": "planner.wagon.coupling-complexity",
+  "kind": "rule",
+  "title": "Report each wagon's coupling complexity and flag those above the soft threshold",
+  "activation": {
+    "facts": [
+      {
+        "fact": "operation",
+        "values": [
+          "atdd validate planner",
+          "plan validation/reporting run"
+        ],
+        "observability": "observable_now",
+        "note": "The reporter runs on every planner validation, for every wagon in the plan, whether or not anything changed."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "wagon manifest declaring produce/consume artifacts",
+          "planner configuration"
+        ],
+        "observability": "observable_now",
+        "note": "Assumed file kinds (not source-backed scope); used as hints, not an exclusive filter. Threshold changes in configuration alone can create or clear flags."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "wagon produce/consume artifact name added, removed or renamed",
+          "planner.wagon.coupling_complexity_threshold changed"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Diff observer on produce/consume names and the config key; file matching alone does not establish a graph change. Not required for firing: unchanged plans are still reported."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "planner.wagon.coupling-complexity advisory"
+        ],
+        "observability": "observable_now",
+        "note": "Emitted by `atdd validate planner` when a wagon's fan_in x fan_out exceeds the configured threshold."
+      }
+    ],
+    "fires": [
+      "`atdd validate planner` runs on any plan, including an unchanged existing plan: every wagon's fan_in x fan_out is reported.",
+      "A planner adds a consume entry that raises a wagon's fan_in x fan_out above the threshold (default 6): reported and flagged advisory.",
+      "Only planner.wagon.coupling_complexity_threshold is changed in configuration: all wagons re-reported and flags recomputed against the new cutoff.",
+      "A wagon's product is at or below the threshold: still reported, but no advisory flag (no-advisory case, reporting still fires)."
+    ],
+    "doesNotFire": [
+      "Work that involves no plan/wagon graph and no planner validation (e.g. editing application code outside planning).",
+      "Deciding whether to block or halt planning: this rule never fires as a blocker."
+    ]
+  },
+  "given": "A plan whose wagons declare produce/consume artifacts, forming a directed wagon graph keyed on artifact NAMES.",
+  "when": "You plan or validate the plan (`atdd validate planner`), including unchanged plans and threshold-only config changes.",
+  "then": "Report every wagon's coupling complexity (fan_in x fan_out over the produce->consume name graph) and flag, as advisory and non-blocking, each wagon above the soft threshold planner.wagon.coupling_complexity_threshold (default 6).",
+  "prefer": [
+    "Run `atdd validate planner` so each wagon's complexity is visible while planning.",
+    "fan_in = wagons consumed from; fan_out = wagons consuming its outputs; reason on the product (Henry-Kafura).",
+    "Optionally review flagged wagons' separability."
+  ],
+  "avoid": [
+    "Blocking or halting planning on the advisory.",
+    "Keying coupling on the nullable contract field instead of artifact names.",
+    "Renaming/merging artifact names only to lower the product."
+  ],
+  "unless": [],
+  "why": "High fan_in x fan_out marks an entangled wagon that hurts separability; non-blocking reporting keeps complexity visible until the threshold is calibrated.",
+  "evidence": [
+    "`atdd validate planner` output reports coupling complexity for every wagon, with advisory findings only for wagons whose fan_in x fan_out strictly exceeds the configured threshold.",
+    "Validator exit status is unaffected by coupling-complexity findings (advisory, severity 2)."
+  ],
+  "verifier_detail": [
+    "Build the directed wagon graph from produce->consume artifact NAMES (not the nullable contract field).",
+    "fan_in = number of distinct wagons a wagon consumes from; fan_out = number of distinct wagons that consume its outputs; proxy = fan_in x fan_out (Henry-Kafura).",
+    "Report the proxy for each wagon; emit an ADVISORY finding when proxy > threshold (strictly exceeds); threshold from config key planner.wagon.coupling_complexity_threshold, default 6.",
+    "Non-blocking: advisory only, never blocks or fails the run; disposition advisory, severity 2.",
+    "Promotion to a hard threshold / strict disposition is deferred to corpus calibration.",
+    "Terms: coupling_complexity = fan_in x fan_out over the cross-wagon produce/consume graph (Henry-Kafura proxy); soft_threshold = config-driven advisory cutoff (planner.wagon.coupling_complexity_threshold, default 6), over it emits an advisory finding."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active.",
+    "Name: Wagon coupling complexity (advisory reporter).",
+    "implementation: validator conventions/sizing/test_wagon_coupling_complexity::test_fault_injection_legacy_parity.",
+    "source: legacy_path docs/recompose, legacy_section complexity-sizing, extraction_mode summary.",
+    "parity: source_fragments_preserved true, examples_preserved false, implementation_preserved true, fix_hint_preserved false, reviewed_at 2026-06-18.",
+    "metadata: severity 2, disposition advisory.",
+    "Promotion to hard threshold/strict deferred to corpus calibration."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "prefer[2]",
+      "text": "Optionally review flagged wagons' separability.",
+      "justification": "Optional planner guidance only; the reporting obligation in then is unchanged and nothing becomes blocking."
+    },
+    {
+      "field": "avoid[2]",
+      "text": "Renaming/merging artifact names only to lower the product.",
+      "justification": "Metric-gaming anti-pattern required by authoring rules; follows from the metric being keyed on artifact names."
+    },
+    {
+      "field": "why",
+      "text": "Separability rationale.",
+      "justification": "Taken from graph edge (planner.wagon.definition: separability judged by cross-wagon coupling); source lacks an explicit why."
+    },
+    {
+      "field": "activation",
+      "text": "File-kind hints, threshold-change and doesNotFire examples.",
+      "justification": "Needed to make activation observable; file kinds are declared assumptions, not exclusive scope."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Informs title; original name kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "identity",
+        "evidence[0]",
+        "verifier_detail[2]",
+        "activation"
+      ],
+      "note": "Reporting of every wagon plus flagging above the config-driven soft threshold."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "then",
+        "avoid[0]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "given",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "then",
+        "verifier_detail[2]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "when",
+        "prefer[0]",
+        "avoid[0]",
+        "why",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[4]",
+        "why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "avoid[0]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "avoid[1]",
+        "verifier_detail[0]",
+        "given"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "identity",
+        "audit",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "verifier_detail[5]",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "verifier_detail[5]",
+        "then"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,289 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.interlocking.registry-mirrors-document.convention.yaml",
+    "sha256": "3be48fcc416138118aff57700367d24000cc11d5df28789ca8ec3d5141f5b1dc"
+  },
+  "rule_id": "planner.interlocking.registry-mirrors-document",
+  "kind": "rule",
+  "title": "Keep every interlocking registry entry in sync with its document",
+  "activation": {
+    "facts": [
+      {
+        "fact": "phase",
+        "values": [
+          "CONFIRM"
+        ],
+        "observability": "observable_now",
+        "note": "The validator runs against the live registry and blocks at CONFIRM, whatever the diff contains."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "plan/_trains/_interlockings.yaml",
+          "plan/_trains/_interlockings/*.yaml"
+        ],
+        "observability": "observable_now",
+        "note": "Existence gate only: the registry exists in the repository and indexes at least one document. It does not need to be touched or read by the current plan."
+      }
+    ],
+    "fires": [
+      "At CONFIRM, a registry entry's status differs from the status in the document it points at, even though nothing in the current change touched the registry or the document (a pre-existing mismatch).",
+      "At CONFIRM, after a planner added a registry entry for plan/_trains/_interlockings/<id>.yaml whose theme or surfaces differ from the document.",
+      "At CONFIRM, after a planner changed an interlocking document's status, theme or surfaces without updating its registry entry.",
+      "At CONFIRM, while the current change only edits unrelated plan files or non-mirrored document fields, but some indexed entry still disagrees on theme, status or surfaces."
+    ],
+    "doesNotFire": [
+      "At CONFIRM, every registry entry's theme, status and surfaces equal the values in the document it points at (no finding, regardless of what changed).",
+      "Repositories with no interlocking registry plan/_trains/_interlockings.yaml.",
+      "Differences in document fields the registry does not mirror (anything other than theme, status, surfaces) — these are not compared; but such edits never exempt a mismatch on a mirrored field."
+    ]
+  },
+  "given": "The interlocking registry (plan/_trains/_interlockings.yaml) indexes interlocking documents plan/_trains/_interlockings/<id>.yaml by path",
+  "when": "the plan reaches CONFIRM, for every indexed entry, regardless of which files or fields the current change touched",
+  "then": "every registry entry's theme, status and surfaces must equal the values in the document it points at.",
+  "prefer": [
+    "Treat the document as authoritative: edit the document first, then copy theme, status and surfaces into the registry entry in the same change.",
+    "When a mismatch is found — including a pre-existing one your change did not cause — fix the registry entry to match the document, not the other way round."
+  ],
+  "avoid": [
+    "Changing the document to match a stale registry entry — on disagreement the registry is always the defect.",
+    "Updating a document's status, theme or surfaces without updating its registry entry (or vice versa).",
+    "Treating an existing mismatch as out of scope because your change did not touch the registry or that document.",
+    "Adding fields to the registry that diverge from or are not sourced from the document."
+  ],
+  "unless": [],
+  "why": "The document is authoritative and the registry is only discovery metadata that denormalises theme, status and surfaces from it; any disagreement means the registry is lying to whoever discovers interlockings through it.",
+  "evidence": [
+    "Validator test_interlocking_registry_coherence::test_live_registry_agrees_with_every_document_it_indexes passes at CONFIRM against the live registry (all entries, not only changed ones).",
+    "On failure, the report names interlocking_id, field, registry_value and document_value for each disagreement."
+  ],
+  "verifier_detail": [
+    "Mirrored fields (term mirrored_field): theme, status, surfaces — fields the registry denormalises from the document it indexes.",
+    "Authoritative document (term authoritative_document): plan/_trains/_interlockings/<id>.yaml as named by the registry entry's path; on disagreement the document wins and the registry entry is reported as the defect.",
+    "Validation: family=coherence, template=cross_artifact_field_agreement, variant=planner_interlocking_registry_mirror, subject_kind=interlocking, phase=CONFIRM, enforcement=confirm-blocking. Checks every entry of the live registry, not a diff.",
+    "Failure evidence fields: interlocking_id, field, registry_value, document_value.",
+    "Severity 3, disposition strict."
+  ],
+  "audit": [
+    "schema_version 1.0.0",
+    "kind: rule",
+    "status: active",
+    "implementation: validator test_interlocking_registry_coherence::test_live_registry_agrees_with_every_document_it_indexes",
+    "introduced_in: 1855",
+    "core_design_refs: afokapu/atdd#1818, afokapu/atdd#1846"
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "strict: fails on every finding, no advisory mode, no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "doesNotFire",
+      "text": "No finding when all entries agree; no registry means nothing to check; non-mirrored fields are not compared but never exempt a mirrored mismatch.",
+      "justification": "Derived from the mirrored_field definition and the live-registry validator to make activation boundaries concrete; no new obligation or exemption."
+    },
+    {
+      "field": "prefer",
+      "text": "Edit the document first and copy mirrored fields into the registry in the same change.",
+      "justification": "Operationalises the source's 'document is authoritative' statement for planners; no new obligation beyond agreement."
+    },
+    {
+      "field": "avoid",
+      "text": "Treating an existing mismatch as out of scope; adding registry fields not sourced from the document.",
+      "justification": "Restates that the invariant covers every entry (S006) and that the registry is denormalised discovery metadata (S007); imposes no check beyond the mirrored fields."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ],
+      "note": "Reworded as imperative title."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "when",
+        "then",
+        "activation",
+        "avoid[2]"
+      ],
+      "note": "Unconditional invariant over every entry, checked at CONFIRM independent of the diff."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "why",
+        "prefer[0]",
+        "prefer[1]",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "verifier_detail[0]",
+        "why",
+        "then"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[1]",
+        "given",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "audit",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "identity",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "identity",
+        "verifier_detail[4]",
+        "shared:policy.strict-disposition"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "verifier_detail[2]",
+        "activation",
+        "when",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "verifier_detail[3]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "verifier_detail[3]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "verifier_detail[3]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "verifier_detail[3]",
+        "evidence[1]"
+      ]
+    }
+  ]
+}

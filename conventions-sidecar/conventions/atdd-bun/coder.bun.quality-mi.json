@@ -1,0 +1,453 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.bun/coder.bun.quality-mi.convention.yaml",
+    "sha256": "d4d29a1680693e5ac472badc529ce6e04a7f7cba30e2b3e5dd36c7a36c2465c5"
+  },
+  "rule_id": "coder.bun.quality-mi",
+  "kind": "rule",
+  "title": "Keep every TypeScript file's maintainability index at or above 20",
+  "activation": {
+    "facts": [
+      {
+        "fact": "language",
+        "values": [
+          "typescript"
+        ],
+        "observability": "observable_now",
+        "note": "TypeScript/TSX source files only; applies to every scanned file in every phase, changed or not."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          ".ts",
+          ".tsx"
+        ],
+        "observability": "observable_now",
+        "note": "Rule judges the whole file, not individual functions."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "**/*.ts",
+          "**/*.tsx",
+          "!test files",
+          "!vendored directories",
+          "!build directories"
+        ],
+        "observability": "observable_now",
+        "note": "Test files and vendored/build directories are outside the scan (source exception)."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "bun_ts_metrics_detector: MI < 20"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Detector output identifies a violation and activates remediation guidance; it is not a prerequisite for the obligation, which holds for every scanned file. Surfacing the finding to the activation layer needs a new observer."
+      }
+    ],
+    "fires": [
+      "Any scanned TypeScript source file, edited or untouched, scores below 20 on the approximate SEI maintainability index.",
+      "A .tsx module has accumulated enough size, operator density and branching to score MI < 20, even though every function passes its own complexity/length thresholds.",
+      "The agent is working in or near a large TypeScript file that the metrics detector flagged for low MI."
+    ],
+    "doesNotFire": [
+      "A TypeScript test file with a low MI score (test files are outside the scan).",
+      "A file under a vendored or build output directory.",
+      "A TS file that is empty or contains only comments (zero code lines after comment stripping score 100).",
+      "A TypeScript file scoring 20 or more, even if imperfect.",
+      "Non-TypeScript files."
+    ]
+  },
+  "given": "Any scanned (non-test, non-vendored, non-build) TypeScript/TSX file",
+  "when": "its approximate SEI maintainability index is evaluated",
+  "then": "The file MUST score at least 20 on the approximate SEI maintainability index.",
+  "prefer": [
+    "Treat a low score as a sensor for accumulated responsibility; repair cohesion and ownership first. Before optimizing the score, diagnose: responsibilities changing for different reasons, decision-heavy regions and repeated logic dominating the file, missing design context.",
+    "Extract a cohesive responsibility into its own module with a clear ownership boundary.",
+    "Simplify genuinely complex or duplicated logic as part of that extraction.",
+    "Comment only real decisions or invariants."
+  ],
+  "avoid": [
+    "Filler comments to improve the formula's comment term.",
+    "Splitting at an arbitrary line boundary or into tiny fragments solely to reduce LOC.",
+    "Moving complexity unchanged into a sibling module.",
+    "A generalized abstraction unrelated to the responsibilities already present."
+  ],
+  "unless": [
+    "The file produces zero code lines after comment stripping (scores 100, never fails).",
+    "The file is a test file or in a vendored/build directory (outside the scan)."
+  ],
+  "why": "MI alone judges the whole FILE: a file can pass every per-function threshold yet be unmaintainable through accumulated size and operator density. 20 is deliberately low—below it nobody should be asked to modify the file—and since MI mixes size, branching, density and comments, gaming one term moves the number without making the module easier to change.",
+  "evidence": [
+    "bun_ts_metrics_detector no longer reports the triggering MI finding (score >= 20) for the file.",
+    "Fixing the MI finding creates no new length, complexity, duplication or dependency-flow violations.",
+    "Existing behavior and tests remain green after the refactor.",
+    "Each resulting module has a coherent reason to change.",
+    "Dependency direction remains consistent with the existing architecture.",
+    "The refactor introduces no new ATDD Bun violations.",
+    "Diff review shows no filler comments, arbitrary line-boundary splits, or complexity moved unchanged into a sibling module."
+  ],
+  "verifier_detail": [
+    "MI = 171 - 5.2*ln(V) - 0.23*avgCC - 16.2*ln(LOC) + 50*sin(sqrt(2.4*CM)), the approximate SEI composite, clamped to 0..100.",
+    "V (halstead_volume) is a regex-approximated operator/operand count standing in for the file's information content; avgCC is the average decision density per function; CM is the comment ratio; LOC is code lines.",
+    "No AST, no external library: all terms are computed by regex approximation.",
+    "The score is clamped to the 0..100 range.",
+    "Files producing zero code lines after comment stripping score 100 and never fail.",
+    "Test files and vendored/build directories are excluded from the scan; every other TS/TSX file is scanned regardless of whether it changed.",
+    "Threshold: fail when MI < 20. The score is an approximation and is treated as one.",
+    "Native Bun detector formula (Halstead volume, log terms, comment term) is verified identical to the python-pytest sibling to ten decimal places.",
+    "Implementation: validator bun_ts_metrics_detector.",
+    "Severity 2; disposition strict (see shared:policy.strict-disposition)."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "Stack-neutral obligation; NATIVE BUN detector transcribed from the python-pytest sibling `coder.refactor.quality-mi-typescript` — Halstead volume, log terms and comment term are the same formula, verified identical to ten decimal places.",
+    "Realized by `bun_ts_metrics_detector` (core alias REFACTOR-QUALITY-MI-TS-001).",
+    "aliases: [REFACTOR-QUALITY-MI-TS-001].",
+    "implementation: {type: validator, ref: bun_ts_metrics_detector}.",
+    "Term ids: maintainability_index, halstead_volume.",
+    "metadata.severity: 2; metadata.disposition: strict."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "strict: the rule fails on every finding; no advisory mode and no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire examples and the finding activation fact",
+      "justification": "Required by the output schema; derived from the source scope and exceptions. The finding fact only activates remediation guidance and does not narrow the obligation."
+    },
+    {
+      "field": "evidence",
+      "text": "Diff review shows no filler comments, arbitrary splits, or unchanged moved complexity.",
+      "justification": "Makes the source's Avoid list verifiable; adds no obligation beyond the source."
+    },
+    {
+      "field": "shared:policy.strict-disposition",
+      "text": "No advisory mode and no ratchet baseline.",
+      "justification": "Standard expansion of the source's 'disposition: strict' metadata via the shared node; adds no rule-specific obligation."
+    },
+    {
+      "field": "coder_length",
+      "text": "Coder-facing text exceeds ~1,000 characters.",
+      "justification": "Lossless placement of the diagnose steps, four Avoid anti-patterns, two exceptions and the metric-gaming reasoning requires it; text was compressed as far as possible without losing content."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ],
+      "note": "title"
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "given"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit",
+        "verifier_detail[7]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit",
+        "verifier_detail[8]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ],
+      "note": "term id; definition in verifier_detail"
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "audit"
+      ],
+      "note": "term id; definition in verifier_detail"
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[0]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "why",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "why",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "prefer[3]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "evidence[3]"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "evidence[0]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "evidence[4]"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "evidence[5]"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[4]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[5]",
+        "activation",
+        "given"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S045",
+      "dest": [
+        "identity",
+        "audit",
+        "verifier_detail[9]"
+      ]
+    },
+    {
+      "seg": "S046",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S047",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S048",
+      "dest": [
+        "audit",
+        "verifier_detail[8]"
+      ]
+    }
+  ]
+}

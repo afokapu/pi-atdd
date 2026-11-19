@@ -1,0 +1,384 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.bun/coder.bun.journey-runner-boundary.convention.yaml",
+    "sha256": "51df6caa810d887a84fc8196bc103465685400f12ba8a0504efef9b88c10fe33"
+  },
+  "rule_id": "coder.bun.journey-runner-boundary",
+  "kind": "rule",
+  "title": "JourneyRunner composes interlockings without executing trains or wagons (Bun)",
+  "activation": {
+    "facts": [
+      {
+        "fact": "language",
+        "values": [
+          "bun"
+        ],
+        "observability": "observable_now",
+        "note": "Bun consumer repository (Bun runtime/lockfile/config). TypeScript alone does NOT qualify; a non-Bun TypeScript consumer is out of scope."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "plan/_journeys/**/*.yaml"
+        ],
+        "observability": "observable_now",
+        "note": "Presence of at least one journey topology document enables the obligation (source prerequisite)."
+      },
+      {
+        "fact": "layer",
+        "values": [
+          "station-master composition root"
+        ],
+        "observability": "observable_now",
+        "note": "A Station Master composition root must already exist (source exception: PLAN-stage repositories without one carry no obligation)."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "journey-runner-missing",
+          "journey-runner-boundary-violation"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Family detector OUTPUTS, not activation prerequisites: once the three prerequisites above hold, the detector runs over src/trains/** even when src/trains/** or JourneyRunner does not exist yet, and reports these findings."
+      }
+    ],
+    "fires": [
+      "Bun consumer with a Station Master composition root and plan/_journeys/*.yaml, where JourneyRunner (or all of src/trains/**) is missing.",
+      "Bun consumer with a Station Master composition root and plan/_journeys/*.yaml, whose JourneyRunner imports a wagon module, calls runTrain(...), references TrainRunner, or loops over train.sequence as an executor.",
+      "Bun consumer with a Station Master composition root and plan/_journeys/*.yaml, whose JourneyRunner constructs an InterlockingRunner from a hardcoded literal path.",
+      "Bun consumer with a Station Master composition root and plan/_journeys/*.yaml, whose JourneyRunner carries or mutates Cargo.",
+      "Bun consumer with a Station Master composition root and plan/_journeys/*.yaml, whose JourneyRunner never parses a journey declaration or never references InterlockingRunner."
+    ],
+    "doesNotFire": [
+      "A Bun consumer with no plan/_journeys topology documents.",
+      "A Bun consumer still in the PLAN stage with no Station Master composition root.",
+      "A non-Bun consumer (including a TypeScript consumer on another runtime), even with plan/_journeys topology.",
+      "InterlockingRunner delegating its selected train to TrainRunner, or TrainRunner iterating train.sequence to execute wagon steps (their own responsibilities)."
+    ]
+  },
+  "given": "A Bun consumer with a Station Master composition root declares one or more journey topology documents under plan/_journeys/ (whether or not src/trains/** or a JourneyRunner exists yet)",
+  "when": "the journey topology is present, which enables the obligation on the runtime under src/trains/**",
+  "then": "You MUST ship a JourneyRunner under src/trains/** that acts only as continuation control: it reads and parses the declared journey topology and delegates every routing decision to InterlockingRunner using declaration-derived values, never executing trains, wagons or Cargo itself.",
+  "prefer": [
+    "If no JourneyRunner exists, add one under src/trains/ that reads the supplied journey declaration; its absence is a violation, not an option.",
+    "The intended call model is: Station Master -> JourneyRunner -> InterlockingRunner.resolve/execute(...) -> TrainRunner.execute(selectedTrainId, ...) -> inspect declared continuation/terminal -> next InterlockingRunner ... (TrainRunner.execute is called by InterlockingRunner, never by JourneyRunner).",
+    "InterlockingRunner selects exactly one train and delegates it to TrainRunner; JourneyRunner only decides which interlocking is entered next per the declared topology."
+  ],
+  "avoid": [
+    "Constructing an InterlockingRunner from a hardcoded literal path.",
+    "Referencing TrainRunner, importing wagon modules, or calling runTrain(...) from JourneyRunner.",
+    "Looping over train.sequence as an executor in JourneyRunner.",
+    "Carrying or mutating Cargo in JourneyRunner.",
+    "Putting cross-interlocking topology into InterlockingRunner."
+  ],
+  "unless": [
+    "No plan/_journeys topology: no JourneyRunner obligation.",
+    "No Station Master composition root yet (PLAN stage): no JourneyRunner obligation, as coder.bun.interlocking-runner-exists owes no InterlockingRunner before one."
+  ],
+  "why": "Each layer owns only its responsibility (JourneyRunner: continuation control, never the train step loop; InterlockingRunner: local route selection; TrainRunner: sole wagon-step executor), so topology cannot bypass routing or duplicate train execution.",
+  "evidence": [
+    "class JourneyRunner exists under src/trains/** whenever the activation prerequisites hold.",
+    "JourneyRunner source shows reading and parsing of a journey declaration and references InterlockingRunner.",
+    "No literal-path InterlockingRunner construction, TrainRunner reference, wagon import, runTrain(...) call, train.sequence executor loop or Cargo handling in JourneyRunner."
+  ],
+  "verifier_detail": [
+    "Enforces the Bun runtime boundary introduced by planner journey topology. Presence of plan/_journeys/**/*.yaml enables the obligation; no phase or edit-event gate. The detector must run (and report missing runner) even when src/trains/** is absent.",
+    "Family detector: looks for class JourneyRunner under src/trains/**; requires evidence the runtime reads and parses a journey declaration; requires a reference to InterlockingRunner; rejects literal InterlockingRunner construction; rejects direct TrainRunner/wagon/Cargo execution patterns (TrainRunner references, wagon imports, runTrain(...), train.sequence executor loops, Cargo carry/mutation).",
+    "metadata: severity 4, disposition strict (as stated in source; no further enforcement semantics implied here).",
+    "Terms: journey_runner = the runtime continuation-control layer that traverses declared journey topology between interlockings; boundary = JourneyRunner -> InterlockingRunner -> TrainRunner, each layer owns only its declared responsibility.",
+    "Existence obligation (source statement): a Bun consumer that declares one or more journey topology documents under plan/_journeys/ MUST ship a JourneyRunner under src/trains/**; same two exceptions apply. Carried operatively in then."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "implementation: {type: validator, ref: coder.bun.journey-runner-boundary}.",
+    "aliases: BUN-JOURNEY-RUNNER-BOUNDARY-001."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "then",
+      "text": "Existence of JourneyRunner (S006) and its continuation-only boundary (S007) are stated as one deliverable in then: ship a JourneyRunner that only does continuation control. No split is proposed, so the MUST-ship requirement stays operative for the coder.",
+      "justification": "Auditor required the existence requirement to remain mandatory until an operative split rule carries it; both describe a single artifact checked by the same family detector."
+    },
+    {
+      "field": "prefer",
+      "text": "Parenthetical in prefer[1] clarifying that TrainRunner.execute is invoked by InterlockingRunner, not JourneyRunner.",
+      "justification": "Derived from S007/S008 (JourneyRunner must not reference TrainRunner; InterlockingRunner delegates to TrainRunner); prevents misreading the flattened call chain. No new obligation."
+    },
+    {
+      "field": "activation",
+      "text": "finding facts marked needs_new_observer as detector outputs (not prerequisites); doesNotFire examples for non-Bun consumers and for InterlockingRunner/TrainRunner own responsibilities.",
+      "justification": "Required activation structure; derived from source scope ('A Bun consumer') and call model, no new obligations."
+    },
+    {
+      "field": "coder_fields_length",
+      "text": "Coder-facing text is somewhat above ~1,000 characters.",
+      "justification": "Lossless placement of the mandatory existence requirement, the call model, all forbidden patterns, and both exceptions."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "given",
+        "activation",
+        "prefer[0]",
+        "evidence[0]",
+        "verifier_detail[4]"
+      ],
+      "note": "Mandatory existence kept operative in then."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "then",
+        "avoid[0]",
+        "avoid[1]",
+        "avoid[2]",
+        "avoid[3]",
+        "evidence[1]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "prefer[2]",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "activation",
+        "when",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[1]",
+        "evidence[1]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "then",
+        "avoid[2]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "avoid[4]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "avoid[4]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "why",
+        "avoid[1]",
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "prefer[0]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "avoid[0]",
+        "avoid[1]",
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "avoid[1]",
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "unless[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "unless[1]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "identity",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "identity",
+        "verifier_detail[2]"
+      ],
+      "note": "Disposition strict preserved verbatim; no shared policy semantics attached."
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "verifier_detail[3]",
+        "why"
+      ]
+    }
+  ]
+}

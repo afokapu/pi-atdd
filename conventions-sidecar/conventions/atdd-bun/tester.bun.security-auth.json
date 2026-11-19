@@ -1,0 +1,402 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/tester.bun/tester.bun.security-auth.convention.yaml",
+    "sha256": "b8224269911ae477756e6c160e1ed72d1438574277109f77704326251e720449"
+  },
+  "rule_id": "tester.bun.security-auth",
+  "kind": "rule",
+  "title": "Security tests assert on denial",
+  "activation": {
+    "facts": [
+      {
+        "fact": "language",
+        "values": [
+          "typescript",
+          "javascript"
+        ],
+        "observability": "observable_now",
+        "note": "Bun test runner realization."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "test"
+        ],
+        "observability": "observable_now",
+        "note": "Bun test files."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "SEC",
+          "RLS",
+          "AUTH"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Gating fact. Security identity comes from the URN kind segment (-SEC-, -RLS-, -AUTH-) in the test header, not the filename; needs a header/URN parser. Applies to every such test regardless of whether it was changed in this diff or of lifecycle phase."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "bun_tester_discipline_detector:security-auth"
+        ],
+        "observability": "needs_new_observer",
+        "note": "NON-GATING. Detector activation only (security-URN test with no listed denial signal). Semantic review of whether the denial is bound to the acceptance's protected operation, and whether the protected effect is checked, applies to all security-URN tests even when the detector reports nothing."
+      }
+    ],
+    "fires": [
+      "A Bun test whose URN header carries a -SEC- kind segment and whose body only asserts a successful (200) response (detector and review).",
+      "A test with an -AUTH- or -RLS- URN kind segment whose expectations contain none of 401, 403, unauthorised, forbidden, denied, permission, .rejects or toThrow (detector and review).",
+      "A security-URN test that asserts 403 on an unrelated endpoint rather than on the bound protected operation (acceptance-bound review only; the detector passes it).",
+      "A security-URN test for a protected mutation that asserts 403 but never checks that the mutation did not happen (acceptance-bound review only).",
+      "An existing, unchanged security-URN test examined during an audit or review."
+    ],
+    "doesNotFire": [
+      "A test whose URN kind segment is not SEC, RLS or AUTH, even if its filename contains 'auth' or 'security'.",
+      "A SEC/RLS/AUTH test whose denial case asserts the refusal of the bound protected operation (and, for a protected side effect, that it did not occur), with or without an extra happy-path case.",
+      "Production (non-test) code."
+    ]
+  },
+  "given": "A Bun test whose URN header kind segment is SEC, RLS or AUTH (the header, not the filename, is authoritative).",
+  "when": "Writing, changing or reviewing that security test.",
+  "then": "Prove the refusal named by the security acceptance: for the unauthorized or under-privileged stimulus it describes, assert the denial signal (e.g. 401, 403, permission error, rejection, throw) produced by the bound protected operation.",
+  "prefer": [
+    "Construct the missing, invalid or insufficient authorization state the acceptance describes; exercise the real protected boundary.",
+    "Required witness when the acceptance protects a mutation or other side effect: also assert the protected state/action remains unchanged — returning 403 after performing the mutation is still a security failure.",
+    "A happy-path case is optional and welcome, but cannot replace the denial case.",
+    "`const res = await fetch(\"/orders\", { method: \"POST\" });   // anonymous` then `expect(res.status).toBe(403);` (status only; for a protected mutation add the unchanged-state check above)."
+  ],
+  "avoid": [
+    "A happy-path permission case as the only security proof.",
+    "An unrelated or generic 403 not produced by the bound protected operation, added to satisfy the detector.",
+    "Mocking away the authorization decision the acceptance must prove.",
+    "For a protected mutation/side effect, asserting only the denial status without checking the effect did not occur."
+  ],
+  "unless": [],
+  "why": "A happy-path-only security test is a silent green gap: it passes CI and counts as covering the security acceptance while proving nothing about the denial path, the only path the acceptance is about.",
+  "evidence": [
+    "The test body contains an expectation tied to a denial signal on the protected operation named by the security acceptance.",
+    "The case would turn red if authorization were accidentally removed.",
+    "Where the acceptance protects a mutation or side effect (mandatory there), the test shows a denied request cannot still perform the protected effect."
+  ],
+  "verifier_detail": [
+    "Scope: only tests whose URN carries a SEC / RLS / AUTH kind segment (-SEC-, -RLS-, -AUTH-) are scanned; identification is by URN kind segment, not filename, consistent with the rest of the package — the header is authoritative.",
+    "Pass condition: any one of the listed denial signals satisfies the rule — an expectation tied to 401, 403, unauthorised, forbidden, denied, permission, `.rejects` or `toThrow`.",
+    "Detector behaviour: identifies security tests from the URN and flags those whose body contains no denial assertion. Binding to the acceptance's protected operation and the protected-effect check are not detected mechanically; they are reviewer-judged.",
+    "Severity 4; disposition strict.",
+    "Implementation: validator bun_tester_discipline_detector."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "Bun realization of core `tester.security.auth`, mirroring `tester.convex.security-auth`.",
+    "Aliases: TESTER-SECURITY-AUTH-001, BUN-SECURITY-AUTH-001.",
+    "Implementation: {type: validator, ref: bun_tester_discipline_detector}.",
+    "Metadata: severity 4; disposition strict.",
+    "Source term ids: security_test (a test whose URN carries a SEC, RLS or AUTH kind segment); denial_assertion (an expectation tied to 401, 403, unauthorised, forbidden, denied, permission, .rejects or toThrow; its absence makes the test a silent green gap — described in the source as the worst shape a test can have)."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire scenarios and language/file_kind facts; detector finding marked non-gating.",
+      "justification": "Required by the target structure; derived from source scope (URN-scanned tests, denial signals). No new obligations."
+    },
+    {
+      "field": "verifier_detail",
+      "text": "Note that acceptance binding and protected-effect checks are reviewer-judged, not detected.",
+      "justification": "Clarifies that the detector's listed signals (S013, S038) do not cover S016/S018; no new obligation."
+    },
+    {
+      "field": "prefer",
+      "text": "Annotation on the source example that it checks status only and a protected mutation also needs the unchanged-state check.",
+      "justification": "Prevents copying the 403-only example and omitting the source-mandated S018/S026 check; no new obligation."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "then",
+        "verifier_detail[0]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ],
+      "note": "term id; definition preserved in given/verifier_detail[0]"
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "given",
+        "verifier_detail[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit"
+      ],
+      "note": "term id; definition preserved in verifier_detail[1]"
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[1]",
+        "then",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "why",
+        "avoid[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "avoid[1]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "then",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "prefer[1]",
+        "avoid[3]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "given",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "prefer[1]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "prefer[3]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "prefer[3]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "verifier_detail[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "identity",
+        "verifier_detail[3]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "identity",
+        "verifier_detail[3]",
+        "audit"
+      ],
+      "note": "Kept as the bare source label 'strict'; no enforcement semantics added."
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "audit",
+        "verifier_detail[4]"
+      ]
+    }
+  ]
+}

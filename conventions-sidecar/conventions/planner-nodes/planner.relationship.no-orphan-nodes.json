@@ -1,0 +1,286 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.relationship.no-orphan-nodes.convention.yaml",
+    "sha256": "f9f7c1429684e1caa58148bd4c9190ff635f9b9b071b45b39db3bef038139a8e"
+  },
+  "rule_id": "planner.relationship.no-orphan-nodes",
+  "kind": "rule",
+  "title": "Reference every convention node in at least one relationship edge",
+  "activation": {
+    "facts": [
+      {
+        "fact": "path_glob",
+        "values": [
+          "**/*.convention.yaml",
+          "src/atdd/coach/graph/relationships.yaml"
+        ],
+        "observability": "observable_now",
+        "note": "Convention files and the relationship graph file are identifiable by path."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "convention_yaml_with_rule_id",
+          "relationship_graph_yaml"
+        ],
+        "observability": "observable_now",
+        "note": "A convention node is any *.convention.yaml carrying a rule_id; detectable by parsing the file."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "orphan_node"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Graph-coverage detector: set of non-excluded node rule_ids minus all edge source_ref/target_ref values. Applies to the whole graph whenever coverage is evaluated, including pre-existing orphans."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "convention_node_added",
+          "convention_rule_id_renamed",
+          "relationship_edge_removed"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Example triggers only (not prerequisites): diff-level observer for changes that commonly create orphans."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "convention",
+          "rule_id",
+          "relationship",
+          "graph edge",
+          "orphan",
+          "graph validation"
+        ],
+        "observability": "observable_now",
+        "note": "Planning tasks that author, rename or validate convention nodes and the graph."
+      }
+    ],
+    "fires": [
+      "Graph validation finds a pre-existing non-excluded convention node referenced by no edge, even though the current plan adds, renames or removes no node or edge.",
+      "A plan adds a new *.convention.yaml with a rule_id but authors no relationship edge naming it.",
+      "A plan renames a convention's rule_id and the edges still name only the old id.",
+      "A plan deletes the last relationship edge that referenced a given convention node."
+    ],
+    "doesNotFire": [
+      "A convention node lives under a path containing tests/fixtures.",
+      "A convention node is in the demo.* namespace.",
+      "A *.convention.yaml file that carries no rule_id.",
+      "Every non-excluded node already appears as source_ref or target_ref of at least one edge."
+    ]
+  },
+  "given": "The repository has convention nodes (*.convention.yaml with a rule_id) and a relationship graph; this holds for all nodes, pre-existing or newly planned.",
+  "when": "Relationship-graph coverage is evaluated or you plan any change touching convention nodes or graph edges.",
+  "then": "Ensure every non-excluded convention node's rule_id appears as source_ref or target_ref of at least one relationship-graph edge; a node referenced by no edge is an orphan and is refused.",
+  "prefer": [
+    "For each orphan (new or pre-existing), author at least one edge (via `atdd author relationship`) with it as source_ref or target_ref, using a real relationship type/foundation to a semantically related node.",
+    "Plan the edge in the same change that introduces or renames a node."
+  ],
+  "avoid": [
+    "Treating 'no dangling edges' as enough — the graph must cover every node.",
+    "Placeholder edges to unrelated nodes or with arbitrary type/foundation to silence the check.",
+    "Moving a real node under tests/fixtures or into demo.* to escape the check."
+  ],
+  "unless": [
+    "The node is under a path containing tests/fixtures or in the demo.* namespace — excluded."
+  ],
+  "why": "Reverse half of graph integrity: the forward check forbids edges to missing nodes, this forbids nodes no edge reaches — no dangling edges AND no orphan nodes.",
+  "evidence": [
+    "Graph-coverage check reports zero orphan nodes: every non-excluded convention rule_id appears as source_ref or target_ref of at least one edge in src/atdd/coach/graph/relationships.yaml.",
+    "Each newly authored edge names a real relationship type/foundation and a semantically related counterpart node.",
+    "The forward check (no edge references a missing node) also passes."
+  ],
+  "verifier_detail": [
+    "Node set: every *.convention.yaml carrying a rule_id, excluding files whose path contains tests/fixtures and rule_ids in the demo.* namespace. Evaluated over the whole graph, not just changed nodes.",
+    "orphan_node: a convention node whose rule_id is referenced by no source_ref or target_ref in any relationship-graph edge.",
+    "relationship_graph: the directed convention-node graph at src/atdd/coach/graph/relationships.yaml whose edges connect node rule_ids.",
+    "Orphans = node rule_ids − (all edge source_refs ∪ all edge target_refs); any non-empty result fails.",
+    "Severity 3; disposition strict (fails on every finding)."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active.",
+    "source: legacy_path src/atdd/planner/conventions/relationship.convention.yaml, legacy_section rules, extraction_mode high_fidelity, legacy_rule_id planner.relationship.no-orphan-nodes.",
+    "aliases: PLANNER-RELATIONSHIP-NO-ORPHAN-NODES-001.",
+    "introduced_in 3.119.0.",
+    "parity: source_fragments_preserved true.",
+    "implementation: validator, ref conventions/coverage/test_no_orphan_nodes::test_fault_injection_legacy_parity_both_catch.",
+    "Term ids: orphan_node, relationship_graph."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Strict disposition: the rule fails on every finding; no advisory mode and no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "avoid",
+      "text": "Placeholder edges to unrelated nodes, or relocating real nodes into excluded paths/namespaces, to evade the check.",
+      "justification": "Metric-gaming anti-patterns implied by the source's requirement of a 'real relationship type/foundation to a semantically related node' and the narrow exception list."
+    },
+    {
+      "field": "prefer",
+      "text": "Plan the edge in the same change that introduces or renames a node.",
+      "justification": "Planner-facing timing guidance derived from the obligation; not a new obligation."
+    },
+    {
+      "field": "evidence",
+      "text": "The forward check also passes.",
+      "justification": "Derived from operational_guidance pairing the two checks; identifies how bidirectional integrity is established."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "then"
+      ],
+      "note": "Name reworded as imperative title."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "given",
+        "when",
+        "activation",
+        "verifier_detail[0]",
+        "evidence[0]"
+      ],
+      "note": "Standing invariant over all non-excluded nodes; graph path kept in verifier_detail/evidence; fixture exclusion in unless."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "then",
+        "avoid[0]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "prefer[0]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "unless[0]",
+        "activation",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "why",
+        "avoid[0]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "identity",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "identity",
+        "verifier_detail[4]",
+        "shared:policy.strict-disposition"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "audit",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "verifier_detail[1]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "audit",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

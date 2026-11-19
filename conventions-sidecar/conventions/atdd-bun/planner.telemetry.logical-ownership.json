@@ -1,0 +1,361 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/planner.telemetry/planner.telemetry.logical-ownership.convention.yaml",
+    "sha256": "6dd666a22fd7fd0cb6e5fe5505665c8889a504ee929fdebf3aee019df4aac2b4"
+  },
+  "rule_id": "planner.telemetry.logical-ownership",
+  "kind": "rule",
+  "title": "Give every concrete telemetry item exactly one owning wagon",
+  "activation": {
+    "facts": [
+      {
+        "fact": "path_glob",
+        "values": [
+          "plan/**/*.yaml"
+        ],
+        "observability": "observable_now",
+        "note": "Wagon plan files carrying produce[] entries; the source's fix hint locates a wagon plan at plan/commons/_commons.yaml. This identifies wagon plans only, not tracking-plan items."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "tracking_plan_item"
+        ],
+        "observability": "needs_new_observer",
+        "note": "The source does not establish a path pattern for tracking-plan items; an observer that recognises concrete tracking-plan items (and resolves each to its logical artifact URN) is needed. Path alone is not claimed to identify them."
+      },
+      {
+        "fact": "phase",
+        "values": [
+          "plan_validation",
+          "plan_authoring"
+        ],
+        "observability": "needs_new_observer",
+        "note": "The rule is a state invariant over all concrete items: it applies whenever the plan is validated or authored, including full-plan checks where the defective item itself was not edited."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "tracking_plan_item_added_or_changed",
+          "produce_telemetry_changed",
+          "item_owner_changed"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Optional activation signal only (makes it likely a defect was introduced); NOT a prerequisite. Unchanged defective items still violate the rule."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "planner.telemetry.logical-ownership"
+        ],
+        "observability": "observable_now",
+        "note": "Validator planner_telemetry_plan reports zero/multiple producers or owner mismatch per item under the telemetry profile."
+      }
+    ],
+    "fires": [
+      "A planner adds a concrete tracking-plan item whose logical artifact no wagon's produce[] telemetry declares.",
+      "Two wagons' produce[] telemetry both name the same logical artifact URN that a tracking-plan item resolves to.",
+      "A tracking-plan item's owner names a wagon other than the one whose produce[] declares its logical artifact.",
+      "A wagon's produce[] telemetry entry is removed or renamed while concrete items still resolve to that artifact.",
+      "A full-plan validation (or an unrelated plan edit) evaluates an existing, unchanged tracking-plan item that has zero producers, multiple producers, or a mismatched owner.",
+      "planner.wagon.telemetry-filesystem already reports a wagon-level duplicate producer under the planner profile; this rule still reports the affected item under the telemetry profile."
+    ],
+    "doesNotFire": [
+      "A concrete item whose logical artifact is declared by exactly one wagon's produce[] telemetry and whose owner equals that wagon's slug.",
+      "A wagon produce[] entry with no telemetry field and no concrete tracking-plan item resolving to it."
+    ]
+  },
+  "given": "A plan contains concrete tracking-plan items, each resolving to a logical telemetry artifact URN telemetry:{theme}:{artifact}.",
+  "when": "Any concrete tracking-plan item is authored, changed, or evaluated (including full-plan validation of unchanged items).",
+  "then": "Ensure each item's logical artifact is declared in exactly one wagon's produce[] telemetry (string or list), and the item's owner equals that wagon's slug.",
+  "prefer": [
+    "Declare the logical artifact on the producing wagon's produce[] entry (telemetry: telemetry:{theme}:{artifact}, contract may be null), then set the item's owner to that wagon's slug.",
+    "Decide ownership in the plan first; treat the registry only as something that resolves against plan-declared ownership."
+  ],
+  "avoid": [
+    "Concrete items whose artifact no wagon's produce[] declares (emitted by code no plan stands behind).",
+    "Declaring the same logical artifact in two wagons' produce[] (two authors, no arbiter).",
+    "An owner field that names a wagon other than the declaring one, or relying on the registry to grant ownership.",
+    "Treating a wagon-level duplicate-producer finding (planner profile) as covering or exempting the item-level check; both apply."
+  ],
+  "unless": [],
+  "why": "Two producers make an emission contract a coincidence waiting to diverge; zero means no wagon stands behind the observable outcome. Both are plan defects, caught at the item.",
+  "evidence": [
+    "Validator planner_telemetry_plan reports no planner.telemetry.logical-ownership finding over the whole plan.",
+    "For each concrete item, exactly one wagon has a produce[] telemetry declaration naming the logical artifact URN, and item.owner equals that wagon's slug."
+  ],
+  "verifier_detail": [
+    "ownership_declaration: a wagon produce[] entry whose telemetry field (string or list) names the logical artifact URN telemetry:{theme}:{artifact}; ownership lives in the plan, not in the registry.",
+    "owner: the tracking-plan item field naming the wagon slug accountable for the artifact; must equal the wagon whose produce[] declares the logical artifact.",
+    "Per item (all concrete items, not only changed ones): count distinct wagons whose produce[].telemetry names the artifact; 0 => finding (no owner), >1 => finding (ambiguous producers), 1 but owner != that slug => finding.",
+    "Overlap: duplicate producers at the wagon level are also reported by planner.wagon.telemetry-filesystem under the planner profile; this rule reports the same ambiguity at the item level under the telemetry profile, so an adopting repository sees it whichever profile it runs. This is a separate check, not an exemption or waiver: the item-level invariant applies regardless of whether the wagon-level finding exists.",
+    "Fix-hint example from source:\n  # plan/commons/_commons.yaml\n  produce:\n    - name: commons:response-invocation\n      contract: null\n      telemetry: telemetry:commons:response-invocation-accepted",
+    "Severity 2; disposition strict."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active.",
+    "Source name: Concrete telemetry resolves to exactly one wagon-owned logical artifact.",
+    "Aliases: TELEMETRY-LOGICAL-OWNERSHIP-001.",
+    "introduced_in 0.7.0.",
+    "implementation: {type: validator, ref: planner_telemetry_plan}.",
+    "Source comment: strict: atdd-bun fails on every finding; it has no advisory mode and no ratchet baseline."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "strict: the tool fails on every finding; there is no advisory mode and no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire scenarios and activation facts (path_glob, file_kind, phase, change as optional signal, finding)",
+      "justification": "Schema requires observable activation; derived from source statement (every concrete item), normative text, fix-hint path, and exception. No new obligation; change facts are signals, not prerequisites."
+    },
+    {
+      "field": "when",
+      "text": "Applicability phrased as 'authored, changed, or evaluated (including full-plan validation)'",
+      "justification": "Schema requires a when clause; phrased to cover the source's unconditional invariant over every concrete item rather than narrowing it to edits."
+    },
+    {
+      "field": "avoid",
+      "text": "avoid[3]: do not treat the wagon-level finding as covering the item-level check",
+      "justification": "Restates source exception S027 (both profiles report it) for planners; not a new obligation."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Rephrased as imperative title; original name kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "given",
+        "when",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "verifier_detail[0]"
+      ],
+      "note": "Term id."
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "verifier_detail[0]",
+        "then",
+        "given"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "verifier_detail[0]",
+        "prefer[1]",
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[1]"
+      ],
+      "note": "Term id."
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[1]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[1]",
+        "then",
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "why",
+        "avoid[0]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "prefer[1]",
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "then",
+        "verifier_detail[2]",
+        "evidence[1]"
+      ],
+      "note": "Uniqueness is of the declaring wagon (distinct wagons), not of produce[] entries within it."
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "then",
+        "verifier_detail[2]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "why",
+        "avoid[0]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "why",
+        "avoid[1]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "verifier_detail[4]",
+        "activation"
+      ],
+      "note": "Project-specific example path kept verbatim for verifier; supports plan/**/*.yaml path glob; coder text generalised."
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "verifier_detail[4]",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "verifier_detail[4]",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "verifier_detail[4]",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "verifier_detail[3]",
+        "activation",
+        "avoid[3]"
+      ],
+      "note": "Profile-overlap note; separate check, not an exemption; kept out of unless."
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "identity",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "identity",
+        "verifier_detail[5]",
+        "shared:policy.strict-disposition"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "audit",
+        "evidence[0]"
+      ]
+    }
+  ]
+}

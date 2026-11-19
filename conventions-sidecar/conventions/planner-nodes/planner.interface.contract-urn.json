@@ -1,0 +1,599 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.interface.contract-urn.convention.yaml",
+    "sha256": "10d8e5595a7b73fecaae058de97b1266c22d4fd388f31ba46add9fce897d8629"
+  },
+  "rule_id": "planner.interface.contract-urn",
+  "kind": "rule",
+  "title": "Give every wagon produce/consume entry a version-free contract URN that resolves in the registry",
+  "activation": {
+    "facts": [
+      {
+        "fact": "path_glob",
+        "values": [
+          "plan/*/*.yaml",
+          "contracts/_artifacts.yaml"
+        ],
+        "observability": "observable_now",
+        "note": "Alternatives (OR): a wagon manifest under plan/{wagon}/ OR the contract registry. Either path alone activates; an ordinary manifest edit does not require the registry to be touched too."
+      },
+      {
+        "fact": "operation",
+        "values": [
+          "create",
+          "edit"
+        ],
+        "observability": "observable_now",
+        "note": "Authoring a new wagon, editing a manifest, rolling URNs out across manifests, or editing registry ids/producer fields."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "produce/consume entry added or modified",
+          "urn field added or changed",
+          "registry contract id or producer field added/changed/removed"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Needs a YAML-diff observer over manifests (produce/consume entries, urn fields) and over the registry (id, producer). A pure version bump that keeps the id prefix and producer is excluded."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "urn",
+          "contract urn",
+          "orphaned urn",
+          "add urn to wagons"
+        ],
+        "observability": "observable_now",
+        "note": "Covers the URN rollout/upgrade task across all wagon artifacts."
+      }
+    ],
+    "fires": [
+      "Planner adds a produce entry to a new wagon manifest under plan/{wagon}/",
+      "Planner adds a consume entry referencing an artifact produced by another wagon",
+      "Planner edits an existing urn field or renames a produced/consumed artifact",
+      "Planner meets a legacy dot-for-hierarchy URN such as contract:{domain}.{resource} in a manifest",
+      "Planner runs the URN upgrade: adding urn to all wagon artifacts, validating resolution, generating contracts for orphaned URNs",
+      "Planner changes a contract id or producer field in contracts/_artifacts.yaml so a wagon URN may no longer resolve or link back"
+    ],
+    "doesNotFire": [
+      "Editing prose docs or acceptances that do not touch wagon manifest produce/consume entries or registry ids/producers",
+      "Bumping a contract version in contracts/_artifacts.yaml (e.g. :v1 -> :v2) without renaming the artifact or changing its producer (URN stays unchanged)",
+      "Code-only changes outside plan/ and contracts/"
+    ]
+  },
+  "given": "A wagon manifest (plan/{wagon}/*.yaml) has produce/consume entries naming artifacts {domain}:{resource}[.{category}], linked to contracts/_artifacts.yaml.",
+  "when": "You author/edit those entries, roll URNs out across wagons, or change registry ids or producers.",
+  "then": "Each produce/consume entry carries `urn: contract:{domain}:{resource}[.{category}]` (no version) that resolves to a registry id {same}:v{N} whose producer names the producing wagon.",
+  "prefer": [
+    "Derive from the name: domain before the first colon, resource up to an optional dot, category after it; mechanic:decision.choice -> contract:mechanic:decision.choice.",
+    "Same URN on the producer's produce entry and every consume entry (consume names `from wagon:<producer>`).",
+    "Upgrade in order: add urn to all wagon artifacts; validate all resolve; generate missing contracts for orphaned URNs."
+  ],
+  "avoid": [
+    "Legacy dot hierarchy contract:mechanic.decision.choice; migrate it.",
+    "Versions (:v1) or schema/API detail in the URN.",
+    "Changing URNs when a contract moves v1->v2.",
+    "Dropping the category: ux:foundations.colors -> contract:ux:foundations."
+  ],
+  "unless": [
+    "Pre-URN wagons: urn is optional initially; required for new wagons."
+  ],
+  "why": "Wagons declare WHAT (URN), contracts HOW (version, schema, API): contracts evolve without wagon YAML changes, names stay readable, and the graph keeps bidirectional wagon<->contract linkage.",
+  "evidence": [
+    "Every produce/consume entry in plan/{wagon}/*.yaml has an urn matching ^contract:[^:.]+:[^:.]+(\\.[^:.]+)?$ and equal to 'contract:' + the entry name.",
+    "Each URN resolves to a contract in the registry (contracts/_artifacts.yaml): some id {domain}:{resource}[.{category}]:v* matches.",
+    "The matched contract's producer field resolves back to the wagon whose produce entry carries the URN (bidirectional linkage).",
+    "Positive: maintain-ux produce name ux:foundations, urn contract:ux:foundations, to external; maintain-ux produce name ux:foundations.colors, urn contract:ux:foundations.colors, to external; stage-characters consume name ux:foundations, urn contract:ux:foundations, from wagon:maintain-ux."
+  ],
+  "verifier_detail": [
+    "URN format: contract:{domain}:{resource}[.{category}]. domain = artifact-name part before the first colon; resource = after the first colon, before the dot if present; category = optional part after the dot. Conversion rule: keep colon for hierarchy, preserve category as dot facet.",
+    "Name->URN examples: ux:foundations -> contract:ux:foundations; ux:foundations.colors -> contract:ux:foundations.colors; mechanic:decision.choice -> contract:mechanic:decision.choice; match:result -> contract:match:result; player:identity -> contract:player:identity.",
+    "Contract id field in contracts/_artifacts.yaml: id: {domain}:{resource}[.{category}]:v{version}; authoritative for schema, version, API. URN contract:{domain}:{resource}[.{category}] maps to any version of id {domain}:{resource}[.{category}]:v*.",
+    "Id matching examples: id ux:foundations:v1 (version 1.0.0, path ux/foundations.json, producer wagon:maintain-ux) matches urn contract:ux:foundations; id ux:foundations.colors:v1 matches urn contract:ux:foundations.colors (category preserved in both URN and ID).",
+    "Linkage: wagon URN -> contract id lookup via domain.resource matching; contract producer field -> wagon name. Validation: URN must resolve to a contract in the registry.",
+    "Legacy normalisation: contract:{domain}.{resource} -> contract:{domain}:{resource}; category stays as a dot facet contract:{domain}:{resource}.{category}. Counter-example: contract:mechanic.decision.choice -> contract:mechanic:decision.choice.",
+    "Backward compatibility: missing urn on pre-existing wagons tolerated initially; missing urn on new wagons is a finding.",
+    "Rollout phases: phase1 add urn field to all wagon artifacts (this upgrade); phase2 validate all URNs resolve to contracts; phase3 generate missing contracts for orphaned URNs."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "kind: rule; status: active",
+    "implementation: {type: none}",
+    "source: legacy_path src/atdd/planner/conventions/interface.convention.yaml, legacy_sha sha256:3415a521b5eec18b, extraction_mode high_fidelity, legacy_section contract-urn",
+    "parity: source_fragments_preserved, examples_preserved, implementation_preserved, fix_hint_preserved all true; reviewed_at 2026-06-16",
+    "Original name: 'Interface: Contract Urn'",
+    "Term ids: urn_pattern (The contract URN format), wagon_artifact_urn (URN field on wagon produce/consume entries), contract_artifact_id (Contract definition ID with version), bidirectional_linkage (Wagon<->contract linkage), urn_purpose (Why URNs exist), legacy_urn_migration (Legacy URN separator refactor)"
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "then",
+      "text": "The statement's two halves (well-formed version-free URN; graph-maintained bidirectional linkage / registry resolution) are kept together in then as one obligation: a correctly formed URN that resolves and links back. No split; the source makes resolution mandatory ('A URN must resolve to a contract in the registry').",
+      "justification": "Auditor required resolution/linkage as an active obligation, not prefer/evidence only."
+    },
+    {
+      "field": "evidence",
+      "text": "Regex ^contract:[^:.]+:[^:.]+(\\.[^:.]+)?$ and the 'contract:' + name equality check.",
+      "justification": "Mechanical restatement of the source format/derivation for verifiers; not a new obligation."
+    },
+    {
+      "field": "activation",
+      "text": "doesNotFire cases (version bump without rename/producer change, prose-only edits, code-only changes) and the task_term fact for the rollout.",
+      "justification": "Required negative activation cases, derived from the source statement that contract evolution does not require wagon YAML changes; task_term covers the source's phased rollout."
+    },
+    {
+      "field": "coder_length",
+      "text": "Coder-facing text slightly exceeds ~1,000 chars.",
+      "justification": "Losslessness: resolution/linkage obligation and ordered rollout steps must stay coder-facing per audit."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "why",
+        "evidence[2]"
+      ],
+      "note": "Format, version independence, resolution and back-linkage all in then."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "why",
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "avoid[0]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "then",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "verifier_detail[1]",
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "given",
+        "then"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "then",
+        "when"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "evidence[3]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "evidence[3]"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "evidence[3]",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "then",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "verifier_detail[2]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "then",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "verifier_detail[2]",
+        "avoid[1]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S045",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S046",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S047",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S048",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S049",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S050",
+      "dest": [
+        "then",
+        "verifier_detail[4]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S051",
+      "dest": [
+        "then",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S052",
+      "dest": [
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S053",
+      "dest": [
+        "then",
+        "verifier_detail[4]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S054",
+      "dest": [
+        "then",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S055",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S056",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S057",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S058",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S059",
+      "dest": [
+        "why",
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S060",
+      "dest": [
+        "why",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S061",
+      "dest": [
+        "why",
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S062",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S063",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S064",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S065",
+      "dest": [
+        "avoid[0]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S066",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S067",
+      "dest": [
+        "avoid[0]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S068",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S069",
+      "dest": [
+        "prefer[2]",
+        "activation",
+        "verifier_detail[7]"
+      ]
+    },
+    {
+      "seg": "S070",
+      "dest": [
+        "prefer[2]",
+        "activation",
+        "verifier_detail[7]"
+      ]
+    },
+    {
+      "seg": "S071",
+      "dest": [
+        "prefer[2]",
+        "activation",
+        "verifier_detail[7]"
+      ]
+    }
+  ]
+}

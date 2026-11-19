@@ -1,0 +1,355 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.bun/coder.bun.green-urn-side.convention.yaml",
+    "sha256": "f838211202ce0950e920dea137fc3c66cf5a789175356b1e6dc30facf1c6e5ad"
+  },
+  "rule_id": "coder.bun.green-urn-side",
+  "kind": "rule",
+  "title": "Declare the URN side segment as frontend or backend by real ownership",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "file in a repository governed by the Bun stack realization"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Bun realization scope: the rule applies wherever the Bun per-stack detector (bun_green_traceability_detector) is the selected realization; no language or file-extension restriction is implied. Needs a stack/realization selector."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "file carrying a URN traceability header with exactly six segments"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Requires parsing the header URN and splitting it into segments. Applies to any such header, pre-existing or newly written; writing or editing a file is an example trigger, not a necessary condition."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "GREEN-URN-005",
+          "BUN-GREEN-URN-SIDE-001"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Emitted by bun_green_traceability_detector when segment 4 of a six-segment URN is not frontend/backend."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "URN segment 4 value vs the module's real ownership (browser-owned vs server-owned)"
+        ],
+        "observability": "llm_judged",
+        "note": "The detector checks only the closed vocabulary; whether the side matches where responsibility lives needs judgment."
+      }
+    ],
+    "fires": [
+      "A Bun-realization file is written with a six-segment URN header.",
+      "An existing six-segment URN header (touched or not) has segment 4 set to something other than `frontend` or `backend` (e.g. empty, `shared`, `server`).",
+      "A module that renders server-side fragments is labelled `frontend`, or browser-resident behavior is labelled `backend`.",
+      "An implementation edit moves a module's responsibility between browser and server while its URN header is left untouched."
+    ],
+    "doesNotFire": [
+      "The URN in the header does not have six segments (this check is skipped).",
+      "Only the `Runtime:` header line differs (e.g. a `backend` file declaring `Runtime: isomorphic`) AND segment 4 is in the closed vocabulary and matches real ownership. `Runtime:` neither triggers nor waives the side obligation.",
+      "Files without a URN traceability header, or repositories not using the Bun realization (served by their own per-stack detectors)."
+    ]
+  },
+  "given": "A file in a Bun-realization repo carries a six-segment URN header; in a stack-spanning repo side cannot be inferred from language or runtime.",
+  "when": "The header exists or is written/edited, or the file's implementation changes which side owns it.",
+  "then": "Segment 4 (`{side}`) must be exactly `frontend` for browser-owned or `backend` for server-owned implementation.",
+  "prefer": [
+    "During GREEN repair, derive side from where responsibility lives, not merely from file syntax.",
+    "Treat server-rendered htmx fragments as backend and browser-resident behavior as frontend.",
+    "When the rest of the URN is correct, change only the side segment."
+  ],
+  "avoid": [
+    "Moving implementation between client and server just to fix a header.",
+    "Using `Runtime:` as a substitute for the side decision.",
+    "Any value outside `frontend`/`backend`."
+  ],
+  "unless": [
+    "URNs that are not six segments are skipped.",
+    "`Runtime:` is a different axis — a `backend` file may declare `Runtime: isomorphic`."
+  ],
+  "why": "In a full-stack Bun repo one language and runtime span both halves, so segment 4 alone says which side a module belongs to and must be declared per file (unlike Vite repos, frontend by construction, or python-pytest services, backend by construction, where it is near-redundant).",
+  "evidence": [
+    "bun_green_traceability_detector reports no GREEN-URN-005 / BUN-GREEN-URN-SIDE-001 finding.",
+    "Reviewer confirms the side segment matches the implementation's real ownership (browser-owned → frontend, server-owned → backend).",
+    "The current behavioral acceptance passes."
+  ],
+  "verifier_detail": [
+    "Check URN segment 4 (1-indexed) against the closed vocabulary {`frontend`, `backend`}; the vocabulary is unchanged from the Python and Vite realizations.",
+    "Only evaluate URNs with exactly six segments; URNs with any other segment count are skipped by this check.",
+    "Do not read the `Runtime:` header line for this check; `backend` + `Runtime: isomorphic` is valid. Runtime is independent: it neither triggers nor waives the side/ownership check.",
+    "Severity 3; disposition strict (fails on every finding)."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "Aliases: GREEN-URN-005 (shared core alias), BUN-GREEN-URN-SIDE-001.",
+    "Stack-neutral obligation, Bun-specific detector; implementation: validator `bun_green_traceability_detector`.",
+    "Term ids: side_segment (segment 4: frontend or backend — which half of the application the file belongs to); stack_spanning_repo (one language and one runtime serve both halves, so side cannot be inferred from the stack and must be declared per file).",
+    "Summary: a \"side is declared from the closed vocabulary\" obligation, checked against segment 4.",
+    "Severity 3; disposition strict."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "strict: fails on every finding."
+    },
+    {
+      "id": "policy.phase-loop",
+      "kind": "policy",
+      "text": "Prove: the current behavioral acceptance passes."
+    }
+  ],
+  "additions": [
+    {
+      "field": "avoid",
+      "text": "Any value outside `frontend`/`backend`.",
+      "justification": "Restates the source's closed-vocabulary obligation (S006/S013) as an explicit anti-pattern; no new obligation."
+    },
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire examples, Bun-realization scope fact and observability notes, including that implementation edits shifting ownership fire the rule and that Runtime-only differences are exempt only when the side already matches real ownership.",
+      "justification": "Required by the output schema; derived from the source statement (S007 Bun-specific detector), exceptions (S029, S030) and ownership proof (S028). No language, create/edit or phase gate is added."
+    },
+    {
+      "field": "verifier_detail",
+      "text": "Runtime neither triggers nor waives the side/ownership check.",
+      "justification": "Clarifies S030 ('different axis') so the exception is not read as a waiver of S028's ownership requirement."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ],
+      "note": "title rephrased imperatively"
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit",
+        "evidence[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "then",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "given",
+        "why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "audit",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[0]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "why",
+        "given"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "structure",
+        "prefer[0]"
+      ],
+      "note": "GREEN is the repair context for the prefer moves, not an activation gate"
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "shared:policy.phase-loop",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "identity",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

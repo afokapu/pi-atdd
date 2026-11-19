@@ -1,0 +1,481 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.bun/coder.bun.dead-code-reachability.convention.yaml",
+    "sha256": "662377f9fc09f57bd4dda380f75e21e6698a7f4f466e5e8ec830f115ec8d6321"
+  },
+  "rule_id": "coder.bun.dead-code-reachability",
+  "kind": "rule",
+  "title": "Keep every TypeScript file reachable from a structural root",
+  "activation": {
+    "facts": [
+      {
+        "fact": "language",
+        "values": [
+          "typescript",
+          "tsx"
+        ],
+        "observability": "observable_now",
+        "note": "File extension .ts/.tsx; the invariant covers every eligible file in a scanned tree, including pre-existing files, not only changed ones."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "package.json"
+        ],
+        "observability": "observable_now",
+        "note": "Scripts in the nearest package.json declare structural roots; editing them can change reachability without any TS edit."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "DEAD-CODE-REACHABILITY-TS-001"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Emitted by bun_ts_metrics_detector after a whole-tree scan of the import graph."
+      }
+    ],
+    "fires": [
+      "A .ts file (new or pre-existing) is in neither the forward nor the backward reachable set of any structural root (index/wagon/composition/main/app or a package.json script target).",
+      "A module's only connection to any structural root, in either direction, is an `import type` edge, so it has no runtime edge to the graph.",
+      "A package.json script that ran a file is removed, and that file is not otherwise reachable forwards or backwards from any remaining structural root."
+    ],
+    "doesNotFire": [
+      "The file is index.ts / index.tsx.",
+      "The file is a test file.",
+      "The scan root contains no structural root at all (it is skipped).",
+      "The file is itself the target of a script in the nearest package.json (e.g. `bun run docs/gen.ts`).",
+      "The file has no importer but itself imports, at runtime, a module that reaches a structural root (backward reachability).",
+      "The import specifier is an npm/bare package (outside the graph)."
+    ]
+  },
+  "given": "A TS/TSX file in a scan root that contains a structural root",
+  "when": "The tree is scanned (any file, existing or changed, including package.json script edits)",
+  "then": "Every TypeScript/TSX file MUST be reachable, forwards or backwards, from a structural root through runtime (non-type-only) import edges.",
+  "prefer": [
+    "First decide if the file should exist at runtime: what responsibility it claims, which module would naturally import it, and whether it is obsolete, half-integrated, or types-only.",
+    "Delete genuinely unused code.",
+    "Wire required runtime behavior through the module that owns it.",
+    "Move a type into its using module when the file has no runtime values."
+  ],
+  "avoid": [
+    "Dummy imports, barrel exports or other synthetic edges solely for reachability.",
+    "Side-effect imports unless the side effect is required runtime behavior.",
+    "Renaming/relocating a file merely to exploit structural-root detection.",
+    "Keeping obsolete code \"just in case\".",
+    "Treating an `import type` referrer as keeping a module alive."
+  ],
+  "unless": [
+    "`index.ts`/`index.tsx` are structural (like `__init__.py`), never reported.",
+    "Test files are entrypoints, excluded.",
+    "A scan root with no structural root is skipped."
+  ],
+  "why": "An unreachable file signals unclear ownership or incomplete integration, not a request to manufacture an edge; repair by removing code with no runtime responsibility or connecting it through its real owner.",
+  "evidence": [
+    "The reachability finding is gone after the change.",
+    "Any new import represents a real runtime dependency (not type-only, not synthetic, not a gratuitous side-effect import).",
+    "Deleted code has no required caller or entry point.",
+    "No new architecture or dependency-flow violation was created.",
+    "The refactor introduces no new ATDD Bun violations.",
+    "Existing behavior and tests remain green."
+  ],
+  "verifier_detail": [
+    "Term `structural_root`: a file the graph is walked from — a file named index, wagon, composition, main or app, or a file a script in the nearest package.json runs (e.g. `bun run docs/gen.ts`), since the repository itself declares it as an entry point.",
+    "Build the file import graph, walk it from the structural roots in both directions (forwards and backwards), and report every file in neither reachable set.",
+    "Import specifiers resolve relative or through the `@/` alias; npm/bare specifiers are outside the graph by construction.",
+    "Term `type_only_import`: an `import type` edge. Erased at compile time, so it creates no runtime edge and cannot keep a module alive — a distinction a regex cannot make and Bun's parser can.",
+    "The import graph is built with Bun's in-process TypeScript parser, which returns actual import records and omits type-only ones. Unlike the Python sibling's five-regex reader (which cannot distinguish `import type { T } from \"./t\"` from a value import and so counts a module whose only referrer is a type import as reachable — though it is dead), this detector reports such modules as dead. Same obligation, measured correctly — available only because the runtime is Bun; this rule is MORE ACCURATE than its Python sibling and this is the one place the port is not a transcription.",
+    "Fixture check: on a fixture where the Python detector finds one dead file, this detector finds two.",
+    "Exclusions: index.ts/index.tsx never reported; test files excluded as entrypoints; scan roots with no structural root skipped rather than reporting every file as dead.",
+    "Realized by `bun_ts_metrics_detector` (validator); core alias DEAD-CODE-REACHABILITY-TS-001; severity 2; disposition strict."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "Aliases: DEAD-CODE-REACHABILITY-TS-001 — the shared core alias, also carried by the agnostic node and its python-pytest realization.",
+    "Stack-neutral obligation, NATIVE BUN detector; traversal and root vocabulary transcribed from the python-pytest sibling `coder.dead-code.reachability-typescript`, but the import graph is built by Bun's in-process TypeScript parser rather than by regex.",
+    "The Python detector reads imports with five regexes — the best a Python process can do without a TypeScript parser.",
+    "Implementation: {type: validator, ref: bun_ts_metrics_detector}.",
+    "Severity 2; disposition strict."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "strict: atdd-bun fails on every finding; it has no advisory mode and no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "Activation facts and fires/doesNotFire examples.",
+      "justification": "Required by the target structure; derived only from the statement, terms (structural_root incl. package.json scripts, type_only_import) and exceptions. No phase or change-only restriction: the source states a whole-tree invariant."
+    },
+    {
+      "field": "avoid[4]",
+      "text": "Do not treat an `import type` referrer as keeping a module alive.",
+      "justification": "Restates the source's type_only_import term as a coder-facing anti-pattern; no new obligation."
+    },
+    {
+      "field": "then",
+      "text": "Added 'through runtime (non-type-only) import edges' qualifier.",
+      "justification": "Makes explicit the source's definition that type-only imports create no runtime edge."
+    },
+    {
+      "field": "shared:policy.strict-disposition",
+      "text": "'no advisory mode, no ratchet baseline' wording of the strict-disposition shared node.",
+      "justification": "Standard shared-node text for source disposition 'strict'; not a rule-specific obligation."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ],
+      "note": "Reworded as imperative title."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "given",
+        "verifier_detail[0]",
+        "verifier_detail[1]"
+      ],
+      "note": "Root names listed in verifier_detail[0]."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit",
+        "verifier_detail[7]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "verifier_detail[0]"
+      ],
+      "note": "Term identifier `structural_root` retained there."
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "given",
+        "verifier_detail[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[3]"
+      ],
+      "note": "Term identifier `type_only_import` retained there."
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[3]",
+        "avoid[4]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[3]",
+        "avoid[4]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "verifier_detail[4]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "verifier_detail[4]",
+        "avoid[4]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "structure"
+      ],
+      "note": "'Diagnose:' heading; its items are folded into prefer[0]."
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "structure"
+      ],
+      "note": "'Prefer:' heading."
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "prefer[3]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "structure"
+      ],
+      "note": "'Avoid:' heading."
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "structure"
+      ],
+      "note": "'Verify:' heading; items go to evidence."
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "evidence[5]"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "evidence[0]",
+        "evidence[3]"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "evidence[4]"
+      ]
+    },
+    {
+      "seg": "S045",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[6]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S046",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[6]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S047",
+      "dest": [
+        "unless[2]",
+        "verifier_detail[6]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S048",
+      "dest": [
+        "verifier_detail[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S049",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S050",
+      "dest": [
+        "identity",
+        "verifier_detail[7]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S051",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S052",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S053",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

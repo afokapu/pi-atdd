@@ -1,0 +1,572 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/tester.bun/tester.bun.interlocking-production-runner-used.convention.yaml",
+    "sha256": "c2fee925c16946314bdebf30fe2130cfc76f62bb64d714bdc37b7311e932f788"
+  },
+  "rule_id": "tester.bun.interlocking-production-runner-used",
+  "kind": "rule",
+  "title": "Drive interlocking tests through the production runners, not mocks (Bun)",
+  "activation": {
+    "facts": [
+      {
+        "fact": "path_glob",
+        "values": [
+          "e2e/**/*.ts"
+        ],
+        "observability": "observable_now",
+        "note": "Bun discovery scope of the detector."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "test"
+        ],
+        "observability": "observable_now",
+        "note": "Only e2e test files are in scope."
+      },
+      {
+        "fact": "language",
+        "values": [
+          "typescript",
+          "bun"
+        ],
+        "observability": "observable_now",
+        "note": "Bun-stack realization; other stacks own their own renderings."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "interlocking",
+          "route",
+          "train",
+          "InterlockingRunner",
+          "TrainRunner"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Interlocking relevance is decided by token scan of the test file content (route/train/interlocking token or runner symbol), not by path alone."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "missing_production_runner_symbol",
+          "forbidden_substitution"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Emitted by the JS detector in the bun_interlocking_coverage family."
+      }
+    ],
+    "fires": [
+      "An e2e/**/*.ts test references an interlocking route but never references TrainRunner.",
+      "An interlocking e2e test uses mock.module(...) to replace the runner module.",
+      "An interlocking e2e test defines a local resolveTrain function or *Resolver class instead of using InterlockingRunner.",
+      "An interlocking e2e test uses bun:test spyOn(...)/mock(...)/mock.restore(...) aimed at a runner.",
+      "An interlocking e2e test uses vi.spyOn/jest.spyOn to replace runner behavior (resolveTrain / execute)."
+    ],
+    "doesNotFire": [
+      "An e2e test with no interlocking route/train/interlocking token and no runner symbol.",
+      "A forbidden pattern that appears only inside a comment (comments are masked).",
+      "Interlocking tests in a non-Bun stack (owned by that stack's package)."
+    ]
+  },
+  "given": "A Bun e2e test (e2e/**/*.ts) that exercises an interlocking route or train",
+  "when": "the test is written or changed to prove route/train behavior",
+  "then": "Drive the production InterlockingRunner.resolveTrain -> TrainRunner.execute chain so the asserted evidence comes from the real runners, with no mock, substituted runner or hand-built resolver standing in for them.",
+  "prefer": [
+    "Call `new InterlockingRunner(interlockingYamlPath).resolveTrain(action, inputs)` with guard-relevant inputs; it resolves the guarded route to exactly one `trainId`.",
+    "Pass that `trainId` to the production `TrainRunner` and execute the selected train through the real runtime path.",
+    "Assert the selected train and the route- or acceptance-specific result of its execution."
+  ],
+  "avoid": [
+    "MockInterlockingRunner / MockTrainRunner.",
+    "mock.module(...) on a runner module (bun:test idiom; worst case: swaps the ENTIRE route-control module).",
+    "bun:test spyOn/mock/mock.restore aimed at a runner; vi.mock/jest.mock around a runner module (migrating suites); vi.spyOn/jest.spyOn replacing runner behavior (resolveTrain/execute).",
+    "A local `resolveTrain` function or `*Resolver` class standing in for InterlockingRunner.",
+    "Importing the real runners only to satisfy the detector while assertions come from a parallel fake path.",
+    "Asserting a plan literal without driving production resolution and execution."
+  ],
+  "unless": [
+    "Not an interlocking test: no interlocking route/train/interlocking token and no runner symbol."
+  ],
+  "why": "A test that replaces either runner with a double exercises the double, not production route control — a descriptive green proving nothing about production.",
+  "evidence": [
+    "The test references both InterlockingRunner and TrainRunner and contains none of the forbidden substitution patterns.",
+    "Breaking production `resolveTrain` or `execute` behavior would make the test red.",
+    "The asserted evidence (selected train and its execution result) comes from the real runner chain."
+  ],
+  "verifier_detail": [
+    "JS detector, member of the `bun_interlocking_coverage` family; scans the consumer's interlocking-related `e2e/**/*.ts` tests with comments masked.",
+    "Check 1: the test must reference BOTH required production symbols `InterlockingRunner` and `TrainRunner`.",
+    "Check 2: any one forbidden substitution pattern is a violation: MockInterlockingRunner/MockTrainRunner; mock.module(...) replacing a runner module; spyOn(...)/mock(...)/mock.restore(...) aimed at a runner (bun:test); vi.mock(...)/jest.mock(...) around a runner module (suite migrating in); vi.spyOn(...)/jest.spyOn(...) replacing runner behavior (resolveTrain / execute); a locally defined `resolveTrain` function or `*Resolver` class standing in for InterlockingRunner.",
+    "Symbol reference is only a structural proxy, not sufficient semantic proof: a reviewer must confirm the case drives the production objects with guard-relevant inputs and observes the claimed route/train behavior.",
+    "Scope: a test is interlocking-related if it references any interlocking route/train/interlocking token or a runner symbol; otherwise out of scope.",
+    "Term production_runner: one of the two runtime objects of the core afokapu/atdd#1251 call model — InterlockingRunner (resolves a guarded route to exactly one trainId) and TrainRunner (executes the selected train).",
+    "Term forbidden_substitution (source glossary wording): a test double that replaces a production runner — MockInterlockingRunner/MockTrainRunner, a mock.module/spyOn/mock (bun:test) or vi.mock/vi.spyOn (or jest) aimed at a runner or its resolveTrain/execute, or a hand-built route resolver standing in for InterlockingRunner.",
+    "Core runtime call model (afokapu/atdd#1251): Station Master -> InterlockingRunner.resolveTrain -> TrainRunner.execute."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "implementation: {type: validator, ref: tester.bun.interlocking-production-runner-used}.",
+    "aliases: BUN-TESTER-INTERLOCKING-PRODUCTION-RUNNER-USED-001.",
+    "Source name: 'Interlocking tests exercise the production runners, not mocks (Bun)'; summary: obligation rendered for the Bun backend.",
+    "Bun-stack realization of the agnostic core obligation `tester.interlocking.production-runner-used`; per-stack discovery (Bun e2e/**/*.ts scanned for production symbols and forbidden patterns) is delegated to this realization.",
+    "Per-stack renderings other than Bun are owned by their own workspace packages.",
+    "core_design_refs: afokapu/atdd#1246, afokapu/atdd#1251.",
+    "severity: 1; disposition: strict."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "strict: a finding of this rule blocks."
+    }
+  ],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire examples and activation facts",
+      "justification": "Required by the target structure; derived directly from the detector scope, forbidden patterns, comment masking and exceptions in the source."
+    },
+    {
+      "field": "coder_text_length",
+      "text": "Coder-facing text kept slightly above the ~1,000-char target",
+      "justification": "Lossless placement of the distinct forbidden patterns (incl. the vi/jest.spyOn replacement condition) and the exactly-one-trainId contract requires it."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "avoid[0]",
+        "avoid[3]",
+        "verifier_detail[7]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit",
+        "verifier_detail[0]",
+        "verifier_detail[1]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[0]",
+        "verifier_detail[1]",
+        "verifier_detail[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[7]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[7]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "avoid[4]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "avoid[4]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "avoid[0]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "avoid[1]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "avoid[2]",
+        "verifier_detail[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "avoid[2]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "avoid[2]",
+        "verifier_detail[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "avoid[3]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "avoid[3]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "audit",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "prefer[2]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S045",
+      "dest": [
+        "avoid[1]",
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S046",
+      "dest": [
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S047",
+      "dest": [
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S048",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S049",
+      "dest": [
+        "avoid[4]"
+      ]
+    },
+    {
+      "seg": "S050",
+      "dest": [
+        "avoid[5]"
+      ]
+    },
+    {
+      "seg": "S051",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S052",
+      "dest": [
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S053",
+      "dest": [
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S054",
+      "dest": [
+        "identity",
+        "why",
+        "shared:policy.strict-disposition"
+      ]
+    },
+    {
+      "seg": "S055",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[4]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S056",
+      "dest": [
+        "audit",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S057",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S058",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S059",
+      "dest": [
+        "identity",
+        "audit",
+        "shared:policy.strict-disposition"
+      ]
+    },
+    {
+      "seg": "S060",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S061",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S062",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S063",
+      "dest": [
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S064",
+      "dest": [
+        "prefer[0]",
+        "prefer[1]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S065",
+      "dest": [
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S066",
+      "dest": [
+        "verifier_detail[6]"
+      ]
+    }
+  ]
+}

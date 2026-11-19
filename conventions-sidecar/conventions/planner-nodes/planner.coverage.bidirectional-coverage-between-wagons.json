@@ -1,0 +1,258 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.coverage.bidirectional-coverage-between-wagons.convention.yaml",
+    "sha256": "7dce0d6225f6c628a87b6c7e64962b9ea03403df3b7a1939e664e873e35c9faa"
+  },
+  "rule_id": "planner.coverage.bidirectional-coverage-between-wagons",
+  "kind": "rule",
+  "title": "Keep wagon manifests and feature files cross-referenced both ways",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "wagon_manifest",
+          "feature_yaml"
+        ],
+        "observability": "observable_now",
+        "note": "Presence of either a wagon manifest (features[] list) or a feature YAML file in the plan tree is enough; both need not exist."
+      },
+      {
+        "fact": "operation",
+        "values": [
+          "create",
+          "edit",
+          "rename",
+          "delete",
+          "read",
+          "review"
+        ],
+        "observability": "observable_now",
+        "note": "Any authoring, editing or inspection of plan artifacts containing feature files or wagon features[] entries; the invariant holds continuously, not only on structural edits."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "wagon_features_list_changed",
+          "feature_file_added_or_removed"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Diff-level observer that highlights the most likely moment a gap is introduced; not required for firing."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "test_all_features_in_wagon_manifest",
+          "test_all_wagon_feature_refs_exist"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Validator failures from the two coverage validators; an additional trigger, not the only one."
+      }
+    ],
+    "fires": [
+      "Planner adds a new feature YAML file without adding it to its wagon manifest's features[] list.",
+      "Planner adds a features[] entry pointing to a feature YAML file that does not exist.",
+      "Planner renames or deletes a feature file, leaving a stale features[] entry.",
+      "Planner edits or reviews a plan where a pre-existing feature file is not referenced by its wagon manifest, even with no structural edit and no validator run yet.",
+      "Planner inspects a wagon manifest (including one whose wagon has no feature files) containing a dangling features[] entry, with no current structural edit or validator finding.",
+      "A feature file exists (not allow-listed) whose wagon manifest is missing or does not list it.",
+      "Coverage validator reports an unreferenced feature or a dangling wagon features[] reference."
+    ],
+    "doesNotFire": [
+      "Feature file is listed in the features_orphaned allow-list (feature -> wagon direction only).",
+      "Edits to train <-> wagon references only (covered by the train-level coverage convention).",
+      "Content-only edits to a feature file when every feature file is already listed by its wagon and every features[] entry already resolves."
+    ]
+  },
+  "given": "The plan contains feature YAML files and/or wagon manifests with features[] entries.",
+  "when": "The planner authors, edits, moves, deletes or reviews any of them.",
+  "then": "Every feature file is referenced by its wagon manifest's features[], and every features[] entry resolves to an existing feature YAML file.",
+  "prefer": [
+    "Update features[] in the same change that adds, renames or removes a feature file.",
+    "Record an intentionally wagon-less feature in the features_orphaned allow-list instead of leaving it silently unreferenced."
+  ],
+  "avoid": [
+    "A feature file no wagon manifest lists (feature -> wagon gap).",
+    "A features[] entry pointing to a missing, renamed or deleted feature file (wagon -> feature gap).",
+    "Allow-listing features that belong to a wagon just to silence the validator."
+  ],
+  "unless": [
+    "The feature is on the features_orphaned allow-list (exempts only feature -> wagon; features[] entries must still resolve)."
+  ],
+  "why": "Coverage means each feature is referenced by its wagon and vice versa; a one-sided link leaves untracked features or dangling references, breaking plan traceability.",
+  "evidence": [
+    "test_all_features_in_wagon_manifest passes: every feature file is referenced by its wagon manifest (excluding features_orphaned allow-list entries).",
+    "test_all_wagon_feature_refs_exist passes: every wagon features[] entry has a corresponding feature YAML file."
+  ],
+  "verifier_detail": [
+    "Direction feature -> wagon: every feature file must be referenced by its wagon manifest; exceptions: features_orphaned allow-list; validator: test_all_features_in_wagon_manifest.",
+    "Direction wagon -> feature: every features[] entry must have a corresponding YAML file; no exceptions authored; validator: test_all_wagon_feature_refs_exist.",
+    "Term wagon_feature_coverage: each feature is referenced by its wagon and vice versa."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "kind: rule; status: active",
+    "source: legacy_path src/atdd/planner/conventions/coverage.convention.yaml, legacy_section rules, legacy_sha 27e800378c584902, extraction_mode high_fidelity, legacy_rule_id planner.coverage.bidirectional-coverage-between-wagons",
+    "metadata.aliases: COVERAGE-PLAN-2.2",
+    "metadata.disposition: documentation-only",
+    "parity: source_fragments_preserved true, examples_preserved false, implementation_preserved true, fix_hint_preserved false, reviewed_at 2026-06-16",
+    "Original name: Wagon - Feature Coverage",
+    "Term id: wagon_feature_coverage"
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "avoid",
+      "text": "Allow-listing features that belong to a wagon just to silence the validator.",
+      "justification": "Metric-gaming anti-pattern required by the authoring brief; derived from the authored allow-list exception, adds no new obligation."
+    },
+    {
+      "field": "prefer",
+      "text": "Update features[] in the same change that adds, renames or removes a feature file.",
+      "justification": "Concrete move operationalizing the bidirectional requirement; no new obligation beyond the source statement."
+    },
+    {
+      "field": "activation",
+      "text": "doesNotFire entries for train<->wagon-only edits and content-only edits where coverage already holds; fires examples for pre-existing gaps.",
+      "justification": "Scoping clarification derived from graph context and the unconditional invariant; not an exception to the rule."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Name informs title; original kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "why"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "verifier_detail[0]",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "then",
+        "verifier_detail[0]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "unless[0]",
+        "prefer[1]",
+        "verifier_detail[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "evidence[0]",
+        "verifier_detail[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[1]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "then",
+        "verifier_detail[1]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "evidence[1]",
+        "verifier_detail[1]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Disposition documentation-only."
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "audit",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "why",
+        "verifier_detail[2]"
+      ]
+    }
+  ]
+}

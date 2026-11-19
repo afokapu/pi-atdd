@@ -1,0 +1,288 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/tester.htmx/tester.htmx.journey-urn-format.convention.yaml",
+    "sha256": "6771d984ddb6fe564a6803e971e934242d0a53bd8711826e66d4d0c3283f8aed"
+  },
+  "rule_id": "tester.htmx.journey-urn-format",
+  "kind": "rule",
+  "title": "Give each journey spec well-formed test URNs naming its own subject",
+  "activation": {
+    "facts": [
+      {
+        "fact": "path_glob",
+        "values": [
+          "**/*.e2e.ts"
+        ],
+        "observability": "observable_now",
+        "note": "Branch A, part 1: filename suffix only. The suffix alone does NOT establish a browser spec; it must also be run by Playwright (next fact)."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "file-run-by-playwright"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Branch A, part 2: an observer must establish that the `*.e2e.ts` file is in the Playwright runner's test set (e.g. matched by the Playwright config's test dir/match). Not inferred from the suffix."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "test"
+        ],
+        "observability": "observable_now",
+        "note": "Branch B, part 1: any test file, regardless of name."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "journey-marker-in-header-comments"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Branch B, part 2: header comment scan for `// Train:`, `// Journey:`, `// URN: test:train:…`, `// URN: test:journey:…`, so misnamed specs are still judged; a URN merely in a string literal does not count."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "!**/node_modules/**",
+          "!**/dist/**",
+          "!**/build/**",
+          "!**/_generated/**"
+        ],
+        "observability": "observable_now",
+        "note": "Applies to both branches: vendored and generated trees are never scanned. Activation = (Branch A: *.e2e.ts AND run by Playwright) OR (Branch B: test file AND header journey marker), outside these trees."
+      }
+    ],
+    "fires": [
+      "A `*.e2e.ts` file that Playwright runs is added or edited and has no test URN.",
+      "A journey spec carries a URN with an unknown harness code, a non-three-digit number, or no slug.",
+      "A test file not named `*.e2e.ts` has a `// Journey:` header and a URN naming a different journey than its binding.",
+      "A journey spec's test title URN names a train other than the one its valid binding header declares."
+    ],
+    "doesNotFire": [
+      "A unit test that merely mentions a journey URN inside a string literal.",
+      "A `*.e2e.ts` file not run by Playwright and with no journey marker in its header comments.",
+      "Files under `node_modules`, `dist`, `build` or `_generated`.",
+      "A journey spec whose binding header is itself malformed — the URN-vs-binding comparison is skipped (format is still checked); the binding is reported by `tester.htmx.journey-binding-header`."
+    ]
+  },
+  "given": "A browser spec: a `*.e2e.ts` file run by Playwright, or any test file whose header comments carry a journey marker (`// Train:`, `// Journey:`, `// URN: test:train:…`, `// URN: test:journey:…`).",
+  "when": "The spec is written or changed.",
+  "then": "It carries at least one test URN `test:{train|journey}:<id>:{E2E|SMOKE|A11Y|VIS|RESP}-NNN-<slug>`, and every URN it carries is well-formed and names the subject its binding header declares.",
+  "prefer": [
+    "Same URN in header and test title, e.g. `test:train:orders:place-order:E2E-001-places-an-order`.",
+    "The harness code matching what the test exercises."
+  ],
+  "avoid": [
+    "Malformed URNs (wrong prefix, unknown harness code, missing NNN or slug).",
+    "URNs naming a different train/journey than this spec's binding.",
+    "Renaming a spec away from `*.e2e.ts` to dodge the check; header markers still apply."
+  ],
+  "unless": [
+    "Vendored or generated tree (`node_modules`, `dist`, `build`, `_generated`).",
+    "Malformed binding header: no URN-vs-binding comparison; `tester.htmx.journey-binding-header` alone reports it."
+  ],
+  "why": "The URN identifies the test instance and its harness. A malformed URN, or one naming another subject, silently traces the result to the wrong place.",
+  "evidence": [
+    "htmx_e2e_detector reports no journey-urn-format finding for the spec.",
+    "Every browser spec has ≥1 URN matching the grammar, and each URN's train/journey id equals the subject of its valid binding header."
+  ],
+  "verifier_detail": [
+    "Browser spec = `*.e2e.ts` run by Playwright, OR any test file whose header comments carry `// Train:`, `// Journey:`, `// URN: test:train:…`, `// URN: test:journey:…` (so misnamed specs are still judged). A unit test that merely mentions a journey URN in a string is not one.",
+    "Grammar: `test:{train|journey}:<id>:{E2E|SMOKE|A11Y|VIS|RESP}-NNN-<slug>`; at least one per spec; every URN must match.",
+    "Never scan `node_modules`, `dist`, `build`, `_generated`.",
+    "Compare URN subject with binding only when the binding is valid; malformed binding reported solely by `tester.htmx.journey-binding-header` (no duplicate finding).",
+    "Severity 3, disposition strict; implementation: validator `htmx_e2e_detector`."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.5.0.",
+    "Alias: BUN-E2E-JOURNEY-URN-FORMAT-001.",
+    "Bun/htmx realization of `tester.vite.journey-urn-format` (metadata.mirrors), strict.",
+    "Implementation: {type: validator, ref: htmx_e2e_detector}.",
+    "Source term id: browser_spec."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Disposition: strict."
+    }
+  ],
+  "additions": [
+    {
+      "field": "prefer[1]",
+      "text": "The harness code matching what the test exercises.",
+      "justification": "Makes the harness-code part of the grammar actionable; graph edges show A11Y/VIS/RESP specs are identified by their harness code."
+    },
+    {
+      "field": "avoid[2]",
+      "text": "Renaming a spec away from `*.e2e.ts` to dodge the check.",
+      "justification": "Restates the source's 'so a misnamed one is still judged' as an anti-pattern (metric gaming)."
+    },
+    {
+      "field": "evidence",
+      "text": "Verifier evidence statements.",
+      "justification": "Source gives a validator ref but no explicit evidence wording."
+    },
+    {
+      "field": "activation",
+      "text": "Observer fact `file-run-by-playwright`.",
+      "justification": "Source requires the `*.e2e.ts` branch to be run by Playwright; the filename alone cannot establish the runner, so a new observer is declared."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ],
+      "note": "title"
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "verifier_detail[1]",
+        "avoid[0]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit",
+        "identity",
+        "shared:policy.strict-disposition"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ],
+      "note": "term id; definition carried in given/activation"
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "given",
+        "activation",
+        "verifier_detail[0]",
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "activation",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "identity"
+      ],
+      "note": "duplicates name; carried in title/then"
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "unless[0]",
+        "activation",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "unless[1]",
+        "activation",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "identity",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "identity",
+        "verifier_detail[4]",
+        "shared:policy.strict-disposition"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "audit",
+        "verifier_detail[4]"
+      ]
+    }
+  ]
+}

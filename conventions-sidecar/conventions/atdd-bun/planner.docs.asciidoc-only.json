@@ -1,0 +1,409 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/planner.docs/planner.docs.asciidoc-only.convention.yaml",
+    "sha256": "6e7b5b16efd794bee677d0827adc71c2f66df8bcba0264dd74a25c67c19f3a3b"
+  },
+  "rule_id": "planner.docs.asciidoc-only",
+  "kind": "rule",
+  "title": "Author every file beneath docs/ as AsciiDoc (.adoc), never markdown",
+  "activation": {
+    "facts": [
+      {
+        "fact": "path_glob",
+        "values": [
+          "docs/**/*.md"
+        ],
+        "observability": "observable_now",
+        "note": "Location test: path under docs/ ending .md is the violation surface."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "!docs/dist/**"
+        ],
+        "observability": "observable_now",
+        "note": "Generated output tree excluded by path, not by gitignore status."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "file_added",
+          "file_renamed",
+          "file_modified"
+        ],
+        "observability": "observable_now",
+        "note": "Any committed .md present under docs/ (outside docs/dist/) is a finding; the validator scans the tree."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "docs",
+          "documentation",
+          "ADR",
+          "architecture doc",
+          "migrate docs"
+        ],
+        "observability": "llm_judged",
+        "note": "Planner tasks that will create or move documentation under docs/."
+      }
+    ],
+    "fires": [
+      "A plan or wagon creates a new file such as docs/<area>/<topic>.md.",
+      "An existing markdown file is moved or copied into docs/ (outside docs/dist/).",
+      "The scan of docs/ finds any committed .md file not beneath docs/dist/."
+    ],
+    "doesNotFire": [
+      "A .md file beneath docs/dist/ (generated build output, never scanned).",
+      "README.md, CONTRIBUTING.md or other markdown outside docs/, including the repository-root corpus.",
+      "A .adoc file authored anywhere beneath docs/."
+    ]
+  },
+  "given": "A plan, wagon or doc change places an authored file beneath docs/ (any path not under docs/dist/).",
+  "when": "The planner chooses the file's format or path.",
+  "then": "The file MUST be AsciiDoc (.adoc); an authored .md beneath docs/ outside docs/dist/ is a violation.",
+  "prefer": [
+    "Convert an existing docs/**/*.md to the same path with .adoc and keep its content intact.",
+    "When converting a historical document, place it INTO docs/archive/ and set its :status: accordingly; migration preserves history and never promotes it to current.",
+    "Decide by location only: under docs/, not under docs/dist/, ending .md → convert."
+  ],
+  "avoid": [
+    "Committing authored markdown anywhere beneath docs/ outside docs/dist/.",
+    "Arguing a .md under docs/ is exempt because it is 'not really prose documentation' — the test is location, not content.",
+    "Treating conversion to .adoc as making a historical document current.",
+    "Expanding the plan to reject or convert README.md/CONTRIBUTING.md/root markdown under this rule; that belongs to the adoption step."
+  ],
+  "unless": [
+    "The file is beneath docs/dist/ (generated output, never scanned).",
+    "The markdown is outside docs/ (e.g. README.md, CONTRIBUTING.md, repository-root corpus); it is migrated by the adoption step, not rejected here."
+  ],
+  "why": "A mixed corpus cannot carry the relationship graph: doc-id and :implements:/:supersedes: edges are AsciiDoc attributes and markdown has nowhere to put them, so format uniformity is the precondition for every other docs rule.",
+  "evidence": [
+    "Validator scan of docs/ (excluding docs/dist/** by path) reports zero files ending .md.",
+    "Converted files exist at the same path with .adoc and preserved content; historical ones sit under docs/archive/ with a :status: attribute."
+  ],
+  "verifier_detail": [
+    "Detector is a deterministic LOCATION test, not a content test: flag a path iff it is under docs/, not under docs/dist/, and ends .md. 'Is this really prose documentation?' is semantic and undecidable; the path test is deterministic and cheap (spec 2 §4 chose the decidable form on purpose; same reasoning as planner.docs.undeclared-change being the enforceable inverse of 'should this have been declared?').",
+    "Term authored_file: a file a human wrote and committed beneath docs/; anything under docs/ not under docs/dist/ is authored.",
+    "Term generated_output: everything beneath docs/dist/; rendered by the build (spec 2 §7), normally excluded from git, never subject to the authored-format rule.",
+    "Exclude docs/dist/** by path rather than by gitignore status, so the check is identical whether or not the tree has been built — this makes it deterministic in CI.",
+    "Markdown outside docs/ is out of scope for this detector.",
+    "Fix-hint example: docs/architecture/shared-control-root.md (✗ authored markdown under docs/) → docs/architecture/shared-control-root.adoc (✓ authored AsciiDoc).",
+    "Severity 2; disposition strict."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "Alias: DOCS-FORMAT-001.",
+    "implementation: {type: validator, ref: docs_capability}.",
+    "Source name: 'AsciiDoc is the only authored format beneath docs/'.",
+    "Lineage: the format half of the documentation model named in handoff spec 2 §4; it is an EXTENSION obligation because core is forbidden to know what a .adoc is (companion §4, Deliberately excluded).",
+    "Related rule references: planner.docs.graph-target-resolves (owns :implements:/:supersedes: edges), planner.docs.undeclared-change (same decidable-form reasoning).",
+    "Spec reference for archival conversion: spec 2 §2 Out of scope — migration preserves history and never promotes it."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "strict: atdd-bun fails on every finding; it has no advisory mode and no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "task_term facts and fires/doesNotFire situations phrased for planner tasks.",
+      "justification": "Schema requires activation; derived directly from the source's location test and exceptions, adds no new obligation."
+    },
+    {
+      "field": "avoid[3]",
+      "text": "Do not expand the plan to convert README/CONTRIBUTING/root markdown under this rule.",
+      "justification": "Restates source exception (adoption step owns that migration) as a scope-creep guard; no new obligation."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "then",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[1]",
+        "given"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[1]",
+        "avoid[1]",
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[2]",
+        "unless[0]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "evidence[0]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "verifier_detail[0]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "verifier_detail[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "avoid[2]",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "prefer[1]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "unless[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[4]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "unless[1]",
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "identity",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

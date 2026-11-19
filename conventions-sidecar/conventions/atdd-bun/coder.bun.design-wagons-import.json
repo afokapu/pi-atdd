@@ -1,0 +1,385 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.bun/coder.bun.design-wagons-import.convention.yaml",
+    "sha256": "76595759544ce81bf9b0e0ee1d59f7a2f5cc446105697b23a5c545a8939bcb28"
+  },
+  "rule_id": "coder.bun.design-wagons-import",
+  "kind": "rule",
+  "title": "Keep design-system files from importing app or wagon code",
+  "activation": {
+    "facts": [
+      {
+        "fact": "path_glob",
+        "values": [
+          "**/design/**",
+          "**/design_system/**",
+          "**/design-system/**"
+        ],
+        "observability": "observable_now",
+        "note": "Any file under a design root (directory named design, design_system or design-system); the source sets no file-kind or language restriction. Repos with no design root are not judged."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "bun_design_system_detector:outward_import"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Static import scan of the file (existing or newly added imports alike) that resolves each relative / design-directory-alias specifier and checks whether the target leaves the file's containing design root (statement) — the term definition says 'outside every design root'; see verifier_detail for this unresolved source tension."
+      }
+    ],
+    "fires": [
+      "A file under a design root adds a relative import like ../../app/... or ../../wagons/... that resolves outside the design root.",
+      "A file under a design root already contains (unchanged) a relative import that resolves into app or wagon code.",
+      "A design-owned .ts file under a design root imports a type or constant from a wagon via a relative path.",
+      "A design-system file imports via an alias that names a design directory but resolves to app or wagon code.",
+      "A file under one design root imports a relative path that leaves its containing design root (statement wording); note the term definition 'outside every design root' would not flag it if the target is inside another design root — source tension, needs canonical clarification."
+    ],
+    "doesNotFire": [
+      "The repository has no directory named design, design_system or design-system.",
+      "App or wagon code imports from the design system (the allowed direction).",
+      "A design-system file imports a bare package specifier such as `hono/jsx`.",
+      "A test file (*.test.*, *.spec.*) or a file in a vendored/build directory under the design root imports outward.",
+      "A design-system file uses an alias that does not name a design directory.",
+      "A relative import whose target stays inside the importing file's own design root."
+    ]
+  },
+  "given": "A file under a design root (directory named `design`, `design_system` or `design-system`)",
+  "when": "it imports a relative path",
+  "then": "The import MUST NOT resolve outside the file's design root; the design system stays independent of app and wagon code.",
+  "prefer": [
+    "Pass app-specific values into design components, or move genuinely shared, design-owned types/constants inward.",
+    "During GREEN: use props or existing design-system contracts for the current value.",
+    "During GREEN: add only the smallest input surface the acceptance requires.",
+    "During GREEN: move a type or constant only when it is truly owned by the design system."
+  ],
+  "avoid": [
+    "Importing a wagon through a barrel or alias.",
+    "Relocating app-specific concepts into design code just to make the import legal.",
+    "Broadening the fix by generalizing unrelated design APIs."
+  ],
+  "unless": [
+    "Test files (`*.test.*`, `*.spec.*`) and vendored/build directories are never scanned.",
+    "Bare package specifiers (`hono/jsx`) are outside the project graph; not judged.",
+    "Aliased specifiers are judged only when they name a design directory.",
+    "A repository with no design root is not judged: no system to connect to yet."
+  ],
+  "why": "Wagons and app code import FROM the design system, never the reverse, keeping it wagon-agnostic; a system reaching into a wagon becomes part of it, can't be reused by the next one, and breaks when the wagon changes.",
+  "evidence": [
+    "bun_design_system_detector reports no outward_import for any file under a design root.",
+    "Design-system files import nothing from app or wagon code.",
+    "The current behavioral or rendering acceptance passes."
+  ],
+  "verifier_detail": [
+    "design_root: a directory named `design`, `design_system`, or `design-system`.",
+    "The first directory beneath a design root names the layer: `tokens` or `foundations`, `primitives`, `components`, `templates`.",
+    "outward_import (term definition): a relative import from a design-system file whose target lies outside every design root. Detector summary: flags relative imports from a design-system file that leave the design root.",
+    "Source tension (unresolved, needs canonical clarification): the statement forbids relative imports resolving outside 'the design root' (the containing root), while the outward_import term says 'outside every design root'. A relative import from one design root into a different design root violates the statement but not the term definition. The coder-facing rule keeps the statement's stricter containing-root boundary; do not treat cross-root imports as exempt.",
+    "Self-scoping: if no design root exists, the rule does not judge the repository.",
+    "Exclusions: *.test.*, *.spec.*, vendored/build directories never scanned; bare package specifiers (`hono/jsx`) not judged; aliased specifiers judged only when they name a design directory.",
+    "Scope: the canonical rule covers every file under a design root and every relative import in it (existing or newly added). graph.json reports the current detector scanning .tsx/.jsx/.html/.css; that is a detector coverage limit, not a narrowing of the rule — files of other kinds (e.g. .ts) remain in scope.",
+    "Severity 3; disposition strict."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "kind: rule",
+    "status: active",
+    "Bun realization of the outward half of `coder.design.hierarchy-import`, mirroring `coder.vite.design-wagons-import`.",
+    "metadata.core_obligation: coder.design.hierarchy-import",
+    "aliases: BUN-DESIGN-WAGONS-IMPORT-001",
+    "introduced_in: 0.2.0",
+    "implementation: {type: validator, ref: bun_design_system_detector}",
+    "term ids: design_root, outward_import",
+    "severity: 3; disposition: strict",
+    "Open question for canonical owners: containing-root (statement) vs every-root (term) boundary for outward_import."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.phase-loop",
+      "kind": "policy",
+      "text": "During GREEN make only the smallest change the current acceptance requires. Prove: the current behavioral or rendering acceptance passes."
+    }
+  ],
+  "additions": [
+    {
+      "field": "verifier_detail",
+      "text": "Explicit note of the containing-root vs every-root tension between the statement and the outward_import term; coder-facing then follows the statement's containing-root boundary.",
+      "justification": "The source is internally inconsistent; the tension is exposed rather than silently resolved, and the stricter statement wording is kept so S006 is not weakened."
+    },
+    {
+      "field": "verifier_detail",
+      "text": "Note that graph.json's detector file-kind list (.tsx/.jsx/.html/.css) is a coverage limit, not a rule scope.",
+      "justification": "Preserves the broader canonical scope while recording the known detector limitation from graph context."
+    },
+    {
+      "field": "coder-facing length",
+      "text": "Coder-facing text kept slightly above ~1,000 chars.",
+      "justification": "The phase-independent canonical alternative and the GREEN-qualified entries must both be kept; losslessness wins over brevity."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ],
+      "note": "Becomes title."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "given",
+        "when",
+        "activation",
+        "verifier_detail[3]"
+      ],
+      "note": "Containing-root boundary kept; tension with S014 recorded."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ],
+      "note": "Term id kept; definition placed in verifier_detail."
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "given",
+        "activation",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "unless[3]",
+        "verifier_detail[4]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[2]",
+        "verifier_detail[3]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "prefer[0]"
+      ],
+      "note": "Phase-independent canonical alternative."
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "prefer[1]",
+        "prefer[2]",
+        "prefer[3]"
+      ],
+      "note": "'During GREEN' qualifier attached to each GREEN-specific prefer entry."
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "prefer[2]",
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "prefer[3]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "structure"
+      ],
+      "note": "Heading function carried by the avoid list ('Broadening...' in avoid[2])."
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "evidence[2]",
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "unless[2]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "identity",
+        "verifier_detail[7]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "identity",
+        "verifier_detail[7]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "audit",
+        "evidence[0]"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,451 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/tester.bun/tester.bun.interlocking-train-sequence-is-exercised.convention.yaml",
+    "sha256": "3172abf9256efd8f831ed5f8f11872e17cf847114769bba0c42270507254e241"
+  },
+  "rule_id": "tester.bun.interlocking-train-sequence-is-exercised",
+  "kind": "rule",
+  "title": "Test that each declared train runs its declared wagon sequence, in order",
+  "activation": {
+    "facts": [
+      {
+        "fact": "path_glob",
+        "values": [
+          "**/*train*.yaml",
+          "**/*train*.yml",
+          "**/interlocking/**"
+        ],
+        "observability": "observable_now",
+        "note": "Only the file match is observable now; these globs are heuristics for locating route/train definitions. They do NOT prove a declared interlocking route space exists or that a train is route-reachable — that semantic scope must be established by the finding observer below (or an LLM reading the definitions)."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "train-without-sequence-assertion"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Primary trigger. Validator scan_execution(): enumerate every train reachable from a declared interlocking route and report each for which NO test anywhere in the suite compares executed steps to its declared `sequence:` in order. Applies as a standing condition on the whole suite, regardless of what the current change touches; scan_execution() is not yet wired into the gated scan_root()."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "train",
+          "wagon",
+          "sequence",
+          "interlocking",
+          "route",
+          "TrainRunner"
+        ],
+        "observability": "observable_now",
+        "note": "Vocabulary hint only; absence of these terms does not exempt an existing reachable train with no adequate test."
+      },
+      {
+        "fact": "layer",
+        "values": [
+          "test"
+        ],
+        "observability": "observable_now",
+        "note": "The obligation is discharged in the test suite."
+      }
+    ],
+    "fires": [
+      "A consumer declares an interlocking route space, a train is reachable from a declared route, and no test in the suite asserts that train's executed wagon steps against its declared `sequence:` in order — even if the current task touches unrelated code.",
+      "For a route-reachable train, the only tests that exist assert which train a route selected (route resolution / trace binding), and no other test asserts the steps it executed.",
+      "For a route-reachable train, the only sequence test compares executed steps against hardcoded literal wagon names, and no other test reads the expected order from the train definition."
+    ],
+    "doesNotFire": [
+      "The consumer declares no interlocking route space (even if files match the train globs).",
+      "A train definition exists but is reachable by no declared route.",
+      "One weak (selection-only or literal) test exists for a reachable train, but another test already reads its declared `sequence:` and asserts the runner's executed steps equal it in order."
+    ]
+  },
+  "given": "A consumer declares an interlocking route space and a train with an ordered wagon `sequence:` is reachable from a declared route",
+  "when": "the suite contains no test comparing that train's executed steps to its declared sequence in order (a standing condition, whatever the current change)",
+  "then": "Some test MUST assert that the ordered steps the TrainRunner reports executing equal the train's declared wagon sequence, in order — not merely which train was selected.",
+  "prefer": [
+    "Run the train through the real TrainRunner, read the expected order FROM the train's `sequence:` (wagon names), assert executed steps equal it in order.",
+    "Pair it with a runtime that reads the plan: the coder rule makes the runtime READ it, this makes the suite prove it OBEYS it; worthless apart."
+  ],
+  "avoid": [
+    "Counting route-coverage/trace-binding tests: they prove WHICH train, not WHAT it ran.",
+    "Restating the expected sequence as literals: tracks a copy, not the declaration.",
+    "Asserting a sequence against a runtime that hardcodes it: proves only self-consistent hardcoding.",
+    "Set-membership or length-only checks."
+  ],
+  "unless": [
+    "The consumer declares no interlocking route space.",
+    "The train is reachable by no declared route; the rule follows the route space."
+  ],
+  "why": "A runtime that reads the plan but is never tested can drift: the plan is edited, the runtime dutifully runs the new sequence, and no test notices because none asserted what ran (a whole replaced `sequence:` left a suite green). Both halves are needed before 'the train YAML is the source of truth' is checkable, not a slogan.",
+  "evidence": [
+    "For every train reachable from a declared interlocking route, at least one test compares the runner's executed steps with the declared `sequence:` using ordered equality.",
+    "The expected order in that test is loaded from the train definition, not written as literals.",
+    "Mismatch check: if the executed steps diverge from the declaration (e.g. the runner is altered to skip, reorder or hardcode wagons), at least one test fails. Editing the declaration alone need not fail a correct test, because both the runner and the expected order read the same declaration.",
+    "Reference shape from the source fix_hint (verbatim):\n  def test_standard_train_runs_its_declared_sequence():\n      trace = new TrainRunner(res.trainPath).execute(res.trainId, {})\n      declared = [s[\"wagon\"] for s in yaml.safe_load(Path(path).read_text())[\"sequence\"]]\n      assert trace[\"steps\"] == declared"
+  ],
+  "verifier_detail": [
+    "Term wagon_sequence: the ordered `sequence:` of a train definition, and the ordered steps a TrainRunner reports having executed. The obligation is that a test compares the two, in order (ordered equality, not set/length).",
+    "Term selection_is_not_execution: `route-coverage` proves an admissible route is exercised; `trace-binds-declared-route` proves the run is attributable to its declared route. Both are statements about SELECTION. A train whose sequence is wrong is selected correctly and runs the wrong thing — such tests do not discharge this rule.",
+    "Scope is the declared route space: enumerate trains reachable from declared interlocking routes; consumers with no route space and unreachable trains produce no finding. A train is satisfied if ANY test in the suite discharges the obligation.",
+    "Implementation: validator ref tester.bun.interlocking-train-sequence-is-exercised, realized by scan_execution().",
+    "Severity 2; disposition strict (see shared policy.strict-disposition)."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "Aliases: BUN-TESTER-TRAIN-SEQUENCE-001.",
+    "Source name: 'Some test exercises the wagon sequence each declared train actually runs'.",
+    "Disposition strict, severity 2.",
+    "core_design_refs: afokapu/atdd#1248, afokapu/atdd#1251.",
+    "Pairing: tester half of `coder.train.runtime-executes-the-declaration` (python; the Bun coder half is not yet authored). 'THE PAIRING IS THE POINT.'",
+    "Demonstration (demonstrated rather than argued): on a consumer whose TrainRunner genuinely loads the train definition, replacing a train's whole `sequence:` in the plan left its suite green. The runtime had changed behaviour completely; the tests were looking somewhere else.",
+    "Fix hint example is written in Python-ish syntax mixed with `new TrainRunner(...)` (JS); kept verbatim in evidence.",
+    "Implementation: {type: validator, ref: tester.bun.interlocking-train-sequence-is-exercised}.",
+    "Source YAML comment (not a segment): marked DRAFT in intent — the validator exists and is tested but is realized by scan_execution(), which the gated scan_root() deliberately does not call; it should become active in the same change that wires the check into the gate. Status field nevertheless reads `active`."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "strict: atdd-bun fails on every finding; it has no advisory mode and no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "evidence",
+      "text": "Mismatch check: divergence between executed steps and the declaration makes a test fail; editing the declaration alone need not.",
+      "justification": "Operationalises the source's claim that the test must track the declaration and catch a runtime that does not obey it; corrected per audit so it does not demand an unsound mutation result."
+    },
+    {
+      "field": "avoid",
+      "text": "Set-membership or length-only checks",
+      "justification": "Direct consequence of the source's 'in order' / 'ordered steps' requirement, stated as an anti-pattern."
+    },
+    {
+      "field": "audit",
+      "text": "Recorded the source YAML comment about DRAFT intent and scan_execution() not being called by gated scan_root().",
+      "justification": "The comment is not a segment but carries enforcement-status knowledge auditors need."
+    },
+    {
+      "field": "activation",
+      "text": "path_glob values are heuristic file matches, not proof of route reachability.",
+      "justification": "Source does not name file paths; globs are an observer guess to be tuned by tooling."
+    },
+    {
+      "field": "verifier_detail",
+      "text": "A train is satisfied if ANY test in the suite discharges the obligation.",
+      "justification": "Follows from the source's 'Some test'/'MUST have a test' wording; made explicit so weak extra tests do not produce findings."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Rephrased as title; original kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "given",
+        "when",
+        "activation"
+      ],
+      "note": "'Every train reachable' is a standing obligation; when is phrased as a standing condition, not an event."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "avoid[0]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "why",
+        "avoid[3]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[0]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[0]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[1]",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[1]",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "audit",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "prefer[1]"
+      ],
+      "note": "'worthless apart' carries 'the two are worth nothing apart'."
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "prefer[1]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "why",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "audit"
+      ],
+      "note": "Sentence fragment joined with S030."
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "evidence[3]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "evidence[3]",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "evidence[3]",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "evidence[3]",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "prefer[0]",
+        "avoid[1]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "identity",
+        "verifier_detail[4]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S045",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S046",
+      "dest": [
+        "audit",
+        "verifier_detail[3]"
+      ]
+    }
+  ]
+}

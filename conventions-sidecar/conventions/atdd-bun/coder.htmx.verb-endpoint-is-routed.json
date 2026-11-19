@@ -1,0 +1,520 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.htmx/coder.htmx.verb-endpoint-is-routed.convention.yaml",
+    "sha256": "d6aa58d35df4b7ebbcf675ca79f0177d64e56f095802b9a3eaae3e4befb5c270"
+  },
+  "rule_id": "coder.htmx.verb-endpoint-is-routed",
+  "kind": "rule",
+  "title": "Route every mutating htmx endpoint from the Station Master",
+  "activation": {
+    "facts": [
+      {
+        "fact": "language",
+        "values": [
+          "javascript",
+          "typescript"
+        ],
+        "observability": "observable_now",
+        "note": "Repository/stack-level fact (Bun/htmx repo with a JS/TS server), not a per-file gate: HTML and template markup in such a repo remains eligible."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "html",
+          "markup",
+          "jsx",
+          "tsx",
+          "template",
+          "server_module"
+        ],
+        "observability": "observable_now",
+        "note": "Files that carry hx-* attributes, plus the Station Master module whose routes they must match. Scope is repo-wide, not limited to edited files."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "a Station Master surface (module declaring JOURNEY_MAP) resolves in the repo"
+        ],
+        "observability": "observable_now",
+        "note": "Supplied by the existing JS validator (htmx_hypermedia_detector, checks/htmx_verb_endpoint_is_routed.mjs), which already resolves the module that declares JOURNEY_MAP by content, never by filename; if no surface resolves it returns NOT_APPLICABLE."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "htmx_hypermedia_detector: static mutating verb endpoint not named by Station Master"
+        ],
+        "observability": "observable_now",
+        "note": "Supplied by the existing family detector (checks/htmx_verb_endpoint_is_routed.mjs), which collects EVERY statically written hx-post/put/patch/delete endpoint in the repo (changed or not) and flags one the Station Master names nowhere."
+      }
+    ],
+    "fires": [
+      "Markup gains hx-post with a static path that no handler in the JOURNEY_MAP module routes.",
+      "An hx-delete/hx-put/hx-patch affordance is added to markup ahead of its server handler.",
+      "A route is removed or renamed in the Station Master while existing, unchanged markup still carries a static mutating endpoint for the old path.",
+      "A pre-existing static mutating endpoint in untouched markup is named nowhere by the Station Master (the invariant is repo-wide, independent of what was edited)."
+    ],
+    "doesNotFire": [
+      "hx-get endpoints (fragment fetches / presentation).",
+      "Mutating verb endpoints built by interpolation (template-literal paths with ${...}).",
+      "Repos where no Station Master surface resolves (no JOURNEY_MAP, so no journey space).",
+      "Static mutating endpoints whose whole path or distinctive terminal segment the detector finds named by the Station Master (detector behaviour, not proof of routing)."
+    ]
+  },
+  "given": "A repo whose Station Master (the module declaring JOURNEY_MAP) resolves, with markup anywhere (changed or not) carrying hx-post/put/patch/delete with a static path",
+  "when": "the Station Master resolves; every such endpoint repo-wide is checked, not only edited files",
+  "then": "Ensure every such endpoint is served (routed) by the Station Master, or drop the affordance.",
+  "prefer": [
+    "Add a Station Master handler matching the endpoint's method and path that checks authorization (401 on failure) and returns the fragment.",
+    "If the journey does not admit the mutation, remove the affordance from markup."
+  ],
+  "avoid": [
+    "Adding a mutating button/form to markup ahead of its handler (the common cause).",
+    "Markup minting a state-advancing route the journey never admitted (a parallel, private route space); confirm, indicator and a passing test do not make it routed.",
+    "Removing/renaming a Station Master route while markup still posts to it.",
+    "Merely mentioning the endpoint's path text in the Station Master without a handler that serves that method and path."
+  ],
+  "unless": [
+    "hx-get: fetching a fragment is presentation, not a journey.",
+    "Interpolated paths: skipped, not guessed (statically unresolvable bindings stay unjudged).",
+    "No Station Master surface resolves: NOT_APPLICABLE."
+  ],
+  "why": "htmx declares its route space in markup; unbound, markup mints state-advancing routes the journey never admitted and affordances post into nothing. Mutations advance state, as journeys do, so they owe a route; reads do not.",
+  "evidence": [
+    "htmx_hypermedia_detector (checks/htmx_verb_endpoint_is_routed.mjs) reports no unrouted mutating verb endpoint in the repo.",
+    "Every static hx-post/put/patch/delete path in the repo's markup (changed or not) is named by the module declaring JOURNEY_MAP (whole path or distinctive terminal segment).",
+    "Result is NOT_APPLICABLE only when no Station Master surface resolves."
+  ],
+  "verifier_detail": [
+    "Locate the Station Master by the JOURNEY_MAP it DECLARES, never by filename.",
+    "Collect every statically written mutating verb endpoint (hx-post, hx-put, hx-patch, hx-delete) and flag one the Station Master names nowhere.",
+    "Matching is on the whole path or its distinctive terminal segment. Do NOT match on any segment: that first attempt made the rule vacuous because a Station Master importing from `./src/orders/` made every `/orders/*` endpoint look routed.",
+    "Skip endpoints built by interpolation (e.g. `/orders/${id}/void`): they cannot be compared to a server route by text, and guessing would report on correct code — same as the Vite family leaving an unresolvable trainId unjudged rather than inventing a verdict.",
+    "Do not report hx-get (MUTATIONS ONLY, DELIBERATELY): requiring every read to be routed by the Station Master would fail ordinary htmx.",
+    "Return NOT_APPLICABLE when no Station Master surface resolves — a consumer with no JOURNEY_MAP has no journey space to be outside of.",
+    "Disposition strict, severity 4: a state-changing affordance the server never routes is not suppressible and fails CI.",
+    "Term journey_space: the routes the Station Master admits, declared by the module carrying `JOURNEY_MAP`, which a state-changing htmx endpoint must be served by.",
+    "Source fix_hint snippet (verbatim): if (req.method === \"POST\" && path === \"/orders/confirm\") { if (!authorize(req)) return Response.json({ code: \"unauthorized\" }, { status: 401 }); return orderRowFragment(\"1\"); }"
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.2.0.",
+    "implementation: {type: validator, ref: coder.htmx.verb-endpoint-is-routed}.",
+    "Aliases: HTMX-VERB-ENDPOINT-ROUTED-001.",
+    "core_design_refs: afokapu/atdd#1246.",
+    "Source name: 'A mutating htmx endpoint is served by the Station Master surface (Bun/htmx)'.",
+    "Purpose: binds htmx's markup route space to the declared journey space. Member of the htmx_hypermedia_detector FAMILY detector (checks/htmx_verb_endpoint_is_routed.mjs).",
+    "Lineage: tester.htmx.verb-endpoint-coverage states the premise 'an htmx endpoint is declared in the MARKUP, so the markup is this stack's route space' — right, and also the hole. Measured on a consumer: an hx-post=\"/orders/void-all\" carrying a confirm, an indicator and a passing test, bound to no wagon, train or interlocking, passed EVERY gated bun+htmx rule.",
+    "This is the parallel-route-space shape the hub already rejects elsewhere: the interlocking families fail a consumer that declares reachability in a second, private field instead of the declared one; htmx had the same hole with none of the teeth.",
+    "Source fix_hint code (application-specific example, generalized in prefer[0]): if (req.method === \"POST\" && path === \"/orders/confirm\") { if (!authorize(req)) return Response.json({ code: \"unauthorized\" }, { status: 401 }); return orderRowFragment(\"1\"); }"
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Strict disposition: a finding of this rule is not suppressible and fails CI."
+    }
+  ],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "Activation facts, fires/doesNotFire scenarios (including the server-route removal/rename case and pre-existing untouched markup) and evidence phrasing were derived from the source's repo-wide detector description and exceptions.",
+      "justification": "Required by the target structure; no new obligation is introduced."
+    },
+    {
+      "field": "when",
+      "text": "When is phrased as the repo-wide invariant condition (Station Master resolves; all static mutating endpoints, changed or not), not as an edit trigger.",
+      "justification": "The target structure requires a When; the source states a repository invariant enforced by its detector over every static endpoint."
+    },
+    {
+      "field": "avoid[2]",
+      "text": "Removing/renaming a Station Master route while markup still posts to it.",
+      "justification": "Direct consequence of the source's repo-wide 'every statically written mutating verb endpoint' check; not a new obligation."
+    },
+    {
+      "field": "avoid[3]",
+      "text": "Merely mentioning the endpoint's path text in the Station Master without a handler that serves that method and path.",
+      "justification": "Guards against gaming the detector's textual matching; restates the source's obligation that the endpoint be SERVED (S006, S039), not a new obligation."
+    },
+    {
+      "field": "coder_text_length",
+      "text": "Coder-facing text is somewhat above ~1,000 characters because three authored exceptions and the rationale are kept in coder fields.",
+      "justification": "Losslessness wins over brevity."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Rephrased as imperative title; original kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "then",
+        "why",
+        "avoid[1]",
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit",
+        "why"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "verifier_detail[0]",
+        "verifier_detail[1]",
+        "evidence[1]",
+        "activation",
+        "when"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit",
+        "evidence[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "audit",
+        "why"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "audit",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "audit",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "audit",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[3]",
+        "given"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "verifier_detail[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "verifier_detail[2]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "unless[2]",
+        "verifier_detail[5]",
+        "evidence[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "then",
+        "prefer[0]",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[8]",
+        "audit"
+      ],
+      "note": "Generalized in prefer; verbatim snippet kept in verifier_detail and audit."
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[8]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[8]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "verifier_detail[8]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S045",
+      "dest": [
+        "shared:policy.strict-disposition",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S046",
+      "dest": [
+        "shared:policy.strict-disposition",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S047",
+      "dest": [
+        "unless[0]"
+      ]
+    },
+    {
+      "seg": "S048",
+      "dest": [
+        "unless[1]"
+      ]
+    },
+    {
+      "seg": "S049",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S050",
+      "dest": [
+        "identity",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S051",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S052",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S053",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S054",
+      "dest": [
+        "verifier_detail[7]"
+      ]
+    },
+    {
+      "seg": "S055",
+      "dest": [
+        "verifier_detail[7]",
+        "given"
+      ]
+    }
+  ]
+}

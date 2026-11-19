@@ -1,0 +1,297 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/tester.bun/tester.bun.test-no-self-skip.convention.yaml",
+    "sha256": "23fca575611f9c0740bcf64849a3c1600ef4cc1cc64df3c106d328b67283d8a3"
+  },
+  "rule_id": "tester.bun.test-no-self-skip",
+  "kind": "rule",
+  "title": "Do not let a test disable itself; exclude it at the runner level instead",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "test"
+        ],
+        "observability": "observable_now",
+        "note": "Any test case in any test file; the obligation is stack-neutral and not limited by language, test framework or whether the file is being changed. Bun-specific detection is implementation scope (see verifier_detail)."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "self_skip",
+          "guarded_bail"
+        ],
+        "observability": "needs_new_observer",
+        "note": "AST-level detection of skip/todo-style modifiers on test cases and of an env-guarded early return inside a test body; currently realized for bun:test by bun_tester_discipline_detector."
+      }
+    ],
+    "fires": [
+      "A test case carries `it.skip(...)`, `test.skip(...)` or `describe.skip(...)`.",
+      "A test case carries `test.todo(...)` / `it.todo(...)` / `describe.todo(...)`.",
+      "A live smoke test begins with `if (!process.env.DATABASE_URL) return;` so it silently passes when the variable is absent.",
+      "An existing, unchanged test file already contains a self-skip or guarded bail."
+    ],
+    "doesNotFire": [
+      "A `.skip`-like call or early return inside a fixture or helper that is not itself a test case.",
+      "A test excluded from a run via the runner's configuration filter."
+    ]
+  },
+  "given": "A test case (it / test / describe) exists in a test suite",
+  "when": "the test is disabled from inside its own source — a `.skip` / `.todo` / `.failing` modifier or an early `return` guarded on an environment check",
+  "then": "Remove the self-disabling so the test actually runs (or delete the test); if it must not run somewhere, exclude it in the runner's configuration instead.",
+  "prefer": [
+    "Remove the modifier and let the test run, or delete the test.",
+    "Exclude via a runner config filter: visible in configuration, not invisible in a green suite."
+  ],
+  "avoid": [
+    "`.skip` / `.todo` on it / test / describe.",
+    "`if (!process.env.X) return` in a test body: same fault in disguise, more common, silent exactly where nobody watches.",
+    "`.failing` as a disabler. Source conflict: statement forbids it; self_skip term exempts `.fails`/`.failing` as core RED markers. Escalate, don't decide."
+  ],
+  "unless": [
+    "Skip in a fixture/helper that is not itself a test case.",
+    "Runner-level exclusion (config filter), the supported way not to run a test."
+  ],
+  "why": "A skipped test reports GREEN: the suite passes, the gate sees no failure, and the acceptance is recorded as covered by a test that did not run.",
+  "evidence": [
+    "The detector reports no self_skip or guarded_bail finding for the test files in scope.",
+    "Any environment-specific non-execution is expressed as a runner configuration filter visible in config, not inside the test body."
+  ],
+  "verifier_detail": [
+    "self_skip (term definition): `.skip` or `.todo` on it / test / describe (it.skip, test.skip, describe.skip, *.todo).",
+    "`.failing` — UNRESOLVED source conflict, both claims preserved: (a) statement: a test MUST NOT disable itself with `.skip` / `.todo` / `.failing`; summary: flags it.skip/test.skip/describe.skip (and `.todo` / `.failing`). (b) term self_skip: deliberately excludes `.fails` / `.failing`, which core's RED vocabulary lists as accepted markers. This rewrite does not choose; the verifier must surface `.failing` cases for authoritative resolution rather than silently pass or fail them.",
+    "guarded_bail: a guarded `if (…process.env…) return` bail-out inside a test (e.g. `if (!process.env.DATABASE_URL) return;` at the top of a live smoke).",
+    "Scope: only test cases; skips inside fixtures/helpers that are not themselves test cases are out of scope. Runner-level config exclusions (config filter) are not findings.",
+    "Stack-neutral obligation; the current detector is Bun-specific over `bun:test` modifiers, realized by bun_tester_discipline_detector (implementation type: validator). Bun scope and any changed-file filtering are implementation scope of the detector, not limits on the obligation.",
+    "Severity 3; disposition strict.",
+    "Reason for runner-level exclusion: if a test genuinely cannot run somewhere, that belongs in the runner's configuration where it is visible, not hidden inside the test body."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "Original name: 'Tests do not disable themselves'.",
+    "Aliases: BUN-NO-SELF-SKIP-001.",
+    "implementation: {type: validator, ref: bun_tester_discipline_detector}.",
+    "Term ids: self_skip, guarded_bail.",
+    "Source inconsistency preserved unresolved: statement/summary list `.failing` as forbidden/flagged while term self_skip deliberately excludes `.fails`/`.failing` as core RED markers."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "strict: the extension fails on every finding; it has no advisory mode and no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "Activation facts, fires and doesNotFire examples.",
+      "justification": "Required by target structure; derived directly from source terms and exceptions, no new obligations."
+    },
+    {
+      "field": "evidence",
+      "text": "Evidence statements phrased as detector outcome and visible runner config.",
+      "justification": "Required by target structure; restates source detector and fix_hint as verification checks."
+    },
+    {
+      "field": "avoid",
+      "text": "'Escalate, don't decide' for `.failing`, and verifier instruction to surface `.failing` cases for resolution.",
+      "justification": "Needed to preserve the source's contradictory `.failing` claims without resolving them; no new waiver."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Becomes title basis."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "when",
+        "then",
+        "avoid[0]",
+        "avoid[1]",
+        "avoid[2]",
+        "verifier_detail[1]"
+      ],
+      "note": "`.failing` prohibition kept in when/avoid; conflict with S011 left unresolved."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "activation",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "verifier_detail[4]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "verifier_detail[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "avoid[0]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "avoid[2]",
+        "verifier_detail[1]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[2]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "avoid[1]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[0]",
+        "verifier_detail[1]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "avoid[1]",
+        "verifier_detail[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "then",
+        "prefer[1]",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "prefer[0]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "prefer[1]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "identity",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "identity",
+        "verifier_detail[5]",
+        "shared:policy.strict-disposition"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

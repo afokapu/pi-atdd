@@ -1,0 +1,393 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.bun/coder.bun.design-connected.convention.yaml",
+    "sha256": "a4cf76ee21bf7e98c1bb9a539e187538103a7310c72a662a6d80d69e8644c833"
+  },
+  "rule_id": "coder.bun.design-connected",
+  "kind": "rule",
+  "title": "Connect every rendering app component to the design system",
+  "activation": {
+    "facts": [
+      {
+        "fact": "path_glob",
+        "values": [
+          "**/design/",
+          "**/design_system/",
+          "**/design-system/"
+        ],
+        "observability": "observable_now",
+        "note": "REPOSITORY-LEVEL precondition, evaluated against the repository tree (not the candidate file): true iff at least one directory with one of these names exists. If false, the rule self-scopes out for the whole repository."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          ".tsx",
+          ".jsx"
+        ],
+        "observability": "observable_now",
+        "note": "candidate file: component source file by extension"
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "!**/design/**",
+          "!**/design_system/**",
+          "!**/design-system/**"
+        ],
+        "observability": "observable_now",
+        "note": "candidate-file match: file path must not lie under any design root"
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "!**/*.test.*",
+          "!**/*.spec.*",
+          "!**/node_modules/**",
+          "!**/vendor/**",
+          "!**/dist/**",
+          "!**/build/**"
+        ],
+        "observability": "observable_now",
+        "note": "candidate-file match: tests and vendored/build directories are never scanned. Negated globs are matched against the repo-relative path of the candidate; any match excludes. The concrete vendored/build directory names are a declared addition (source says only 'vendored/build directories'); the detector's own list is authoritative."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "rendering component with no design-root import"
+        ],
+        "observability": "needs_new_observer",
+        "note": "requires masking literals/comments, detecting closing or self-closing tags, and resolving imports to the design root (bun_design_system_detector)"
+      }
+    ],
+    "fires": [
+      "A .tsx screen outside the design root renders JSX and imports nothing from the design root, while the repository has a design root",
+      "An existing, untouched .jsx app component that renders markup has no import of a design token, primitive, component or template, and the repository is assessed"
+    ],
+    "doesNotFire": [
+      "The repository has no design/, design_system/ or design-system/ directory",
+      "The file is a test (*.test.*, *.spec.*) or lives in a vendored/build directory",
+      "The module renders no markup (route, handler, data module)",
+      "The file is itself inside the design root"
+    ]
+  },
+  "given": "A repo with a design root and a .tsx/.jsx app component outside it that renders markup",
+  "when": "any such component is assessed (new, edited, or untouched)",
+  "then": "It MUST import at least one design-system element (token, primitive, component, or template) from the design root, so no UI surface is disconnected from the shared system.",
+  "prefer": [
+    "Compose UI from the existing design-system template, component, or primitive that owns the required role.",
+    "During GREEN: reuse the nearest existing design-system surface; add only the connection the current rendered behavior requires.",
+    "During GREEN: if no suitable surface exists, introduce the smallest design-system component that expresses the current need."
+  ],
+  "avoid": [
+    "A meaningless design import merely to satisfy connectivity.",
+    "A generic component library for hypothetical callers.",
+    "Redesigning the screen or migrating unrelated markup."
+  ],
+  "unless": [
+    "No design root in the repo (not judged).",
+    "Test files (*.test.*, *.spec.*), vendored/build dirs (never scanned).",
+    "Non-rendering modules: routes, handlers, data (not judged)."
+  ],
+  "why": "A screen built without the system is where the next one-off style lands. Requiring one design import makes the connection explicit and reviewable.",
+  "evidence": [
+    "bun_design_system_detector reports no rendering component outside the design root lacking a design-root import.",
+    "The current behavioral or rendering acceptance passes.",
+    "Reviewer confirms the rendered app component is genuinely composed from the design system (the import is used for rendering, not decorative)."
+  ],
+  "verifier_detail": [
+    "Design root: a directory named `design`, `design_system`, or `design-system`. The first directory beneath it names the layer: `tokens` or `foundations`, `primitives`, `components`, `templates`.",
+    "Self-scoping: a repository with no design root is not judged; there is no system to connect to yet. Design-root existence is checked on the repository tree, separately from candidate-file matching.",
+    "Rendering component: a component source file whose code (literals and comments masked) contains a closing tag or a self-closing element.",
+    "Flag rendering component files (.tsx/.jsx) outside the design root that import nothing from it. All qualifying files are judged, not only changed ones.",
+    "Never scan test files (`*.test.*`, `*.spec.*`) or vendored/build directories; do not judge non-rendering modules (routes, handlers, data).",
+    "Severity 2; disposition strict."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.2.0",
+    "Bun realization of core obligation `coder.design.orphan-ui` (statement and metadata.core_obligation)",
+    "aliases: BUN-DESIGN-CONNECTED-001",
+    "implementation: validator, ref bun_design_system_detector",
+    "metadata: severity 2, disposition strict"
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.phase-loop",
+      "kind": "policy",
+      "text": "During GREEN: reuse the nearest existing compliant surface before creating a new one, add only what the current behavior requires, introduce a new element only when no suitable one exists. Do not broaden: no adjacent redesign, no migration of unrelated code, no generic abstractions for hypothetical callers. Prove: the current behavioral acceptance passes."
+    }
+  ],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "Concrete vendored/build globs: **/node_modules/**, **/vendor/**, **/dist/**, **/build/**.",
+      "justification": "Auditor required vendored/build exclusions to have defined matching semantics; the source names only 'vendored/build directories'. The detector's own list remains authoritative."
+    },
+    {
+      "field": "when",
+      "text": "Explicit statement that new, edited, and untouched existing components are all assessed.",
+      "justification": "Clarifies the source's unconditional scope ('no UI surface is disconnected'); removes the previously introduced create/modify gate. Adds no obligation beyond the source."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ],
+      "note": "title rephrased imperatively"
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "when",
+        "then",
+        "activation"
+      ],
+      "note": "applies to every qualifying component, no change gate"
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "structure"
+      ],
+      "note": "term id; definition in S009-S011 / verifier_detail[0]"
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "verifier_detail[0]",
+        "activation",
+        "given"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[0]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[1]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "structure"
+      ],
+      "note": "term id; definition in S013 / verifier_detail[2]"
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[3]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "structure"
+      ],
+      "note": "heading for prefer[0]"
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "prefer[1]",
+        "prefer[2]",
+        "shared:policy.phase-loop"
+      ],
+      "note": "'During GREEN:' qualifier carried explicitly in prefer[1] and prefer[2]"
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "prefer[1]",
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "prefer[1]",
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "prefer[2]",
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "structure"
+      ],
+      "note": "heading for avoid[*]"
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "avoid[2]",
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "avoid[1]",
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "structure"
+      ],
+      "note": "heading for evidence[1-2]"
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "evidence[1]",
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "evidence[2]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[4]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "unless[2]",
+        "verifier_detail[4]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "identity",
+        "verifier_detail[5]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "identity",
+        "verifier_detail[5]",
+        "audit"
+      ],
+      "note": "bare 'strict' kept verbatim; no operational definition added"
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

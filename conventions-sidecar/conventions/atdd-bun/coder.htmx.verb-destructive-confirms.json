@@ -1,0 +1,385 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.htmx/coder.htmx.verb-destructive-confirms.convention.yaml",
+    "sha256": "530c23a80a9b7d4cf4477c2506cb37b6939c36e4d7f92008a796d1dbcffbfc81"
+  },
+  "rule_id": "coder.htmx.verb-destructive-confirms",
+  "kind": "rule",
+  "title": "Destructive htmx requests declare a confirmation",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "html",
+          "htmx template",
+          "server-rendered markup"
+        ],
+        "observability": "observable_now",
+        "note": "Markup/template files where hx- attributes can appear; every hx-delete in them is in scope, new or pre-existing."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "htmx_hypermedia_detector: hx-delete without hx-confirm/hx-prompt on the same opening tag"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Detector finding from the htmx_hypermedia_detector family on atdd.workspace.bun; scans every hx-delete occurrence, including untouched existing ones."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "element with hx-delete added or modified"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Diff-level observer; only one trigger among several — existing unmodified violations are also in scope via the finding fact."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "delete",
+          "remove",
+          "destroy",
+          "hx-delete"
+        ],
+        "observability": "observable_now",
+        "note": "Task text mentions a destructive action in an htmx UI."
+      }
+    ],
+    "fires": [
+      "A coder adds a button or link with hx-delete to a template and no hx-confirm/hx-prompt on that element.",
+      "An existing hx-delete element is edited and its hx-confirm is removed.",
+      "An existing, unmodified hx-delete element anywhere in the markup lacks hx-confirm/hx-prompt on its own opening tag (detector finds it regardless of the diff).",
+      "An hx-delete element relies on an hx-confirm placed on a neighbouring control or wrapper in the same file.",
+      "An hx-delete element lacks a same-element confirmation even though some other guard or handler exists elsewhere."
+    ],
+    "doesNotFire": [
+      "An element with hx-post/hx-put/hx-patch only (governed by coder.htmx.verb-mutation-signals-progress).",
+      "An hx-delete element that carries hx-prompt instead of hx-confirm.",
+      "Non-markup files with no hx- attributes."
+    ]
+  },
+  "given": "A markup element carrying `hx-delete` (newly added or already existing)",
+  "when": "the markup is written, changed or checked",
+  "then": "The same opening tag that carries `hx-delete` MUST also carry `hx-confirm=\"…\"` (yes/no gate) or `hx-prompt=\"…\"` (typed-input gate).",
+  "prefer": [
+    "`<button hx-delete=\"/orders/7\" hx-confirm=\"Delete order 7?\">Delete</button>`.",
+    "For high-value deletions use `hx-prompt` so the user types something meaningful rather than reflexively clicking OK (confirm vs prompt is a product decision on friction).",
+    "Express destructive requests with `hx-delete` so the guard is checkable."
+  ],
+  "avoid": [
+    "`<button hx-delete=\"/orders/7\">Delete</button>` (unguarded).",
+    "Confirmation on a neighbouring control or elsewhere in the file — protects nothing.",
+    "A delete as `hx-post` to a `/…/delete` route, hiding the verb from this rule.",
+    "Suppressing, waiving or baselining the finding: this rule is `strict` (severity 2) — an unguarded delete is not suppressible; add the confirmation instead."
+  ],
+  "unless": [
+    "An element carrying `hx-prompt` instead of `hx-confirm` satisfies the rule."
+  ],
+  "why": "In hypermedia a delete is one attribute on a clickable element: no form submit, route transition or framework guard sits between click and request. htmx removes the handler where confirmation used to live, so it must be relocated onto the element as declarative `hx-confirm`, or it is lost in the migration.",
+  "evidence": [
+    "htmx_hypermedia_detector reports no element whose opening tag carries `hx-delete` without `hx-confirm` or `hx-prompt`.",
+    "Reviewer confirms the confirmation attribute is co-located on the same element as `hx-delete`, not merely present in the file.",
+    "No suppression, waiver or baseline entry exists for this rule's findings (disposition strict)."
+  ],
+  "verifier_detail": [
+    "Detector is a zero-dependency Bun detector: find each `hx-delete`, extract the enclosing opening tag with a quote-aware scan, flag the element when that tag carries neither `hx-confirm` nor `hx-prompt`.",
+    "Check is CO-LOCATION on the same element, not mere presence of hx-confirm in the file; a confirmation on a neighbouring control protects nothing.",
+    "Destructive verb = `hx-delete` only; `hx-post`/`hx-put`/`hx-patch` are mutating but not inherently destructive and are governed by coder.htmx.verb-mutation-signals-progress.",
+    "Declared confirmation = `hx-confirm=\"…\"` (yes/no gate) or `hx-prompt=\"…\"` (typed-input gate); either satisfies.",
+    "Known blind spot (source exception): a delete implemented as `hx-post` to an explicit `/…/delete` route is not detected; that is a naming choice the rule cannot see, and it is why the verb should be `hx-delete`.",
+    "Rule identity metadata: disposition strict (applies policy.strict-disposition to this rule), severity 2: an unguarded delete is not suppressible.",
+    "Component-framework contrast (rationale context): there a destructive action passes through a handler and the confirmation lives in that handler where a reviewer sees it; `hx-confirm` is declarative precisely so it cannot be forgotten."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "Alias: HTMX-DELETE-CONFIRM-001.",
+    "Implementation: validator, ref htmx_hypermedia_detector.",
+    "Bun/htmx-stack realization of the agnostic \"a destructive action requires explicit intent\" obligation, enforced by the htmx_hypermedia_detector family implementation on atdd.workspace.bun.",
+    "Summary: a \"deletes are confirmed\" obligation.",
+    "Source term ids: destructive_verb, declared_confirmation.",
+    "Identity: disposition strict, severity 2 (metadata.disposition / metadata.severity)."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Generic strict disposition: a rule marked strict fails on every finding; no advisory mode, no ratchet baseline; its findings are not suppressible. Rules opt in via their own disposition metadata."
+    }
+  ],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "Activation facts, fires and doesNotFire scenarios.",
+      "justification": "Required by the target structure; derived from the source scope (every hx-delete, hx-prompt satisfies, co-location, hx-post/put/patch out of scope)."
+    },
+    {
+      "field": "when",
+      "text": "'the markup is written, changed or checked' — trigger phrasing.",
+      "justification": "Required by structure; deliberately universal so every hx-delete (new or existing) is covered, matching the source's 'Every element'. No new obligation."
+    },
+    {
+      "field": "evidence",
+      "text": "evidence[2]: no suppression/waiver/baseline entry for this rule.",
+      "justification": "Verification form of the source's strict, non-suppressible disposition (S030/S035); no new obligation."
+    },
+    {
+      "field": "verifier_detail",
+      "text": "Component-framework contrast sentence placed in verifier_detail[6] to keep coder text short.",
+      "justification": "Lossless placement of S018/S019/S008 detail; coder-facing why keeps the core rationale. Coder-facing text slightly exceeds ~1,000 chars because the strict/non-suppressible disposition is now coder-visible in avoid[3], per audit."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "given"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "why"
+      ],
+      "note": "Rationale only; not an eligibility condition."
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "why",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit"
+      ],
+      "note": "term id kept for auditors"
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "given",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "audit"
+      ],
+      "note": "term id kept for auditors"
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "then",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "verifier_detail[6]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "verifier_detail[6]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "verifier_detail[1]",
+        "evidence[1]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "avoid[1]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "avoid[3]",
+        "evidence[2]",
+        "verifier_detail[5]"
+      ],
+      "note": "Rule-specific strict, non-suppressible disposition made coder-visible in avoid[3]."
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "unless[0]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "verifier_detail[4]",
+        "avoid[2]",
+        "prefer[2]"
+      ],
+      "note": "Detector blind spot rather than a waiver; kept as verifier detail plus coder guidance to use hx-delete."
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "avoid[3]",
+        "verifier_detail[5]",
+        "audit"
+      ],
+      "note": "Severity 2 stated in coder-facing avoid[3] and rule identity metadata."
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "avoid[3]",
+        "verifier_detail[5]",
+        "audit",
+        "shared:policy.strict-disposition"
+      ],
+      "note": "Rule-level assignment of strict is in avoid[3]/verifier_detail[5]; shared node only defines the generic meaning of strict."
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

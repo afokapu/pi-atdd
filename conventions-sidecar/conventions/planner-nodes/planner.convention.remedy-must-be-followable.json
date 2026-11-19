@@ -1,0 +1,409 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.convention.remedy-must-be-followable.convention.yaml",
+    "sha256": "c12a67101c3395a52ef3581bece0a38a716eafd00f9b19f15228f36cc6b56668"
+  },
+  "rule_id": "planner.convention.remedy-must-be-followable",
+  "kind": "rule",
+  "title": "Name only existing files and live CLI verbs in a convention node's operative prose",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "convention node (yaml)"
+        ],
+        "observability": "observable_now",
+        "note": "Convention node files are identifiable by kind/location in the toolkit checkout. Every existing node is in scope on every validation run, edited or not."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "named path absent from checkout",
+          "named CLI verb retired"
+        ],
+        "observability": "observable_now",
+        "note": "Produced by the existing validator test_convention_remedies_are_followable over ALL convention nodes in the toolkit checkout, including unchanged nodes and findings unrelated to the current plan."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "operative prose added or edited (fix_hint, operational_guidance, normative_text, statement, term text, notes, description) naming a repo path or a CLI verb"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Additional trigger, not a prerequisite. Needs a diff-level observer that extracts path tokens and CLI verbs from operative-prose fields only, excluding provenance and examples/values blocks."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "rename file",
+          "move validator",
+          "remove CLI verb",
+          "retire verb"
+        ],
+        "observability": "llm_judged",
+        "note": "Additional trigger, not a prerequisite: a plan that renames/removes a file or verb should re-check every convention node quoting it."
+      }
+    ],
+    "fires": [
+      "A validation run in the toolkit checkout finds an existing, unchanged convention node whose fix_hint names a file that does not exist — even if the current plan never touched that node.",
+      "A convention node's operative prose still instructs a CLI verb that has been removed from the toolkit.",
+      "A planner writes or edits a fix_hint naming a validator path that does not exist in the checkout.",
+      "A plan renames a validator or removes a CLI verb while convention nodes still quote the old spelling."
+    ],
+    "doesNotFire": [
+      "The path appears only in provenance (`source.legacy_path`).",
+      "The path appears in an `examples`/`values` block as an illustration.",
+      "The path is a segment position in a schematic formula, an explicitly excluded mechanism, a conditional reference, gitignored runtime state, or is described in past tense as retired.",
+      "The run is in a consumer repo rather than the ATDD toolkit source repo (rule is platform-gated)."
+    ]
+  },
+  "given": "Any convention node in the toolkit checkout — existing and unchanged, or one you author/edit — whose operative prose (fix_hint, operational_guidance, normative_text, statement, term text, notes, description) names a repo path or CLI verb",
+  "when": "the checkout is validated; also when you write such a node or plan to rename/remove a file or retire a verb it quotes",
+  "then": "Every path named in operative prose must exist in the checkout and every CLI verb named must still resolve — a fix_hint is an executable promise.",
+  "prefer": [
+    "Absent path: correct it to the real location, or drop the pointer if the thing no longer exists.",
+    "Retired verb: replace it with its live replacement (e.g. `atdd issue <N> --status <PHASE>` → `atdd coach transition <N> <PHASE>`; `atdd issue open` → `atdd coach issues open`).",
+    "When retiring a verb, record it with its live replacement.",
+    "When a plan renames a file or removes a verb, include updating every node that quotes it."
+  ],
+  "avoid": [
+    "Half-repairs: swapping an absent path for one that is merely plausible — that produced this defect.",
+    "A remedy saying only \"that verb is gone\" without the live verb — itself unfollowable.",
+    "Describing a retired path in present tense — a defect, not a record."
+  ],
+  "unless": [
+    "Provenance (`source.legacy_path` + `legacy_sha`) — pointing at a deleted file is what provenance is.",
+    "Illustrative paths in `examples`/`values` blocks — fictional by design.",
+    "Schematic `Formula:` templates — segments are positions, not directories.",
+    "A path named as an EXCLUDED mechanism (\"no X\") — a statement of absence.",
+    "A conditional reference (\"if it exists\", \"when present\").",
+    "Gitignored runtime state (via `git check-ignore`).",
+    "A path the node declares RETIRED in past tense — a historical record."
+  ],
+  "why": "A fix_hint is read exactly when the reader is blocked; a missing file or dead verb sends them nowhere. Historically nothing read fix_hints, so a verb removal and a validator rename left every quoting hint stale.",
+  "evidence": [
+    "`pytest src/atdd/planner/validators/test_convention_remedies_are_followable.py -v` passes (test_every_convention_remedy_is_followable).",
+    "Each path token in operative prose resolves in the checkout, or falls under an authored exception.",
+    "Each CLI verb in operative prose resolves; retired verbs appear only with their live replacement or in past-tense records."
+  ],
+  "verifier_detail": [
+    "Operative prose fields scanned: `fix_hint`, `operational_guidance`, `normative_text`, `statement`, `text`, `notes`, `description` — strings a reader is expected to act on. Provenance (a record) and examples (illustrations) are excluded — only operative prose makes a promise.",
+    "Unfollowable remedy = operative prose naming a repo path absent from the checkout, or a CLI verb that no longer resolves. The reader is sent nowhere at the exact moment they are blocked, which is when a fix_hint is the one part of a rule they read.",
+    "Retired verb = a CLI verb removed from the toolkit whose spelling survives in prose; each retired verb is recorded with the live verb that replaced it, because a remedy saying only \"that verb is gone\" is itself unfollowable. Known mapping: `atdd issue <N> --status <PHASE>` → `atdd coach transition <N> <PHASE>`; `atdd issue open` → `atdd coach issues open`.",
+    "Exclusions: `source.legacy_path` provenance (carries a `legacy_sha`; the monolith it names was deliberately deleted); `examples`/`values` blocks (a naming rule's negative example must NOT exist); schematic `Formula: ... -> contracts/theme/seg1/...` templates; paths named as excluded mechanisms (\"no plan/_meta.yaml\" — flagging would invert the node's meaning); conditional references (\"if it exists\", \"when present\" — predicate subject, not pointer); gitignored paths checked live via `git check-ignore` so the exclusion cannot outlive the path (the day it leaves `.gitignore` it stops being excused); paths declared retired — the test is tense, not the token (\"#1270 retired the `.atdd/manifest.yaml` mirror\" is a record; \"the phase labels live under `.atdd/labels.yaml`\" is a defect).",
+    "Runs against the checkout (all convention nodes, not only changed ones) and is `platform`-gated via `is_atdd_source_repo()`: in a consumer repo nodes arrive from the installed package while quoted paths are TOOLKIT-repo paths, so an ungated rule would flag nearly every path as absent in somebody else's repo (#272/#276). The installed package carries none of `plan/`, `docs/`, `.atdd/`, so it is not a resolvable root.",
+    "Disposition STRICT, severity 3; the disposition is the point. Calibration: naive scan found 179 of 332 paths absent; by cause 137 provenance, 34 illustrative, six real. Strict is affordable at six (unlike #1958 at 369-of-473 and #1943 at 101-of-229, which had to settle for advisory because the remedy was unaffordable), so this refuses instead of logging."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 4.83.0.",
+    "implementation: validator test_convention_remedies_are_followable::test_every_convention_remedy_is_followable.",
+    "Original name: \"A convention node's remedy must be followable\".",
+    "#1965: five remedies across four nodes were unfollowable — three named a file that is not there, two instructed `atdd issue`, removed in #1303 — and a sixth turned up while designing the rule.",
+    "Nothing read a fix_hint, so when the verb was removed and the smoke-acceptance validator renamed, every hint quoting them stayed exactly as written.",
+    "Same family as #1548, where the authorable exemplar carried a URN scheme retired by #1421 and following the documentation produced an invalid artifact.",
+    "Term ids/labels: operative_prose (Operative prose), unfollowable_remedy (Unfollowable remedy), retired_verb (Retired verb)."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "strict: fails on every finding, no advisory mode, no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "prefer[3]",
+      "text": "When a plan renames a file or removes a verb, include updating every node that quotes it.",
+      "justification": "Planner-audience restatement of the source's root cause (S009: renames/removals left hints stale); no new obligation beyond keeping prose followable."
+    },
+    {
+      "field": "activation",
+      "text": "task_term/change facts as additional triggers and fires/doesNotFire situations",
+      "justification": "Required by schema; derived from source exceptions, gating and notes. The base scope remains all convention nodes in the checkout."
+    },
+    {
+      "field": "coder_fields_length",
+      "text": "Coder-facing text exceeds ~1,000 characters.",
+      "justification": "Seven authored exceptions and the verb mapping must survive in coder fields losslessly; full exception rationale is in verifier_detail[3]. Losslessness wins over brevity."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "then"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit",
+        "why",
+        "prefer[3]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[5]",
+        "shared:policy.strict-disposition"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "identity",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "prefer[0]",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "unless[2]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "unless[3]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "unless[4]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "unless[5]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "unless[6]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "verifier_detail[3]",
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "verifier_detail[4]",
+        "activation",
+        "when"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "verifier_detail[0]",
+        "given"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "why",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "prefer[2]",
+        "avoid[1]",
+        "verifier_detail[2]"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,288 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/tester.htmx/tester.htmx.a11y-harness.convention.yaml",
+    "sha256": "e74328600b89761a8740ace465e3a5d5e38f967dcbeda7fe7023af53dd0089d4"
+  },
+  "rule_id": "tester.htmx.a11y-harness",
+  "kind": "rule",
+  "title": "Run axe in every A11Y spec and assert on its violations",
+  "activation": {
+    "facts": [
+      {
+        "fact": "path_glob",
+        "values": [
+          "**/a11y.*",
+          "**/a11y-*",
+          "**/a11y_*",
+          "**/*.a11y.*",
+          "**/*.a11y-*",
+          "**/*.a11y_*",
+          "**/*-a11y.*",
+          "**/*-a11y-*",
+          "**/*-a11y_*",
+          "**/*_a11y.*",
+          "**/*_a11y-*",
+          "**/*_a11y_*"
+        ],
+        "observability": "observable_now",
+        "note": "Encodes an `a11y` token in the file basename: `a11y` preceded by the start of the basename or one of `.`, `-`, `_`, and followed by one of `.`, `-`, `_` (every combination of left and right boundary is listed, e.g. `a11y-check.e2e.ts`, `checkout_a11y_check.e2e.ts`, `checkout.a11y.e2e.ts`). Equivalent basename regex: `(^|[._-])a11y([._-]|$)`. Match the basename only, not directory names, and not `a11y` embedded in a longer word. Never match files under node_modules, dist, build or _generated."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "a11y_test_urn"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Alternative identification: the spec carries an `A11Y` test URN. Needs a parser for test URNs in the file. Either this or the filename token is required; neither task words nor an `.e2e.ts` suffix is enough on its own."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "browser_spec"
+        ],
+        "observability": "needs_new_observer",
+        "note": "browser_spec = a `*.e2e.ts` file run by Playwright, or any test file whose header comments carry a journey marker (`// Train:`, `// Journey:`, `// URN: test:train:…`, `// URN: test:journey:…`), so a misnamed one is still judged. A unit test that only mentions a journey URN inside a string is not a browser spec. Needs a header-comment parser and Playwright-config awareness. Used together with the A11Y identification above, not as a substitute for it."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "htmx_e2e_detector:a11y-harness"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Detector finding: AxeBuilder import or `.analyze()` call missing, or no violations assertion that can fail."
+      },
+      {
+        "fact": "operation",
+        "values": [
+          "create",
+          "modify"
+        ],
+        "observability": "observable_now",
+        "note": "Writing or editing an accessibility spec."
+      }
+    ],
+    "fires": [
+      "A new `*.a11y.e2e.ts` spec navigates to a page and asserts only on visible text, without running axe",
+      "A spec named `a11y-check.e2e.ts` or `checkout_a11y_check.e2e.ts` imports AxeBuilder but never calls `.analyze()`",
+      "A spec with an `A11Y` test URN calls `new AxeBuilder({ page }).analyze()` but never asserts on `violations`",
+      "An accessibility spec asserts `expect(results.violations.length).toBeGreaterThanOrEqual(0)`",
+      "A misnamed test file whose header has a `// URN: test:journey:…` marker and an A11Y test URN does not run axe"
+    ],
+    "doesNotFire": [
+      "A browser spec that has no `A11Y` test URN and no `a11y` token in its file name, even if the task mentions accessibility",
+      "A `*.e2e.ts` file under a directory named `a11y` that has no `a11y` token in its own file name and no A11Y URN",
+      "A file whose basename contains `a11y` only inside a longer word (no `.`, `-`, `_` or start-of-name boundary around it) and has no A11Y URN",
+      "A unit test that only mentions a journey or A11Y URN inside a string literal",
+      "Files under `node_modules`, `dist`, `build` or `_generated`"
+    ]
+  },
+  "given": "A spec is identified as accessibility: it has an `A11Y` test URN, or its file name contains an `a11y` token",
+  "when": "The tester writes or changes that spec",
+  "then": "The spec must run the axe harness and assert on the returned `violations` in a way that can fail. This requires importing `AxeBuilder` from `@axe-core/playwright` (under any local name) and calling `new AxeBuilder(...).analyze()`.",
+  "prefer": [
+    "Assert that there are no violations: `toEqual([])`, `toHaveLength(0)`, or `toBe(0)` on the count",
+    "Or use a bounded assertion: `toBeLessThanOrEqual(n)` or `toBeLessThan(n)`",
+    "`const results = await new AxeBuilder({ page }).analyze(); expect(results.violations).toEqual([]);`"
+  ],
+  "avoid": [
+    "An accessibility spec that navigates the page but never runs axe",
+    "Running axe and then never asserting on the result",
+    "Tautological assertions that cannot fail, such as `toBeGreaterThanOrEqual(0)`. These do not count as assertions"
+  ],
+  "unless": [],
+  "why": "An accessibility spec that navigates but never runs axe, or never asserts on the result, passes no matter what state the page is actually in.",
+  "evidence": [
+    "The spec file imports `AxeBuilder` from `@axe-core/playwright` (any local binding name)",
+    "The spec calls `new AxeBuilder(...).analyze()`, and the result's `violations` is passed to one of `toEqual([])`, `toHaveLength(0)`, `toBe(0)`, `toBeLessThanOrEqual(n)` or `toBeLessThan(n)`",
+    "htmx_e2e_detector reports no a11y-harness finding"
+  ],
+  "verifier_detail": [
+    "Identify accessibility specs only by an `A11Y` test URN or an `a11y` token in the file name. Token = `a11y` in the basename bounded on the left by start-of-name or `.`/`-`/`_` and on the right by `.`/`-`/`_` or end-of-name (regex on basename: `(^|[._-])a11y([._-]|$)`). Directory names, substrings inside other words, and task wording do not count.",
+    "browser_spec: a `*.e2e.ts` file run by Playwright, or any test file whose header comments carry a journey marker (`// Train:`, `// Journey:`, `// URN: test:train:…`, `// URN: test:journey:…`). A misnamed one is therefore still judged. A unit test that merely mentions a journey URN in a string is not a browser spec.",
+    "Resolve the AxeBuilder import under any local alias.",
+    "Accepted matchers on `violations` are equal-to-none (`toEqual([])`, `toHaveLength(0)`, `toBe(0)`) and bounded (`toBeLessThanOrEqual(n)`, `toBeLessThan(n)`). Reject tautologies such as `toBeGreaterThanOrEqual(0)`. They are not assertions.",
+    "Never scan vendored and generated trees (`node_modules`, `dist`, `build`, `_generated`).",
+    "Severity 3. Disposition: strict (as stated in the source; the source does not further define its enforcement semantics)."
+  ],
+  "audit": [
+    "schema_version 1.1.0",
+    "kind: rule; status: active",
+    "Alias: BUN-E2E-A11Y-HARNESS-001",
+    "introduced_in 0.5.0",
+    "Statement: \"Bun/htmx realization of `tester.vite.a11y-harness`, strict.\" (metadata.mirrors: tester.vite.a11y-harness)",
+    "metadata.disposition: strict",
+    "implementation: validator, ref htmx_e2e_detector",
+    "Original name/summary: An A11Y spec runs axe and asserts on its violations."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "activation.fires",
+      "text": "Concrete fire/doesNotFire situations",
+      "justification": "Derived from the statement, the browser_spec term and the exceptions so that activation can be tested. They add no new obligation or identification signal."
+    },
+    {
+      "field": "activation.facts",
+      "text": "Basename glob patterns and equivalent regex `(^|[._-])a11y([._-]|$)` for the `a11y` filename token",
+      "justification": "Observable encoding of the source's 'an `a11y` token in its file name'. The token boundary set (start, `.`, `-`, `_`) is an interpretation of 'token'; it covers leading (`a11y-check`), dotted, dashed and underscore-delimited interior tokens, and is limited to the basename so it matches nothing broader than the source."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Basis for the title"
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "then",
+        "prefer[0]",
+        "prefer[1]",
+        "evidence[0]",
+        "evidence[1]",
+        "verifier_detail[0]",
+        "verifier_detail[2]",
+        "verifier_detail[3]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "avoid[2]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit",
+        "identity",
+        "verifier_detail[5]"
+      ],
+      "note": "Mirror relationship and bare 'strict' label kept verbatim; no enforcement semantics added"
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "verifier_detail[1]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[1]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[1]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "why",
+        "avoid[0]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[4]",
+        "activation"
+      ],
+      "note": "Scanning-scope rule, not a waiver"
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "identity",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "identity",
+        "verifier_detail[5]",
+        "audit"
+      ],
+      "note": "Literal 'strict' only"
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "audit",
+        "evidence[2]"
+      ]
+    }
+  ]
+}

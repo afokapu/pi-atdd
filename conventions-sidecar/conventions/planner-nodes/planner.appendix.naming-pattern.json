@@ -1,0 +1,317 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.appendix.naming-pattern.convention.yaml",
+    "sha256": "1141c8d4cacdadb4bd22554bc078c6d705c94515cfb51cd2de26f739c2937111"
+  },
+  "rule_id": "planner.appendix.naming-pattern",
+  "kind": "rule",
+  "title": "Name appendix files {artifact-name}_{type}_{filename}",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "appendix"
+        ],
+        "observability": "llm_judged",
+        "note": "Whether a file is an appendix (supporting file such as a mockup, diagram or spreadsheet owned by a planning artifact) is inferred from its role, not from its path; the source sets no location restriction, so appendix identity must be judged regardless of where the file is stored."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "**/appendices/**"
+        ],
+        "observability": "observable_now",
+        "note": "Non-exclusive heuristic only: a file under an appendix storage location (see planner.appendix.storage) is a strong signal it is an appendix, but appendices stored or referenced elsewhere are still in scope. The path is observable; appendix identity outside it is llm_judged."
+      },
+      {
+        "fact": "operation",
+        "values": [
+          "create",
+          "rename",
+          "edit",
+          "review",
+          "reference"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Create/rename/edit of a file is observable from the diff; review of existing appendices is a task/phase fact; detecting that a plan, acceptance or doc references an appendix filename (new or existing) needs a reference observer or LLM judgement. For edit/review the rule fires when the appendix filename does not match the pattern (needs a filename-pattern observer)."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "appendix",
+          "mockup",
+          "diagram",
+          "spreadsheet"
+        ],
+        "observability": "llm_judged",
+        "note": "Plans or docs that attach or cite supporting appendix files for any owning planning artifact (e.g. a wagon, WMBT, feature or component)."
+      }
+    ],
+    "fires": [
+      "Planner adds a new appendix file (e.g. mockup, diagram, spreadsheet) for an owning planning artifact, wherever it is stored.",
+      "Planner renames or moves an existing appendix file.",
+      "Planner edits or reviews an existing appendix whose filename does not match the pattern (e.g. editing overview.png in place), even without renaming or referencing it.",
+      "A plan, acceptance or doc references an appendix filename, whether the appendix is about to be created or already exists (including an existing misnamed appendix such as overview.png)."
+    ],
+    "doesNotFire": [
+      "Editing the content of an already correctly named appendix file without renaming or referencing it under another name.",
+      "Files that are not appendices (plans, wagon/WMBT/acceptance definitions, source code, tests), even if they sit near appendix files.",
+      "Choosing which appendix type applies (governed by planner.appendix.types) or where to store it (planner.appendix.storage)."
+    ]
+  },
+  "given": "A planning artifact (for example a wagon, WMBT, feature or component) has, or needs, a supporting appendix file, regardless of where that file is stored.",
+  "when": "The planner creates, renames or references that appendix file, or edits or reviews an existing appendix whose filename does not follow the pattern.",
+  "then": "Name the file {artifact-name}_{type}_{filename}: the owning artifact's name first, one of the six recognized appendix types second, a descriptive filename last, separated by underscores.",
+  "prefer": [
+    "Use the owning artifact's exact name/id as the first segment (e.g. wagon slug, WMBT id like E023, feature slug, component name).",
+    "Take {type} only from the six recognized appendix types listed in planner.appendix.types (e.g. mockup, diagram, spreadsheet); look the list up there rather than guessing.",
+    "Make {filename} descriptive of the content (e.g. overview, sequence, tax-rules, states); hyphens are fine inside a segment.",
+    "When editing, reviewing or referencing an existing misnamed appendix, rename it to the pattern and update references to the new name."
+  ],
+  "avoid": [
+    "Bare filenames missing the {artifact-name} and {type} segments (e.g. overview.png).",
+    "Hyphens instead of underscores as segment separators (e.g. checkout-flow-mockup-overview.png).",
+    "Inventing a {type} value outside the six recognized appendix types."
+  ],
+  "unless": [],
+  "why": "Encoding the owning artifact and appendix type in the filename ensures uniqueness, traceability back to the artifact, and clear type identification without opening the file.",
+  "evidence": [
+    "Every appendix filename (created, renamed, edited, reviewed or referenced) splits on '_' into exactly three parts: artifact name, type, descriptive filename (+ extension).",
+    "The first part matches the name/id of an existing owning planning artifact (e.g. a wagon, WMBT, feature or component).",
+    "The second part is one of the six appendix types defined in planner.appendix.types."
+  ],
+  "verifier_detail": [
+    "Pattern: {artifact-name}_{type}_{filename}; underscores are segment separators, hyphens may appear inside segments.",
+    "Positive examples: checkout-flow_mockup_overview.png (wagon); E023_diagram_sequence.svg (wmbt); payment-processing_spreadsheet_tax-rules.xlsx (feature); PaymentForm_mockup_states.png (component). The artifact-kind annotations are illustrative, not an exhaustive list of owning artifact kinds.",
+    "Negative examples: overview.png (missing {artifact-name} and {type} segments); checkout-flow-mockup-overview.png (uses hyphens instead of underscore separators).",
+    "Term id: naming_pattern. Rationale value: ensures uniqueness, traceability, and clear type identification.",
+    "Appendix identity is not determined by path: an appendix storage directory is a non-exclusive signal; apply the pattern to appendix files and appendix references anywhere, including existing misnamed appendices that are edited or reviewed."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "source kind: pattern; status: active; name: 'Appendix: Naming Pattern'",
+    "implementation: {type: none} (no automated detector in source)",
+    "source: legacy_path src/atdd/planner/conventions/appendix.convention.yaml, legacy_section naming-pattern, extraction_mode high_fidelity",
+    "parity: source_fragments_preserved, examples_preserved, implementation_preserved, fix_hint_preserved all true; reviewed_at 2026-06-16",
+    "content.examples duplicate terms[0].examples.positive (without artifact-kind annotations)."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "Activation facts (file_kind appendix as llm_judged, non-exclusive path_glob **/appendices/** heuristic, operation create/rename/edit/review/reference, task terms) and fires/doesNotFire.",
+      "justification": "Source has no activation section; needed for firing. The source applies to appendix filenames unconditionally, so edit/review of existing misnamed appendices is included to avoid narrowing scope. The path heuristic is derived from the graph edge planner.appendix.storage and is explicitly non-exclusive."
+    },
+    {
+      "field": "when",
+      "text": "or edits or reviews an existing appendix whose filename does not follow the pattern",
+      "justification": "Aligns when with the full scope of the source statement (all appendix filenames), per auditor fix."
+    },
+    {
+      "field": "given",
+      "text": "Artifact kinds (wagon, WMBT, feature, component) given as examples of owning planning artifacts.",
+      "justification": "Taken from the positive-example annotations; presented as examples only, not as a scope restriction."
+    },
+    {
+      "field": "prefer[1]",
+      "text": "look the list up in planner.appendix.types rather than guessing",
+      "justification": "The source names 'six recognized appendix types' without enumerating them in this convention; the graph's mandatory requires-edge points to planner.appendix.types, so the planner is directed there instead of inventing a list."
+    },
+    {
+      "field": "prefer[2]",
+      "text": "hyphens are fine inside a segment",
+      "justification": "Inferred from the positive examples (checkout-flow, tax-rules) to disambiguate the hyphen negative example."
+    },
+    {
+      "field": "prefer[3]",
+      "text": "When editing, reviewing or referencing an existing misnamed appendix, rename it to the pattern and update references to the new name.",
+      "justification": "Operationalises the statement for existing misnamed appendices; adds no new obligation beyond the naming pattern."
+    },
+    {
+      "field": "avoid[2]",
+      "text": "Inventing a {type} value outside the six recognized appendix types.",
+      "justification": "Restates the statement's 'one of the six recognized appendix types' as an anti-pattern; enumerated list lives in planner.appendix.types."
+    },
+    {
+      "field": "evidence",
+      "text": "Split-on-underscore and owning-artifact existence checks",
+      "justification": "Source has no evidence section; these operationalise the pattern for reviewers."
+    },
+    {
+      "field": "verifier_detail[4]",
+      "text": "Appendix identity is not determined by path; includes edited/reviewed misnamed appendices.",
+      "justification": "Clarifies that the source's rule applies to appendix filenames generally, independent of location and operation."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Reflected in title; original name kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "prefer[1]",
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[1]",
+        "prefer[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[1]",
+        "prefer[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[1]",
+        "prefer[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[1]",
+        "prefer[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "then",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "why",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "verifier_detail[1]",
+        "prefer[0]",
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "verifier_detail[1]",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "verifier_detail[1]",
+        "prefer[0]",
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "verifier_detail[1]",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "avoid[0]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "avoid[1]",
+        "verifier_detail[2]"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,338 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.journey.definition.convention.yaml",
+    "sha256": "a163bb9d5140d17a0dac996d84a8efc9f833592407dbebaec94db25006e88e28"
+  },
+  "rule_id": "planner.journey.definition",
+  "kind": "rule",
+  "title": "Declare journeys as topology above interlockings: entrypoint, continuations, explicit terminals",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "journey document (shape: planner-schemas/journey.schema.json)"
+        ],
+        "observability": "observable_now",
+        "note": "Journey artifacts are planner data validated against the canonical journey schema."
+      },
+      {
+        "fact": "operation",
+        "values": [
+          "create",
+          "modify"
+        ],
+        "observability": "observable_now",
+        "note": "Planner authors or edits a journey document."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "journey",
+          "interlocking",
+          "continuation",
+          "terminal",
+          "Station Master",
+          "entrypoint",
+          "route"
+        ],
+        "observability": "observable_now",
+        "note": "Task text mentions journey topology or composing routing decisions."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "route continuation or terminal added/removed",
+          "entrypoint action added/changed"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Requires a diff-level observer over journey documents to detect changed continuations/terminals/entrypoints."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "interlocking selects/invokes another interlocking",
+          "wagon execution placed outside TrainRunner"
+        ],
+        "observability": "llm_judged",
+        "note": "Ownership-boundary absorption is a semantic judgement."
+      }
+    ],
+    "fires": [
+      "Planner adds a new journey that should be startable from Station Master actions.",
+      "Planner adds a route to an interlocking used by a journey and must decide whether the route terminates or continues.",
+      "Planner wants control to pass to another interlocking after a selected train finishes producing an artifact.",
+      "A plan proposes making an interlocking select another interlocking, or making a journey run wagons directly."
+    ],
+    "doesNotFire": [
+      "Planner edits only a single interlocking's train selection without touching any journey continuation or terminal.",
+      "Planner edits only wagon order inside one linear train.",
+      "Work on a Bun JourneyRunner runtime implementation (governed by runtime conventions, not this semantic definition)."
+    ]
+  },
+  "given": "A journey document composing routing decisions across interlockings, each interlocking selecting exactly one linear train",
+  "when": "the planner authors or changes the journey's entrypoint, routes, continuations or terminals",
+  "then": "Declare the journey as {station-entrypoint, entrypoint-interlocking, route-continuations, explicit-terminals}: if exposed, its starting Station Master actions, consumer surfaces and first interlocking; and for every route, after its selected train completes, either an explicit terminal or a continuation from (interlocking_id, route_id) via a named artifact that train produces to the next interlocking.",
+  "prefer": [
+    "Compose interlocking -> train -> interlocking; keep each interlocking a local boundary selecting one linear train.",
+    "Ownership: Interlocking selects the train, TrainRunner executes wagons linearly, Journey owns continuation.",
+    "Exposed journeys: Bun binds the declared Station Master actions to {journeyId, path} via coder.bun.station-master-journey-routing.",
+    "Treat journey artifacts as planner data; a separate Bun runtime may introduce a JourneyRunner."
+  ],
+  "avoid": [
+    "Recursive interlockings (one selecting or invoking another).",
+    "Moving wagon execution out of TrainRunner, or letting any of the three absorb the others.",
+    "Implicitly dangling routes, or continuations not keyed by an artifact the selected train produces.",
+    "Encoding runtime execution (e.g. a JourneyRunner) into the semantic journey definition."
+  ],
+  "unless": [],
+  "why": "Keeping continuation in the journey lets routing compose across interlockings without recursive interlockings or split wagon execution, so each boundary stays local and verifiable.",
+  "evidence": [
+    "Journey document validates against planner-schemas/journey.schema.json.",
+    "Exposed journeys list Station Master actions/consumer surfaces and an entrypoint interlocking.",
+    "Every (interlocking_id, route_id) reached by the journey has either an explicit terminal or a continuation naming an artifact produced by that route's selected train and a target interlocking.",
+    "No interlocking selects another interlocking; wagon execution remains in TrainRunner."
+  ],
+  "verifier_detail": [
+    "Journey shape: journey -> {station-entrypoint, entrypoint-interlocking, route-continuations, explicit-terminals}; canonical schema planner-schemas/journey.schema.json.",
+    "continuation = binding from one (interlocking_id, route_id) pair, through an artifact produced by that route's selected train, to the next interlocking.",
+    "terminal = explicit declaration that a route ends the journey rather than continuing to another interlocking.",
+    "station_entrypoint: exposed journeys declare Station Master actions and consumer surfaces; Bun binds those actions to {journeyId, path} via coder.bun.station-master-journey-routing.",
+    "Disposition advisory, severity 3."
+  ],
+  "audit": [
+    "schema_version 1.0.0; source kind: family; status: active; introduced_in 0.1.0.",
+    "Original name: 'Journey topology — composition above interlockings'.",
+    "Term ids: journey (label 'Journey topology'), station_entrypoint, continuation, terminal, ownership_boundary.",
+    "Metadata: severity 3, disposition advisory."
+  ],
+  "splitSuggestion": [
+    {
+      "id": "planner.journey.ownership-boundary",
+      "then": "Keep train selection in the interlocking, linear wagon execution in TrainRunner and continuation in the journey; no interlocking recursion and no component absorbs another.",
+      "segments": [
+        "S007",
+        "S010",
+        "S021",
+        "S022"
+      ]
+    }
+  ],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "split_suggestion",
+      "text": "The ownership-boundary statement (S007, S010, S021-S022) is an independent obligation; kept as prefer/avoid here and proposed as planner.journey.ownership-boundary.",
+      "justification": "Rule 2: one obligation in then."
+    },
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire situations and activation facts were derived from the statement; the source has no explicit activation.",
+      "justification": "Schema requires observable activation."
+    },
+    {
+      "field": "evidence",
+      "text": "Evidence checks are restatements of source definitions as verifiable conditions.",
+      "justification": "Schema requires evidence for verifier/reviewer."
+    },
+    {
+      "field": "note",
+      "text": "Coder-facing text exceeds the ~1,000-char guideline because the Bun routing binding (S015) and the planner-data/JourneyRunner clarification (S024) must be reader-facing for lossless placement.",
+      "justification": "Rule 8: losslessness wins over brevity."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "why"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "given",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "then",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "then",
+        "avoid[2]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "prefer[0]",
+        "avoid[0]",
+        "avoid[1]",
+        "evidence[3]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "audit"
+      ],
+      "note": "term id"
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "audit"
+      ],
+      "note": "term label"
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "then",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "audit"
+      ],
+      "note": "term id"
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "then",
+        "prefer[2]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "audit"
+      ],
+      "note": "term id"
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "then",
+        "avoid[2]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "audit"
+      ],
+      "note": "term id"
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "then",
+        "avoid[2]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "audit"
+      ],
+      "note": "term id"
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "evidence[0]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "prefer[3]",
+        "avoid[3]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "identity",
+        "verifier_detail[4]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "identity",
+        "verifier_detail[4]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

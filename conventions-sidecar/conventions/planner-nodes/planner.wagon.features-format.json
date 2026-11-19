@@ -1,0 +1,204 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.wagon.features-format.convention.yaml",
+    "sha256": "10bc3347732af9b18d6b8727adce343766911bdb5bb105712bd432b95c12511a"
+  },
+  "rule_id": "planner.wagon.features-format",
+  "kind": "rule",
+  "title": "Declare wagon features as an array of feature URN objects",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "wagon manifest"
+        ],
+        "observability": "observable_now",
+        "note": "Applies to every wagon manifest artifact, whether newly authored, edited, or existing and unchanged. The source supplies no path glob; recognising a wagon manifest relies on the repository's plan-layout classification (if none exists, this needs a manifest classifier). No operation or diff gate: the format contract describes the current state of every wagon."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "wagon manifest contains a `features` declaration"
+        ],
+        "observability": "needs_new_observer",
+        "note": "State-level (not diff-level) observer that parses a wagon manifest and reports that a `features` key is present and whether its value is an array (urn_format) or a mapping (legacy_format)."
+      }
+    ],
+    "fires": [
+      "Planner authors a new wagon manifest that declares features",
+      "Planner edits an existing wagon manifest's features list",
+      "An existing, unchanged wagon manifest still declares features as the deprecated legacy object map (name -> description)",
+      "A plan/validation pass inspects wagon manifests in the repository, including ones not touched by the current task"
+    ],
+    "doesNotFire": [
+      "Editing feature files themselves when no wagon manifest declares features in the inspected scope",
+      "Non-wagon artifacts (WMBTs, acceptances, docs) that do not declare wagon features",
+      "A wagon manifest that has no `features` declaration at all"
+    ]
+  },
+  "given": "A wagon manifest declares its features (new, edited, or already existing).",
+  "when": "The planner authors, edits, reviews or validates that wagon's `features` declaration.",
+  "then": "Declare the wagon's `features` as an array of objects each with a `urn` of the form `feature:{wagon-slug}:{feature-name}`; the legacy object map form is deprecated.",
+  "prefer": [
+    "Write features as `[{urn: feature:{wagon-slug}:{feature-name}}, ...]`, using this wagon's own slug as the middle segment.",
+    "When already editing a wagon's features that still use the deprecated legacy object map, consider migrating it to the URN array format (recommendation only; the source sets no migration deadline)."
+  ],
+  "avoid": [
+    "Introducing the deprecated legacy object map form `{feature-name: 'description'}` for the features declaration.",
+    "Bare strings or objects without a `urn` key in the features array."
+  ],
+  "unless": [],
+  "why": "The features declaration shape is a shared contract: the features-manifest rule and tooling consume the URN-array format, which keeps wagon-to-feature references traceable; the object map is the deprecated predecessor.",
+  "evidence": [
+    "Each wagon manifest's `features` value in urn_format is an array whose every element is an object with a `urn` matching `feature:{wagon-slug}:{feature-name}`.",
+    "Any wagon manifest whose `features` is an object map is reported as using the deprecated legacy_format (deprecation notice), distinct from a malformed urn_format declaration."
+  ],
+  "verifier_detail": [
+    "Term `features_format` = the features declaration shape. Values: urn_format = array of {urn: feature:{wagon-slug}:{feature-name}}; legacy_format = object map (deprecated).",
+    "Source example of urn_format: [{urn: feature:maintain-ux:provide-foundations}, {urn: feature:maintain-ux:compose-primitives}]",
+    "Source example of legacy_format (object), deprecated: {provide-foundations: 'Provide foundation design tokens'}",
+    "Detector: scan the current state of wagon manifests (not only diffs). If `features` is a mapping, report it as legacy_format (deprecated). If `features` is an array, flag elements lacking `urn` or whose urn does not start with `feature:{wagon-slug}:`. The source does not state whether deprecated legacy_format fails the check or is only reported; do not treat deprecation as an immediate prohibition without a source decision."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "kind: rule; status: active",
+    "source: legacy_path src/atdd/planner/conventions/wagon.convention.yaml, legacy_section artifact_contracts.features_format, legacy_sha ee0a3e1d5af414c9, extraction_mode high_fidelity",
+    "parity: source_fragments_preserved true, examples_preserved true, implementation_preserved false, fix_hint_preserved false, reviewed_at 2026-06-16",
+    "Original name: Wagon features format",
+    "Original statement: A wagon's features are declared as an array of URN objects (feature:{wagon-slug}:{feature-name}); the legacy object map is deprecated."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "why",
+      "text": "The features declaration shape is a shared contract: the features-manifest rule and tooling consume the URN-array format, which keeps wagon-to-feature references traceable; the object map is the deprecated predecessor.",
+      "justification": "Source has no rationale; derived from graph.json edge (features-manifest rule uses the urn-array format) and the deprecation statement."
+    },
+    {
+      "field": "prefer[1]",
+      "text": "When already editing a wagon's features that still use the deprecated legacy object map, consider migrating it to the URN array format (recommendation only).",
+      "justification": "Natural consequence of deprecation; explicitly a recommendation, not an immediate prohibition, since the source does not mandate migration."
+    },
+    {
+      "field": "avoid[1]",
+      "text": "Bare strings or objects without a `urn` key in the features array.",
+      "justification": "Restates the array-of-URN-objects shape negatively; no new obligation."
+    },
+    {
+      "field": "evidence[1]",
+      "text": "Legacy object maps reported as deprecated usage, distinct from malformed urn_format.",
+      "justification": "Gives the verifier a way to surface deprecated usage without converting deprecation into invalidity."
+    },
+    {
+      "field": "verifier_detail[3]",
+      "text": "Detector behaviour: state-level scan, mapping reported as deprecated legacy_format, urn prefix check on arrays.",
+      "justification": "Source has implementation_preserved=false; verifier needs an operational check derived from the term values; severity of deprecated usage left undetermined as in the source."
+    },
+    {
+      "field": "activation",
+      "text": "Activation facts, fires/doesNotFire (state-level, no create/edit or diff gate).",
+      "justification": "Required by schema; not present in source. Scoped to any wagon declaring features to match the source's unconditional format contract."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "avoid[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "verifier_detail[1]",
+        "prefer[0]"
+      ],
+      "note": "Project-specific example kept verbatim only for the verifier; coder field uses the neutral template."
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "verifier_detail[2]",
+        "avoid[0]"
+      ],
+      "note": "Kept as the deprecated legacy example; no invalidity judgement added."
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "then",
+        "verifier_detail[0]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "then",
+        "avoid[0]",
+        "verifier_detail[0]",
+        "evidence[1]"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,210 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.feature.feedback-loop-kind.convention.yaml",
+    "sha256": "adc3f9d4109fa1009a13b9614247bdc41978a9e308b14a8a316889b83a9fd551"
+  },
+  "rule_id": "planner.feature.feedback-loop-kind",
+  "kind": "rule",
+  "title": "Use the optional feature kind: feedback-loop only for producer->consumer correction loops",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "feature"
+        ],
+        "observability": "observable_now",
+        "note": "Planner is authoring or editing a feature artifact."
+      },
+      {
+        "fact": "operation",
+        "values": [
+          "create",
+          "edit"
+        ],
+        "observability": "observable_now",
+        "note": "Feature file created or modified (any edit, including behaviour edits that leave `kind:` unchanged)."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "resulting feature has an explicit `kind:` field present (any value, newly added, changed, or unchanged)"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Content-level observer that reports whether the feature being authored/edited explicitly carries a `kind:` field. Activation is presence-based, not diff-on-kind based: a feature already marked `kind:` is in scope whenever it is edited, even if `kind:` itself is not touched. Whether the feature is actually a correction loop (detect+emit, receive+react, predicate no longer fires) is NOT an activation fact; it is LLM-judged after activation as part of checking compliance, so explicitly marked non-loops are also checked."
+      }
+    ],
+    "fires": [
+      "A planner writes a new feature that explicitly includes a `kind:` field (any value).",
+      "A planner adds or changes the `kind:` value on an existing feature.",
+      "A planner edits the behaviour (detection, emission, consumer reaction, acceptances) of a feature that already carries an explicit `kind:` field, even though `kind:` itself is unchanged.",
+      "A feature explicitly marked `kind: feedback-loop` whose behaviour is not actually a correction loop is authored or edited — it must still be checked (and flagged)."
+    ],
+    "doesNotFire": [
+      "A feature, new or existing, that has no `kind:` field after the edit — it defaults to producer-only, the field is optional, and kind validators do not activate, whether or not its behaviour is a loop."
+    ]
+  },
+  "given": "You are authoring or editing a feature that carries (or will carry) an explicit optional `kind:` field, which classifies the feature's system archetype — including edits to the behaviour of an already-marked feature where `kind:` itself stays unchanged.",
+  "when": "You save the feature with an explicit `kind:` present.",
+  "then": "The explicit `kind:` must be `kind: feedback-loop`, and the feature's behaviour must be a producer->consumer correction loop: a producer detects a condition and emits, a consumer receives and reacts, and the detecting predicate then no longer fires.",
+  "prefer": [
+    "Write exactly `kind: feedback-loop` — the only valid explicit value of feature_kind.",
+    "Leave `kind:` absent for any feature that is not a correction loop; absence means producer-only and no kind validator activates.",
+    "When editing an already-marked feedback-loop feature, re-check that the edited behaviour still closes the loop (detect+emit, receive+react, predicate no longer fires)."
+  ],
+  "avoid": [
+    "Marking a producer-only feature (no consumer reaction closing the loop) as `kind: feedback-loop`.",
+    "Writing any explicit `kind:` value other than `feedback-loop` (including `producer-only`, which is the default when the field is absent rather than a listed valid value).",
+    "Skipping the check because you edited behaviour but not the `kind:` line of an already-marked feature."
+  ],
+  "unless": [],
+  "why": "Feature kind classifies the system archetype; validators activate only for explicitly-marked kinds, so the optional field lets marked loops be validated while existing (unmarked) features are unaffected.",
+  "evidence": [
+    "Every feature with an explicit `kind:` (after any create or edit) has the value `feedback-loop`, and its behaviour is a detect+emit / receive+react / predicate-no-longer-fires loop (judged for every explicitly marked feature, including incorrectly marked non-loops).",
+    "Features without `kind:` are treated as producer-only and are not flagged by kind validators."
+  ],
+  "verifier_detail": [
+    "Term feature_kind = the feature's system archetype; valid_values: [feedback-loop]; default when absent: producer-only.",
+    "Field is optional; validators activate only for explicitly-marked kinds (presence of `kind:` in the feature, regardless of whether the current diff touched it), so features without `kind:` must not be flagged and existing features are unaffected (issue #825).",
+    "Example: `kind: feedback-loop`."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind: rule; status: active.",
+    "source: legacy_path src/atdd/planner/conventions/feature.convention.yaml, legacy_section feature_kind, legacy_sha 4a95544261fb9541, extraction_mode high_fidelity.",
+    "parity: source_fragments_preserved true, examples_preserved true, implementation_preserved false, fix_hint_preserved false, reviewed_at 2026-06-16.",
+    "Name: 'Feature kind: feedback-loop'. Normative text references issue #825."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire situations and presence-based change fact",
+      "justification": "Required by schema; derived from the source statement (detect+emit, receive+react, predicate no longer fires) and normative text (optional field, validators only for explicitly-marked kinds, existing features unaffected)."
+    },
+    {
+      "field": "avoid[1]",
+      "text": "Do not write `kind: producer-only` or any value other than feedback-loop explicitly",
+      "justification": "Derived from valid_values containing only feedback-loop while producer-only is the absent-field default; makes the value constraint actionable for planners."
+    },
+    {
+      "field": "prefer[2]/avoid[2]",
+      "text": "Re-check loop behaviour when editing an already-marked feature even if `kind:` is unchanged",
+      "justification": "Makes the source's presence-based validator activation (explicitly-marked kinds) actionable; not a new obligation, just the scope of the existing one."
+    },
+    {
+      "field": "coder-facing length",
+      "text": "Coder-facing text slightly exceeds ~1,000 characters",
+      "justification": "Needed to state presence-based scope (edits to already-marked features) losslessly per auditor fixes."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Name becomes basis of title."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "then",
+        "why",
+        "prefer[2]",
+        "evidence[0]"
+      ],
+      "note": "Optional classification kept; loop characteristics checked as compliance, not activation."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "activation",
+        "given",
+        "prefer[1]",
+        "avoid[2]",
+        "why",
+        "evidence[1]",
+        "verifier_detail[1]"
+      ],
+      "note": "Activation is presence of explicit kind, including behaviour edits to already-marked features."
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "given",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "then",
+        "prefer[0]",
+        "avoid[1]",
+        "evidence[0]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "prefer[1]",
+        "evidence[1]",
+        "verifier_detail[0]"
+      ]
+    }
+  ]
+}

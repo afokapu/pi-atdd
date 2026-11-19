@@ -1,0 +1,334 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/tester.htmx/tester.htmx.verb-endpoint-coverage.convention.yaml",
+    "sha256": "41b6ff2a519040a5eb9834bcdee88ad1d470a69430bc9a39be667dc321dcd14c"
+  },
+  "rule_id": "tester.htmx.verb-endpoint-coverage",
+  "kind": "rule",
+  "title": "Every htmx endpoint declared in markup has a test",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "template",
+          "markup",
+          "source containing hx- verb attributes"
+        ],
+        "observability": "observable_now",
+        "note": "Templates/source files in the scan mount carrying hx-get/hx-post/hx-put/hx-patch/hx-delete attributes; every such declaration counts, whether or not it was changed."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "test"
+        ],
+        "observability": "observable_now",
+        "note": "The same scan mount must contain at least one test file; otherwise the rule is a no-op."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "htmx_tester_detector: endpoint not mentioned by any test in the same mount"
+        ],
+        "observability": "observable_now",
+        "note": "Produced by the source-named validator htmx_tester_detector, which scans the whole mount (not a diff)."
+      }
+    ],
+    "fires": [
+      "A template gains hx-get=\"/x/y\" and no test file in the same mount mentions /x/y.",
+      "An existing, unchanged template in a mount that contains tests declares an hx-post endpoint that no test file mentions.",
+      "A mount with tests has an hx-delete endpoint with a dynamic segment and no test hits any concrete path under its static prefix."
+    ],
+    "doesNotFire": [
+      "The scan mount contains markup but no test files at all (coverage no-op).",
+      "A test hits a concrete id (e.g. /orders/1) for a templated endpoint /orders/:id.",
+      "The hx- endpoint is an absolute URL (that is coder.htmx.verb-endpoint-same-origin's finding)."
+    ]
+  },
+  "given": "A scan mount containing test files and markup declaring endpoints via htmx verb attributes (hx-get, hx-post, hx-put, hx-patch, hx-delete)",
+  "when": "The mount is scanned: every declared hx- verb endpoint, changed or not, is checked against the mount's tests",
+  "then": "Every endpoint declared by an htmx verb attribute MUST be exercised by at least one test in the same mount.",
+  "prefer": [
+    "Write a test exercising the endpoint: `<div hx-get=\"/invoices/overdue\" hx-target=\"#late\"></div>` (declared) is covered by `const res = await fetch(\"/invoices/overdue\"); expect(res.status).toBe(200);` (exercised).",
+    "If the surface is not real, delete the hx- attribute instead.",
+    "Read the markup as the route space: the hx- attribute IS the request."
+  ],
+  "avoid": [
+    "Adding an hx- verb attribute with no test, so a new server surface exists that nothing records.",
+    "Reporting endpoints uncovered on a source-only mount."
+  ],
+  "unless": [
+    "The mount contains no test files: skip it entirely.",
+    "A dynamic segment matches on its static prefix (`/orders/1` covers `/orders/:id`).",
+    "Absolute-URL endpoints are `coder.htmx.verb-endpoint-same-origin`'s finding."
+  ],
+  "why": "An htmx endpoint is an element attribute, not an enumerable router-table entry, so the route space grows and is forgotten easily; this rule notices new surfaces. A coverage claim needs a suite to measure against, so without tests it stays silent.",
+  "evidence": [
+    "htmx_tester_detector reports no endpoint that no test file in the same mount mentions.",
+    "For each hx- verb endpoint in the mount (changed or not), a test file in the same mount references it literally or up to a dynamic segment."
+  ],
+  "verifier_detail": [
+    "Collect every hx- verb endpoint (hx-get, hx-post, hx-put, hx-patch, hx-delete) from templates and source; collect the text of every test file in the same mount; report an endpoint no test mentions.",
+    "Matching: a literal match counts, as does a match up to a dynamic segment (static-prefix match), so `/orders/1` covers `/orders/:id`.",
+    "Coverage no-op (term coverage_no_op): when a scan mount holds markup but no test files, emit nothing rather than report every endpoint uncovered. A coverage rule needs both sides; a source-only scan is not evidence of a missing test; and a tester-persona rule must not produce findings on a tree containing no tests. The no-op matters as much as the check.",
+    "Route space (term route_space): the set of endpoints the application actually exposes; for htmx it is every hx- verb attribute in the templates, because that attribute IS the request (for Convex it is the interlocking YAML). Reading markup rather than a plan file is not a boundary violation but the honest location of the declaration in this stack.",
+    "Skip absolute-URL endpoints; they belong to coder.htmx.verb-endpoint-same-origin.",
+    "Severity 2; disposition strict (see shared:policy.strict-disposition)."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "Aliases: BUN-ENDPOINT-COVERAGE-001.",
+    "Implementation: validator, ref htmx_tester_detector.",
+    "Bun/htmx realization mirroring tester.convex.interlocking-route-coverage; the declaration source differs and that difference IS the adaptation — a Convex route is declared in plan/_trains/_interlockings/**/*.yaml, an htmx endpoint is declared in the markup, so the markup is this stack's route space. Direct counterpart of the Convex coverage rule; 'this is the rule that notices'.",
+    "Severity 2; disposition strict."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "strict: fails on every finding; no advisory mode, no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "Activation facts, fires and doesNotFire examples derived from the source's scan behaviour and exceptions.",
+      "justification": "Required by the output structure; restates source scan scope and exceptions, adds no new obligation."
+    },
+    {
+      "field": "evidence",
+      "text": "Evidence bullets phrased as verifier checks.",
+      "justification": "Required field; derived directly from content.summary and implementation ref."
+    },
+    {
+      "field": "when",
+      "text": "When phrased as a mount scan covering every declared endpoint, changed or not.",
+      "justification": "Source has no trigger event; the validator scans the whole mount, so the When restates that scope without adding a prerequisite."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "given",
+        "when"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit",
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[3]",
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[2]",
+        "unless[0]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[2]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[0]",
+        "evidence[0]",
+        "when"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[1]",
+        "unless[1]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "why",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "avoid[0]",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "verifier_detail[2]",
+        "why",
+        "unless[0]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "prefer[0]",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "unless[0]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "unless[2]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "identity",
+        "verifier_detail[5]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

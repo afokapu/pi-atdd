@@ -1,0 +1,452 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/tester.bun/tester.bun.red-fails-first.convention.yaml",
+    "sha256": "232c42033cea8f935a84cd86769cfd273bf6e4772e2d2ff3ed66117a3c8e689d"
+  },
+  "rule_id": "tester.bun.red-fails-first",
+  "kind": "rule",
+  "title": "RED tests carry a guaranteed-fail marker",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "test"
+        ],
+        "observability": "observable_now",
+        "note": "Only test files are subject to the RED gate. Any bun:test file (TypeScript or JavaScript) is in scope; the core TypeScript pattern set is the accepted marker vocabulary, not a language eligibility filter."
+      },
+      {
+        "fact": "phase",
+        "values": [
+          "RED"
+        ],
+        "observability": "observable_now",
+        "note": "The declared `Phase: RED` header is read by the existing validator bun_tester_discipline_detector (source implementation), which scans RED-phase files. Files with no declared phase are skipped (phase-declared owns that finding). Applies to every RED-phase file scanned, not only changed ones."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "red-file-without-red-marker"
+        ],
+        "observability": "observable_now",
+        "note": "Emitted by the existing validator bun_tester_discipline_detector; it is a whole-file result (the RED-phase file contains none of the accepted markers), not a per-case fact."
+      }
+    ],
+    "fires": [
+      "A bun:test file declares `Phase: RED` and contains none of the accepted guaranteed-fail markers anywhere in the file.",
+      "A JavaScript bun:test file declares `Phase: RED` and contains none of the accepted markers (marker vocabulary is the core TypeScript set; the file language does not exempt it).",
+      "A bun:test file declares `Phase: RED`, its cases contain only behavioral assertions, and no accepted marker appears anywhere in the file (the per-test obligation still applies to each case, but the detector finding is file-level)."
+    ],
+    "doesNotFire": [
+      "A test file declaring `Phase: GREEN` or `Phase: REFACTOR`.",
+      "A test file with no declared phase (that is phase-declared's finding).",
+      "A non-test production source file.",
+      "A RED case that has a marker but lacks a behavioral witness (that is red-behavioral-assertion's finding, not this marker detector's).",
+      "Flagging `it.fails` / `test.failing` as a self-skip (no-self-skip deliberately does not flag them)."
+    ]
+  },
+  "given": "A bun:test test declaring Phase: RED",
+  "when": "the RED test is written, edited, or scanned by the RED gate",
+  "then": "Each RED test MUST contain at least one accepted guaranteed-fail marker: `throw new Error('Not implemented …')`, `throw new UnimplementedError(…)`, `expect(false).toBe(true)`, `expect(true).toBe(false)`, `expect.fail(…)`, `return Promise.reject(…)`, `it.fails(`, or `test.failing(` (bun:test's spelling of `it.fails(`, accepted identically).",
+  "prefer": [
+    "Write the behavioral oracle first (required by red-behavioral-assertion): derive it from the bound acceptance's Given/When/Then so it fails because the behavior is not implemented correctly.",
+    "Then add one marker after the stimulus runs, e.g. `expect.fail(\"<behavior> not implemented yet\");` or `throw new Error(\"Not implemented: <behavior>\");`.",
+    "Remove the marker in GREEN only once the behavioral assertion carries the proof and passes."
+  ],
+  "avoid": [
+    "Using the marker as the only meaningful reason the test is red.",
+    "Throwing before the declared stimulus is exercised.",
+    "Wrapping a vacuous or already-passing case in `it.fails` / `test.failing`.",
+    "Weakening the behavioral assertion because the marker already guarantees failure."
+  ],
+  "unless": [],
+  "why": "Failing-first is a runtime property no static detector can observe; the marker is the decidable structural proxy. It aids the detector; it is not the RED objective or the behavioral oracle.",
+  "evidence": [
+    "Detector finds at least one accepted marker in every `Phase: RED` file; reviewer confirms each RED case carries one.",
+    "The case also contains the behavioral witness required by red-behavioral-assertion.",
+    "Running the target case confirms it reaches the intended behavior.",
+    "Causal check: apart from the structural marker, the behavioral oracle would still fail for the expected missing-behavior reason without relying on the unconditional marker."
+  ],
+  "verifier_detail": [
+    "File-level detector: flags any `Phase: RED` file containing none of the core TypeScript RED markers (transcribed from CORE `red.convention.yaml` -> `red_patterns.typescript`): `throw new Error('Not implemented …')`, `throw new UnimplementedError(…)`, `expect(false).toBe(true)`, `expect(true).toBe(false)`, `expect.fail(…)`, `return Promise.reject(…)`, `it.fails(` / `test.failing(`. The detector is exactly this structural proxy check; it does not report per-case absence when another case in the file supplies a marker. The pattern set defines the marker vocabulary; it does not restrict which bun:test files (TS or JS) are scanned.",
+    "`test.failing(` is bun:test's spelling of vitest's `it.fails(` and is accepted identically.",
+    "Only RED-phase files are scanned.",
+    "Files with no declared phase are skipped; that is `phase-declared`'s finding.",
+    "`it.fails` / `test.failing` are markers, NOT self-skips — `no-self-skip` deliberately does not flag them.",
+    "Term red_marker: a guaranteed-fail construct: throw new Error('Not implemented…'), expect.fail(…), expect(false).toBe(true), return Promise.reject(…), it.fails( / test.failing(.",
+    "Term structural_proxy: what this rule checks. Whether a test ACTUALLY fails first is a runtime property; core supplies the decidable stand-in. The obligation is agnostic; only the marker syntax is stack-specific.",
+    "Complementarity: `red-behavioral-assertion` asks whether the case encodes the missing behavior; this rule gives the static gate evidence that the artifact is intentionally in RED.",
+    "A test whose only meaningful reason for failing is `expect.fail(...)`, an unconditional throw before the stimulus, or a failing wrapper around an otherwise passing case is mechanically red while the acceptance remains unproven."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "kind: rule",
+    "status: active",
+    "Bun realization of core `tester.red.test-must-fail-first`, mirroring `tester.convex.red-fails-first` rule for rule.",
+    "aliases: TESTER-RED-FAILS-FIRST-001, BUN-RED-FAILS-FIRST-001",
+    "severity: 3",
+    "disposition: strict",
+    "introduced_in: 0.1.0",
+    "implementation: {type: validator, ref: bun_tester_discipline_detector}",
+    "Original fix_hint example markers: `expect.fail(\"checkout rejection not implemented yet\");` // or `throw new Error(\"Not implemented: checkout rejection\");`",
+    "Original fix_hint section headings: 'Behavioral proof:', 'Structural proxy:', 'Avoid:', 'Verify:'."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "prefer[1]",
+      "text": "Replaced the application-specific noun 'checkout rejection' in the source example snippets with a `<behavior>` placeholder.",
+      "justification": "Rule 4 requires codebase-neutral prefer text; verbatim originals kept in audit."
+    },
+    {
+      "field": "prefer[1]",
+      "text": "'after the stimulus runs'",
+      "justification": "Positive restatement of the source's avoid 'throwing before the declared stimulus is exercised' (S035), so the example is not misapplied; no new obligation."
+    },
+    {
+      "field": "prefer[0]",
+      "text": "'(required by red-behavioral-assertion)'",
+      "justification": "Restates source S021 ('The case must also contain the behavioral witness required by red-behavioral-assertion'); the obligation is owned by that sibling rule."
+    },
+    {
+      "field": "when",
+      "text": "When phrased as 'the RED test is written, edited, or scanned by the RED gate'.",
+      "justification": "The source has no explicit trigger event; this wording mirrors the source scope (all RED-phase files scanned) without adding a change-only restriction."
+    },
+    {
+      "field": "then",
+      "text": "Coder-facing text may slightly exceed ~1,000 characters because the full accepted-marker vocabulary and the it.fails/test.failing equivalence are inlined in `then`.",
+      "justification": "Auditor required the marker vocabulary to be coder-facing; losslessness wins over brevity."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "given"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "then",
+        "verifier_detail[0]"
+      ],
+      "note": "Full accepted marker list is coder-facing in then; provenance kept in verifier_detail. The TypeScript pattern set is marker vocabulary, not a language filter on activation."
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "then",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[6]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[0]",
+        "activation"
+      ],
+      "note": "Activation fires describe whole-file absence; no language restriction."
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "then",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "why",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "avoid[0]",
+        "avoid[1]",
+        "avoid[2]",
+        "verifier_detail[8]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "evidence[1]",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "verifier_detail[7]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "evidence[3]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "prefer[0]",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "structure",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "structure",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "prefer[1]",
+        "audit"
+      ],
+      "note": "Neutralised noun to <behavior>; verbatim kept in audit."
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "prefer[1]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "prefer[1]",
+        "audit"
+      ],
+      "note": "Neutralised noun to <behavior>; verbatim kept in audit."
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "structure",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "structure",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "evidence[3]"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "activation",
+        "verifier_detail[2]"
+      ],
+      "note": "Scope limit, not a waiver; expressed as activation."
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "activation",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "activation",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S045",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S046",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S047",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Kept as 'disposition: strict' verbatim; no enforcement semantics added."
+    },
+    {
+      "seg": "S048",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S049",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

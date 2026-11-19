@@ -1,0 +1,241 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.train.dependencies.convention.yaml",
+    "sha256": "7e77e004ca5fd0c00938e7e483df800980d90c0e833767954d2209f379d2e874"
+  },
+  "rule_id": "planner.train.dependencies",
+  "kind": "rule",
+  "title": "Reference train prerequisites as train:{train_id}",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "train spec",
+          "train registry entry"
+        ],
+        "observability": "observable_now",
+        "note": "Train specification files are identifiable by kind; the dependencies section lives in the train spec. Fires on authoring, editing, reviewing or validating any train spec, not only on dependency edits."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "train",
+          "dependency",
+          "dependencies",
+          "prerequisite",
+          "depends on",
+          "train order",
+          "sequence trains"
+        ],
+        "observability": "observable_now",
+        "note": "Planning task text mentions trains, their ordering or prerequisites."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "train spec added or edited",
+          "train dependency list added or edited"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Needs a diff-level observer that detects train spec changes, including the dependencies field."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "dependency reference not matching pattern",
+          "train depends on itself",
+          "circular train dependency",
+          "consumer train missing dependency on its producer train"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Needs a detector that validates every existing dependency entry's format and walks the whole train dependency graph (including self-edges) for cycles; the producer/consumer check is llm_judged unless train-level produce/consume data is available."
+      }
+    ],
+    "fires": [
+      "Planner authors a new train that needs another train's outputs or foundation first",
+      "Planner edits the dependencies list of an existing train",
+      "Planner adds or edits a train that consumes data produced by another train",
+      "Planner reviews or validates existing train specs, including ones whose dependencies list contains malformed references, a self-reference, or a cycle",
+      "Planner edits any part of a train spec whose existing dependencies violate the reference format or form a cycle"
+    ],
+    "doesNotFire": [
+      "Editing a wagon's internal acceptances or WMBTs without touching or reviewing any train spec",
+      "Authoring documentation or plans that do not define, edit or validate train specs"
+    ]
+  },
+  "given": "A train spec exists or is being authored, edited, reviewed or validated, with or without existing dependency entries",
+  "when": "The planner writes, changes or checks that train's dependencies",
+  "then": "Every entry in the train's dependencies must be a prerequisite train reference of the form train:{train_id} matching ^train:[0-9]{2}-[a-z][a-z0-9-]*$.",
+  "prefer": [
+    "Foundation (commons) trains, such as authentication/session foundations, often precede the trains that build on them (foundation_first); order them first when that applies — this is a frequent pattern, not an unconditional requirement."
+  ],
+  "avoid": [
+    "A data-flow consumer train that does not depend on the train producing the data it consumes — consumers must depend on producers (data_flow).",
+    "Circular dependencies between trains — direct, transitive, or a train listing itself — are forbidden.",
+    "Free-text, bare-id or wagon references in the dependencies list instead of train:{train_id}.",
+    "Reversing direction: making a producer depend on its consumer."
+  ],
+  "unless": [],
+  "why": "A dependency is a prerequisite train reference; a uniform train:{train_id} form lets tooling resolve ordering, consumers need their producers first, and a cycle makes the trains impossible to sequence.",
+  "evidence": [
+    "Every entry in each train's dependencies matches ^train:[0-9]{2}-[a-z][a-z0-9-]*$ and resolves to an existing train.",
+    "A graph walk over all train dependencies (including self-edges) finds no cycle.",
+    "Each consumer train lists the train producing its consumed data among its dependencies; no producer depends on its consumer."
+  ],
+  "verifier_detail": [
+    "Term 'dependency' = a prerequisite train reference; pattern ^train:[0-9]{2}-[a-z][a-z0-9-]*$; circular: forbidden.",
+    "Source example (foundation_first): train:00-auth-session before train:30-match-solo.",
+    "Source example (data_flow): train:30-match-solo depends on train:21-scenario-curation.",
+    "Validate existing entries on every train spec, not only changed ones; a train referencing itself is a cycle of length one."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active",
+    "source: legacy_path src/atdd/planner/conventions/train.convention.yaml, legacy_section dependencies, legacy_sha 825602729f11a3a4, extraction_mode high_fidelity",
+    "parity: source_fragments_preserved true, examples_preserved true, implementation_preserved false, fix_hint_preserved false, reviewed_at 2026-06-16",
+    "name: Train dependencies"
+  ],
+  "splitSuggestion": [
+    {
+      "id": "planner.train.dependencies-acyclic",
+      "then": "The train dependency graph must contain no direct, transitive or self-referential cycle.",
+      "segments": [
+        "S006",
+        "S014"
+      ]
+    },
+    {
+      "id": "planner.train.dependencies-data-flow",
+      "then": "A train that consumes data produced by another train must list that producer train among its dependencies.",
+      "segments": [
+        "S006",
+        "S009"
+      ]
+    }
+  ],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "split_suggestion",
+      "text": "The source statement holds three independent obligations: reference format (kept in then), acyclicity (planner.train.dependencies-acyclic) and consumer-depends-on-producer (planner.train.dependencies-data-flow). The latter two are stated normatively in avoid here until split.",
+      "justification": "Rule 2: one obligation in then."
+    },
+    {
+      "field": "avoid",
+      "text": "Free-text, bare-id or wagon references; producer depending on its consumer; a train listing itself treated as a cycle.",
+      "justification": "Concrete anti-patterns derived directly from the required pattern, the data_flow direction and 'circular: forbidden' (a self-reference is the shortest cycle); no new obligation."
+    },
+    {
+      "field": "evidence",
+      "text": "References resolve to an existing train.",
+      "justification": "A prerequisite reference is only meaningful if it names a real train (graph edge runs_alongside planner.train.registry)."
+    },
+    {
+      "field": "verifier_detail",
+      "text": "Validate existing entries on every train spec, not only changed ones.",
+      "justification": "The source prohibitions apply to train dependencies generally, not only to edits (auditor activation finding)."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "prefer[0]",
+        "avoid[0]",
+        "avoid[1]",
+        "evidence[2]"
+      ],
+      "note": "Format in then; 'often precede' kept qualified in prefer[0]; mandatory consumer→producer in avoid[0]; circular forbidden in avoid[1]."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "verifier_detail[1]",
+        "prefer[0]"
+      ],
+      "note": "Project-specific example kept verbatim in verifier_detail; generalized in prefer."
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "verifier_detail[2]",
+        "avoid[0]"
+      ],
+      "note": "Project-specific example kept verbatim in verifier_detail; generalized in avoid."
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "why",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "then",
+        "evidence[0]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "avoid[1]",
+        "evidence[1]",
+        "verifier_detail[0]"
+      ]
+    }
+  ]
+}

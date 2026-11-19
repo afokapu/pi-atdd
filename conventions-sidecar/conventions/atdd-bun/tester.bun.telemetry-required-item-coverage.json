@@ -1,0 +1,296 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/tester.bun/tester.bun.telemetry-required-item-coverage.convention.yaml",
+    "sha256": "1cf7430a496c0f6760e46b8ceac629e753cd91ec08018bfc5f16b52a50b61459"
+  },
+  "rule_id": "tester.bun.telemetry-required-item-coverage",
+  "kind": "rule",
+  "title": "Bind every required telemetry item to a test via a `// Telemetry:` header",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "acceptance_decision",
+          "tracking_plan",
+          "test"
+        ],
+        "observability": "observable_now",
+        "note": "Required items come from acceptance decisions intersected with tracking-plan items; bindings come from `// Telemetry:` headers in any test file (no filename pattern or task reference required)."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "required_telemetry_item_added_or_changed",
+          "telemetry_header_removed",
+          "test_file_deleted"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Diff-level detection of changes to acceptance telemetry requirements, tracking-plan items, or test `// Telemetry:` headers."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "required_telemetry_item_without_test_binding"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Set difference (required items − `// Telemetry:` header bindings across all test files) computed by the bun_telemetry_test validator."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "telemetry_adopted"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Rule is inert until the repository adopts this rule family; adoption state must be detected."
+      }
+    ],
+    "fires": [
+      "An acceptance with required telemetry lists a URN that exists in the tracking plan, and no test file anywhere carries a `// Telemetry:` header naming that URN.",
+      "An acceptance newly requires a tracking-plan URN (or the item is added to the plan) and no test binds it.",
+      "After a test is deleted or its `// Telemetry:` header removed, an adopted, still-required, resolvable item has no remaining test binding."
+    ],
+    "doesNotFire": [
+      "A diagnostic log or internal span that no acceptance requires has no dedicated test.",
+      "A required URN cannot be resolved in the tracking plan (reported by the acceptance-decision rule instead).",
+      "A binding header is removed but another test file still binds the same required item.",
+      "The repository has not adopted the telemetry rule family."
+    ]
+  },
+  "given": "An acceptance with required telemetry lists a concrete URN that exists in the tracking plan (a required item)",
+  "when": "Required items, the tracking plan, or test files' `// Telemetry:` headers are added, changed or removed",
+  "then": "Ensure at least one test file binds each required item with a `// Telemetry: <urn>` header.",
+  "prefer": [
+    "Add a telemetry test whose header names the acceptance (`// Acceptance: <acc-id>`) and the item (`// Telemetry: <telemetry-urn>`), and whose body proves the item is emitted."
+  ],
+  "avoid": [
+    "Leaving a required item planned and implemented but untested.",
+    "Adding a `// Telemetry:` header to a test that does not exercise the item just to close the gap."
+  ],
+  "unless": [
+    "Diagnostic logs and internal spans an acceptance does not require need no dedicated test — only required items are covered by this closure.",
+    "Inert until the repository adopts this rule family."
+  ],
+  "why": "Evidence leg of the traceability tripod (planned, implemented, tested): the coder rule binds the implementation, this binds the proof. A required item no test covers is a plan nobody can rely on.",
+  "evidence": [
+    "For every required item (acceptance-required URN present in the tracking plan) at least one test file has a `// Telemetry:` header naming it.",
+    "The bun_telemetry_test validator reports no uncovered required items."
+  ],
+  "verifier_detail": [
+    "required_item: a concrete telemetry URN listed by an acceptance whose telemetry disposition is required and that exists in the tracking plan.",
+    "Required items are collected from acceptance decisions; test bindings are collected from every `// Telemetry:` header in test files.",
+    "Report the difference (required items without a binding) at the tracking-plan item's own file.",
+    "Unresolvable required URNs belong to the acceptance-decision rule and are not double-reported here.",
+    "Fix hint from source ('Give the item its proof:'): `// tests/.../accept-response.telemetry.test.ts` / `// Acceptance: acc:commons:E001-UNIT-001` / `// Telemetry: telemetry:metric:be:commons:response-invocation-accepted:duration`.",
+    "Severity 2; disposition strict (see shared policy.strict-disposition)."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active.",
+    "Alias: TESTER-TELEMETRY-REQUIRED-ITEM-COVERAGE-001.",
+    "Introduced in 0.7.0.",
+    "Implementation: validator, ref bun_telemetry_test.",
+    "Source name: 'Every required telemetry item has a telemetry test'."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "strict: atdd-bun fails on every finding; it has no advisory mode and no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "avoid",
+      "text": "Adding a `// Telemetry:` header to a test that does not exercise the item just to close the gap.",
+      "justification": "Guards against metric gaming of a header-based coverage check; implied by 'binds the proof' but not literally in source."
+    },
+    {
+      "field": "prefer",
+      "text": "Codebase-neutral rendering of the fix hint using placeholders (<acc-id>, <telemetry-urn>) and 'body proves the item is emitted'.",
+      "justification": "Source fix hint uses project-specific identifiers; verbatim snippet kept in verifier_detail."
+    },
+    {
+      "field": "activation",
+      "text": "fires cases for newly required items and for removed headers/deleted tests leaving an adopted, still-required, resolvable item unbound; doesNotFire case for a removed header when another binding remains.",
+      "justification": "Concrete situations following directly from the set-difference check."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Basis for title; verbatim name kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "given"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "verifier_detail[0]",
+        "given"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "verifier_detail[0]",
+        "given",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "why",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[1]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[1]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[3]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "verifier_detail[4]",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "verifier_detail[4]",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "verifier_detail[4]",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "verifier_detail[4]",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "unless[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "unless[1]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "identity",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

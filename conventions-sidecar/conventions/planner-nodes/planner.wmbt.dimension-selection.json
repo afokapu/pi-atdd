@@ -1,0 +1,278 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.wmbt.dimension-selection.convention.yaml",
+    "sha256": "03e226c220f9ae8cbb270aa8c4745892e614a05f9d628017853c3809e7ced2d2"
+  },
+  "rule_id": "planner.wmbt.dimension-selection",
+  "kind": "rule",
+  "title": "Pick exactly one optimization dimension per WMBT",
+  "activation": {
+    "facts": [
+      {
+        "fact": "task_term",
+        "values": [
+          "WMBT",
+          "dimension",
+          "optimization metric",
+          "acceptance"
+        ],
+        "observability": "observable_now",
+        "note": "Task text mentions authoring or revising a WMBT or its dimension."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "**/plan/**",
+          "**/wagons/**",
+          "**/*.wmbt.*",
+          "**/*wmbt*.yaml"
+        ],
+        "observability": "observable_now",
+        "note": "Planning artifacts where WMBTs live; exact globs depend on repo topology."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "wmbt_added",
+          "wmbt_dimension_changed",
+          "wmbt_edited"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Needs a structured diff observer that detects a WMBT entry being added or edited, including its dimension field."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "wmbt_missing_dimension",
+          "wmbt_multiple_dimensions",
+          "wmbt_dimension_not_in_catalog"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Detector must parse WMBT entries and compare dimension against the six-value catalog; these findings activate the rule regardless of which part of the WMBT is being edited."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "intent matches dimension keywords"
+        ],
+        "observability": "llm_judged",
+        "note": "Whether the chosen dimension matches the user's intent can only be judged semantically."
+      }
+    ],
+    "fires": [
+      "Planner writes a new WMBT for a wagon and must state what the user wants to optimize.",
+      "Planner edits an existing WMBT statement so that its optimization goal changes.",
+      "A WMBT statement names two metrics (e.g. faster and cheaper) and the planner must choose one.",
+      "Planner edits any part of a WMBT that currently has no dimension, several dimensions, or a dimension outside the catalog."
+    ],
+    "doesNotFire": [
+      "Editing a WMBT's acceptance steps or wording without touching its dimension or optimization goal, when that WMBT already has exactly one catalog dimension.",
+      "Writing code, tests, or docs that are not WMBT planning artifacts.",
+      "Choosing the lens for a WMBT (covered by planner.wmbt.lens-selection)."
+    ]
+  },
+  "given": "A WMBT is being authored or revised from a user's intent",
+  "when": "the planner states what the user wants to optimize",
+  "then": "Select exactly one optimization dimension (the core metric the user wants to optimize) from: Time, Effort, Likelihood, Frequency, Quantity/Amount, Financial Value.",
+  "prefer": [
+    "Match the user's intent to a dimension via its keywords; decompose into dimension/actor/action/object using the description and rationale.",
+    "Time = duration/speed/waiting/delay/rework (performer's most finite resource); Effort = physical or cognitive load (muscular force or concentration/learning/decision-making); Likelihood = probability of an outcome (predictability, control, success vs error).",
+    "Frequency = rate of occurrence (reduce repetitive/non-value-added tasks); Quantity/Amount = volume of a resource consumed or produced (optimize inputs/outputs); Financial Value = monetary impact (cost, revenue, opportunity cost).",
+    "Shape like: 'Time: minimize onboarding time', 'Likelihood: increase usable experiment results', 'Effort: reduce mental effort to find a bug'."
+  ],
+  "avoid": [
+    "Assigning two or more dimensions to one WMBT; split the WMBT instead.",
+    "Using a dimension outside the six-value catalog."
+  ],
+  "unless": [],
+  "why": "One dimension names the core metric to optimize; statement templates and acceptance metrics derive from it, so mixing breaks that mapping.",
+  "evidence": [
+    "Each WMBT has exactly one dimension, and it is one of the six catalog names.",
+    "Reviewer confirms the WMBT statement's optimization verb/object matches the chosen dimension's keywords and description."
+  ],
+  "verifier_detail": [
+    "Dimension term structure: name -> {keywords, description}. Term id 'dimension', label 'Dimensions'.",
+    "Allowed names: Time, Effort, Likelihood, Frequency, Quantity/Amount, Financial Value. Flag zero or more-than-one dimension per WMBT, and any value outside this set."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "source kind: family; status: active; source name: 'WMBT dimensions'",
+    "source: legacy_path src/atdd/planner/conventions/wmbt.convention.yaml, legacy_section 'dimensions + dimension_instructions', legacy_sha 040256ed5588a6c7, extraction_mode high_fidelity",
+    "parity: source_fragments_preserved true, examples_preserved true, implementation_preserved false, fix_hint_preserved false, reviewed_at 2026-06-16",
+    "terms[0]: term_id 'dimension', label 'Dimensions'"
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "avoid",
+      "text": "Assigning two or more dimensions to one WMBT; split the WMBT instead.",
+      "justification": "Restates 'exactly one' from the statement as an anti-pattern; split direction comes from graph edge with planner.wmbt.splitting-rules."
+    },
+    {
+      "field": "why",
+      "text": "Statement templates and acceptance metrics derive from the dimension.",
+      "justification": "Source has no explicit rationale; derived from graph edges (statement-template and criteria.metric-mapping require this rule)."
+    },
+    {
+      "field": "evidence",
+      "text": "Evidence items describing compliance checks.",
+      "justification": "Source has no verification guidance; derived directly from the 'exactly one' statement and the catalog."
+    },
+    {
+      "field": "activation",
+      "text": "Fires on any edit of a WMBT that is currently non-compliant (missing, multiple, or out-of-catalog dimension).",
+      "justification": "Ensures the source's exactly-one requirement is not suppressed by edit-based exclusions."
+    },
+    {
+      "field": "coder_length",
+      "text": "Coder-facing text exceeds ~1,000 characters.",
+      "justification": "The full dimension catalog with descriptions must stay planner-facing to make the selection decision; losslessness wins over brevity."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Source name informs title; kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "prefer[1]",
+        "then",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "prefer[1]",
+        "then",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "prefer[1]",
+        "then",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "prefer[2]",
+        "then",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "prefer[2]",
+        "then",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "prefer[2]",
+        "then",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "prefer[3]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "prefer[3]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "prefer[3]"
+      ]
+    }
+  ]
+}

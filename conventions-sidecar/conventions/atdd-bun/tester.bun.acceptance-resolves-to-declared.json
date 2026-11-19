@@ -1,0 +1,456 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/tester.bun/tester.bun.acceptance-resolves-to-declared.convention.yaml",
+    "sha256": "44b77a6ae4b4a92d5b51b5bb3444a4db280f74dc1ed25d158e20e79cd16a2bb3"
+  },
+  "rule_id": "tester.bun.acceptance-resolves-to-declared",
+  "kind": "rule",
+  "title": "Bind each Bun test's Acceptance/WMBT header to a URN the plan declares",
+  "activation": {
+    "facts": [
+      {
+        "fact": "language",
+        "values": [
+          "typescript",
+          "javascript"
+        ],
+        "observability": "observable_now",
+        "note": "Bun stack realization; only Bun test files are checked."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "test"
+        ],
+        "observability": "observable_now",
+        "note": "Any existing Bun test file carrying a `// Acceptance:` or `// WMBT:` header, whether or not it is touched by the current change."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "plan/**"
+        ],
+        "observability": "observable_now",
+        "note": "Repository lookup scope, NOT an edited-file selector: declared URNs are collected from plan/**. Additionally, a change touching plan/** (e.g. an acceptance rename) must re-trigger the check over all existing Bun test bindings."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "binding header added or edited",
+          "plan acceptance renamed or removed"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Either side of the binding changing can break resolution; diff-level observer needed to recognise both."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "bun_tester_discipline_detector:t_acceptance_resolves"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Repository-level detector finding: a header URN not stated anywhere under plan/**. The repository-level precondition (plan declares at least one acceptance) is evaluated by this detector, not by a task-level fact."
+      }
+    ],
+    "fires": [
+      "A Bun test header `// Acceptance: acc:...` names a URN that appears nowhere under plan/**.",
+      "A Bun test header `// WMBT: wmbt:...` names a WMBT that the plan never mentions.",
+      "A plan-only change renames an acceptance and existing, untouched Bun test headers still carry the old URN."
+    ],
+    "doesNotFire": [
+      "A Bun test carrying no binding header at all (owned by tester.bun.acceptance-binding-declared).",
+      "A repository whose plan declares no acceptances at all (NOT_APPLICABLE).",
+      "A header whose URN is stated anywhere in the plan, under any key in wagon, feature or WMBT documents."
+    ]
+  },
+  "given": "The repository's plan declares acceptances and a Bun test carries an `// Acceptance:` or `// WMBT:` binding header",
+  "when": "the binding is checked (test or header changed, plan changed, or any CI run)",
+  "then": "Every `// Acceptance:` and `// WMBT:` URN in the header MUST be stated somewhere under plan/**.",
+  "prefer": [
+    "Repair the binding from the plan, not the plan from the test: the plan is authoritative during test authoring.",
+    "Stale header or renamed acceptance: point the test at the declared acceptance it actually exercises and proves (illustrative: `// Acceptance: acc:<wagon>:<ID>` where that URN is stated in a plan/<wagon>/ document; `// WMBT: wmbt:<wagon>:<WMBT>`).",
+    "Test proves different behavior: bind it to that behavior's existing declared acceptance; if it does not prove the claimed acceptance, adjust the test, not the label.",
+    "No declared acceptance fits: return to the authorized planning flow so the behavior is declared deliberately before the test claims coverage."
+  ],
+  "avoid": [
+    "Creating, renaming or repurposing a plan acceptance, or inventing one, merely to make a test resolve or clear this finding; plan additions are planner work justified by the behavior.",
+    "Binding to a convenient but semantically unrelated declared acceptance (the dangerous gaming case)."
+  ],
+  "unless": [
+    "The plan declares no acceptances at all: NOT_APPLICABLE.",
+    "The test has no binding header: owned by tester.bun.acceptance-binding-declared (no double-count)."
+  ],
+  "why": "A binding to an acceptance that exists nowhere attributes the test to nothing, making coverage figures fiction: a NAME accepted where a CLAIM is required. Strict (severity 4): a finding is not suppressible and fails CI (see shared:policy.strict-disposition).",
+  "evidence": [
+    "The detector collects every `acc:`/`wmbt:` URN token under plan/** and reports zero Bun test headers naming a URN absent from that set.",
+    "Reviewer confirms each header's acceptance is the one the test case genuinely exercises and asserts (resolution is only the structural half of truth; a resolving header is still semantically false if the case exercises or asserts something else).",
+    "Diff shows no plan acceptance created, renamed or repurposed solely to make an existing test resolve."
+  ],
+  "verifier_detail": [
+    "Resolves each Bun test's declared binding against the plan: collect every `acc:` / `wmbt:` URN stated anywhere under `plan/**`, then flag a test whose `// Acceptance:` or `// WMBT:` header names one the plan never mentions.",
+    "Declared URNs are read as TOKENS rather than parsed structurally, on purpose: acceptances are stated under several keys across wagon, feature and WMBT documents, and a reference resolves if the plan states that URN anywhere. Over-accepting is the safe direction — the failure caught is a reference to something the plan never mentions.",
+    "Return NOT_APPLICABLE when the consumer declares no acceptances at all: a repository with no plan has nothing to resolve against, and reporting there would fire on every unplanned project rather than on a broken reference.",
+    "Do not report tests with no binding header (sibling tester.bun.acceptance-binding-declared owns presence; reporting both would double-count one defect).",
+    "Implemented as member of the `bun_tester_discipline_detector` FAMILY detector (checks/t_acceptance_resolves.mjs). Core owns the shape of acceptance/WMBT artifacts; only a per-stack detector can see whether a Bun test resolves into them.",
+    "Term resolvable_binding: an `// Acceptance:` or `// WMBT:` header whose URN is stated somewhere in the consumer's plan, so the test is attributable to a declared obligation rather than to a name.",
+    "Diagnostic hint: a renamed acceptance is the common mechanical cause; a convenient but semantically unrelated acceptance is the dangerous gaming case.",
+    "Disposition strict, severity 4: a test bound to an artifact that does not exist is not suppressible and fails CI.",
+    "Source fix-hint example (verbatim, illustrative of a resolving header): `// URN: test:orders:checkout:E001-SMOKE-001-renders-row` / `// Acceptance: acc:orders:E001-SMOKE-001-renders-row   # stated in plan/orders/E001.yaml` / `// WMBT: wmbt:orders:E001`."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "kind: rule",
+    "status: active",
+    "implementation: {type: validator, ref: tester.bun.acceptance-resolves-to-declared}",
+    "aliases: BUN-ACCEPTANCE-RESOLVES-001",
+    "introduced_in: 0.2.0",
+    "core_design_refs: afokapu/atdd#1246",
+    "severity: 4; disposition: strict",
+    "Original name: A test's Acceptance / WMBT binding names an artifact the plan declares (Bun)",
+    "Lineage: sibling tester.bun.acceptance-binding-declared asks only whether a header is PRESENT, which a test satisfies by naming anything at all. Measured on a consumer, a test bound to `acc:does-not-exist:E999-NEVER-DECLARED` passed every gated rule in this workspace — the recurring defect this hub keeps finding: a NAME accepted where a CLAIM is required. The two rules are complementary — one requires the binding to exist, this one requires it to be true.",
+    "Member of bun_tester_discipline_detector FAMILY detector (checks/t_acceptance_resolves.mjs).",
+    "Source fix-hint example used application-specific names (orders/checkout/E001); kept verbatim in verifier_detail[8], generalized in prefer[1]."
+  ],
+  "splitSuggestion": [
+    {
+      "id": "tester.bun.binding-semantically-proves-acceptance",
+      "then": "A test bound to a declared acceptance MUST actually exercise and assert that acceptance's behavior; when it does not, adjust the test rather than the label.",
+      "segments": [
+        "S017",
+        "S018",
+        "S032",
+        "S036"
+      ]
+    }
+  ],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "strict: a finding from a strict rule is not suppressible and fails CI."
+    }
+  ],
+  "additions": [
+    {
+      "field": "split_suggestion",
+      "text": "Semantic truth of a resolving binding (the case genuinely proves the acceptance) is an independent, LLM-judged obligation; suggest separate convention tester.bun.binding-semantically-proves-acceptance. Then is limited to structural resolution; semantic repair guidance is kept in prefer/avoid/evidence.",
+      "justification": "Rule 2: one obligation in then; source contains both structural resolution and semantic truth."
+    },
+    {
+      "field": "activation",
+      "text": "Activation 'change' values (binding header edited; plan acceptance renamed/removed) and the when clause 'any CI run' make the check apply to all existing bindings, including after plan-only changes.",
+      "justification": "Source checks every Bun test binding against the plan (repository-level detector, fails CI); a plan rename can break an untouched test. Phrasing maps that scope to activation vocabulary."
+    },
+    {
+      "field": "prefer",
+      "text": "prefer[1] uses a neutral placeholder example (`acc:<wagon>:<ID>`, plan/<wagon>/) instead of the source's application-specific orders example, which is kept verbatim in verifier_detail[8].",
+      "justification": "Rule 4: codebase-neutral coder text, without losing the source snippet."
+    },
+    {
+      "field": "why",
+      "text": "Coder-facing text slightly exceeds ~1,000 characters to keep the strict/non-suppressible disposition and all fix-hint branches visible to the coder.",
+      "justification": "Losslessness wins over brevity (rule 8); auditor required the strict consequence to be coder-visible."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Title rephrased imperatively; original name kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[0]",
+        "evidence[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[4]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "audit",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "evidence[1]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "prefer[0]",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "avoid[0]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "verifier_detail[1]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[2]",
+        "given"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "verifier_detail[8]",
+        "prefer[1]"
+      ],
+      "note": "Generalized in prefer[1]; verbatim in verifier_detail[8]."
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "verifier_detail[8]",
+        "prefer[1]"
+      ],
+      "note": "Generalized in prefer[1]; verbatim in verifier_detail[8]."
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "verifier_detail[8]",
+        "prefer[1]"
+      ],
+      "note": "Generalized in prefer[1]; verbatim in verifier_detail[8]."
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "prefer[3]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "prefer[3]"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "avoid[1]",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "why",
+        "verifier_detail[7]",
+        "shared:policy.strict-disposition"
+      ],
+      "note": "Rule-specific strict/non-suppressible/fails-CI consequence stated in coder-facing why, linked to shared node."
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[3]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "why",
+        "shared:policy.strict-disposition",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S045",
+      "dest": [
+        "verifier_detail[5]",
+        "then"
+      ]
+    }
+  ]
+}

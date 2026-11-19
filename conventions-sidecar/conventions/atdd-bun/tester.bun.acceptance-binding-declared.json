@@ -1,0 +1,462 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/tester.bun/tester.bun.acceptance-binding-declared.convention.yaml",
+    "sha256": "4bc5489f8cca53eb9145decb07e3a74565c3856274fce1495338a1f3cd89d0c3"
+  },
+  "rule_id": "tester.bun.acceptance-binding-declared",
+  "kind": "rule",
+  "title": "Declare what every URN-carrying test proves",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "test"
+        ],
+        "observability": "observable_now",
+        "note": "Any test file carrying a URN header, in any stack and whether newly written, edited or already existing. The obligation is stack-neutral; only the bundled detector (bun_tester_discipline_detector) is Bun/JS/TS-specific, which limits automated coverage, not applicability."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "URN header present but no `// Acceptance:` and no `// Train:` header"
+        ],
+        "observability": "observable_now",
+        "note": "Presence path: a header scan of the file content; already realized for Bun suites by bun_tester_discipline_detector and directly readable in any test file."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "URN header present with only a `// Train:` header on a test that is not a journey/E2E test"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Binding-kind path: the Train header is header-scannable now, but classifying the test as journey/E2E or not needs a new observer (e.g. test-tier/path classification) or LLM judgment. The current detector accepts any Train header, so this case is not caught structurally."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "Acceptance/Train header present but test may not exercise/assert the bound subject"
+        ],
+        "observability": "llm_judged",
+        "note": "Truthfulness path: applies to every bound URN-carrying test, including valid-looking headers; only reviewer/LLM judgment can compare stimulus and witness with the bound obligation."
+      }
+    ],
+    "fires": [
+      "Presence: a test file carries a URN header but has neither an `// Acceptance: acc:…` nor a `// Train: …` header",
+      "Binding kind: a URN-carrying test that is not a journey/E2E test is bound only by a `// Train: …` header (fires regardless of whether the test exercises or asserts that train)",
+      "Truthfulness: a URN-carrying test declares an Acceptance or Train binding whose subject the test does not exercise or whose outcome it does not assert",
+      "Truthfulness: a binding was selected, changed or invented only so the test becomes attributable"
+    ],
+    "doesNotFire": [
+      "A test file with no URN header (owned by test-carries-urn-identity)",
+      "Presence and binding-kind paths: a journey/E2E test with a `// Train: …` header (truthfulness review still applies)",
+      "Non-test source files",
+      "Checking whether the named acceptance exists in the plan graph (owned by acceptance-resolves-to-declared)"
+    ]
+  },
+  "given": "A test file carries a URN identity header",
+  "when": "The test is written, changed or reviewed",
+  "then": "Declare beside the URN the plan obligation the test actually proves: `// Acceptance: acc:…`, or `// Train: …` only for a journey/E2E test.",
+  "prefer": [
+    "Derive the binding from the plan artifact the test proves: the declared acceptance whose behavior the file exercises and asserts, or the declared train the journey actually walks",
+    "Use that exact plan identity: `// Acceptance: acc:<domain>:<acceptance-id>` or `// Train: train:<domain>:<journey>`"
+  ],
+  "avoid": [
+    "Picking any resolvable acceptance merely to satisfy coverage",
+    "Changing the claimed binding to match a test that proves different behavior (rebinding for attribution); correcting a stale binding to the obligation the test truly proves is the fix, not this",
+    "Selecting or inventing a binding (new acceptance or train) merely to make an orphaned test bind or be attributable"
+  ],
+  "unless": [
+    "A `Train:` binding satisfies the rule for journey and E2E tests, when the journey actually proves that train"
+  ],
+  "why": "A URN says which test this is; the binding says which obligation it discharges, and only that closes the loop the gate reads. The binding is a claim: truthful only if the test exercises the declared subject and asserts its outcome. A convenient but unrelated resolvable acceptance creates false coverage while still passing the structural detector. Train bindings exist because journeys prove a train; forcing an acceptance would push authors to invent linter-only acceptances that pollute the plan graph.",
+  "evidence": [
+    "Every URN-carrying test file has an `Acceptance:` or `Train:` field beside the URN (bun_tester_discipline_detector reports no finding for Bun suites)",
+    "Any test bound only by `Train:` is a journey/E2E test",
+    "The test stimulus exercises the bound subject",
+    "The test's behavioral witness proves the bound obligation rather than an adjacent implementation detail"
+  ],
+  "verifier_detail": [
+    "Detector: bun_tester_discipline_detector (validator). Requires an `Acceptance:` or `Train:` field beside the URN header.",
+    "Accepted forms: acceptance_binding `// Acceptance: acc:…` (names the obligation the test discharges); train_binding `// Train: …` (alternative for a journey test, which proves a train rather than a single acceptance).",
+    "Files with no URN are skipped — that finding belongs to `test-carries-urn-identity`.",
+    "Whether the named acceptance EXISTS is a plan-graph question this per-file detector cannot answer; out of scope here (see acceptance-resolves-to-declared).",
+    "Truthfulness (stimulus exercises subject, witness proves obligation) is not structurally detectable: a convenient existing acceptance bound to an unrelated case creates false coverage while satisfying the structural detector. Requires reviewer/LLM judgment.",
+    "Severity 2.",
+    "Two binding kinds are accepted on purpose: a journey test legitimately proves a train rather than a single acceptance, and forcing every test to name an acceptance would push authors to invent one, polluting the plan graph with acceptances that exist only to satisfy a linter.",
+    "Disposition: strict for this rule. Bun realization: atdd-bun fails on every finding of this rule; no advisory mode, no ratchet baseline.",
+    "Binding-kind check: the structural detector accepts any `Train:` header; whether the file is a journey/E2E test (the only case where Train alone satisfies the rule) must be established by a test-tier classifier or reviewer judgment."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0",
+    "Alias: BUN-ACCEPTANCE-BINDING-DECLARED-001",
+    "Disposition: strict; severity 2",
+    "Bun realization of core obligation `tester.coverage.every-acceptance-criterion-must`; core carries no shared alias, so lineage is stated here. Stack-neutral obligation, Bun-specific detector, realized by bun_tester_discipline_detector.",
+    "implementation: {type: validator, ref: bun_tester_discipline_detector}",
+    "Original name: 'Every test declares what it proves'",
+    "Original fix_hint examples (generalized in prefer[1]): `// Acceptance: acc:orders:E001-SMOKE-001-renders-row`, `// Train: train:orders:checkout-journey`"
+  ],
+  "splitSuggestion": [
+    {
+      "id": "tester.binding-truthful",
+      "then": "A declared Acceptance/Train binding must name the subject the test actually exercises and whose outcome it asserts; never select or invent a binding merely to make a test attributable.",
+      "segments": [
+        "S017",
+        "S018",
+        "S019",
+        "S022",
+        "S031",
+        "S032",
+        "S033",
+        "S035",
+        "S036"
+      ]
+    }
+  ],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "strict: the enforcing gate fails on every finding of the rule; there is no advisory mode and no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "split_suggestion",
+      "text": "Presence of a binding (structural, detector-checked) and truthfulness of the binding (reviewer/LLM-judged) are independent obligations; suggest a separate convention tester.binding-truthful.",
+      "justification": "Rule 2: one obligation in `then`; truthfulness kept in avoid/prefer/evidence as the same decision."
+    },
+    {
+      "field": "activation",
+      "text": "doesNotFire entry about plan-graph existence names acceptance-resolves-to-declared from graph.json; activation split into presence, binding-kind and truthfulness paths.",
+      "justification": "Clarifies ownership boundary stated in source exception S039 and keeps valid headers from suppressing truthfulness review."
+    },
+    {
+      "field": "activation",
+      "text": "Binding-kind fact/fires entry and evidence[1]/verifier_detail[8]: a Train-only binding on a non-journey/non-E2E test fires; journey/E2E classification needs a new observer.",
+      "justification": "Source S006/S012/S037 restrict Train to journey/E2E tests; without this case a Train-only non-journey test escaped activation."
+    },
+    {
+      "field": "unless",
+      "text": "Qualifier 'when the journey actually proves that train' on the Train exception.",
+      "justification": "Derived from S018/S025 (binding truthful only when the test walks the declared train); not a new waiver, it narrows the exception."
+    },
+    {
+      "field": "avoid",
+      "text": "Clarification in avoid[1] that correcting a stale binding to the obligation the test truly proves is the intended fix, not the anti-pattern.",
+      "justification": "Prevents misreading S032 as forbidding truthful correction; follows from S023/S025 (derive binding from what the test proves). Adds no waiver."
+    },
+    {
+      "field": "prefer",
+      "text": "Placeholder header forms `acc:<domain>:<acceptance-id>` and `train:<domain>:<journey>` replace the source's application-specific examples (kept in audit).",
+      "justification": "Codebase-neutral guidance (rule 4)."
+    },
+    {
+      "field": "why",
+      "text": "Coder-facing text slightly exceeds ~1,000 characters because the false-coverage and plan-graph-pollution rationales (S019, S021) are kept in why.",
+      "justification": "Losslessness wins over brevity (rule 8); auditor required these reasons be coder-facing."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Rephrased as title; original kept in audit"
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "then",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit",
+        "activation"
+      ],
+      "note": "Activation covers all URN-bearing tests; Bun/JS/TS only describes detector coverage"
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "verifier_detail[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[1]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[1]",
+        "then",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[0]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "why",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "why",
+        "avoid[0]",
+        "verifier_detail[4]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "why",
+        "unless[0]",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "why",
+        "avoid[2]",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "avoid[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "prefer[1]",
+        "audit"
+      ],
+      "note": "Generalized to placeholder; original example in audit"
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "prefer[1]",
+        "audit"
+      ],
+      "note": "Generalized to placeholder; original example in audit"
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "evidence[3]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "unless[0]",
+        "evidence[1]",
+        "activation",
+        "verifier_detail[8]"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "verifier_detail[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "verifier_detail[3]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "identity",
+        "verifier_detail[5]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "identity",
+        "verifier_detail[7]",
+        "audit",
+        "shared:policy.strict-disposition"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

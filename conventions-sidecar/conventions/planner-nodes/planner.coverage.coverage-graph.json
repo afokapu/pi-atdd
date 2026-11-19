@@ -1,0 +1,302 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.coverage.coverage-graph.convention.yaml",
+    "sha256": "76cfb225e158881c8b119707f392a6797d7109f7fa408a0d1692ab753d4ae2b9"
+  },
+  "rule_id": "planner.coverage.coverage-graph",
+  "kind": "rule",
+  "title": "Keep plans traceable from train to acceptance test criteria",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "train",
+          "wagon",
+          "feature",
+          "wmbt",
+          "acceptance"
+        ],
+        "observability": "observable_now",
+        "note": "Planning artifact kinds of the coverage hierarchy; recognisable from the plan artifact type."
+      },
+      {
+        "fact": "operation",
+        "values": [
+          "create",
+          "edit",
+          "delete"
+        ],
+        "observability": "observable_now",
+        "note": "Any write to a planning artifact is in scope of the hierarchy invariant."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "containment field changed (participants, features[], wmbts[], acceptances[])",
+          "acceptance test criteria changed"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Diff-level observer over containment fields and acceptance test criteria; used to target checks, not to narrow scope — the invariant applies to the whole hierarchy."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "COVERAGE-PLAN-2.1",
+          "COVERAGE-PLAN-2.2",
+          "COVERAGE-PLAN-2.3",
+          "COVERAGE-PLAN-2.4"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Coverage validator findings per level; an observer must surface validator results to the planner."
+      },
+      {
+        "fact": "phase",
+        "values": [
+          "PLANNER_TESTER_ENFORCEMENT (Phase 2)"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Rollout phase decides whether validator findings are strict (blocking); an observer must expose the active rollout phase."
+      }
+    ],
+    "fires": [
+      "Planner adds a wagon that no train lists among its participants",
+      "Planner adds a feature that no wagon lists in features[]",
+      "Planner adds a WMBT not listed in any feature's wmbts[] or with no acceptances[]",
+      "Planner adds an acceptance not referenced from a WMBT or without test criteria",
+      "Planner removes or rewrites the test criteria of an existing acceptance",
+      "Planner edits or deletes any train, wagon, feature, WMBT or acceptance"
+    ],
+    "doesNotFire": [
+      "Edits to production code or tests that do not touch planning artifacts (train, wagon, feature, WMBT, acceptance)"
+    ]
+  },
+  "given": "You are authoring or changing planning artifacts (trains, wagons, features, WMBTs, acceptances), including acceptance test criteria.",
+  "when": "You create, edit, move or delete any artifact in the hierarchy, its containment links, or an acceptance's test criteria.",
+  "then": "Keep the plan traceable along Train -> Wagon -> Feature -> WMBT -> Acceptance -> Test criteria, each level contained by its parent and guarded by its coverage validators; from Phase 2 (PLANNER_TESTER_ENFORCEMENT) those validators are strict, so their findings block the plan.",
+  "prefer": [
+    "Register each wagon in a train's participants (COVERAGE-PLAN-2.1).",
+    "List each feature in its wagon's features[] (2.1, 2.2).",
+    "List each WMBT in its feature's wmbts[] (2.2, 2.3).",
+    "Link each WMBT's acceptances via acceptances[] and give each acceptance test criteria (2.3, 2.4).",
+    "Before handing off, run the coverage validators along the whole chain of every artifact you changed — its ancestors up to the train and its descendants down to test criteria, not only the level you edited.",
+    "Check the project's active rollout phase before deciding whether findings block; if you cannot establish it, report the phase as unknown rather than assuming findings are non-blocking."
+  ],
+  "avoid": [
+    "Orphan artifacts that no parent level contains.",
+    "Fixing a validator finding by adding placeholder links or empty acceptances instead of real coverage."
+  ],
+  "unless": [],
+  "why": "Coverage only means something if every acceptance traces up to a train and down to test criteria; each level is guarded by validators so gaps surface during planning (ATDD Hierarchy Coverage Spec v0.1, section 2), strictly from Phase 2.",
+  "evidence": [
+    "COVERAGE-PLAN-2.1..2.4 validators were run along the full chain of every new/changed artifact; in Phase 2 (PLANNER_TESTER_ENFORCEMENT) and later they pass strictly with no findings.",
+    "Reviewer can walk each new/changed artifact up to a train and down to acceptance test criteria."
+  ],
+  "verifier_detail": [
+    "Level map (level -> {contains, validators}): Train contains Wagons via participants — COVERAGE-PLAN-2.1; Wagon contains Features via features[] — 2.1, 2.2; Feature contains WMBTs via wmbts[] — 2.2, 2.3; WMBT contains Acceptances via acceptances[] — 2.3, 2.4; Acceptance contains Test criteria — 2.4.",
+    "Validators become strict in Phase 2 (PLANNER_TESTER_ENFORCEMENT); the source does not specify validator behaviour before that phase beyond them not being strict.",
+    "This rule aggregates the per-level coverage validators (see related planner.coverage.* conventions)."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "source kind: family (rewritten as kind rule; per-level obligations proposed as splits)",
+    "status: active",
+    "name: Planner coverage graph",
+    "source: legacy_path src/atdd/planner/conventions/coverage.convention.yaml, legacy_section 'coverage_graph + rollout', legacy_sha 27e800378c584902, extraction_mode high_fidelity",
+    "normative_text: Section 2 of the ATDD Hierarchy Coverage Spec v0.1.",
+    "parity: source_fragments_preserved true, examples_preserved false, implementation_preserved false, fix_hint_preserved false, reviewed_at 2026-06-16",
+    "term: term_id coverage_level, label 'Coverage levels', text 'level -> {contains, validators}.'"
+  ],
+  "splitSuggestion": [
+    {
+      "id": "planner.coverage.bidirectional-coverage-between-trains",
+      "then": "Every wagon is contained in a train's participants (COVERAGE-PLAN-2.1).",
+      "segments": [
+        "S014"
+      ]
+    },
+    {
+      "id": "planner.coverage.bidirectional-coverage-between-wagons",
+      "then": "Every feature is contained in its wagon's features[] (2.1, 2.2).",
+      "segments": [
+        "S015"
+      ]
+    },
+    {
+      "id": "planner.coverage.every-wmbt-must-be",
+      "then": "Every WMBT is contained in a feature's wmbts[] (2.2, 2.3).",
+      "segments": [
+        "S016"
+      ]
+    },
+    {
+      "id": "planner.coverage.every-wmbt-must-have",
+      "then": "Every WMBT links its acceptances via acceptances[] and each acceptance has test criteria (2.3, 2.4).",
+      "segments": [
+        "S017",
+        "S018"
+      ]
+    }
+  ],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "split_suggestion",
+      "text": "The family bundles per-level containment obligations; each maps to a planner.coverage.* convention (see splitSuggestion). This rule keeps the end-to-end chain as its single obligation.",
+      "justification": "Rule 2: one obligation per convention."
+    },
+    {
+      "field": "avoid[1]",
+      "text": "Fixing a validator finding by adding placeholder links or empty acceptances instead of real coverage.",
+      "justification": "Metric-gaming anti-pattern required by authoring rules; implied by the traceability purpose but not literally in source."
+    },
+    {
+      "field": "prefer[4]",
+      "text": "Before handing off, run the coverage validators along the whole chain of every artifact you changed — ancestors up to the train and descendants down to test criteria, not only the level you edited.",
+      "justification": "Makes 'each level guarded by coverage validators' actionable and prevents reading it as checking only the touched level, which would not prove the end-to-end trace the source requires."
+    },
+    {
+      "field": "prefer[5]",
+      "text": "Check the project's active rollout phase before deciding whether findings block; if it cannot be established, report it as unknown rather than assuming non-blocking.",
+      "justification": "The source makes strictness phase-dependent (S009) but does not say how to tell the phase; this applies the general unknown ≠ exempt conduct so the planner does not silently treat findings as advisory. Adds no new requirement on pre-Phase-2 behaviour."
+    },
+    {
+      "field": "activation.doesNotFire",
+      "text": "Edits that do not touch planning artifacts do not fire.",
+      "justification": "Source gives no explicit scope boundary; this only restates that the rule concerns planning artifacts and does not exempt any planning-artifact edit."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Name reflected in title; original kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "why",
+        "prefer[4]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "then",
+        "prefer[5]",
+        "evidence[0]",
+        "verifier_detail[1]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "then",
+        "prefer[3]",
+        "verifier_detail[0]",
+        "activation"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,418 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/atdd-bun.topology/atdd-bun.topology.test-location.convention.yaml",
+    "sha256": "a1f7f772a889607d4b6c0f20e9924b88838199a3e763b6328dbe09b8f29f2e50"
+  },
+  "rule_id": "atdd-bun.topology.test-location",
+  "kind": "rule",
+  "title": "Place every feature test beneath its feature and test-kind directory",
+  "activation": {
+    "facts": [
+      {
+        "fact": "path_glob",
+        "values": [
+          "<test_root>/**"
+        ],
+        "observability": "observable_now",
+        "note": "<test_root> is the `topology:` key `test_root` in atdd-bun.yaml; only when that key is not configured does it default to `tests/wagons`. Not an additional root."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "test"
+        ],
+        "observability": "observable_now",
+        "note": "Every test file beneath the resolved test_root, whether changed in this diff or already present (existing violations included)."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "plan_models_wagon_feature_or_wmbt"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Precondition: the plan under the resolved plan_root (`topology.plan_root`, default `plan`) models at least one wagon, feature or WMBT; needs an observer that reads the plan. Plan-only changes can create or invalidate violations, so the plan is re-read on every run."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "atdd_topology_test_location_violation"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Whole-tree scan by the atdd_topology validator comparing each test's path with the plan's wagons/features; independent of which files the diff touched."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "atdd_topology_test_urn_violation",
+          "atdd_topology_test_acceptance_binding_violation"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Header-only and binding-only violations of the same source statement (missing/mismatched URN; missing Acceptance header, unknown acceptance, or acceptance not declared by a WMBT the test's own feature lists). Produced by the same atdd_topology whole-tree scan; they activate the split rules in splitSuggestion, which share this rule's plan precondition, test_root scope and exclusions."
+      }
+    ],
+    "fires": [
+      "The plan models at least one wagon/feature/WMBT, and any test beneath the resolved test_root (new, moved or pre-existing and untouched) sits outside `<test_root>/<wagon>/features/<feature>/{unit,contract,integration}/`.",
+      "The plan models at least one wagon/feature/WMBT, and a plan-only change (e.g. renaming or removing a feature) leaves an unchanged test beneath test_root in a path that no longer names a feature of its wagon.",
+      "The plan models at least one wagon/feature/WMBT, test_root is not configured, and a test beneath the default `tests/wagons` is not under a `<wagon>/features/<feature>/{unit,contract,integration}/` directory.",
+      "(Split rule test-urn-header) The plan models at least one wagon/feature/WMBT and a correctly placed test beneath test_root has no `URN: test:{wagon}:{feature}:{acceptance}` header, or one whose wagon/feature does not match its path.",
+      "(Split rule test-acceptance-binding) The plan models at least one wagon/feature/WMBT and a correctly placed test beneath test_root has no `Acceptance:` header, names an acceptance that does not exist, or names one whose declaring WMBT is not listed by the test's own feature."
+    ],
+    "doesNotFire": [
+      "The plan models no wagon, feature or WMBT yet.",
+      "Files inside vendored or generated trees (node_modules, dist, build, _generated), even beneath test_root.",
+      "Files outside the resolved test_root (e.g. under source_root or e2e_root), including `tests/wagons` when test_root is configured to a different directory."
+    ]
+  },
+  "given": "The plan models at least one wagon, feature or WMBT, and tests exist beneath <test_root> (atdd-bun.yaml `topology.test_root`, default `tests/wagons`), outside vendored/generated trees.",
+  "when": "You add, move or keep any test beneath <test_root>, or change the plan — existing tests are in scope too.",
+  "then": "Every test beneath <test_root> lives beneath `<test_root>/<wagon>/features/<feature>/{unit,contract,integration}/`, in the directory of the feature it tests and the kind of test it is.",
+  "prefer": [
+    "Move the test beneath its feature under unit/, contract/ or integration/ according to the kind of test it is, and add the test URN and Acceptance header."
+  ],
+  "avoid": [
+    "Placing tests in a path that does not state their feature and test kind (unit/contract/integration).",
+    "Leaving a test without `URN: test:{wagon}:{feature}:{acceptance}` matching its wagon/feature path (mandatory; split rule test-urn-header).",
+    "Leaving a test without `Acceptance: acc:{wagon}:{acceptance}`, or binding one that does not exist or is not declared by a WMBT that the test's own feature explicitly lists (mandatory; split rule test-acceptance-binding)."
+  ],
+  "unless": [
+    "Vendored and generated trees (`node_modules`, `dist`, `build`, `_generated`) are never scanned."
+  ],
+  "why": "A test proves an acceptance only when it names one that exists; its path says which feature and which kind of test it is.",
+  "evidence": [
+    "The atdd_topology validator, run over the whole resolved test_root against the current plan, reports no path, URN or acceptance-binding finding.",
+    "The rule has a failing fixture demonstrating a misplaced/unbound test, as required of every package rule."
+  ],
+  "verifier_detail": [
+    "Rule applies only when the plan models at least one wagon, feature or WMBT; then it covers every test beneath <test_root>, not only changed files.",
+    "Roots come from the `topology:` keys `plan_root`, `source_root`, `test_root`, `e2e_root` in `atdd-bun.yaml` (defaults `plan`, `src/wagons`, `tests/wagons`, `e2e` apply only when a key is not configured).",
+    "Allowed path shape: `<test_root>/<wagon>/features/<feature>/{unit,contract,integration}/`.",
+    "The source statement also requires, for every such test, the header `URN: test:{wagon}:{feature}:{acceptance}` and `Acceptance: acc:{wagon}:{acceptance}` declared by a WMBT that the test's own feature lists; the same validator checks these and reports them as header-only / binding-only findings (split rules in splitSuggestion).",
+    "Skip directories node_modules, dist, build, _generated.",
+    "Implemented by validator `atdd_topology`; severity 3; package rule, strict disposition (every finding fails)."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active.",
+    "Aliases: ATDD-BUN-TOPOLOGY-TEST-LOCATION.",
+    "introduced_in 0.6.0.",
+    "implementation: {type: validator, ref: atdd_topology}.",
+    "Statement provenance: \"Package rule, strict.\"",
+    "Package rule (term package_rule): a rule of this package's own gates (`atdd-bun.*`), realized by a package guard rather than a canonical planner node; held to the same per-rule checks as every convention: a convention, strict, a failing fixture, relationship edges.",
+    "Term topology_settings: the `topology:` keys plan_root, source_root, test_root, e2e_root in atdd-bun.yaml (defaults plan, src/wagons, tests/wagons, e2e).",
+    "Original name/summary: Feature tests live beneath their feature and bind a declared acceptance.",
+    "Original statement bundles three obligations (path, URN header, acceptance binding); this rewrite keeps path in `then` and realizes the other two as fully specified split rules in splitSuggestion."
+  ],
+  "splitSuggestion": [
+    {
+      "id": "atdd-bun.topology.test-urn-header",
+      "activation": {
+        "facts": [
+          {
+            "fact": "path_glob",
+            "values": [
+              "<test_root>/**"
+            ],
+            "observability": "observable_now",
+            "note": "test_root from atdd-bun.yaml `topology.test_root`, default `tests/wagons`."
+          },
+          {
+            "fact": "file_kind",
+            "values": [
+              "test"
+            ],
+            "observability": "observable_now",
+            "note": "All tests beneath test_root, changed or not."
+          },
+          {
+            "fact": "finding",
+            "values": [
+              "plan_models_wagon_feature_or_wmbt"
+            ],
+            "observability": "needs_new_observer",
+            "note": "Same plan precondition as the parent rule."
+          },
+          {
+            "fact": "finding",
+            "values": [
+              "atdd_topology_test_urn_violation"
+            ],
+            "observability": "needs_new_observer",
+            "note": "atdd_topology whole-tree scan: URN header missing or wagon/feature not matching the test's path."
+          }
+        ],
+        "fires": [
+          "Plan models a wagon/feature/WMBT and a test beneath test_root (even correctly placed) lacks a URN header or its URN names a different wagon/feature than its path."
+        ],
+        "doesNotFire": [
+          "Plan models no wagon/feature/WMBT.",
+          "Files in node_modules, dist, build, _generated.",
+          "Files outside the resolved test_root."
+        ]
+      },
+      "given": "The plan models at least one wagon, feature or WMBT, and tests exist beneath <test_root> outside vendored/generated trees.",
+      "when": "You add, move or keep any test beneath <test_root>, or change the plan.",
+      "then": "Every test beneath <test_root> carries `URN: test:{wagon}:{feature}:{acceptance}` matching the wagon and feature of its path.",
+      "prefer": [
+        "Add the test URN header naming the test's wagon, feature and acceptance."
+      ],
+      "avoid": [
+        "Omitting the URN header, or a URN whose wagon/feature differs from the test's directory."
+      ],
+      "unless": [
+        "Vendored and generated trees (`node_modules`, `dist`, `build`, `_generated`) are never scanned."
+      ],
+      "why": "A test proves an acceptance only when it names one that exists.",
+      "segments": [
+        "S006",
+        "S014",
+        "S015",
+        "S016"
+      ]
+    },
+    {
+      "id": "atdd-bun.topology.test-acceptance-binding",
+      "activation": {
+        "facts": [
+          {
+            "fact": "path_glob",
+            "values": [
+              "<test_root>/**"
+            ],
+            "observability": "observable_now",
+            "note": "test_root from atdd-bun.yaml `topology.test_root`, default `tests/wagons`."
+          },
+          {
+            "fact": "file_kind",
+            "values": [
+              "test"
+            ],
+            "observability": "observable_now",
+            "note": "All tests beneath test_root, changed or not."
+          },
+          {
+            "fact": "finding",
+            "values": [
+              "plan_models_wagon_feature_or_wmbt"
+            ],
+            "observability": "needs_new_observer",
+            "note": "Same plan precondition as the parent rule; plan-only changes re-evaluate bindings."
+          },
+          {
+            "fact": "finding",
+            "values": [
+              "atdd_topology_test_acceptance_binding_violation"
+            ],
+            "observability": "needs_new_observer",
+            "note": "atdd_topology whole-tree scan: Acceptance header missing, acceptance unknown, or its declaring WMBT not listed by the test's own feature."
+          }
+        ],
+        "fires": [
+          "Plan models a wagon/feature/WMBT and a test beneath test_root (even correctly placed) has no Acceptance header, names a nonexistent acceptance, or names one declared only by a WMBT its own feature does not list.",
+          "A plan-only change removes a WMBT from a feature's list, leaving an unchanged test bound to an acceptance that feature no longer lists."
+        ],
+        "doesNotFire": [
+          "Plan models no wagon/feature/WMBT.",
+          "Files in node_modules, dist, build, _generated.",
+          "Files outside the resolved test_root."
+        ]
+      },
+      "given": "The plan models at least one wagon, feature or WMBT, and tests exist beneath <test_root> outside vendored/generated trees.",
+      "when": "You add, move or keep any test beneath <test_root>, or change the plan.",
+      "then": "Every test beneath <test_root> binds `Acceptance: acc:{wagon}:{acceptance}` declared by a WMBT that the test's own feature lists.",
+      "prefer": [
+        "Add the Acceptance header naming an acceptance declared by a WMBT explicitly listed by the test's own feature."
+      ],
+      "avoid": [
+        "Omitting the Acceptance header.",
+        "Binding an acceptance that does not exist, or one declared by a WMBT the test's own feature does not list (e.g. only another feature's WMBT)."
+      ],
+      "unless": [
+        "Vendored and generated trees (`node_modules`, `dist`, `build`, `_generated`) are never scanned."
+      ],
+      "why": "A test proves an acceptance only when it names one that exists.",
+      "segments": [
+        "S006",
+        "S014",
+        "S015",
+        "S016"
+      ]
+    }
+  ],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "split_suggestion",
+      "text": "The source statement bundles three independently violable obligations (path, URN header, acceptance binding). `then` keeps the path obligation (matching rule id test-location); URN-header and acceptance-binding obligations are stated as mandatory in avoid[1]/avoid[2] and realized as full split rules atdd-bun.topology.test-urn-header and atdd-bun.topology.test-acceptance-binding with their own activation, given/when/then/prefer/avoid/unless/why, sharing the plan precondition, test_root scope and exclusions.",
+      "justification": "Rule 2: one obligation per `then`; auditor required operational split rules."
+    },
+    {
+      "field": "activation",
+      "text": "Finding facts atdd_topology_test_urn_violation and atdd_topology_test_acceptance_binding_violation; doesNotFire for files outside the resolved test_root; explicit coverage of plan-only changes and pre-existing violations.",
+      "justification": "Header-only and binding-only violations of the source statement must activate; scope follows from `every test beneath <test_root>` under the plan precondition."
+    },
+    {
+      "field": "evidence",
+      "text": "Evidence phrased as whole-tree validator result plus failing-fixture presence.",
+      "justification": "Derived from the implementation ref and the package_rule term; makes compliance checkable."
+    },
+    {
+      "field": "given",
+      "text": "Coder-facing given names the atdd-bun.yaml `topology.test_root` key and `tests/wagons` default.",
+      "justification": "Reviewer flagged that scope was not self-contained; content comes from S012."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Title rephrased to the path obligation; original name kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "when",
+        "then",
+        "activation",
+        "avoid[1]",
+        "avoid[2]",
+        "verifier_detail[0]",
+        "verifier_detail[2]",
+        "verifier_detail[3]"
+      ],
+      "note": "URN and acceptance-binding obligations also fully realized as split rules in splitSuggestion with their own activation."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "identity",
+        "verifier_detail[5]",
+        "audit"
+      ],
+      "note": "Kept in this rule (not a shared node), per feedback."
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[1]",
+        "given",
+        "activation",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "audit"
+      ],
+      "note": "Duplicates name."
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "why",
+        "avoid[0]",
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[4]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "identity",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "identity",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "audit",
+        "verifier_detail[5]"
+      ]
+    }
+  ]
+}

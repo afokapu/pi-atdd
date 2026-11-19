@@ -1,0 +1,428 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.component.io-alignment.convention.yaml",
+    "sha256": "ccce84e2cb4b5cd31a629abf7a5929d006f663659227fa53a4e830296cab538c"
+  },
+  "rule_id": "planner.component.io-alignment",
+  "kind": "rule",
+  "title": "Draw component events only from the owning feature's ioSeeds",
+  "activation": {
+    "facts": [
+      {
+        "fact": "task_term",
+        "values": [
+          "component",
+          "consume",
+          "produce",
+          "events",
+          "ioSeeds",
+          "dependencies"
+        ],
+        "observability": "observable_now",
+        "note": "Planning task mentions a component's events or dependencies, or a feature's ioSeeds."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "component plan/spec",
+          "feature plan/spec"
+        ],
+        "observability": "observable_now",
+        "note": "Planning artifacts carrying component consume/produce/dependency lists and feature ioSeeds."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "component consume/produce list added or edited",
+          "component dependencies added or edited",
+          "feature ioSeeds added, edited or removed"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Needs a diff-level observer over component event/dependency lists and the owning feature's ioSeeds."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "declared component event not in owning feature's ioSeeds",
+          "more than 3 consumed or more than 3 produced events",
+          "dependency neither same-feature component nor external"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Needs a checker that resolves the owning feature and compares sets; implementation.type is none in the source."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "declared event not relevant to component role (consume) or capability (produce)"
+        ],
+        "observability": "llm_judged",
+        "note": "Whether an event matches the component's role or capability is a semantic judgement; no deterministic relation exists in the source."
+      }
+    ],
+    "fires": [
+      "Planner declares a component that produces an event absent from the owning feature's ioSeeds.produce.",
+      "Planner adds a consumed event to a component that the feature's ioSeeds.consume does not list.",
+      "Planner changes a feature's ioSeeds so an existing component's declared events are no longer a subset.",
+      "Planner gives a component a consumed event unrelated to its role, or a produced event unrelated to its capability.",
+      "Planner lists a fourth consumed or a fourth produced event on one component.",
+      "Planner adds a component dependency on a component of another feature that is not an external dependency."
+    ],
+    "doesNotFire": [
+      "A component that declares no consumed or produced events AND whose dependencies are all same-feature components or external dependencies. (Empty event lists alone only satisfy the event-subset part; dependency sourcing must still be checked.)",
+      "Authoring a feature's ioSeeds before any component of that feature declares events or dependencies.",
+      "Code-level changes that do not touch planning artifacts."
+    ]
+  },
+  "given": "A component belonging to a feature declares consumed or produced events, or dependencies",
+  "when": "the planner authors, edits or reviews those events or dependencies, or changes the feature's ioSeeds",
+  "then": "Every declared consumed event must come from feature.ioSeeds.consume and fit the component's role, and every declared produced event from feature.ioSeeds.produce and fit its capability, so all events are a subset of, and traceable to, a feature ioSeed.",
+  "prefer": [
+    "Need a new event? Add it to the feature's ioSeeds first, then reference it.",
+    "Pick only the ioSeeds events the component's role actually consumes / its capability actually produces; the filter selects, it does not force inclusion of every seed."
+  ],
+  "avoid": [
+    "Inventing inputs/outputs the feature never declared (e.g. producing an event absent from ioSeeds.produce).",
+    "Events not selected by the role (consume) or capability (produce) filter.",
+    "More than 3 consumed or 3 produced events per component.",
+    "Dependencies other than same-feature components or external dependencies."
+  ],
+  "unless": [],
+  "why": "Limiting component events to the feature's ioSeeds keeps each component's interface within its feature's declared contract, so no component invents inputs or outputs the feature never promised.",
+  "evidence": [
+    "For each component, set(consumes) ⊆ owning feature.ioSeeds.consume and set(produces) ⊆ owning feature.ioSeeds.produce.",
+    "Each consumed event is justified by the component's role and each produced event by its capability (filtered from the respective ioSeeds list); reviewer states the role/capability link per event.",
+    "Each component lists at most 3 consumed and at most 3 produced events.",
+    "Compliant example: component consumes [dilemma:presented] where feature.ioSeeds.consume includes dilemma:presented.",
+    "Violation example: component produces order:shipped but feature.ioSeeds.produce does not contain it.",
+    "Component dependencies come from other components in the same feature plus external dependencies."
+  ],
+  "verifier_detail": [
+    "Term events_subset ('Events subset of feature ioSeeds'): rule = component events must be a subset of feature ioSeeds; check = all consumed/produced events traceable to feature ioSeeds.",
+    "Term event_limits ('Consume/produce limits and sources'): consumes.source = feature.ioSeeds.consume filtered by component role, maximum 3, example [dilemma:presented, user:authenticated]; produces.source = feature.ioSeeds.produce filtered by component capability, maximum 3, example [decision:made, validation:completed].",
+    "Term dependencies ('Component dependencies'): source = other components in same feature + external dependencies; example ids: component:same:feature.other, wagon:external#io.",
+    "No automated implementation exists (implementation.type: none); check is reviewer/LLM-judged until an observer is built.",
+    "Subset check is per declared event: if the owning feature's ioSeeds list for a direction is absent or empty, any declared event in that direction is untraceable and is a finding; a component with no declared events in that direction produces no event-subset finding, but its dependencies are still checked against the dependency-source rule. The source requires no minimum number of events."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "kind: rule; status: active",
+    "Original name: 'Component: Io Alignment'",
+    "implementation: {type: none}",
+    "source: legacy_path src/atdd/planner/conventions/component.convention.yaml, legacy_sha sha256:8bfb25fd6c2bdb6e, extraction_mode high_fidelity, legacy_section io-alignment",
+    "parity: source_fragments_preserved, examples_preserved, implementation_preserved, fix_hint_preserved all true; reviewed_at 2026-06-16",
+    "term ids: events_subset, event_limits, dependencies",
+    "Context only (from graph.json, not from the source convention): existing edge requires planner.feature.shape (finish_to_start, mandatory, reason 'component events must be a subset of the feature's ioSeeds'); maintained by tooling."
+  ],
+  "splitSuggestion": [
+    {
+      "id": "planner.component.io-limits",
+      "then": "Each component consumes at most 3 and produces at most 3 events.",
+      "segments": [
+        "S019",
+        "S020",
+        "S021",
+        "S023",
+        "S027"
+      ]
+    },
+    {
+      "id": "planner.component.dependency-sources",
+      "then": "Component dependencies come only from other components in the same feature plus external dependencies.",
+      "segments": [
+        "S030",
+        "S031",
+        "S032",
+        "S033",
+        "S034",
+        "S035"
+      ]
+    }
+  ],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "split_suggestion",
+      "text": "The 3-event cap and dependency sourcing are independent obligations; they remain mandatory here via avoid[2]/avoid[3], evidence and activation, and are also proposed as planner.component.io-limits and planner.component.dependency-sources.",
+      "justification": "Rule 2: one obligation in then, without weakening the source's requirements."
+    },
+    {
+      "field": "prefer[0]",
+      "text": "Need a new event? Add it to the feature's ioSeeds first, then reference it.",
+      "justification": "Direct corollary of the subset rule giving the planner the compliant move; no new obligation."
+    },
+    {
+      "field": "prefer[1]",
+      "text": "The filter selects; it does not force inclusion of every seed.",
+      "justification": "Resolves the selection-vs-inclusion ambiguity raised by the reviewer using the source's wording 'filtered by' and 'subset'; adds no obligation."
+    },
+    {
+      "field": "verifier_detail[4]",
+      "text": "Per-declared-event subset check; absent/empty ioSeeds makes declared events untraceable; components without events yield no event-subset finding but dependencies are still checked.",
+      "justification": "Clarifies the vacuous-subset case flagged by the auditor without inventing a nonempty-event or missing-data policy, and without exempting dependency-only violations."
+    },
+    {
+      "field": "activation.doesNotFire[0]",
+      "text": "Non-firing only when the component has no events AND compliant dependencies.",
+      "justification": "Auditor fix: empty event lists must not exclude dependency-sourcing violations."
+    },
+    {
+      "field": "evidence[1]",
+      "text": "reviewer states the role/capability link per event",
+      "justification": "Gives reviewers an operational record for the semantic role/capability filter, which the source leaves to judgement."
+    },
+    {
+      "field": "audit",
+      "text": "planner.feature.shape graph edge noted as context from graph.json only.",
+      "justification": "Removed from verifier obligations per auditor; kept for auditors as non-source context."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Rewritten as title; original name kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "given",
+        "when",
+        "activation",
+        "evidence[0]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "why",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "evidence[3]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "evidence[4]",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "audit",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "then",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "then",
+        "evidence[0]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "verifier_detail[0]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "audit",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "then",
+        "prefer[1]",
+        "avoid[1]",
+        "avoid[2]",
+        "evidence[1]",
+        "evidence[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "then",
+        "avoid[1]",
+        "evidence[1]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "avoid[2]",
+        "evidence[2]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "then",
+        "avoid[1]",
+        "evidence[1]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "avoid[2]",
+        "evidence[2]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "audit",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "avoid[3]",
+        "evidence[5]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "verifier_detail[2]",
+        "evidence[5]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    }
+  ]
+}
