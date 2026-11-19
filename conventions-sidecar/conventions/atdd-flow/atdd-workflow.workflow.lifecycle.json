@@ -1,0 +1,2277 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-flow/conventions/atdd-workflow.workflow/atdd-workflow.workflow.lifecycle.convention.yaml",
+    "sha256": "605e73b3a72c936b37cbf2eb4086a664bf3523440926b1919d26fa435294633c"
+  },
+  "rule_id": "atdd-workflow.workflow.lifecycle",
+  "kind": "rule",
+  "title": "Coordinate durable work only through atdd-flow records",
+  "activation": {
+    "facts": [
+      {
+        "fact": "phase",
+        "values": [
+          "workflow-profile-active"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Primary gate: needs an observer reporting whether the repository is governed by the workflow profile (separate workflow root with work/ and threads/). The rule applies for the whole time the profile is active, including during implementation of assigned tasks."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "atdd-flow",
+          "seat",
+          "checkpoint",
+          "handover",
+          "coordinator",
+          "driver",
+          "done_when",
+          "task transfer",
+          "retire",
+          "behavioral review",
+          "models.yaml"
+        ],
+        "observability": "observable_now",
+        "note": "Task or prompt names workflow coordination vocabulary; only meaningful when gated on the workflow profile."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "work/**",
+          "threads/**",
+          "**/handover.yaml",
+          "**/models.yaml"
+        ],
+        "observability": "observable_now",
+        "note": "Files in the workflow root or the Desk; only meaningful when gated on the workflow profile."
+      },
+      {
+        "fact": "operation",
+        "values": [
+          "task-start",
+          "task-state-transition",
+          "task-transfer",
+          "handover-record",
+          "message-post",
+          "seat-launch",
+          "seat-retire",
+          "reviewer-launch",
+          "record-create"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Needs an observer of atdd-flow invocations, seat launches, and of direct edits to workflow YAML or raw Git cleanup in seat worktrees."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "context-usage>=80%",
+          "strict-gate-red",
+          "responsibility-boundary-reached",
+          "turn-ending-with-actionable-work"
+        ],
+        "observability": "llm_judged",
+        "note": "Context usage and gate status could get observers; whether a boundary is reached or work remains actionable is LLM-judged."
+      }
+    ],
+    "fires": [
+      "A driver is implementing an assigned in_progress task and is about to end its turn or declare the work done.",
+      "A seat starts or resumes work, or an agent creates initial workflow records or launches a seat that has no assigned task yet.",
+      "A coordinator is about to move a task from review to done, transfer it, or retire its driver seat.",
+      "Any seat reaches 80–90% context usage and must hand over.",
+      "A driver hits a shared vocabulary, endpoint shape, contract or ownership question with another seat or project.",
+      "Workflow is preparing to launch the final behavioral reviewer for a delivery."
+    ],
+    "doesNotFire": [
+      "The repository is not governed by the workflow profile."
+    ]
+  },
+  "given": "The workflow profile is active (durable YAML records live in the separate workflow root) and you act as any seat — main, coordinator, driver or operator — including while implementing an assigned task, launching a seat or creating initial records.",
+  "when": "You take any workflow step: start or resume, implement and prove a task, change task or seat state, message, hand over, transfer, review, launch or retire a seat.",
+  "then": "Change task, seat, checkpoint, handover and thread records only through the installed atdd-flow CLI, acting from what those records currently say (read them before acting).",
+  "prefer": [
+    "Before workflow action run `atdd-flow --help` to discover the installed commands and current syntax (if the executable is project-local and not on PATH, `bunx atdd-flow --help`); treat that help output as the command authority.",
+    "Read the task, seat, checkpoint and thread YAML before acting; start or resume from the current seat, checkpoint, assigned tasks and relevant threads. A replacement agent resumes from those records and never depends on a conversation with its predecessor.",
+    "Driver: start only your assigned ready task; treat its done_when criteria as the delivery scope and implement the smallest effective change (see policy.phase-loop). Work criterion by criterion, continuing from the next unmet done_when criterion through implementation, verification and proof: complete the required implementation, run the relevant tests and ATDD Bun checks, correct failures caused by your work, record proof for every done_when criterion, move the task to review and send your coordinator a result. Continue until the task is review-ready (implementation and verification complete, proof on every criterion, task in review, coordinator has the result) or explicitly blocked.",
+    "If completion is impossible, block explicitly: record the blocker, checkpoint the exact current state and next action, and notify the coordinator.",
+    "At a responsibility boundary (shared vocabulary, endpoint shape, contracts, artifact ownership or another participant's responsibility), send the concrete boundary question to your coordinator. The coordinator aligns directly with affected coordinators through the existing durable thread mechanism, resolves only the minimum shared vocabulary, interface, ownership or responsibility split needed for the current work, prefers an existing convention or contract over inventing one, records the agreement in the relevant thread and communicates the result back to affected drivers.",
+    "Route messages: drivers send normal work messages to their coordinator (never directly to the operator or main seat); coordinators may escalate a concrete decision or incident directly to the operator; main seats are the normal repository-main integration gateway to the operator; a receipt or result addresses the seat that made the request, not every historical participant in the thread.",
+    "Drivers hand work back to their named coordinator for integration and validation; the named coordinator hands a reviewed integration candidate to main; only main completes normal integration-to-main gates and publication.",
+    "Topology for new projects: `main@project` is the sole primary-checkout and `main`-branch coordinator; a named `coordinator.stream@project` works only from its own linked `integration/stream` branch and worktree and integrates bounded driver delivery rather than acting as a hidden feature driver; a driver it coordinates derives its governed base from that exact integration head, while a main-coordinated driver derives from main. Reject nested coordinator lineage, mismatched base/worktree placement and ambiguous placement rather than guessing.",
+    "Transfer active task accountability only with `atdd-flow task transfer`. The current coordinator may transfer; main may only with one applicable immutable `operator@desk` `task-transfer-authorization/v1` message whose project, task, from, to, reason and exact target branch/head match the requested transfer before mutation (only `operator@desk` may create that typed authorization). Accept only main or a valid named integration coordinator as target and atomically derive the new governed base from the accepted target head. Provenance (from/to/reason/exact-head/effective-time) is append-only and prior task, phase, review and message evidence stays attributable. Reject same-target, duplicate, nested, mismatched, unauthorized or manually rewritten transfers. A transfer never moves or changes any seat, branch, runtime binding, worktree, dirty state or evidence artifact.",
+    "Context handover, every seat (main, coordinator, driver, operator): begin at 80% and no later than 90% context usage, depending on context (not a single fixed threshold). The primary path, which every seat self-services, is same-session compaction: validate and record the handover/checkpoint, pass the recovery bundle as the compaction summary, and continue in the same Pi session, JSONL, Herdr pane and Flow binding. If compaction is unavailable, fails an invariant, or the session is stuck, Flow uses the verified PR #111 new-pane successor path as the fail-closed fallback; operator intervention is fallback-only. Caveat: the runtime prompt and behavior remain pending compaction T2/T3; until they land this states the target policy and the runtime prompt is unchanged.",
+    "To hand over: finish or cleanly undo the current atomic step (commit, post, receipt) and start nothing new; write the handover using the template, validate it with `atdd-flow handover <address> --check --file <path>`, fix every reported problem, and record it with `atdd-flow handover <address> --file <path>`. The seat's handover.yaml is the one durable handover record; it sits beside the checkpoint and never replaces it. On the fallback path the old session then makes no further tool calls and a fresh session bound to the same seat continues; after compaction the same session continues.",
+    "Handover content: point to toolkit conventions, never restate or override them; list open items only, use exact IDs and mark state [verified|assumed]; 150 lines is a ceiling, not a target. Recording rejects a missing or malformed header or Runtime line, a missing, duplicate or out-of-order section, more than 150 lines, a wrong supersedes value, and vague references without an exact identifier (details in verifier_detail[0]).",
+    "Handover template:\nHANDOVER <seat-address> | <UTC ts> | handover-id <id> | supersedes <id|none>\nRuntime: <application> <session>:<pane> | <agent> session <id> | model <provider/model> | context <NN>%\n1. SEAT, AUTHORITY, TOOLKIT AND HAZARDS\n- Seat: <address> (<role>), project <project>; reports to <addr>; directs <addrs|none>\n- Worktree: <path> @ <branch> <sha> (<clean | dirty: files>)\n- Toolkit in force (this worktree): Flow <ver> / Bun <ver> | declared=locked=installed: <yes | NOT CURRENT: detail> | runtime binding: <Flow ver | unverified>\n- Governing conventions for current phase: <convention ids> (pointers only)\n- Profile/ratchet state: <profile> <reject-new|strict> | activated ratchets (never modify): <list|none>\n- Authorizations in force: <scope> | granted by <addr> | ref <msg-id> | expires <ts|never>\n- Seat-specific constraints (beyond the instruction file): <list|none>\n- Hazards / known bugs / workarounds: <list|none>\n- Dead ends (tried, failed, do not repeat): <what> | ref <id> (or none)\n2. OPEN WORK AND IN-FLIGHT OPERATIONS\n- <project>/<task-id> | <status/phase> | assignee <addr> | [verified|assumed]\n  ref: <PR#/sha/pane>; last evidence <msg-id>; state: <one line>\n- IN-FLIGHT: <operation> | started <ts> | check: <exact command> | retry-safe: <yes|no|why>\n- Session-only knowledge: <facts learned, not recorded in Desk> (or none)\n3. DEPENDENCIES (both directions)\n- WAITING ON: <what> | <addr> | since <ts> | ref <msg-id> | follow up at <ts>\n- OWED BY ME: <what> | to <addr> | due <ts> | ref <msg-id>\n- DECISION PENDING: <question> | owner <addr> | options A/B + recommendation | ref <id>\n- RECEIVED, NOT YET ACTED ON: <msg-id> | from <addr> | needed action\n(or: none, per subsection)\n4. RESUME PROCEDURE AND NEXT ACTIONS\nVerify first:\n- atdd-flow status seat <address>\n- atdd-flow task open <project> <task-id>   (each open task)\n- git -C <worktree> status && git log -1\n- installed toolkit versions in <worktree> match section 1 (mismatch = discrepancy; report, do not self-upgrade)\n- <each IN-FLIGHT check command>\nThen, in order:\n1. Read inbox; receipt pending messages lacking my receipt.\n2. <concrete action with exact IDs>",
+    "Resuming session: read the instruction file, then `atdd-flow handover show <address>`, run the handover's verification, reconcile it with the live Desk (the Desk wins), reconcile your inbox, report `RESUMED; verified N/M; discrepancies: ...` through your normal reporting route, and continue. Read a convention when its phase is acted on, not all on resume.",
+    "Use `atdd-flow scout` only when repository scope is genuinely unclear or candidate files are numerous; use `atdd-flow focus-check` only before a likely scope expansion (new dependency, generalized abstraction, persistent schema, architecture change, adjacent refactor, unrelated defect). These are read-only Jev judgments that advise scope; they do not own correctness or completion.",
+    "Launching a seat: new seats do not pin a model. The Desk's models.yaml lists launchable candidates ordered strongest to weakest; for ordinary launches ask Jev for the weakest available model sufficient for the seat's current active work; if Jev model selection is unavailable or low-confidence, use the strongest available configured model.",
+    "Final review (Workflow/coordinator): between phases, let the next phase consume and semantically challenge the prior one while active ATDD Bun conventions enforce deterministically; reserve the explicit independent semantic reviewer (behavioral review: final semantic reconciliation after deterministic gates, before review -> done) for the final integration boundary. After the driver moves the task to review, run the deterministic ATDD Bun gates in the delivery worktree before launching the reviewer. Only after they pass may Jev answer bounded routing questions: classify the review surface as LOCAL, ASSEMBLED, JOURNEY or SYSTEM with routing signals (behavior-affecting vs behavior-preserving intent, highest relevant proof boundary, cross-path scope, consequence, reconciliation shape, runtime observability, confidence); treat low-confidence routing as SYSTEM. Map the routing result through models.yaml to a reviewer model, create a task-scoped reviewer responsibility in the delivery worktree, and supply inputs in this order: task criteria/source; relevant plan artifacts; deterministic gate evidence; executable proof; runtime/worktree; then implementation/diff context. Include the complete installed atdd-bun.review.behavioral-reconciliation convention in the reviewer prompt as the authoritative method — ATDD Bun owns the review method; Workflow owns routing, reviewer allocation, durable evidence and lifecycle enforcement.",
+    "Reviewer: record durable structured evidence — intent sources, expected behavior, exercised boundary and evidence, observed behavior, reconciliation findings, a decision of APPROVE, RETURN or ESCALATE, rationale and confidence — and never mutate task state. Coordinator: APPROVE makes the current clean delivery commit eligible for completion; on RETURN move review back to in_progress; on ESCALATE leave the task in review or explicitly block it until authoritative intent is resolved. Only the coordinator moves review to done, and only when the latest behavioral-review attempt is complete, records APPROVE and matches the current clean delivery commit.",
+    "Retiring a driver seat (the final housekeeping step for an idle driver seat, delegated to ATDD Bun): install the repository's local dependencies in a driver worktree before working in or retiring it. A coordinator uses `atdd-flow task done <project> <task> --by <coordinator> --retire-assignee` only when every task assigned to that driver in the project is done and the seat is intentionally being retired; it delegates to `atdd-bun worktree finish --delete-branch`, runs in the seat worktree but resolves ATDD Bun from the primary checkout's local node_modules/.bin, then the primary checkout's own source when it is the ATDD Bun package, then PATH — never the seat worktree's copy, which may pin an older toolkit that refuses its own retirement. A failed retirement leaves the task in review and writes a blocked checkpoint for investigation."
+  ],
+  "avoid": [
+    "Inventing flags, inferring command forms from memory, or relying on an older agent's instructions.",
+    "Treating terminal pane history, a multiplexer, an optional judgment helper or an agent's private memory as durable coordination state; rewriting task YAML (e.g. to transfer accountability).",
+    "Posting, approving or making a decision while claiming `operator@desk` (the human authority, not an autonomous agent identity) unless the human operator actually supplied it.",
+    "A driver independently redefining a shared contract; using boundary coordination to redesign adjacent systems or solve hypothetical future needs; reopening a settled boundary decision without concrete implementation evidence that it cannot satisfy the task.",
+    "Intentionally ending an autonomous work turn on an assigned in_progress task while required work remains actionable; treating successful code generation as task completion; silently leaving actionable required work unfinished.",
+    "Removing a worktree, deleting a delivery branch or forcing cleanup through raw Git; using `--retire-assignee` while that driver still has undone tasks in the project.",
+    "Adding a writer/reviewer pair after every development phase; invoking the semantic reviewer while a strict gate is red (return the discrepancy to the appropriate implementation phase instead).",
+    "Letting Jev approve a delivery, decide semantic correctness, mutate task state or redefine intent; duplicating the behavioral-review methodology in the Workflow convention.",
+    "Introducing an automatic merge executor, branch graph, daemon or scheduler as part of this workflow.",
+    "Self-upgrading the toolkit when installed versions on resume differ from the handover (report it as a discrepancy)."
+  ],
+  "unless": [
+    "A broader change is permitted when a done_when criterion requires it, the current design cannot correctly satisfy the task without it, or it is necessary to resolve a verified blocker.",
+    "A driver waiting on a boundary decision continues any independent required work that remains actionable; mark the task blocked only when the unresolved decision prevents further meaningful progress.",
+    "A task may be completed normally without retiring its assignee when that driver still has work (a driver seat may own more than one task).",
+    "A live host may notify an agent to inspect its seat, but it never owns the durable state.",
+    "An optional Jev scouting, focus, final-review-routing or model-selection judgment may advise execution, but never owns task state, proof, correctness or completion authority.",
+    "A legacy Desk without models.yaml may continue to use its pinned seat agent.",
+    "Legacy seat, task and thread identities remain readable without rename or mutation."
+  ],
+  "why": "A seat owns its runtime binding, branch and worktree, a task its delivery state and proof, a thread its conversation; keeping these durable records as the single source of truth lets any replacement agent resume and keeps evidence attributable, which panes, memory and advisory judgments cannot.",
+  "evidence": [
+    "Every change to task, seat, checkpoint, handover or thread records is attributable to an atdd-flow CLI invocation; no hand-edited task YAML and no raw-Git worktree/branch removal in seat worktrees.",
+    "review -> done happened only by the coordinator when the latest behavioral-review attempt is complete, records APPROVE and matches the current clean delivery commit (proves the review occurred and applies to this delivery, not that its judgment is correct).",
+    "A review-ready task has completed implementation and verification, proof on every done_when criterion, is in review, and the coordinator has a result message; otherwise it is explicitly blocked.",
+    "A recorded handover passed `atdd-flow handover <address> --check --file <path>`; the resuming session reported `RESUMED; verified N/M; discrepancies: ...` through its normal route.",
+    "A blocked task carries the blocker, a checkpoint with exact state and next action, and a coordinator notification.",
+    "Boundary agreements are recorded in the relevant thread and communicated to affected drivers.",
+    "Task transfers carry append-only from/to/reason/exact-head/effective-time provenance with prior task, phase, review and message evidence still attributable; main-initiated transfers cite a matching operator@desk task-transfer-authorization/v1 message.",
+    "A reviewer was launched only after green deterministic gates and its prompt included the complete installed atdd-bun.review.behavioral-reconciliation convention."
+  ],
+  "verifier_detail": [
+    "Handover recording rejects: missing or malformed header or Runtime line; a missing, duplicate or out-of-order section; more than 150 lines; a supersedes value other than the recorded handover id (or none when none is recorded); vague references — the words latest, newest, most recent, and that/this/those/these/same/previous/earlier/above/last/aforementioned followed by PR, pull request, task, thread, message, commit, branch, handover, session, issue or release without an exact identifier (one containing a digit, @ or /).",
+    "Done gate: for repositories explicitly governed by the workflow profile, Workflow deterministically prevents review -> done unless the latest behavioral-review attempt is complete, records APPROVE and matches the current clean delivery commit. These checks prove that the required review occurred and applies to the delivery being completed; they do not prove the reviewer's semantic judgment is correct.",
+    "Transfer validator rejects same-target, duplicate, nested, mismatched, unauthorized or manually rewritten transfers; topology validator rejects nested coordinator lineage, mismatched base/worktree placement and ambiguous placement."
+  ],
+  "audit": [
+    "schema_version 1.1.0; source kind: policy; status: active.",
+    "Alias: ATDD-WORKFLOW-LIFECYCLE; introduced_in 0.1.3; implementation type: none.",
+    "Source title: 'Coordinate durable agent work through seats, tasks, and threads'.",
+    "Compaction-first handover: runtime prompt and behavior remain pending compaction T2/T3; until they land the text states the target policy and the runtime prompt is unchanged. Fallback successor path verified in PR #111."
+  ],
+  "splitSuggestion": [
+    {
+      "id": "atdd-workflow.workflow.context-handover",
+      "then": "At 80–90% context, finish or undo the current atomic step, write, validate and record a handover from the template, and continue via same-session compaction (new-pane successor only as fallback).",
+      "segments": [
+        "S042",
+        "S043",
+        "S044",
+        "S045",
+        "S046",
+        "S047",
+        "S048",
+        "S049",
+        "S050",
+        "S051",
+        "S052",
+        "S053",
+        "S054",
+        "S055",
+        "S056",
+        "S057",
+        "S058",
+        "S059",
+        "S060",
+        "S061",
+        "S062",
+        "S063",
+        "S064",
+        "S065",
+        "S066",
+        "S067",
+        "S068",
+        "S069",
+        "S070",
+        "S071",
+        "S072",
+        "S073",
+        "S074",
+        "S075",
+        "S076",
+        "S077",
+        "S079",
+        "S080",
+        "S082",
+        "S083",
+        "S084",
+        "S085",
+        "S086",
+        "S087",
+        "S088",
+        "S089",
+        "S090",
+        "S091",
+        "S093",
+        "S094",
+        "S095",
+        "S096",
+        "S097",
+        "S099",
+        "S100",
+        "S101",
+        "S102",
+        "S103",
+        "S104",
+        "S106",
+        "S107",
+        "S108",
+        "S109",
+        "S110",
+        "S111",
+        "S112",
+        "S113",
+        "S115",
+        "S116"
+      ]
+    },
+    {
+      "id": "atdd-workflow.workflow.message-routing",
+      "then": "Route messages through the seat hierarchy and never act as operator@desk without the human.",
+      "segments": [
+        "S117",
+        "S118",
+        "S119",
+        "S120",
+        "S121",
+        "S122",
+        "S123",
+        "S124",
+        "S125",
+        "S126"
+      ]
+    },
+    {
+      "id": "atdd-workflow.workflow.seat-topology",
+      "then": "Place each seat's branch, worktree and governed base per main/integration-coordinator topology and reject nested or ambiguous placement.",
+      "segments": [
+        "S127",
+        "S128",
+        "S129",
+        "S130",
+        "S131",
+        "S132",
+        "S133",
+        "S134",
+        "S135",
+        "S136",
+        "S137",
+        "S154",
+        "S155",
+        "S156",
+        "S157",
+        "S158",
+        "S159"
+      ]
+    },
+    {
+      "id": "atdd-workflow.workflow.task-transfer",
+      "then": "Transfer task accountability only through `atdd-flow task transfer` with matching authorization.",
+      "segments": [
+        "S138",
+        "S139",
+        "S140",
+        "S141",
+        "S142",
+        "S143",
+        "S144",
+        "S145",
+        "S146",
+        "S147",
+        "S148",
+        "S149",
+        "S150",
+        "S151",
+        "S152",
+        "S153"
+      ]
+    },
+    {
+      "id": "atdd-workflow.workflow.driver-completion",
+      "then": "Continue an assigned in_progress task until review-ready or explicitly blocked.",
+      "segments": [
+        "S008",
+        "S024",
+        "S032",
+        "S160",
+        "S161",
+        "S162",
+        "S173",
+        "S174",
+        "S175",
+        "S176",
+        "S177",
+        "S178",
+        "S179",
+        "S180",
+        "S181",
+        "S182",
+        "S183",
+        "S184",
+        "S185",
+        "S186",
+        "S222",
+        "S223",
+        "S276",
+        "S279"
+      ]
+    },
+    {
+      "id": "atdd-workflow.workflow.boundary-handshake",
+      "then": "Resolve shared responsibility boundaries through coordinators and record the minimum agreement in a thread.",
+      "segments": [
+        "S187",
+        "S188",
+        "S189",
+        "S190",
+        "S191",
+        "S192",
+        "S193",
+        "S194",
+        "S195",
+        "S196",
+        "S197",
+        "S198",
+        "S199",
+        "S200",
+        "S201",
+        "S202",
+        "S203",
+        "S204",
+        "S278",
+        "S281"
+      ]
+    },
+    {
+      "id": "atdd-workflow.workflow.model-selection",
+      "then": "Launch seats with the weakest sufficient model from models.yaml, falling back to the strongest.",
+      "segments": [
+        "S026",
+        "S027",
+        "S211",
+        "S212",
+        "S213",
+        "S214",
+        "S215",
+        "S216"
+      ]
+    },
+    {
+      "id": "atdd-workflow.workflow.final-behavioral-review",
+      "then": "Move review to done only after green deterministic gates and an APPROVE behavioral review matching the current clean delivery commit.",
+      "segments": [
+        "S029",
+        "S030",
+        "S217",
+        "S218",
+        "S219",
+        "S220",
+        "S221",
+        "S224",
+        "S225",
+        "S226",
+        "S227",
+        "S228",
+        "S229",
+        "S230",
+        "S231",
+        "S232",
+        "S233",
+        "S234",
+        "S235",
+        "S236",
+        "S237",
+        "S238",
+        "S239",
+        "S240",
+        "S241",
+        "S242",
+        "S243",
+        "S244",
+        "S245",
+        "S246",
+        "S247",
+        "S248",
+        "S249",
+        "S250",
+        "S251",
+        "S252",
+        "S253",
+        "S254",
+        "S255",
+        "S256",
+        "S257",
+        "S258",
+        "S259"
+      ]
+    },
+    {
+      "id": "atdd-workflow.workflow.seat-retirement",
+      "then": "Retire an idle driver seat only via `--retire-assignee` delegating to ATDD Bun, never raw Git.",
+      "segments": [
+        "S014",
+        "S015",
+        "S260",
+        "S261",
+        "S262",
+        "S263",
+        "S264",
+        "S265",
+        "S266",
+        "S267",
+        "S268",
+        "S269",
+        "S270",
+        "S271",
+        "S282"
+      ]
+    },
+    {
+      "id": "atdd-workflow.workflow.cli-authority",
+      "then": "Before workflow action, run the installed `atdd-flow --help` and use only the commands and syntax it reports.",
+      "segments": [
+        "S033",
+        "S034",
+        "S035",
+        "S036",
+        "S037",
+        "S038"
+      ]
+    }
+  ],
+  "sharedNodes": [
+    {
+      "id": "context.workflow.vocabulary",
+      "kind": "context",
+      "text": "Descriptive glossary only. workflow_root: the separate coordination repository holding work/, threads/ and the durable YAML records. seat: a replaceable agent responsibility with a purpose, worktree/branch binding, checkpoint and optional native application addresses. retirement: the final housekeeping step for an idle driver seat. smallest_sufficient_change: the least broad implementation that correctly satisfies the current task's done_when criteria and the repository's existing conventions. responsibility_boundary: a point where implementation requires agreement about vocabulary, interfaces, contracts, ownership or responsibility shared with another seat or project. boundary_handshake: the coordinator-mediated agreement used when a driver reaches a shared responsibility boundary. review_ready: a task state (see the lifecycle rule for its prerequisites). model_portfolio: the models.yaml list of launchable model candidates. behavioral_review: the independent final semantic reconciliation of a Workflow-governed delivery."
+    },
+    {
+      "id": "policy.phase-loop",
+      "kind": "policy",
+      "text": "Implement the smallest sufficient change: treat the task's done_when criteria as the required delivery scope; prefer existing repository patterns, components, dependencies, contracts and abstractions; when multiple implementations are correct, choose the smallest effective change that agrees with the existing system. Do not redesign adjacent systems, introduce generalized infrastructure, add dependencies, create abstractions for hypothetical future requirements, or perform unrelated cleanup merely because the opportunity was discovered; remove speculative scope not required for correctness. Broaden only when a done_when criterion requires it, the current design cannot correctly satisfy the task without it, or the broader change is necessary to resolve a verified blocker."
+    }
+  ],
+  "additions": [
+    {
+      "field": "split_suggestion",
+      "text": "The source bundles several independent obligations (context handover, message routing/operator authority, seat topology, task transfer, driver completion, boundary handshake, model selection, final behavioral review gate, seat retirement, CLI help authority); each should become its own independently activated convention as listed in splitSuggestion. Until they exist, all their operative instructions are kept in this rule's coder-facing prefer/avoid/unless fields.",
+      "justification": "Rule 2: one obligation per convention; the primary kept here is the durable-records/CLI-mutation obligation that unifies them."
+    },
+    {
+      "field": "length_note",
+      "text": "Coder-facing text far exceeds ~1,000 characters (handover template, transfer, topology, review pipeline and retirement procedures are kept in prefer).",
+      "justification": "The auditor required these operative instructions in coder-facing fields rather than verifier_detail or rule-specific shared nodes; losslessness wins over brevity until the split conventions exist."
+    },
+    {
+      "field": "activation",
+      "text": "Observer notes (workflow-profile observer, atdd-flow invocation observer) and the single doesNotFire case.",
+      "justification": "Required by the schema for observable activation; not stated in the source."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Title reworded; source title kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "activation",
+        "then"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "prefer[2]",
+        "prefer[4]",
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "shared:context.workflow.vocabulary"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "shared:context.workflow.vocabulary",
+        "given"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "shared:context.workflow.vocabulary"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "shared:context.workflow.vocabulary"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "shared:context.workflow.vocabulary"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "shared:context.workflow.vocabulary",
+        "prefer[18]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "prefer[18]",
+        "avoid[5]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "shared:context.workflow.vocabulary"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "shared:context.workflow.vocabulary",
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "shared:context.workflow.vocabulary"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "shared:context.workflow.vocabulary",
+        "prefer[4]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "shared:context.workflow.vocabulary"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "shared:context.workflow.vocabulary",
+        "prefer[4]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "prefer[4]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "shared:context.workflow.vocabulary"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "prefer[2]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "shared:context.workflow.vocabulary"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "prefer[15]",
+        "shared:context.workflow.vocabulary"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "prefer[15]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "shared:context.workflow.vocabulary"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "prefer[16]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "prefer[16]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "then",
+        "why"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "prefer[2]",
+        "prefer[4]",
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "prefer[9]"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "prefer[9]"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "prefer[9]"
+      ]
+    },
+    {
+      "seg": "S045",
+      "dest": [
+        "prefer[9]"
+      ]
+    },
+    {
+      "seg": "S046",
+      "dest": [
+        "prefer[9]"
+      ]
+    },
+    {
+      "seg": "S047",
+      "dest": [
+        "prefer[9]"
+      ]
+    },
+    {
+      "seg": "S048",
+      "dest": [
+        "prefer[9]"
+      ],
+      "note": "Sentence fragment continued in S049."
+    },
+    {
+      "seg": "S049",
+      "dest": [
+        "prefer[9]"
+      ]
+    },
+    {
+      "seg": "S050",
+      "dest": [
+        "prefer[9]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S051",
+      "dest": [
+        "prefer[9]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S052",
+      "dest": [
+        "prefer[9]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S053",
+      "dest": [
+        "prefer[10]"
+      ]
+    },
+    {
+      "seg": "S054",
+      "dest": [
+        "prefer[10]"
+      ]
+    },
+    {
+      "seg": "S055",
+      "dest": [
+        "prefer[10]",
+        "evidence[3]"
+      ]
+    },
+    {
+      "seg": "S056",
+      "dest": [
+        "prefer[10]",
+        "evidence[3]"
+      ]
+    },
+    {
+      "seg": "S057",
+      "dest": [
+        "prefer[10]"
+      ]
+    },
+    {
+      "seg": "S058",
+      "dest": [
+        "prefer[10]"
+      ]
+    },
+    {
+      "seg": "S059",
+      "dest": [
+        "prefer[10]"
+      ]
+    },
+    {
+      "seg": "S060",
+      "dest": [
+        "prefer[10]"
+      ]
+    },
+    {
+      "seg": "S061",
+      "dest": [
+        "prefer[10]"
+      ]
+    },
+    {
+      "seg": "S062",
+      "dest": [
+        "prefer[10]"
+      ]
+    },
+    {
+      "seg": "S063",
+      "dest": [
+        "prefer[13]"
+      ]
+    },
+    {
+      "seg": "S064",
+      "dest": [
+        "prefer[13]"
+      ]
+    },
+    {
+      "seg": "S065",
+      "dest": [
+        "prefer[13]"
+      ]
+    },
+    {
+      "seg": "S066",
+      "dest": [
+        "prefer[13]",
+        "evidence[3]"
+      ]
+    },
+    {
+      "seg": "S067",
+      "dest": [
+        "prefer[11]",
+        "prefer[13]"
+      ]
+    },
+    {
+      "seg": "S068",
+      "dest": [
+        "prefer[13]",
+        "prefer[11]"
+      ]
+    },
+    {
+      "seg": "S069",
+      "dest": [
+        "prefer[11]"
+      ]
+    },
+    {
+      "seg": "S070",
+      "dest": [
+        "prefer[11]"
+      ]
+    },
+    {
+      "seg": "S071",
+      "dest": [
+        "prefer[11]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S072",
+      "dest": [
+        "prefer[11]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S073",
+      "dest": [
+        "prefer[11]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S074",
+      "dest": [
+        "prefer[11]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S075",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S076",
+      "dest": [
+        "prefer[11]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S077",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S078",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S079",
+      "dest": [
+        "prefer[12]"
+      ]
+    },
+    {
+      "seg": "S080",
+      "dest": [
+        "prefer[12]"
+      ]
+    },
+    {
+      "seg": "S081",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S082",
+      "dest": [
+        "prefer[12]"
+      ]
+    },
+    {
+      "seg": "S083",
+      "dest": [
+        "prefer[12]"
+      ]
+    },
+    {
+      "seg": "S084",
+      "dest": [
+        "prefer[12]"
+      ]
+    },
+    {
+      "seg": "S085",
+      "dest": [
+        "prefer[12]"
+      ]
+    },
+    {
+      "seg": "S086",
+      "dest": [
+        "prefer[12]"
+      ]
+    },
+    {
+      "seg": "S087",
+      "dest": [
+        "prefer[12]"
+      ]
+    },
+    {
+      "seg": "S088",
+      "dest": [
+        "prefer[12]"
+      ]
+    },
+    {
+      "seg": "S089",
+      "dest": [
+        "prefer[12]"
+      ]
+    },
+    {
+      "seg": "S090",
+      "dest": [
+        "prefer[12]"
+      ]
+    },
+    {
+      "seg": "S091",
+      "dest": [
+        "prefer[12]"
+      ]
+    },
+    {
+      "seg": "S092",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S093",
+      "dest": [
+        "prefer[12]"
+      ]
+    },
+    {
+      "seg": "S094",
+      "dest": [
+        "prefer[12]"
+      ]
+    },
+    {
+      "seg": "S095",
+      "dest": [
+        "prefer[12]"
+      ]
+    },
+    {
+      "seg": "S096",
+      "dest": [
+        "prefer[12]"
+      ]
+    },
+    {
+      "seg": "S097",
+      "dest": [
+        "prefer[12]"
+      ]
+    },
+    {
+      "seg": "S098",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S099",
+      "dest": [
+        "prefer[12]"
+      ]
+    },
+    {
+      "seg": "S100",
+      "dest": [
+        "prefer[12]"
+      ]
+    },
+    {
+      "seg": "S101",
+      "dest": [
+        "prefer[12]"
+      ]
+    },
+    {
+      "seg": "S102",
+      "dest": [
+        "prefer[12]"
+      ]
+    },
+    {
+      "seg": "S103",
+      "dest": [
+        "prefer[12]"
+      ]
+    },
+    {
+      "seg": "S104",
+      "dest": [
+        "prefer[12]"
+      ]
+    },
+    {
+      "seg": "S105",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S106",
+      "dest": [
+        "prefer[12]"
+      ]
+    },
+    {
+      "seg": "S107",
+      "dest": [
+        "prefer[12]"
+      ]
+    },
+    {
+      "seg": "S108",
+      "dest": [
+        "prefer[12]"
+      ]
+    },
+    {
+      "seg": "S109",
+      "dest": [
+        "prefer[12]"
+      ]
+    },
+    {
+      "seg": "S110",
+      "dest": [
+        "prefer[12]"
+      ]
+    },
+    {
+      "seg": "S111",
+      "dest": [
+        "prefer[12]",
+        "avoid[9]"
+      ]
+    },
+    {
+      "seg": "S112",
+      "dest": [
+        "prefer[12]"
+      ]
+    },
+    {
+      "seg": "S113",
+      "dest": [
+        "prefer[12]"
+      ]
+    },
+    {
+      "seg": "S114",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S115",
+      "dest": [
+        "prefer[12]"
+      ]
+    },
+    {
+      "seg": "S116",
+      "dest": [
+        "prefer[12]"
+      ]
+    },
+    {
+      "seg": "S117",
+      "dest": [
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S118",
+      "dest": [
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S119",
+      "dest": [
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S120",
+      "dest": [
+        "prefer[5]"
+      ]
+    },
+    {
+      "seg": "S121",
+      "dest": [
+        "prefer[5]"
+      ]
+    },
+    {
+      "seg": "S122",
+      "dest": [
+        "prefer[5]"
+      ]
+    },
+    {
+      "seg": "S123",
+      "dest": [
+        "prefer[5]"
+      ]
+    },
+    {
+      "seg": "S124",
+      "dest": [
+        "prefer[5]"
+      ]
+    },
+    {
+      "seg": "S125",
+      "dest": [
+        "prefer[5]"
+      ]
+    },
+    {
+      "seg": "S126",
+      "dest": [
+        "prefer[5]"
+      ]
+    },
+    {
+      "seg": "S127",
+      "dest": [
+        "prefer[7]"
+      ]
+    },
+    {
+      "seg": "S128",
+      "dest": [
+        "prefer[7]"
+      ]
+    },
+    {
+      "seg": "S129",
+      "dest": [
+        "prefer[7]"
+      ]
+    },
+    {
+      "seg": "S130",
+      "dest": [
+        "prefer[7]"
+      ]
+    },
+    {
+      "seg": "S131",
+      "dest": [
+        "prefer[7]"
+      ]
+    },
+    {
+      "seg": "S132",
+      "dest": [
+        "prefer[7]"
+      ]
+    },
+    {
+      "seg": "S133",
+      "dest": [
+        "prefer[7]"
+      ]
+    },
+    {
+      "seg": "S134",
+      "dest": [
+        "prefer[7]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S135",
+      "dest": [
+        "prefer[7]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S136",
+      "dest": [
+        "prefer[7]"
+      ]
+    },
+    {
+      "seg": "S137",
+      "dest": [
+        "unless[6]"
+      ]
+    },
+    {
+      "seg": "S138",
+      "dest": [
+        "prefer[8]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S139",
+      "dest": [
+        "prefer[8]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S140",
+      "dest": [
+        "prefer[8]",
+        "evidence[6]"
+      ]
+    },
+    {
+      "seg": "S141",
+      "dest": [
+        "prefer[8]",
+        "evidence[6]"
+      ]
+    },
+    {
+      "seg": "S142",
+      "dest": [
+        "prefer[8]"
+      ]
+    },
+    {
+      "seg": "S143",
+      "dest": [
+        "prefer[8]"
+      ]
+    },
+    {
+      "seg": "S144",
+      "dest": [
+        "prefer[8]",
+        "evidence[6]"
+      ]
+    },
+    {
+      "seg": "S145",
+      "dest": [
+        "prefer[8]"
+      ]
+    },
+    {
+      "seg": "S146",
+      "dest": [
+        "prefer[8]"
+      ]
+    },
+    {
+      "seg": "S147",
+      "dest": [
+        "prefer[8]"
+      ]
+    },
+    {
+      "seg": "S148",
+      "dest": [
+        "prefer[8]"
+      ]
+    },
+    {
+      "seg": "S149",
+      "dest": [
+        "prefer[8]"
+      ]
+    },
+    {
+      "seg": "S150",
+      "dest": [
+        "prefer[8]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S151",
+      "dest": [
+        "prefer[8]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S152",
+      "dest": [
+        "prefer[8]"
+      ]
+    },
+    {
+      "seg": "S153",
+      "dest": [
+        "prefer[8]"
+      ]
+    },
+    {
+      "seg": "S154",
+      "dest": [
+        "prefer[6]"
+      ]
+    },
+    {
+      "seg": "S155",
+      "dest": [
+        "prefer[6]"
+      ]
+    },
+    {
+      "seg": "S156",
+      "dest": [
+        "prefer[6]"
+      ]
+    },
+    {
+      "seg": "S157",
+      "dest": [
+        "prefer[6]"
+      ]
+    },
+    {
+      "seg": "S158",
+      "dest": [
+        "avoid[8]"
+      ]
+    },
+    {
+      "seg": "S159",
+      "dest": [
+        "avoid[8]"
+      ]
+    },
+    {
+      "seg": "S160",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S161",
+      "dest": [
+        "prefer[2]",
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S162",
+      "dest": [
+        "prefer[2]",
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S163",
+      "dest": [
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S164",
+      "dest": [
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S165",
+      "dest": [
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S166",
+      "dest": [
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S167",
+      "dest": [
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S168",
+      "dest": [
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S169",
+      "dest": [
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S170",
+      "dest": [
+        "shared:policy.phase-loop",
+        "unless[0]"
+      ]
+    },
+    {
+      "seg": "S171",
+      "dest": [
+        "shared:policy.phase-loop",
+        "unless[0]"
+      ]
+    },
+    {
+      "seg": "S172",
+      "dest": [
+        "shared:policy.phase-loop",
+        "unless[0]"
+      ]
+    },
+    {
+      "seg": "S173",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S174",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S175",
+      "dest": [
+        "prefer[2]",
+        "avoid[4]"
+      ]
+    },
+    {
+      "seg": "S176",
+      "dest": [
+        "avoid[4]"
+      ]
+    },
+    {
+      "seg": "S177",
+      "dest": [
+        "avoid[4]"
+      ]
+    },
+    {
+      "seg": "S178",
+      "dest": [
+        "avoid[4]"
+      ]
+    },
+    {
+      "seg": "S179",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S180",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S181",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S182",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S183",
+      "dest": [
+        "prefer[2]",
+        "prefer[3]"
+      ]
+    },
+    {
+      "seg": "S184",
+      "dest": [
+        "prefer[3]",
+        "evidence[4]"
+      ]
+    },
+    {
+      "seg": "S185",
+      "dest": [
+        "prefer[3]",
+        "evidence[4]"
+      ]
+    },
+    {
+      "seg": "S186",
+      "dest": [
+        "avoid[4]"
+      ]
+    },
+    {
+      "seg": "S187",
+      "dest": [
+        "prefer[4]",
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S188",
+      "dest": [
+        "prefer[4]",
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S189",
+      "dest": [
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S190",
+      "dest": [
+        "prefer[4]"
+      ]
+    },
+    {
+      "seg": "S191",
+      "dest": [
+        "prefer[4]"
+      ]
+    },
+    {
+      "seg": "S192",
+      "dest": [
+        "prefer[4]"
+      ]
+    },
+    {
+      "seg": "S193",
+      "dest": [
+        "prefer[4]"
+      ]
+    },
+    {
+      "seg": "S194",
+      "dest": [
+        "prefer[4]"
+      ]
+    },
+    {
+      "seg": "S195",
+      "dest": [
+        "prefer[4]"
+      ]
+    },
+    {
+      "seg": "S196",
+      "dest": [
+        "prefer[4]",
+        "evidence[5]"
+      ]
+    },
+    {
+      "seg": "S197",
+      "dest": [
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S198",
+      "dest": [
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S199",
+      "dest": [
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S200",
+      "dest": [
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S201",
+      "dest": [
+        "unless[1]"
+      ]
+    },
+    {
+      "seg": "S202",
+      "dest": [
+        "unless[1]"
+      ]
+    },
+    {
+      "seg": "S203",
+      "dest": [
+        "unless[1]"
+      ]
+    },
+    {
+      "seg": "S204",
+      "dest": [
+        "unless[1]"
+      ]
+    },
+    {
+      "seg": "S205",
+      "dest": [
+        "prefer[14]"
+      ]
+    },
+    {
+      "seg": "S206",
+      "dest": [
+        "prefer[14]"
+      ]
+    },
+    {
+      "seg": "S207",
+      "dest": [
+        "prefer[14]"
+      ]
+    },
+    {
+      "seg": "S208",
+      "dest": [
+        "prefer[14]"
+      ]
+    },
+    {
+      "seg": "S209",
+      "dest": [
+        "prefer[14]"
+      ]
+    },
+    {
+      "seg": "S210",
+      "dest": [
+        "prefer[14]",
+        "unless[4]"
+      ]
+    },
+    {
+      "seg": "S211",
+      "dest": [
+        "prefer[15]"
+      ]
+    },
+    {
+      "seg": "S212",
+      "dest": [
+        "prefer[15]"
+      ]
+    },
+    {
+      "seg": "S213",
+      "dest": [
+        "prefer[15]"
+      ]
+    },
+    {
+      "seg": "S214",
+      "dest": [
+        "prefer[15]"
+      ]
+    },
+    {
+      "seg": "S215",
+      "dest": [
+        "prefer[15]"
+      ]
+    },
+    {
+      "seg": "S216",
+      "dest": [
+        "unless[5]"
+      ]
+    },
+    {
+      "seg": "S217",
+      "dest": [
+        "avoid[6]"
+      ]
+    },
+    {
+      "seg": "S218",
+      "dest": [
+        "prefer[16]"
+      ]
+    },
+    {
+      "seg": "S219",
+      "dest": [
+        "prefer[16]"
+      ]
+    },
+    {
+      "seg": "S220",
+      "dest": [
+        "prefer[16]"
+      ]
+    },
+    {
+      "seg": "S221",
+      "dest": [
+        "prefer[16]"
+      ]
+    },
+    {
+      "seg": "S222",
+      "dest": [
+        "prefer[2]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S223",
+      "dest": [
+        "prefer[2]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S224",
+      "dest": [
+        "prefer[16]",
+        "evidence[7]"
+      ]
+    },
+    {
+      "seg": "S225",
+      "dest": [
+        "prefer[16]"
+      ]
+    },
+    {
+      "seg": "S226",
+      "dest": [
+        "avoid[6]"
+      ]
+    },
+    {
+      "seg": "S227",
+      "dest": [
+        "avoid[6]"
+      ]
+    },
+    {
+      "seg": "S228",
+      "dest": [
+        "prefer[16]"
+      ]
+    },
+    {
+      "seg": "S229",
+      "dest": [
+        "prefer[16]"
+      ]
+    },
+    {
+      "seg": "S230",
+      "dest": [
+        "prefer[16]"
+      ]
+    },
+    {
+      "seg": "S231",
+      "dest": [
+        "prefer[16]"
+      ]
+    },
+    {
+      "seg": "S232",
+      "dest": [
+        "prefer[16]"
+      ]
+    },
+    {
+      "seg": "S233",
+      "dest": [
+        "avoid[7]"
+      ]
+    },
+    {
+      "seg": "S234",
+      "dest": [
+        "prefer[16]"
+      ]
+    },
+    {
+      "seg": "S235",
+      "dest": [
+        "prefer[16]"
+      ]
+    },
+    {
+      "seg": "S236",
+      "dest": [
+        "prefer[16]"
+      ]
+    },
+    {
+      "seg": "S237",
+      "dest": [
+        "prefer[16]"
+      ]
+    },
+    {
+      "seg": "S238",
+      "dest": [
+        "prefer[16]"
+      ]
+    },
+    {
+      "seg": "S239",
+      "dest": [
+        "prefer[16]",
+        "evidence[7]"
+      ]
+    },
+    {
+      "seg": "S240",
+      "dest": [
+        "prefer[16]",
+        "evidence[7]"
+      ]
+    },
+    {
+      "seg": "S241",
+      "dest": [
+        "prefer[16]",
+        "evidence[7]"
+      ]
+    },
+    {
+      "seg": "S242",
+      "dest": [
+        "avoid[7]"
+      ]
+    },
+    {
+      "seg": "S243",
+      "dest": [
+        "prefer[17]"
+      ]
+    },
+    {
+      "seg": "S244",
+      "dest": [
+        "prefer[17]"
+      ]
+    },
+    {
+      "seg": "S245",
+      "dest": [
+        "prefer[17]"
+      ]
+    },
+    {
+      "seg": "S246",
+      "dest": [
+        "prefer[17]"
+      ]
+    },
+    {
+      "seg": "S247",
+      "dest": [
+        "prefer[17]"
+      ]
+    },
+    {
+      "seg": "S248",
+      "dest": [
+        "prefer[17]"
+      ]
+    },
+    {
+      "seg": "S249",
+      "dest": [
+        "prefer[17]"
+      ]
+    },
+    {
+      "seg": "S250",
+      "dest": [
+        "prefer[17]"
+      ]
+    },
+    {
+      "seg": "S251",
+      "dest": [
+        "prefer[17]"
+      ]
+    },
+    {
+      "seg": "S252",
+      "dest": [
+        "prefer[17]"
+      ]
+    },
+    {
+      "seg": "S253",
+      "dest": [
+        "prefer[17]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S254",
+      "dest": [
+        "prefer[17]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S255",
+      "dest": [
+        "verifier_detail[1]",
+        "evidence[1]",
+        "prefer[17]"
+      ]
+    },
+    {
+      "seg": "S256",
+      "dest": [
+        "verifier_detail[1]",
+        "evidence[1]",
+        "prefer[17]"
+      ]
+    },
+    {
+      "seg": "S257",
+      "dest": [
+        "verifier_detail[1]",
+        "evidence[1]",
+        "prefer[17]"
+      ]
+    },
+    {
+      "seg": "S258",
+      "dest": [
+        "verifier_detail[1]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S259",
+      "dest": [
+        "verifier_detail[1]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S260",
+      "dest": [
+        "unless[2]"
+      ]
+    },
+    {
+      "seg": "S261",
+      "dest": [
+        "prefer[18]"
+      ]
+    },
+    {
+      "seg": "S262",
+      "dest": [
+        "prefer[18]",
+        "avoid[5]"
+      ]
+    },
+    {
+      "seg": "S263",
+      "dest": [
+        "prefer[18]",
+        "avoid[5]"
+      ]
+    },
+    {
+      "seg": "S264",
+      "dest": [
+        "prefer[18]",
+        "avoid[5]"
+      ]
+    },
+    {
+      "seg": "S265",
+      "dest": [
+        "avoid[5]"
+      ]
+    },
+    {
+      "seg": "S266",
+      "dest": [
+        "prefer[18]"
+      ]
+    },
+    {
+      "seg": "S267",
+      "dest": [
+        "prefer[18]"
+      ]
+    },
+    {
+      "seg": "S268",
+      "dest": [
+        "prefer[18]"
+      ]
+    },
+    {
+      "seg": "S269",
+      "dest": [
+        "prefer[18]"
+      ]
+    },
+    {
+      "seg": "S270",
+      "dest": [
+        "prefer[18]"
+      ]
+    },
+    {
+      "seg": "S271",
+      "dest": [
+        "prefer[18]"
+      ]
+    },
+    {
+      "seg": "S272",
+      "dest": [
+        "then",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S273",
+      "dest": [
+        "then",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S274",
+      "dest": [
+        "then",
+        "prefer[1]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S275",
+      "dest": [
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S276",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S277",
+      "dest": [
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S278",
+      "dest": [
+        "prefer[4]"
+      ]
+    },
+    {
+      "seg": "S279",
+      "dest": [
+        "prefer[2]",
+        "prefer[3]"
+      ]
+    },
+    {
+      "seg": "S280",
+      "dest": [
+        "unless[0]"
+      ]
+    },
+    {
+      "seg": "S281",
+      "dest": [
+        "unless[1]"
+      ]
+    },
+    {
+      "seg": "S282",
+      "dest": [
+        "unless[2]"
+      ]
+    },
+    {
+      "seg": "S283",
+      "dest": [
+        "unless[3]"
+      ]
+    },
+    {
+      "seg": "S284",
+      "dest": [
+        "unless[4]"
+      ]
+    },
+    {
+      "seg": "S285",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S286",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S287",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,581 @@
+{
+  "schema": "pi-atdd/convention-sidecar-split/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.bun/coder.bun.station-master-interlocking-routing.convention.yaml",
+    "sha256": "b0b0572a79b4dd6f35db350980652afbdd797646d613c552b7c5595f72efdee8"
+  },
+  "source_rule_id": "coder.bun.station-master-interlocking-routing",
+  "rationale": "The source statement (S006) joins two MUSTs with AND. (a) JOURNEY_MAP must admit both route forms, and existing direct trainId mappings stay valid because the interlocking mapping is additive. (b) When an interlocking route is present, server.ts must route through InterlockingRunner, and TrainRunner must perform the final train execution. Per S017/S018 this applies in BOTH cases, direct and interlocking. The two obligations need different evidence. (a) is about the shape and compatibility of JOURNEY_MAP, which the detector does not check. (b) is the execution chain, which the detector reports as 'unlinked' or 'no delegation'. Both parts keep the source activation: at least one interlocking route object, per the exception. Each part requires the other, so the joint mandate holds. Revision round 3: runner-delegation's THEN now makes TrainRunner final execution mandatory for direct routes as well as interlocking routes. Before, the direct branch appeared only in prefer and why.",
+  "parts": [
+    {
+      "rule_id": "coder.bun.station-master-interlocking-routing.runner-delegation",
+      "kind": "rule",
+      "title": "Interlocking routes go through InterlockingRunner, and every route ends in TrainRunner (Bun)",
+      "activation": {
+        "facts": [
+          {
+            "fact": "language",
+            "values": [
+              "typescript",
+              "javascript"
+            ],
+            "observability": "observable_now",
+            "note": "Bun stack only. Bun applicability is established by a workspace that uses the atdd.workspace.bun detector family. Other stacks are covered by the agnostic core obligation."
+          },
+          {
+            "fact": "path_glob",
+            "values": [
+              "**/server.ts"
+            ],
+            "observability": "observable_now",
+            "note": "The Station Master composition root."
+          },
+          {
+            "fact": "change",
+            "values": [
+              "server.ts JOURNEY_MAP contains at least one {interlockingId, path} route object"
+            ],
+            "observability": "needs_new_observer",
+            "note": "Needs JOURNEY_MAP parsing, as checks/interlocking_station_routing.mjs does. Activation depends only on an interlocking route object being present, not on detector findings."
+          }
+        ],
+        "fires": [
+          "A task adds an {interlockingId, path} route to JOURNEY_MAP",
+          "An agent edits a server.ts whose JOURNEY_MAP already holds interlocking route objects, including its direct-route dispatch",
+          "server.ts declares an interlocking route but does not reference InterlockingRunner or TrainRunner"
+        ],
+        "doesNotFire": [
+          "JOURNEY_MAP holds only direct trainId strings",
+          "Files other than server.ts",
+          "Non-Bun stacks"
+        ]
+      },
+      "given": "The Bun Station Master (server.ts) has a JOURNEY_MAP with at least one {interlockingId, path} route object",
+      "when": "you write or change server.ts",
+      "then": "server.ts MUST resolve each interlocking route through InterlockingRunner, and TrainRunner MUST perform the final train execution for every route: both the train InterlockingRunner selects and each direct trainId.",
+      "prefer": [
+        "Core call model: Station Master -> InterlockingRunner.resolveTrain(action, inputs, state) -> TrainRunner.execute(selectedTrainId, ...)",
+        "Bun branch from the fix hint: new InterlockingRunner(path).execute(...) -> TrainRunner.execute(...). Use the runner API that actually exists",
+        "import { InterlockingRunner } from \"./trains/interlocking\"; import { TrainRunner } from \"./trains/runner\";"
+      ],
+      "avoid": [
+        "Declaring an interlocking route without referencing InterlockingRunner (finding: unlinked)",
+        "Never reaching TrainRunner for the selected train (finding: no delegation)",
+        "Executing direct trainId routes through any executor other than TrainRunner"
+      ],
+      "unless": [
+        "JOURNEY_MAP declares no interlocking route object: a pure direct-train Station Master carries no interlocking obligation"
+      ],
+      "why": "In both cases, direct and interlocking, TrainRunner performs the final train execution. A Station Master that declares an interlocking route but never routes through InterlockingRunner, or never reaches TrainRunner, breaks the contract.",
+      "evidence": [
+        "checks/interlocking_station_routing.mjs reports no 'unlinked' or 'no delegation' finding for server.ts",
+        "server.ts references InterlockingRunner and TrainRunner whenever JOURNEY_MAP holds an {interlockingId, path} entry",
+        "Both direct trainId entries and interlocking-selected trains reach TrainRunner.execute for final execution"
+      ],
+      "verifier_detail": [
+        "Scan server.ts. Trigger only when JOURNEY_MAP declares at least one interlocking route object {interlockingId, path}.",
+        "When triggered: a missing `InterlockingRunner` reference produces the finding 'unlinked'; a missing `TrainRunner` reference produces the finding 'no delegation'.",
+        "Detector: checks/interlocking_station_routing.mjs, a member of the `bun_interlocking_infrastructure` FAMILY detector (atdd.workspace.bun implementation).",
+        "Which entrypoint is inspected, and how routing is recognized, is up to the per-stack detector.",
+        "Disposition strict, severity 4: an unlinked or non-delegating Station Master cannot be suppressed and fails CI (see shared:policy.strict-disposition).",
+        "Reference fix ('Route through the runner and delegate:'), with domain-neutral identifiers: `import { InterlockingRunner } from \"./trains/interlocking\"; import { TrainRunner } from \"./trains/runner\"; export const JOURNEY_MAP = { <direct_action>: \"train:<domain>:<train-name>\", /* direct */ <interlocked_action>: { interlockingId: \"...\", path: \"...yaml\" }, /* interlocking */ }; // interlocking branch: new InterlockingRunner(path).execute(...) -> TrainRunner.execute(...)`",
+        "Term station_master: the composition root (`server.ts`) whose JOURNEY_MAP routes both direct trainId strings and interlocking route objects, references InterlockingRunner, and ultimately calls TrainRunner.",
+        "The detector checks only that the TrainRunner reference is present. Confirm that direct trainId entries are also executed by TrainRunner by reviewing the dispatch."
+      ],
+      "audit": [
+        "Split part of coder.bun.station-master-interlocking-routing (alias BUN-STATION-MASTER-INTERLOCKING-ROUTING-001)",
+        "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0",
+        "implementation: {type: validator, ref: coder.bun.station-master-interlocking-routing}",
+        "Source name: Station Master routes both direct and interlocking journeys, delegating to TrainRunner (Bun)",
+        "Bun-stack realization of the agnostic core obligation coder.train.station-master-interlocking-routing (core afokapu/atdd#1251), enforced by the atdd.workspace.bun JS detector. It renders the agnostic 'Station Master is wired for interlocking' obligation for the Bun application.",
+        "The normative text derives from core runtime spec afokapu/atdd#1251 (the additive call model)",
+        "core_design_refs: afokapu/atdd#1246, afokapu/atdd#1251",
+        "metadata: severity 4, disposition strict"
+      ],
+      "additions": [
+        {
+          "field": "activation",
+          "text": "Activation facts, plus the fires and doesNotFire lists. Bun scope appears in the language-fact note and in the doesNotFire entry 'Non-Bun stacks'.",
+          "justification": "Required by the target structure. Derived from the source statement, the detector description and the exception. Bun scope comes from S007."
+        },
+        {
+          "field": "prefer[1]",
+          "text": "'Use the runner API that actually exists'",
+          "justification": "The core call model (resolveTrain) and the Bun fix-hint branch (execute) differ, so this tells the coder not to copy either signature blindly. Adds no obligation."
+        },
+        {
+          "field": "verifier_detail[5]",
+          "text": "The domain-neutral placeholders <direct_action>, <interlocked_action> and train:<domain>:<train-name> replace start_match, resolve_match and train:match:solo-match-complete.",
+          "justification": "Fixes an earlier auditor finding about overfitting to one application. Both route forms and the delegation chain are unchanged."
+        },
+        {
+          "field": "verifier_detail[7]",
+          "text": "Confirm direct-route execution by TrainRunner by reviewing the dispatch.",
+          "justification": "S017/S018 make TrainRunner the final executor in both cases, but the S010 detector only checks for the reference. This states how that evidence is gathered. Adds no obligation."
+        }
+      ]
+    },
+    {
+      "rule_id": "coder.bun.station-master-interlocking-routing.route-forms",
+      "kind": "rule",
+      "title": "JOURNEY_MAP keeps direct trainId routes when interlocking routes are added (Bun)",
+      "activation": {
+        "facts": [
+          {
+            "fact": "language",
+            "values": [
+              "typescript",
+              "javascript"
+            ],
+            "observability": "observable_now",
+            "note": "Bun stack only. Bun applicability is established by the atdd.workspace.bun workspace."
+          },
+          {
+            "fact": "path_glob",
+            "values": [
+              "**/server.ts"
+            ],
+            "observability": "observable_now"
+          },
+          {
+            "fact": "change",
+            "values": [
+              "server.ts JOURNEY_MAP contains at least one {interlockingId, path} route object"
+            ],
+            "observability": "needs_new_observer",
+            "note": "Same applicability as the source exception: only the presence of an interlocking route activates this part."
+          }
+        ],
+        "fires": [
+          "A task adds an interlocking route to a JOURNEY_MAP that already has direct trainId entries",
+          "A task adds the first interlocking route to a JOURNEY_MAP that has no direct entries",
+          "An agent edits JOURNEY_MAP handling in a server.ts that already holds interlocking routes"
+        ],
+        "doesNotFire": [
+          "JOURNEY_MAP holds only direct trainId strings",
+          "Files other than server.ts",
+          "Non-Bun stacks"
+        ]
+      },
+      "given": "The Bun Station Master (server.ts) has a JOURNEY_MAP with at least one {interlockingId, path} route object",
+      "when": "you add or change JOURNEY_MAP entries or their dispatch in server.ts",
+      "then": "JOURNEY_MAP MUST accept both a direct trainId string and an {interlockingId, path} object, and existing direct `JOURNEY_MAP[action] = \"<trainId>\"` mappings MUST stay valid.",
+      "prefer": [
+        "Mixed map shape: `{ <direct_action>: \"train:<domain>:<train-name>\", <interlocked_action>: { interlockingId: \"...\", path: \"...yaml\" } }`"
+      ],
+      "avoid": [
+        "Converting, removing or rejecting existing direct trainId string mappings when you add interlocking routes"
+      ],
+      "unless": [
+        "JOURNEY_MAP declares no interlocking route object: a pure direct-train Station Master carries no interlocking obligation"
+      ],
+      "why": "The interlocking mapping is additive, so the existing direct mapping remains valid. TrainRunner executes the train in both cases; runner-delegation enforces that.",
+      "evidence": [
+        "JOURNEY_MAP and its dispatch accept both direct trainId string values and {interlockingId, path} objects",
+        "Existing direct mappings still resolve to their trains. Direct entries do not have to be present: an interlocking-only map is acceptable"
+      ],
+      "verifier_detail": [
+        "Source statement (normative MUST): the Station Master MUST support both direct and interlocking-enabled routing, and JOURNEY_MAP MUST admit a direct trainId string AND an {interlockingId, path} route object. This requires support for both forms, not that both kinds of entry be present.",
+        "The 'unlinked' and 'no delegation' detector findings do not cover this part. Check it by reviewing the JOURNEY_MAP type and its dispatch.",
+        "Disposition strict, severity 4 (see shared:policy.strict-disposition).",
+        "Term station_master: the composition root (`server.ts`) whose JOURNEY_MAP routes both direct trainId strings and interlocking route objects."
+      ],
+      "audit": [
+        "Split part of coder.bun.station-master-interlocking-routing (alias BUN-STATION-MASTER-INTERLOCKING-ROUTING-001)",
+        "Source name: Station Master routes both direct and interlocking journeys, delegating to TrainRunner (Bun)",
+        "Derives from core runtime spec afokapu/atdd#1251 (the additive call model); core_design_refs afokapu/atdd#1246, afokapu/atdd#1251",
+        "metadata: severity 4, disposition strict"
+      ],
+      "additions": [
+        {
+          "field": "activation",
+          "text": "Activation facts, plus the fires and doesNotFire lists.",
+          "justification": "Required by the target structure. The source exception serves as the activation condition."
+        },
+        {
+          "field": "evidence[1]",
+          "text": "Direct entries do not have to be present (an interlocking-only map is acceptable).",
+          "justification": "Reads 'MUST admit' as support for both forms, which is consistent with the exception. Adds no obligation."
+        },
+        {
+          "field": "verifier_detail[1]",
+          "text": "The detector findings do not cover this part; check it by review.",
+          "justification": "The source detector (S010) checks only the InterlockingRunner and TrainRunner references, so this says where this part's evidence comes from."
+        },
+        {
+          "field": "prefer[0]",
+          "text": "Domain-neutral placeholders in the map shape.",
+          "justification": "Generalizes the identifiers from the source fix hint, which the auditor flagged as overfitting."
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "source": "coder.bun.station-master-interlocking-routing.runner-delegation",
+      "target": "coder.bun.station-master-interlocking-routing.route-forms",
+      "type": "requires",
+      "reason": "The source made both MUSTs jointly mandatory (S006 'AND'). Delegating interlocking routes must not break the direct mappings."
+    },
+    {
+      "source": "coder.bun.station-master-interlocking-routing.route-forms",
+      "target": "coder.bun.station-master-interlocking-routing.runner-delegation",
+      "type": "requires",
+      "reason": "Admitting both route forms is incomplete until interlocking routes go through InterlockingRunner and every route, direct or interlocking, is executed by TrainRunner."
+    }
+  ],
+  "edgeRemap": [
+    {
+      "original": {
+        "source_ref": "coder.bun.station-master-interlocking-routing",
+        "target_ref": "coder.bun.interlocking-runner-exists",
+        "type": "requires"
+      },
+      "remappedTo": [
+        "coder.bun.station-master-interlocking-routing.runner-delegation"
+      ],
+      "reason": "Only the delegation part routes THROUGH InterlockingRunner, so only that part presupposes the runner exists."
+    },
+    {
+      "original": {
+        "source_ref": "coder.bun.interlocking-bilateral-binding",
+        "target_ref": "coder.bun.station-master-interlocking-routing",
+        "type": "requires"
+      },
+      "remappedTo": [
+        "coder.bun.station-master-interlocking-routing.runner-delegation",
+        "coder.bun.station-master-interlocking-routing.route-forms"
+      ],
+      "reason": "Bilateral binding needs the full station wiring: interlocking routes declared in JOURNEY_MAP (route-forms) and routed through the runners (runner-delegation)."
+    },
+    {
+      "original": {
+        "source_ref": "coder.bun.station-master-journey-routing",
+        "target_ref": "coder.bun.station-master-interlocking-routing",
+        "type": "runs_alongside"
+      },
+      "remappedTo": [
+        "coder.bun.station-master-interlocking-routing.route-forms",
+        "coder.bun.station-master-interlocking-routing.runner-delegation"
+      ],
+      "reason": "Journey routing shares JOURNEY_MAP with route-forms and is the sibling routing obligation of the delegation part."
+    }
+  ],
+  "aliasOf": {
+    "coder.bun.station-master-interlocking-routing": [
+      "coder.bun.station-master-interlocking-routing.runner-delegation",
+      "coder.bun.station-master-interlocking-routing.route-forms"
+    ]
+  },
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Strict disposition: findings of this rule cannot be suppressed and fail CI."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "structure"
+      ],
+      "note": "The source id is kept as the aliasOf key and is the prefix of both part ids"
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "audit",
+        "coder.bun.station-master-interlocking-routing.runner-delegation:title",
+        "coder.bun.station-master-interlocking-routing.route-forms:title"
+      ],
+      "note": "The name is divided between the two titles (delegation and both route forms); the full name is kept in both audits"
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "coder.bun.station-master-interlocking-routing.route-forms:then",
+        "coder.bun.station-master-interlocking-routing.route-forms:verifier_detail[0]",
+        "coder.bun.station-master-interlocking-routing.route-forms:evidence[0]",
+        "coder.bun.station-master-interlocking-routing.runner-delegation:then",
+        "coder.bun.station-master-interlocking-routing.runner-delegation:given",
+        "coder.bun.station-master-interlocking-routing.runner-delegation:evidence[1]",
+        "structure"
+      ],
+      "note": "Each conjunct of the AND became the THEN of its own part; mutual requires edges keep the joint mandate"
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit",
+        "coder.bun.station-master-interlocking-routing.runner-delegation:verifier_detail[2]",
+        "coder.bun.station-master-interlocking-routing.runner-delegation:activation",
+        "coder.bun.station-master-interlocking-routing.route-forms:activation"
+      ],
+      "note": "Bun scope is carried in the language-fact notes and the doesNotFire entry 'Non-Bun stacks'"
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "coder.bun.station-master-interlocking-routing.runner-delegation:verifier_detail[0]",
+        "coder.bun.station-master-interlocking-routing.runner-delegation:verifier_detail[1]",
+        "coder.bun.station-master-interlocking-routing.runner-delegation:avoid[0]",
+        "coder.bun.station-master-interlocking-routing.runner-delegation:avoid[1]",
+        "coder.bun.station-master-interlocking-routing.runner-delegation:activation"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "coder.bun.station-master-interlocking-routing.runner-delegation:verifier_detail[2]",
+        "coder.bun.station-master-interlocking-routing.runner-delegation:evidence[0]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "audit",
+        "coder.bun.station-master-interlocking-routing.runner-delegation:prefer[0]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "coder.bun.station-master-interlocking-routing.runner-delegation:prefer[0]",
+        "coder.bun.station-master-interlocking-routing.runner-delegation:then"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "coder.bun.station-master-interlocking-routing.runner-delegation:prefer[0]",
+        "coder.bun.station-master-interlocking-routing.runner-delegation:then"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "coder.bun.station-master-interlocking-routing.route-forms:then",
+        "coder.bun.station-master-interlocking-routing.route-forms:why",
+        "coder.bun.station-master-interlocking-routing.route-forms:avoid[0]",
+        "coder.bun.station-master-interlocking-routing.route-forms:evidence[1]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "coder.bun.station-master-interlocking-routing.route-forms:why",
+        "coder.bun.station-master-interlocking-routing.route-forms:then"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "coder.bun.station-master-interlocking-routing.runner-delegation:then",
+        "coder.bun.station-master-interlocking-routing.runner-delegation:avoid[2]",
+        "coder.bun.station-master-interlocking-routing.runner-delegation:evidence[2]",
+        "coder.bun.station-master-interlocking-routing.runner-delegation:why",
+        "coder.bun.station-master-interlocking-routing.route-forms:why"
+      ],
+      "note": "'In BOTH cases' is now mandatory in the runner-delegation THEN, which covers the interlocking-selected train and each direct trainId. route-forms' why points to it."
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "coder.bun.station-master-interlocking-routing.runner-delegation:then",
+        "coder.bun.station-master-interlocking-routing.runner-delegation:avoid[2]",
+        "coder.bun.station-master-interlocking-routing.runner-delegation:evidence[2]",
+        "coder.bun.station-master-interlocking-routing.runner-delegation:verifier_detail[7]",
+        "coder.bun.station-master-interlocking-routing.runner-delegation:why",
+        "coder.bun.station-master-interlocking-routing.route-forms:why"
+      ],
+      "note": "TrainRunner as the mandatory final executor for both direct and interlocking routes"
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "coder.bun.station-master-interlocking-routing.runner-delegation:avoid[0]",
+        "coder.bun.station-master-interlocking-routing.runner-delegation:why"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "coder.bun.station-master-interlocking-routing.runner-delegation:avoid[0]",
+        "coder.bun.station-master-interlocking-routing.runner-delegation:avoid[1]",
+        "coder.bun.station-master-interlocking-routing.runner-delegation:why"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "coder.bun.station-master-interlocking-routing.runner-delegation:verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "coder.bun.station-master-interlocking-routing.runner-delegation:verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "coder.bun.station-master-interlocking-routing.runner-delegation:verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "coder.bun.station-master-interlocking-routing.runner-delegation:prefer[2]",
+        "coder.bun.station-master-interlocking-routing.runner-delegation:verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "coder.bun.station-master-interlocking-routing.runner-delegation:prefer[2]",
+        "coder.bun.station-master-interlocking-routing.runner-delegation:verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "coder.bun.station-master-interlocking-routing.runner-delegation:verifier_detail[5]",
+        "coder.bun.station-master-interlocking-routing.route-forms:prefer[0]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "coder.bun.station-master-interlocking-routing.runner-delegation:verifier_detail[5]",
+        "coder.bun.station-master-interlocking-routing.route-forms:prefer[0]"
+      ],
+      "note": "Lossless generalization: start_match and train:match:solo-match-complete became <direct_action> and train:<domain>:<train-name>. The direct trainId string entry form is unchanged."
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "coder.bun.station-master-interlocking-routing.runner-delegation:verifier_detail[5]",
+        "coder.bun.station-master-interlocking-routing.route-forms:prefer[0]"
+      ],
+      "note": "Lossless generalization: resolve_match became <interlocked_action>. The {interlockingId, path} object form is kept verbatim."
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "coder.bun.station-master-interlocking-routing.runner-delegation:verifier_detail[5]",
+        "coder.bun.station-master-interlocking-routing.route-forms:prefer[0]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "coder.bun.station-master-interlocking-routing.runner-delegation:prefer[1]",
+        "coder.bun.station-master-interlocking-routing.runner-delegation:verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "shared:policy.strict-disposition",
+        "coder.bun.station-master-interlocking-routing.runner-delegation:verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "coder.bun.station-master-interlocking-routing.runner-delegation:unless[0]",
+        "coder.bun.station-master-interlocking-routing.runner-delegation:activation",
+        "coder.bun.station-master-interlocking-routing.route-forms:unless[0]",
+        "coder.bun.station-master-interlocking-routing.route-forms:activation"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "audit",
+        "coder.bun.station-master-interlocking-routing.runner-delegation:verifier_detail[4]",
+        "coder.bun.station-master-interlocking-routing.route-forms:verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "audit",
+        "shared:policy.strict-disposition",
+        "coder.bun.station-master-interlocking-routing.runner-delegation:verifier_detail[4]",
+        "coder.bun.station-master-interlocking-routing.route-forms:verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "coder.bun.station-master-interlocking-routing.runner-delegation:verifier_detail[6]",
+        "coder.bun.station-master-interlocking-routing.route-forms:verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "coder.bun.station-master-interlocking-routing.runner-delegation:verifier_detail[6]",
+        "coder.bun.station-master-interlocking-routing.route-forms:verifier_detail[3]",
+        "coder.bun.station-master-interlocking-routing.runner-delegation:given"
+      ]
+    }
+  ]
+}

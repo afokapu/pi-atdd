@@ -1,0 +1,361 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.bun/coder.bun.responsive-breakpoints-declared.convention.yaml",
+    "sha256": "fa1a94f3f67111557ed88c25ee6a5db485b0c083c9b95a1d2480248b0a0e610d"
+  },
+  "rule_id": "coder.bun.responsive-breakpoints-declared",
+  "kind": "rule",
+  "title": "Media queries use only the declared breakpoints",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "css",
+          "scss",
+          "sass",
+          "less",
+          "component source files (e.g. tsx/jsx/vue/svelte) that may carry style blocks or CSS-in-JS"
+        ],
+        "observability": "observable_now",
+        "note": "Only the file extension is observable from the path; it says a file CAN contain styles, not that it contains an @media query."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "file content contains an @media query with a width condition"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Content-dependent: requires a scanner that parses @media width conditions (min-width/max-width and range syntax) in stylesheets, style blocks and CSS-in-JS; extension alone cannot establish it."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "!**/node_modules/**",
+          "!**/dist/**",
+          "!**/build/**",
+          "!**/_generated/**"
+        ],
+        "observability": "observable_now",
+        "note": "Vendored and generated trees are never scanned."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "atdd-bun.yaml"
+        ],
+        "observability": "observable_now",
+        "note": "Edits to the configuration (frontend.breakpoints) can invalidate existing media queries anywhere in scope."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "@media width condition added or modified",
+          "frontend.breakpoints entry added, removed or changed"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Diff-level observer for media-query width changes and for breakpoint configuration edits; a configuration edit requires re-checking every existing query in scope."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "bun_responsive_detector: undeclared breakpoint (any width condition in scope, including pre-existing ones)"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Detector finding comparing every in-scope media-query width to frontend.breakpoints in atdd-bun.yaml, applying the max-width tolerance and em/rem conversion."
+      }
+    ],
+    "fires": [
+      "A stylesheet adds `@media (min-width: 900px)` when 900 is not in `frontend.breakpoints`.",
+      "A component style uses range syntax `width >= 700px` with an undeclared width.",
+      "A `max-width: 900px` query exists while the breakpoints are the defaults (480, 768, 1024, 1280): 900 is neither declared nor within 1px below a declared breakpoint.",
+      "An existing, unchanged query `@media (min-width: 1280px)` is left in place after 1280 is removed from `frontend.breakpoints`.",
+      "A pre-existing query in scope uses an undeclared width (the obligation covers every width condition, not only newly written ones)."
+    ],
+    "doesNotFire": [
+      "A query uses `min-width: 768px` or `max-width: 767.98px` / `767px` with 768 declared.",
+      "A query uses `min-width: 48em` (= 768px at 16px) with 768 declared.",
+      "A media query inside `node_modules`, `dist`, `build` or `_generated`.",
+      "A media query with no width condition (e.g. `prefers-color-scheme`, `print`)."
+    ]
+  },
+  "given": "A stylesheet or component style outside vendored/generated trees contains an `@media` width condition (`min-width`/`max-width` or range syntax such as `width >= 768px`, `768px <= width`). Term frontend_settings: `atdd-bun.yaml` → `frontend.breakpoints` (the widths media queries may use) and `frontend.viewports` (the widths responsive specs render at; the smallest bounds fixed widths).",
+  "when": "Any media-query width condition in scope exists or is added/changed, or `frontend.breakpoints` is edited so existing conditions must be re-checked.",
+  "then": "Every width in every such condition MUST be one of the breakpoints declared under `frontend.breakpoints` in `atdd-bun.yaml` (default 480, 768, 1024, 1280); a `max-width` within 1px below a breakpoint (`767px`, `767.98px`) counts as that breakpoint, and `em`/`rem` convert to px at 16px.",
+  "prefer": [
+    "During GREEN: reuse an existing declared breakpoint that expresses the required layout transition.",
+    "During GREEN: add one breakpoint to `frontend.breakpoints` only when the current design genuinely requires a distinct transition width.",
+    "During GREEN: change only the affected media query or configuration entry."
+  ],
+  "avoid": [
+    "Using an undeclared one-off width as a shortcut.",
+    "Adding speculative breakpoints for future devices.",
+    "Normalizing unrelated responsive rules while fixing this one."
+  ],
+  "unless": [
+    "The file lives in a vendored or generated tree (`node_modules`, `dist`, `build`, `_generated`); these are never scanned."
+  ],
+  "why": "CSS custom properties cannot be used in media queries, so breakpoints cannot be tokens; declaring them once and requiring every query to use them keeps layouts switching at the same widths everywhere instead of at a new one per component.",
+  "evidence": [
+    "Every affected media-query width is declared in `frontend.breakpoints` (bun_responsive_detector reports no finding).",
+    "The current responsive acceptance passes at the relevant viewports (`frontend.viewports`, the widths responsive specs render at)."
+  ],
+  "verifier_detail": [
+    "Check every width condition in `@media`: `min-width`/`max-width` and range syntax (`width >= 768px`, `768px <= width`).",
+    "Allowed set = `frontend.breakpoints` in `atdd-bun.yaml`; default 480, 768, 1024, 1280.",
+    "A `max-width` X matches breakpoint B when X == B or B-1 <= X < B (within 1px below, e.g. `767px`, `767.98px` for 768).",
+    "`em`/`rem` convert to px at 16px before matching.",
+    "Skip vendored and generated trees: `node_modules`, `dist`, `build`, `_generated`.",
+    "Term frontend_settings: `atdd-bun.yaml` → `frontend.viewports` (the widths responsive specs render at; the smallest bounds fixed widths) and `frontend.breakpoints` (the widths media queries may use).",
+    "Severity 3; disposition strict (source: 'New in atdd-bun, strict.')."
+  ],
+  "audit": [
+    "schema_version 1.1.0",
+    "kind: rule; status: active",
+    "New in atdd-bun, strict.",
+    "aliases: BUN-RESPONSIVE-RESPONSIVE-BREAKPOINTS-DECLARED-001",
+    "introduced_in 0.5.0",
+    "implementation: validator, ref bun_responsive_detector",
+    "summary: Media queries use only the declared breakpoints.",
+    "metadata: severity 3, disposition strict"
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "activation.doesNotFire",
+      "text": "Media queries without width conditions (prefers-color-scheme, print) do not fire.",
+      "justification": "Clarifies scope implied by 'every width condition'; adds no obligation."
+    },
+    {
+      "field": "activation.fires",
+      "text": "Configuration edits to frontend.breakpoints that invalidate existing queries fire the rule.",
+      "justification": "Consequence of the source's universal 'every width condition MUST use a declared breakpoint' and its fix hint mentioning configuration entries; adds no new obligation."
+    },
+    {
+      "field": "coder_text_length",
+      "text": "Coder-facing text exceeds ~1,000 characters.",
+      "justification": "The tolerance/em-rem rules and frontend_settings term semantics were required by the auditor to sit beside the coder obligation; losslessness wins over brevity."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "when",
+        "then",
+        "activation",
+        "verifier_detail[0]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "then",
+        "verifier_detail[2]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit",
+        "identity",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "given",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "given",
+        "evidence[1]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "audit"
+      ],
+      "note": "Duplicate of name/title."
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "structure"
+      ],
+      "note": "Heading for the canonical path, which is the then obligation."
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "prefer[0]",
+        "prefer[1]",
+        "prefer[2]"
+      ],
+      "note": "'During GREEN' qualifier retained as prefix of each prefer item."
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "structure"
+      ],
+      "note": "Heading grouping the avoid items."
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "structure"
+      ],
+      "note": "Heading grouping the evidence items."
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "unless[0]",
+        "activation",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "identity",
+        "verifier_detail[6]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "identity",
+        "verifier_detail[6]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

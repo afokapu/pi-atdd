@@ -1,0 +1,249 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.train.interlocking-guard-coverage.convention.yaml",
+    "sha256": "c47f695cd61ae4d8147630eac27752a5394d2190f395d0e54439bf4b0afe8675"
+  },
+  "rule_id": "planner.train.interlocking-guard-coverage",
+  "kind": "rule",
+  "title": "Map every executable interlocking guard path to exactly one train route or classify it as structural residual",
+  "activation": {
+    "facts": [
+      {
+        "fact": "phase",
+        "values": [
+          "CONFIRM"
+        ],
+        "observability": "needs_new_observer",
+        "note": "The only enforcement trigger: the validator runs at CONFIRM and is confirm-blocking; the harness must supply the phase. The validation subject is each interlocking in the plan (subject_kind: interlocking), changed or not. Identifying interlocking validation subjects is not a file-kind fact; it needs a new subject observer (the plan's interlocking subjects as seen by the coverage validator)."
+      }
+    ],
+    "fires": [
+      "At CONFIRM, an interlocking (new, edited or unchanged) has an executable guard path with no train route and no explicit structural-residual classification.",
+      "At CONFIRM, an executable guard path that is not explicitly classified as structural residual is mapped to two or more train routes.",
+      "At CONFIRM, after a train route was removed from the plan, an executable guard path it covered is left unmapped and not classified as structural residual."
+    ],
+    "doesNotFire": [
+      "Any phase other than CONFIRM (e.g. while the planner is still drafting guards or routes); the check is enforced only at CONFIRM.",
+      "An executable guard path explicitly classified as structural residual.",
+      "Every executable guard path in the interlocking maps to exactly one train route.",
+      "Plans that contain no interlocking subject.",
+      "Non-executable content in an interlocking (not a guard path)."
+    ]
+  },
+  "given": "A plan containing an interlocking with executable guard paths and the train routes projected from it",
+  "when": "The plan reaches CONFIRM (whether or not the interlocking was changed)",
+  "then": "Every executable guard path in the interlocking maps to exactly one train route, unless it is explicitly classified as structural residual.",
+  "prefer": [
+    "For each executable guard path, name the single train route that carries it, so the plan already satisfies the CONFIRM check.",
+    "When a guard path truly belongs to no route, mark it explicitly as structural residual instead of leaving it unmapped."
+  ],
+  "avoid": [
+    "Leaving an executable guard path with no route and no explicit structural-residual classification.",
+    "Mapping a guard path that is not explicitly classified as structural residual to several routes.",
+    "Classifying routable guard paths as structural residual just to silence the coverage check."
+  ],
+  "unless": [
+    "The guard path is explicitly classified as structural residual."
+  ],
+  "why": "A guard path with no train route is a control path no train exercises, and one claimed by several routes has ambiguous ownership; exactly-one coverage keeps the train projection faithful to the interlocking.",
+  "evidence": [
+    "Coverage validator (projection_covers_source) passes for every interlocking subject at CONFIRM.",
+    "On failure, the failure evidence carries the fields interlocking_id, guard_id, route_id and coverage_status.",
+    "Every executable guard path maps to exactly one train route or is explicitly classified as structural residual."
+  ],
+  "verifier_detail": [
+    "Family: coverage; template: projection_covers_source; variant: planner_train_interlocking_guard_coverage.",
+    "Phase: CONFIRM (only enforcement point); enforcement: confirm-blocking; subject_kind: interlocking (all interlockings in the plan, changed or unchanged).",
+    "Term guard_coverage: each executable guard path maps to exactly one route, or is explicitly classified as a structural residual. For paths not explicitly classified as structural residual: zero routes = fail; two or more routes = fail. Paths explicitly classified as structural residual are exempt from the exactly-one requirement.",
+    "Failure evidence fields: interlocking_id, guard_id, route_id, coverage_status.",
+    "Severity 4; disposition strict."
+  ],
+  "audit": [
+    "schema_version: 1.0.0",
+    "source kind: constraint",
+    "status: active",
+    "source name: Interlocking guard coverage",
+    "term_id: guard_coverage",
+    "implementation: validator test_sequence_diagram_sanity::test_every_executable_guard_projects_to_train",
+    "metadata: severity 4, disposition strict"
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "why",
+      "text": "A guard path with no train route is a control path no train exercises, and one claimed by several routes has ambiguous ownership; exactly-one coverage keeps the train projection faithful to the interlocking.",
+      "justification": "Source has no rationale; schema requires a why. Derived only from the exactly-one coverage statement."
+    },
+    {
+      "field": "prefer",
+      "text": "Name the single route per guard path so the plan already satisfies the CONFIRM check; explicitly mark residuals.",
+      "justification": "Concrete restatement of the statement for planners; optional authoring advice only, not an additional trigger or obligation — enforcement remains at CONFIRM."
+    },
+    {
+      "field": "avoid",
+      "text": "Classifying routable guard paths as structural residual to silence the check.",
+      "justification": "Metric-gaming anti-pattern made explicit; the source requires residual classification to be explicit, so abusing it defeats the rule."
+    },
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire examples and the phase=CONFIRM activation fact; the interlocking validation subject is described in the fact note as needing a new subject observer.",
+      "justification": "Required by schema; derived from statement, subject_kind and phase without adding a file-kind or finding prerequisite."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Name informs the title."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "unless[0]",
+        "given",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit",
+        "verifier_detail[2]"
+      ],
+      "note": "Term identifier only; not used as an activation finding."
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "then",
+        "verifier_detail[2]",
+        "avoid[0]",
+        "avoid[1]",
+        "unless[0]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "identity",
+        "verifier_detail[4]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "identity",
+        "verifier_detail[4]",
+        "audit"
+      ],
+      "note": "Kept literally as 'disposition strict'; no extra semantics added."
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[0]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[1]",
+        "activation",
+        "when"
+      ],
+      "note": "when is restricted to CONFIRM only."
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "verifier_detail[1]",
+        "activation"
+      ],
+      "note": "Represented as the validation subject in the phase fact note (needs new subject observer), not as a file kind."
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "verifier_detail[3]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "verifier_detail[3]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "verifier_detail[3]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "verifier_detail[3]",
+        "evidence[1]"
+      ]
+    }
+  ]
+}

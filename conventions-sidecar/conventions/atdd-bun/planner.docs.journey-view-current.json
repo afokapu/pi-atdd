@@ -1,0 +1,368 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/planner.docs/planner.docs.journey-view-current.convention.yaml",
+    "sha256": "5892d4213d72342dc568c37f13942139bbdce4c0d5716075de579dc8060fc969"
+  },
+  "rule_id": "planner.docs.journey-view-current",
+  "kind": "rule",
+  "title": "Keep the journey view generated from plan/ and current",
+  "activation": {
+    "facts": [
+      {
+        "fact": "path_glob",
+        "values": [
+          "docs/"
+        ],
+        "observability": "observable_now",
+        "note": "Scope gate 1 is a repository-state check: the docs/ directory exists (filesystem existence check, not merely a changed path matching docs/**)."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "plan declares >=1 journey or >=1 interlocking"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Scope gate 2 requires parsing plan/ for actual journey/interlocking declarations; a plan/** path glob alone cannot establish it."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "docs/purpose/journeys/**"
+        ],
+        "observability": "observable_now",
+        "note": "The generated journey view (index.adoc and SVGs)."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "docs_capability: journey view missing, stale, hand-edited or extra file"
+        ],
+        "observability": "needs_new_observer",
+        "note": "State-based invariant: validator compares committed files with a fresh render of the current plan/ by the installed package; fires on any mismatch whether or not the current change touched plan/ or docs/ (pre-existing drift, renderer/package upgrade)."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "plan journey/interlocking/route/train added, modified or removed",
+          "file under docs/purpose/journeys/ edited, added or removed",
+          "installed package/renderer version changed"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Diff-level hints that a mismatch is likely; not required for the rule to fire."
+      }
+    ],
+    "fires": [
+      "In a repository with docs/ whose plan declares journeys or interlockings, a planner adds, renames or rewires a journey, interlocking, route or train in plan/ and does not regenerate docs/purpose/journeys/.",
+      "In a repository with docs/ whose plan declares journeys or interlockings, someone edits an SVG or index.adoc under docs/purpose/journeys/ by hand.",
+      "In a repository with docs/ whose plan declares interlockings but no journey, no journey page is committed.",
+      "In a repository with docs/ whose plan declares journeys or interlockings, docs/purpose/journeys/ contains a file the generator would not produce (e.g. an SVG for a removed train).",
+      "In a repository with docs/ whose plan declares journeys or interlockings, the committed view was already stale or missing before the current task, even though the task touched neither plan/ nor docs/.",
+      "In a repository with docs/ whose plan declares journeys or interlockings, an upgrade of the installed package changes the renderer output and the committed view is not regenerated."
+    ],
+    "doesNotFire": [
+      "The repository has no docs/ directory.",
+      "The plan declares no journey and no interlocking.",
+      "A plan edit leaves the rendered output byte-identical AND the committed view already matched the generator output (an unchanged render never excuses existing missing, stale or extra files)."
+    ]
+  },
+  "given": "The repository has a docs/ directory and its plan/ declares at least one journey or interlocking.",
+  "when": "You finish any plan work or review in that repository, whether or not you touched plan/ or docs/; pre-existing drift and renderer upgrades count.",
+  "then": "docs/purpose/journeys/ must contain exactly, byte-for-byte, what `atdd-bun docs journeys` generates from the current plan/: index.adoc plus one SVG per journey map, per journey's nominal path, and per routed train.",
+  "prefer": [
+    "Regenerate and commit: `bun run atdd-bun docs journeys`.",
+    "Fix what the view shows in the plan, then regenerate.",
+    "If index.adoc there is hand-written, move its content elsewhere first (the generator refuses to overwrite it without --force).",
+    "Keep the gaps table (unreached interlockings, open routes, unrouted trains) visible and accurately rendered; it is part of the contract."
+  ],
+  "avoid": [
+    "Hand-editing or adding files under docs/purpose/journeys/; change the plan, never the generated files.",
+    "Leaving the view missing or stale, or keeping files the generator does not produce.",
+    "Skipping the page when the plan has interlockings but no journey; it shows every interlocking as unreached.",
+    "Treating the view as acceptance evidence; it renders planned behaviour only."
+  ],
+  "unless": [
+    "The repository has no docs/ directory.",
+    "The plan declares no journey and no interlocking."
+  ],
+  "why": "A hand-drawn journey page drifts from the plan the moment either changes; generating it and failing on any difference keeps documented journeys equal to planned ones and lets reviewers judge a decomposition without reading interlocking YAML.",
+  "evidence": [
+    "Running `bun run atdd-bun docs journeys` against the current plan/ produces no diff in docs/purpose/journeys/ (no missing, changed or extra files).",
+    "The committed index.adoc shows, top down: each journey map (entry action, interlockings, chosen routes, trains run, continuations and terminal outcomes); each journey's nominal path end to end as one sequence across its interlockings; every path as a table; each interlocking's routes with their guards; each train as a sequence diagram; and a table of what the plan leaves unconnected.",
+    "For a plan with interlockings but no journey, the page exists and lists every interlocking as unreached, which is the truthful state of the decomposition.",
+    "The view answers who hands what to whom, which guard selects which route, and where each path ends."
+  ],
+  "verifier_detail": [
+    "Comparison is byte-for-byte between committed files under docs/purpose/journeys/ and what the installed package renders from the current plan/.",
+    "Expected file set: index.adoc plus one SVG per journey map, per journey's nominal path, and per routed train. Missing, stale, hand-edited or extra files are each violations.",
+    "Rendered output carries no timestamp and no package version, so it changes only when the plan or the renderer changes; no normalisation of such fields is needed.",
+    "Term journey_view: the generated page, top down: each journey as a map (entry action, interlockings, the routes they choose, the trains they run, continuations and terminal outcomes); the journey's nominal path walked end to end as one sequence across its interlockings; every path as a table; each interlocking's routes with their guards; each train as a sequence diagram; and a table of what the plan leaves unconnected.",
+    "Term generated: byte-for-byte what the installed package renders from the current plan/.",
+    "Scope gate: skip when no docs/ directory exists, or when the plan declares no journey and no interlocking. A plan with interlockings but no journey is in scope. Within scope the check is state-based: any mismatch is a finding regardless of what the current diff touched.",
+    "Generator refuses to overwrite a hand-written docs/purpose/journeys/index.adoc unless run with --force.",
+    "Severity 3, disposition strict."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "kind: rule",
+    "status: active",
+    "aliases: DOCS-JOURNEY-VIEW-001",
+    "introduced_in: 0.4.0",
+    "implementation: {type: validator, ref: docs_capability}",
+    "source name: The journey documentation is generated from plan/ and matches it",
+    "metadata: severity 3, disposition strict"
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "note",
+      "text": "Coder-facing text (given/when/then/prefer/avoid/unless/why) is about 1,250 characters, slightly above the ~1,000 guideline.",
+      "justification": "Lossless placement of the fix hint (regenerate command, hand-written index.adoc / --force), the gaps-table contract, the interlockings-without-journey case and the not-acceptance-evidence caveat needs it; all are planner-decision-relevant."
+    },
+    {
+      "field": "activation.fires",
+      "text": "Example of an extra file: an SVG left behind for a removed train.",
+      "justification": "Illustrates the source's 'extra file is a violation' clause; adds no obligation."
+    },
+    {
+      "field": "when",
+      "text": "Explicit statement that pre-existing drift and renderer upgrades are in scope, independent of a plan or docs edit.",
+      "justification": "Expresses the source's state-based MUST and its note that output changes when the plan or the renderer changes; adds no new obligation."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Rephrased as imperative title; original name kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "when",
+        "then",
+        "activation",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "avoid[0]",
+        "avoid[1]",
+        "verifier_detail[1]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "verifier_detail[3]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "then",
+        "verifier_detail[0]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[2]",
+        "activation",
+        "when"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "why",
+        "prefer[3]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "why",
+        "evidence[3]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "why",
+        "evidence[3]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "evidence[3]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "prefer[3]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "avoid[2]",
+        "evidence[2]",
+        "verifier_detail[5]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "avoid[2]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "prefer[0]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "avoid[0]",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "unless[0]",
+        "activation",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "unless[1]",
+        "activation",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "identity",
+        "verifier_detail[7]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "identity",
+        "verifier_detail[7]",
+        "audit"
+      ],
+      "note": "Kept literally as 'disposition strict'; no shared node to avoid adding semantics beyond the source."
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

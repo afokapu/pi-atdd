@@ -1,0 +1,265 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.acceptance.max-per-wmbt.convention.yaml",
+    "sha256": "75a974500f4b2670cfdb356078d6b472970b5c584d924d5811f99e79a7903ab4"
+  },
+  "rule_id": "planner.acceptance.max-per-wmbt",
+  "kind": "rule",
+  "title": "Cap acceptances at 5 per WMBT; split the WMBT when more are needed",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "wmbt",
+          "acceptance"
+        ],
+        "observability": "observable_now",
+        "note": "Plan/WMBT/acceptance artifacts are identifiable by file kind and path."
+      },
+      {
+        "fact": "operation",
+        "values": [
+          "create",
+          "edit",
+          "review"
+        ],
+        "observability": "observable_now",
+        "note": "Fires on authoring, revising or reviewing any WMBT or acceptance, including lists of five or fewer and edits to test mappings, metric_id, dimension, lens_ref or parent context."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "acceptance",
+          "WMBT",
+          "plan",
+          "wagon"
+        ],
+        "observability": "observable_now",
+        "note": "Planning task terms."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "acceptance_count_per_wmbt>5"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Violation signal for the cap only, not an activation prerequisite; needs a counter of acceptances grouped by parent WMBT in the changed plan artifacts."
+      }
+    ],
+    "fires": [
+      "A planner adds a sixth acceptance to an existing WMBT.",
+      "A planner drafts a new WMBT whose outcome seems to require more than five acceptances.",
+      "A planner reviews or revises a WMBT's acceptance list, even one with five or fewer acceptances.",
+      "A planner edits an existing acceptance's test mapping, metric_id, or the WMBT's dimension, lens_ref or inherited context."
+    ],
+    "doesNotFire": [
+      "Implementation or test-code changes that do not touch planning artifacts.",
+      "Editing documentation unrelated to WMBTs or acceptances."
+    ]
+  },
+  "given": "A WMBT and its acceptances in a plan.",
+  "when": "The planner authors, revises or reviews the WMBT or any of its acceptances.",
+  "then": "Keep at most 5 acceptances per WMBT (acceptance_cap max = 5); if more are needed, split the WMBT into clearer outcomes instead of exceeding the cap.",
+  "prefer": [
+    "Split an over-full WMBT into several WMBTs with clearer outcomes, each with <=5 acceptances.",
+    "Map each acceptance to exactly one test (acceptance_to_test 1:1); several tests may target one component (test_to_component N:1).",
+    "Give each acceptance exactly one metric_id.",
+    "Keep each WMBT to one dimension and one lens_ref; acceptances inherit context from the parent WMBT."
+  ],
+  "avoid": [
+    "Exceeding 5 acceptances on a WMBT, or gaming the cap by merging independent checks into one compound acceptance.",
+    "Acceptances with mixed measures (more than one metric_id).",
+    "One acceptance spread across several tests, or several acceptances sharing one test.",
+    "Mixing dimensions or lens_refs within one WMBT."
+  ],
+  "unless": [],
+  "why": "A WMBT needing more than five acceptances usually hides several outcomes; the cap keeps each WMBT one clear outcome with one measure and one test per acceptance.",
+  "evidence": [
+    "Count acceptances per parent WMBT in the plan: every WMBT has <=5.",
+    "Each acceptance references exactly one metric_id.",
+    "Each acceptance maps to exactly one test; tests may share a component (N:1).",
+    "Each WMBT declares one dimension and one lens_ref; acceptances inherit context from it."
+  ],
+  "verifier_detail": [
+    "Threshold: max_per_wmbt = 5 (term acceptance_cap: the per-WMBT ceiling on acceptances; values.max = 5). Count > 5 is a finding.",
+    "Ratios: acceptance_to_test 1:1 (one acceptance -> one test); test_to_component N:1.",
+    "Each acceptance maps to exactly one metric_id (no mixed measures).",
+    "WMBT rules: one dimension and one lens_ref per WMBT; acceptances inherit context from the parent WMBT.",
+    "The count>5 finding signals only the cap violation; the ratio, metric_id and dimension/lens/context checks apply to every WMBT/acceptance regardless of count."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "source kind: constraint",
+    "status: active",
+    "source name: Acceptance cap per WMBT",
+    "source: legacy_path src/atdd/planner/conventions/acceptance.convention.yaml; legacy_section 'max_per_wmbt + guidelines + expected_ratios'; legacy_sha 027e2d86ff127550; extraction_mode high_fidelity",
+    "parity: source_fragments_preserved true, examples_preserved false, implementation_preserved false, fix_hint_preserved false, reviewed_at 2026-06-16",
+    "term_id: acceptance_cap"
+  ],
+  "splitSuggestion": [
+    {
+      "id": "planner.acceptance.one-test-per-acceptance",
+      "then": "Map each acceptance to exactly one test (acceptance_to_test 1:1; test_to_component N:1).",
+      "segments": [
+        "S009",
+        "S010"
+      ]
+    },
+    {
+      "id": "planner.acceptance.single-metric",
+      "then": "Each acceptance maps to exactly one metric_id (no mixed measures).",
+      "segments": [
+        "S011"
+      ]
+    },
+    {
+      "id": "planner.wmbt.single-dimension-and-lens",
+      "then": "Each WMBT has one dimension and one lens_ref; acceptances inherit context from the parent WMBT.",
+      "segments": [
+        "S012"
+      ]
+    }
+  ],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "split_suggestion",
+      "text": "S009-S012 are independent obligations (test ratio, single metric_id, WMBT dimension/lens); kept in prefer/avoid/verifier_detail and proposed as separate conventions in splitSuggestion.",
+      "justification": "One obligation per then."
+    },
+    {
+      "field": "avoid",
+      "text": "Gaming the cap by merging independent checks into one compound acceptance.",
+      "justification": "Metric-gaming guard required by the authoring rules; consistent with the source's 'no mixed measures' and 1:1 acceptance-to-test ratio."
+    },
+    {
+      "field": "why",
+      "text": "Engineering reason phrased from the source statement ('split the WMBT into clearer outcomes'); the source has no explicit rationale field.",
+      "justification": "why field is required."
+    },
+    {
+      "field": "verifier_detail",
+      "text": "The count>5 finding signals only the cap violation; other retained checks apply regardless of count.",
+      "justification": "Clarifies activation scope so the retained S009-S012 requirements are not suppressed when the count is <=5."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Name folded into title."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "prefer[0]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "then",
+        "verifier_detail[0]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "prefer[1]",
+        "avoid[2]",
+        "verifier_detail[1]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[1]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "prefer[2]",
+        "avoid[1]",
+        "verifier_detail[2]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "prefer[3]",
+        "avoid[3]",
+        "verifier_detail[3]",
+        "evidence[3]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "then",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "then",
+        "verifier_detail[0]"
+      ]
+    }
+  ]
+}

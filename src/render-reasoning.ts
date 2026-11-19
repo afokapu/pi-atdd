@@ -58,11 +58,66 @@ export type RenderedPage = {
   emittedIds:string[];
   omittedIds:string[];
 };
+/** Provenance strings of every assertion inside one proof subtree. */
+function evidenceOf(p:Proof,out:string[]=[],seen=new Set<string>()):string[]{
+  if(seen.has(p.key))return out;
+  seen.add(p.key);
+  for(const a of p.assertions)out.push(a.provenance??a.source);
+  for(const d of p.derivations){out.push(d.rule);d.premises.forEach(x=>evidenceOf(x,out,seen));}
+  return out;
+}
+/**
+ * Relevance of an activation to the observed subject. Only DIRECT derivations
+ * (selector or typed applicability rules) count file-specific evidence: a
+ * mandatory prerequisite does not inherit the path evidence of the rule that
+ * requires it, so it can never outrank its directly targeted rule.
+ *   any direct derivation 1, +4 path selector evidence, +2 typed layer fact;
+ *   prerequisite-only activation 0. A directly selected rule therefore always
+ *   outranks a rule that is active only as its prerequisite.
+ */
+export function relevance(a:Activation):number {
+  let best=0;
+  for(const d of a.proof.derivations){
+    if(d.rule==="pi-atdd.mandatory-prerequisites")continue; // prerequisite-only: 0
+    const ev=d.premises.flatMap(x=>evidenceOf(x));
+    let score=1;                                             // direct (e.g. task wording)
+    if(ev.some(r=>r.startsWith("path:")))score+=4;            // file-specific path selector
+    if(d.rule.startsWith("pi-atdd.typed-")||ev.some(r=>r.startsWith("layer:")))score+=2; // typed layer fact
+    best=Math.max(best,score);
+  }
+  return best;
+}
+const MIN_COMPACT=250;
+/** Room kept for the top rule; with maxChars >= 2000 the top rule is always delivered. */
+const COMPACT_ROOM=900;
+export function rankActivations(list:readonly Activation[]):Activation[] {
+  return [...list].sort((x,y)=>relevance(y)-relevance(x)||(x.id<y.id?-1:x.id>y.id?1:0));
+}
+/** Minimal rendering that still carries the obligation, its source and guidance. */
+function compactSection(item:Activation,r:Reconciliation,budget:number):string {
+  const rule=item.convention;
+  const source=r.provenance.find(p=>p.id===rule.source);
+  const suffix=rule.file.slice(rule.source.length+1);
+  const path=source?join(source.path,suffix):rule.file;
+  const head=[
+    "Convention "+item.id+" — "+clip(rule.statement,500),
+    "Canonical source: "+path,
+    "Pinned provenance SHA-256: "+(source?.digest??"UNKNOWN"),
+    "Activation evidence: "+item.reasons.slice(0,4).map(s=>clip(s,120)).join("; "),
+  ].join("\n");
+  const tail="\n[compact rendering under page budget: read the full canonical file]";
+  const room=budget-head.length-tail.length-60;
+  const guidance=rule.guidance&&room>120?"\nOriginal guidance: "+clip(rule.guidance,room):"";
+  const text=head+guidance+tail;
+  return text.length<=budget?text:text.slice(0,Math.max(0,budget-tail.length))+tail;
+}
 export function renderReasonedPage(r:Reconciliation,ids?:readonly string[],maxChars=14_000):RenderedPage {
   if(!Number.isInteger(maxChars)||maxChars<1200)
     throw new Error("reasoning budget too small for safety warnings");
-  const warnings=[
-    "ATDD graph reasoning — positive provenance-backed derivations, not a merge verdict.",
+  const header="ATDD graph reasoning — positive provenance-backed derivations, not a merge verdict.";
+  const noWaiver="Rules are not waived by alternatives; an independent reviewer and CI verify binding obligations.";
+  const fullWarnings=[
+    header,
     "Task scope: "+r.scope+"; state: "+r.status.toUpperCase(),
     r.unknownFacts.length?"Unknown context facts (NOT assumed false): "+r.unknownFacts.join(", "):"",
     r.unresolvedGraphEdges.length?"Graph has "+r.unresolvedGraphEdges.length+
@@ -70,31 +125,51 @@ export function renderReasonedPage(r:Reconciliation,ids?:readonly string[],maxCh
     ...r.gaps.slice(0,8).map(g=>"MISSING mandatory graph dependency: "+g.missingId),
     r.gaps.length>8?"Other missing mandatory dependencies remain in the full reasoning report.":"",
     !r.activations.length?"ATDD applicability unresolved (UNKNOWN). No activation is not proof that no conventions apply; review applicability.":"",
-    "Rules are not waived by alternatives; an independent reviewer and CI verify binding obligations.",
+    noWaiver,
   ].filter(Boolean).join("\n");
+  // Bounded form of the same safety warnings, used when the full form would
+  // leave no room for the most relevant rule (long scopes, many gaps).
+  const compactWarnings=[
+    header,
+    "Task scope: "+clip(r.scope,120)+"; state: "+r.status.toUpperCase(),
+    r.unknownFacts.length?"Unknown context facts (NOT assumed false): "+clip(r.unknownFacts.join(", "),80):"",
+    r.unresolvedGraphEdges.length?"Graph has "+r.unresolvedGraphEdges.length+
+      " external unresolved edges; completeness is NOT established.":"",
+    r.gaps.length?clip("MISSING "+r.gaps.length+" mandatory graph dependencies: "+r.gaps.map(g=>g.missingId).join(", "),220):"",
+    noWaiver,
+  ].filter(Boolean).join("\n");
+  const warnings=r.activations.length&&maxChars-320-fullWarnings.length<COMPACT_ROOM?compactWarnings:fullWarnings;
   const selected=ids?new Set(ids):null;
-  const activations=r.activations.filter(x=>!selected||selected.has(x.id));
+  // Highest relevance first, so a bounded page drops lower-relevance rules first.
+  const activations=rankActivations(r.activations.filter(x=>!selected||selected.has(x.id)));
   const emittedIds:string[]=[],omittedIds:string[]=[];
-  const reserve=300;
+  const reserve=320;
   if(warnings.length>maxChars-reserve)
     return {text:warnings.slice(0,maxChars-150)+"\nWARNING: context overflow; no convention was delivered.",
       emittedIds,omittedIds:activations.map(a=>a.id)};
   let text=warnings;
-  for(const a of activations){
+  for(const [i,a] of activations.entries()){
     const item="\n\n"+section(a,r);
-    if(text.length+item.length>maxChars-reserve) {
-      omittedIds.push(a.id);
-    } else {
+    if(omittedIds.length) {
+      omittedIds.push(a.id); // strict relevance order: never skip a rule to fit a less relevant one
+    } else if(text.length+item.length<=maxChars-reserve) {
       text+=item;
       emittedIds.push(a.id);
+    } else if(i===0&&maxChars-reserve-text.length-2>=MIN_COMPACT) {
+      // The most relevant rule is not dropped while a compact rendering fits.
+      text+="\n\n"+compactSection(a,r,maxChars-reserve-text.length-2);
+      emittedIds.push(a.id);
+    } else {
+      omittedIds.push(a.id);
     }
   }
   if(omittedIds.length) {
-    text+="\n\nATTENTION: "+omittedIds.length+" activated convention(s) omitted by budget. "+
+    const attention="\n\nATTENTION: "+omittedIds.length+" activated convention(s) omitted by budget (lower relevance first). "+
       "Their content has NOT been delivered or acknowledged. Retries must receive "+
-      "remaining reasoning before the edit can proceed.";
-    if(!emittedIds.length)
-      text+=" No complete convention fit the budget: use the full canonical source or enlarge context.";
+      "remaining reasoning before the edit can proceed."+
+      (!emittedIds.length?" No complete convention fit the budget: use the full canonical source or enlarge context.":"");
+    const listed=" Omitted: "+omittedIds.join(", ")+".";
+    text+=attention.length+listed.length+text.length<=maxChars?attention+listed:attention;
   }
   return {text,emittedIds,omittedIds};
 }

@@ -6,7 +6,7 @@ A **TypeScript-only Pi extension** containing a versioned, offline catalog of AT
 
 ## Included conventions
 
-The package vendors **unchanged, byte-for-byte** YAML from reviewed source revisions:
+The package vendors YAML from reviewed source revisions, **byte-for-byte except the `rule_id` field** since PLT-87 (see below):
 
 | Catalog | Commit | Contents |
 |---|---|---|
@@ -95,4 +95,14 @@ Pi sends the relevant original guidance, canonical source, provenance digest, pr
 - **Challenge:** src/challenge.ts (write-once, pending independent authenticated review; no self-waiver)
 - **Mandatory outcome:** [D008 experiment](docs/D008-OUTCOME-PROTOCOL.md) and [PLT-69 acceptance audit](docs/PLT-69-ACCEPTANCE-AUDIT.md)
 
-**D008 remains NOT RUN against actual weak/strong models.** Fixture tests prove that the checker catches false-green assertions; they do not prove that graph-driven guidance improves model decisions. This stacked PR must remain draft until the required independent model trials and outstanding integration gaps are judged.
+**D008 remains NOT SATISFIED.** A [real paired 0.5B Pi/JJ smoke](experiments/weak-model-pi-jj/REPORT.md) ran with and without the graph, but neither condition made any actual Pi tool calls or changed code. The [tool-use validity gate](docs/D008-OUTCOME-PROTOCOL.md) now marks such attempts unqualified. Fixture tests and successful evidence collection do not prove graph effectiveness. Authenticated, equal-base weak/strong agent trials and independent behavioral review remain outstanding.
+
+
+## PLT-87 — profile-first convention ids
+
+Every convention id is `<profile>.<area>.<rule>` (profile: `planner`, `tester`, `coder`, `reviewer`, `coach`, `shared`) and lives at `<source>/conventions/<profile>/<area>/<id>.convention.yaml`. A profile selects its conventions by prefix; `shared.*` reaches every profile (`rulesForProfile` in `src/catalog.ts`).
+
+- `conventions/aliases.json` maps all 358 v0.2.0 ids to the new ids (one-to-one, plus the 46 sidecar split-part ids). Old ids keep resolving in selectors, extension graphs and challenges.
+- `conventions/provenance.json` records old and new path and SHA-256 for every file; restoring the old `rule_id` reproduces the v0.2.0 bytes exactly. `relationships.yaml` is re-keyed and isomorphic to v0.2.0 (508 edges, 44 external).
+- `catalog/pi-atdd/` holds package-authored conventions, starting with `shared.convention.propose`: agents propose new or changed rules with evidence and never edit active ones.
+- Tooling: `tools/profile-naming/` (`map.py`, `move.py`, `sidecar.py`, `probe.ts`). Tests: `tests/profile-naming.test.ts` (N-001 to N-005).

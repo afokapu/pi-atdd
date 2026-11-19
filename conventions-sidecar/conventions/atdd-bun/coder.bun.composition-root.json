@@ -1,0 +1,383 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.bun/coder.bun.composition-root.convention.yaml",
+    "sha256": "64f6e77ed476f2e4818aee12e5e308407eb1556adfb71e7b3e10cd058c876c0d"
+  },
+  "rule_id": "coder.bun.composition-root",
+  "kind": "rule",
+  "title": "Construct collaborators only in a composition root",
+  "activation": {
+    "facts": [
+      {
+        "fact": "path_glob",
+        "values": [
+          "**/*",
+          "!**/composition.ts",
+          "!**/wagon.ts",
+          "!**/server.ts",
+          "!**/index.ts"
+        ],
+        "observability": "observable_now",
+        "note": "Fires for files that are NOT composition roots; roots are identified by basename. No language/extension restriction beyond the Bun stack the rule belongs to."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "source"
+        ],
+        "observability": "observable_now",
+        "note": "Test files and vendored/build directories are never scanned; their classification comes from the repository topology (context.repo-topology.layers)."
+      },
+      {
+        "fact": "layer",
+        "values": [
+          "any layer named in the repository layer map"
+        ],
+        "observability": "observable_now",
+        "note": "Decided from the file path against the repository layer map (context.repo-topology.layers), not from the path glob alone: a path carries a layer segment when one of its directory segments names a layer in that map. A file with no layer segment in its path is outside these rules."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "BUN-COMPOSITION-ROOT-001"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Content-level scan of the file's current source (existing or newly written code alike) for `new <Name>()` where Name ends in Repository|Client|Service|Adapter|Gateway|Store|Provider|Factory, over string- and comment-masked source; today emitted by bun_clean_architecture_detector, not yet a Datalog-observable fact."
+      }
+    ],
+    "fires": [
+      "A use-case or handler module in a layered directory contains `new SomethingRepository()` to obtain its dependency, whether the line is new or pre-existing.",
+      "A presentation-layer module constructs a `*Client` or `*Gateway` inline instead of receiving it.",
+      "A non-root module constructs a `*Factory` or `*Provider` to build its own collaborators."
+    ],
+    "doesNotFire": [
+      "The instantiation is in `composition.ts`, `wagon.ts`, `server.ts` or `index.ts`.",
+      "The instantiation is in a test file or a vendored/build directory.",
+      "The file path carries no layer segment (no directory segment names a layer in the repository layer map).",
+      "`new <Collaborator>()` appears only inside a string literal or comment.",
+      "The constructed class name does not end in one of the collaborator suffixes."
+    ]
+  },
+  "given": "A Bun source file whose path carries a layer segment (a directory named as a layer in the repository layer map) and that is not a composition root (`composition.ts`, `wagon.ts`, `server.ts`, `index.ts`)",
+  "when": "it contains `new X()` where X is a collaborator (*Repository, *Client, *Service, *Adapter, *Gateway, *Store, *Provider, *Factory)",
+  "then": "Construct the collaborator only in a composition root.",
+  "prefer": [
+    "Construct in a root; `server.ts` counts because `Bun.serve` is the full-stack app's assembly point, where routes and their dependencies are wired.",
+    "Pass the constructed collaborator from the root to the consumer that needs it.",
+    "During GREEN: add only the wiring the current behavior requires.",
+    "During GREEN: reuse existing factories, instances and composition patterns before creating new ones.",
+    "During GREEN: keep construction separate from application or presentation behavior."
+  ],
+  "avoid": [
+    "Instantiating the collaborator in the consumer as a shortcut.",
+    "Speculative factories or service locators.",
+    "Centralizing unrelated wiring merely because the root is being edited."
+  ],
+  "unless": [
+    "Test files and vendored/build directories (never scanned).",
+    "Files with no layer segment: outside these rules, not in violation."
+  ],
+  "why": "Scattered wiring is not a style problem: it is why a test cannot substitute anything, and why a second deployment shape becomes a rewrite.",
+  "evidence": [
+    "The current behavioral acceptance passes through the real wiring.",
+    "Collaborator construction remains confined to a composition root: bun_clean_architecture_detector reports no `new <Collaborator>()` outside a root."
+  ],
+  "verifier_detail": [
+    "Detector: bun_clean_architecture_detector (validator). Flag `new <Name>()` where Name ends in Repository, Client, Service, Adapter, Gateway, Store, Provider or Factory, in any file whose basename is not composition.ts, wagon.ts, server.ts or index.ts. Applies to all such constructions present in scanned source, not only newly added ones.",
+    "Scan over string- and comment-masked source so occurrences inside strings/comments are not flagged.",
+    "Skip test files and vendored/build directories; skip files whose path carries no layer segment (per the repository layer map).",
+    "Shared detector scoping: bare npm specifiers resolve outside the project graph and are not layer-checked.",
+    "Severity 3; disposition strict."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "Original name: 'Wiring is confined to a composition root'.",
+    "Bun realization mirroring `coder.convex.composition-root`; core obligation `coder.refactor.composition-root`.",
+    "The Convex sibling has no `server.ts` root equivalent because its function tree has no single entry.",
+    "Source terms: composition_root = composition.ts, wagon.ts, server.ts or index.ts (server.ts counts because Bun.serve IS the assembly point of a full-stack Bun app); collaborator = *Repository, *Client, *Service, *Adapter, *Gateway, *Store, *Provider or *Factory — the things whose wiring must be confined.",
+    "Aliases: BUN-COMPOSITION-ROOT-001.",
+    "Severity 3; disposition strict.",
+    "Implementation: {type: validator, ref: bun_clean_architecture_detector}."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "context.repo-topology.layers",
+      "kind": "context",
+      "text": "Layer map scoping for the Bun clean-architecture detector: test files and vendored/build directories are never scanned; bare npm specifiers resolve outside the project graph and are not layer-checked; a file carrying no layer segment is outside the layer rules rather than in violation of them."
+    }
+  ],
+  "additions": [
+    {
+      "field": "activation.doesNotFire",
+      "text": "Class names not ending in a collaborator suffix do not fire.",
+      "justification": "Makes explicit the scope implied by the collaborator term definition."
+    },
+    {
+      "field": "given",
+      "text": "Definition of 'layer segment' as a path directory segment naming a layer in the repository layer map.",
+      "justification": "Reviewer flagged 'layered'/'layer segment' as undefined for the coder; this only clarifies the source's existing exception scope via the shared layer map and adds no obligation."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Rephrased as imperative title; original kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "when",
+        "then",
+        "activation",
+        "verifier_detail[0]"
+      ],
+      "note": "Applies to all constructions present in scoped source, new or existing."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ],
+      "note": "Term id; term content placed in given/activation."
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "given",
+        "prefer[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit"
+      ],
+      "note": "Term id; term content placed in when/activation."
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "when",
+        "activation",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[0]",
+        "verifier_detail[1]",
+        "activation"
+      ],
+      "note": "activation.finding is a scan of current source, not a diff."
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "structure"
+      ],
+      "note": "Heading; its items are then/prefer[0] and prefer[1]."
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "then",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "prefer[1]"
+      ],
+      "note": "Delivery to the consumer is a separate step from construction location; kept as a coder-facing prefer entry so then holds one obligation."
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "prefer[2]",
+        "prefer[3]",
+        "prefer[4]"
+      ],
+      "note": "GREEN phase condition carried explicitly as the 'During GREEN:' prefix on each of its three items."
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "prefer[3]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "prefer[4]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "structure"
+      ],
+      "note": "Heading; its items are avoid[0..2]."
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "structure"
+      ],
+      "note": "Heading; its items are evidence[0..1]."
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "unless[0]",
+        "activation",
+        "verifier_detail[2]",
+        "shared:context.repo-topology.layers"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "verifier_detail[3]",
+        "shared:context.repo-topology.layers"
+      ],
+      "note": "Detector-wide import scoping; kept for verifiers."
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "unless[1]",
+        "activation",
+        "verifier_detail[2]",
+        "shared:context.repo-topology.layers"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "identity",
+        "verifier_detail[4]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "identity",
+        "verifier_detail[4]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,461 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/planner.docs/planner.docs.artifact-path-shape.convention.yaml",
+    "sha256": "436937a82f8e064833dc28adfeedcfa78fcdc46a74b28e956756000787b3e05e"
+  },
+  "rule_id": "planner.docs.artifact-path-shape",
+  "kind": "rule",
+  "title": "Declare documentation artifacts as .adoc paths under docs/, with archives under docs/archive/",
+  "activation": {
+    "facts": [
+      {
+        "fact": "phase",
+        "values": [
+          "RATIFY"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Fires when the plan's `documentation:` declaration is recorded in the store at RATIFY; needs an observer of the ratified declaration block."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "documentation declaration with impact: change and artifacts"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Needs a parser of the declaration's `impact` and each artifact's `action`, `path`, `from`."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "documentation",
+          "artifacts",
+          "archive"
+        ],
+        "observability": "observable_now",
+        "note": "Plan/task text mentioning documentation artifacts only hints the declaration will be authored; it does not replace inspecting the declaration."
+      }
+    ],
+    "fires": [
+      "A ratified declaration with `impact: change` lists an artifact whose `path` does not begin `docs/` or does not end `.adoc`.",
+      "A ratified declaration lists an `action: archive` artifact whose `path` lies outside `docs/archive/` (e.g. under `purpose/` or `architecture/`).",
+      "A `create` or `modify` artifact names a markdown path instead of an AsciiDoc path."
+    ],
+    "doesNotFire": [
+      "The declaration is `impact: none` with a reason (no artifacts to check; reason quality is not judged).",
+      "An archive artifact's `from` path ends `.md` or any non-.adoc extension — `from` names the legacy document being retired.",
+      "The declaration is absent: this rule is not evaluated; the capability instead returns COULD_NOT_CHECK, which blocks."
+    ]
+  },
+  "given": "Your plan's `documentation:` declaration (recorded at RATIFY) is `impact: change` with `artifacts:` (each an `action` create/modify/archive, a `path`, and for archive a `from`).",
+  "when": "You write each artifact's `path`.",
+  "then": "Every artifact `path` begins `docs/` and ends `.adoc`, and every `action: archive` artifact's `path` lies beneath `docs/archive/`.",
+  "prefer": [
+    "Shape the declaration to the tree: create/modify paths beginning `docs/` and ending `.adoc`; archive as `from: <legacy doc>` plus `path: docs/archive/<name>.adoc`.",
+    "An archived document keeps its content and gains `:status:`.",
+    "If no docs change, declare `impact: none` with a reason; never omit the block."
+  ],
+  "avoid": [
+    "Archiving outside `docs/archive/` (e.g. into `purpose/` or `architecture/`, which hold only accepted-truth-today documents).",
+    "Declaring markdown or non-`docs/` paths and leaving the mismatch to surface at COMPLETE.",
+    "Treating an absent declaration as `impact: none` — absence blocks as COULD_NOT_CHECK."
+  ],
+  "unless": [
+    "`impact: none` declares no artifacts and is not checked by this rule.",
+    "An archive artifact's `from` need not end `.adoc`: it is the legacy markdown being migrated."
+  ],
+  "why": "The declaration is a promise about paths; checking its shape at RATIFY catches it before the work, not at COMPLETE. The archive half is load-bearing: archiving outside `docs/archive/` quietly promotes history into current truth, the likeliest failure under time pressure.",
+  "evidence": [
+    "For each artifact in a ratified `impact: change` declaration, `path` starts with `docs/` and ends with `.adoc`.",
+    "For each `action: archive` artifact, `path` starts with `docs/archive/`; its `from` is not checked for extension.",
+    "`impact: none` declarations produce no finding from this rule; an absent declaration yields COULD_NOT_CHECK (blocking) while corpus rules are still evaluated and reported."
+  ],
+  "verifier_detail": [
+    "Check only path SHAPE: prefix `docs/` and suffix `.adoc` for every artifact `path`; prefix `docs/archive/` for `action: archive`. Do not check `from` for `.adoc` (it names the legacy document being retired, which is exactly the markdown the migration is converting).",
+    "Division of labour with core: core stores declared paths as opaque strings and never interprets them (companion §3); core checks that every declared path APPEARS IN THE CHANGE SET (companion §4, check 4) — path-agnostic, format-agnostic, non-vacuous with no extension installed. Interpreting paths is this extension's job because only the extension knows the tree; core must not know `docs/` or `.adoc` — companion §8's anti-theatre test greps core for exactly those tokens and requires zero hits.",
+    "Declaration term: the `documentation:` block recorded in the store at RATIFY in one of two total forms — `impact: change` with artifacts, or `impact: none` with a reason. Artifact term: one entry of `artifacts:` with `action` (`create`, `modify`, `archive`), `path`, and for `archive` a `from` naming the document being retired.",
+    "`impact: none`: core enforces a reason is present; neither core nor this extension judges the reason's quality. `impact: none` is a positive statement (core considered the question and declared no documentation change) and permits.",
+    "Absent declaration ≠ `impact: none`: core said nothing, so no declaration-dependent rule can be evaluated; the capability returns COULD_NOT_CHECK, which BLOCKS. Corpus rules are still evaluated and reported — 'genuinely nothing to check' is false whenever there is a corpus to read.",
+    "Source fix_hint snippet ('Shape the declaration to the tree:'):\n  documentation:\n    impact: change\n    artifacts:\n      - action: create\n        path: docs/architecture/shared-control-root.adoc     # ✓ under docs/, ends .adoc\n      - action: archive\n        from: docs/old-spec.md\n        path: docs/archive/old-spec.adoc                     # ✓ archive lands in archive/",
+    "Severity 2; disposition strict.",
+    "Archive constraint rationale: an archive outside `docs/archive/` is how history quietly gets promoted into current truth — the single outcome spec 2 §2 names as most likely under time pressure, recreating the problem #1782 exists to solve. `purpose/` and `architecture/` are for documents that are accepted truth today; an archived document does not gain a place there."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "Alias: DOCS-DECLARATION-001.",
+    "Implementation: validator, ref docs_capability.",
+    "Lineage: the core/extension division of labour is stated explicitly because getting it wrong is what #1782 originally proposed; archive-outside-archive is the outcome spec 2 §2 names as most likely under time pressure and the one that recreates the problem #1782 exists to solve.",
+    "Source name: 'Declared documentation artifacts name AsciiDoc paths inside the canonical tree'."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "strict: the runner fails on every finding; there is no advisory mode and no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "prefer[2]",
+      "text": "If no docs change, declare `impact: none` with a reason; never omit the block.",
+      "justification": "Planner-facing restatement of the source's absent-declaration exception (S042–S044): an absent declaration blocks while `impact: none` permits. No new obligation beyond the source's blocking behaviour."
+    },
+    {
+      "field": "split_suggestion",
+      "text": "None proposed: the docs/+.adoc shape and the docs/archive/ destination are both path-shape checks on the same artifact list at the same decision point, so kept as one obligation.",
+      "justification": "Rule 2 asks to state split considerations explicitly."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Title rephrased imperatively; original name kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "evidence[0]",
+        "evidence[1]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "given",
+        "verifier_detail[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "given",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "why",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "verifier_detail[0]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "avoid[0]",
+        "why",
+        "verifier_detail[7]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "avoid[0]",
+        "why",
+        "verifier_detail[7]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "why",
+        "audit",
+        "verifier_detail[7]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "audit",
+        "verifier_detail[7]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "avoid[0]",
+        "verifier_detail[7]"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "avoid[0]",
+        "verifier_detail[7]"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "unless[0]",
+        "activation",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "verifier_detail[3]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "avoid[2]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "verifier_detail[3]",
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "avoid[2]",
+        "verifier_detail[4]",
+        "evidence[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S045",
+      "dest": [
+        "verifier_detail[4]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S046",
+      "dest": [
+        "unless[1]",
+        "activation",
+        "verifier_detail[0]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S047",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S048",
+      "dest": [
+        "identity",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S049",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S050",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S051",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

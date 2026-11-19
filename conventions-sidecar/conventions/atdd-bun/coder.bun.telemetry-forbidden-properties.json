@@ -1,0 +1,372 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.bun/coder.bun.telemetry-forbidden-properties.convention.yaml",
+    "sha256": "7dd411af2180e70a84f4bad99c568060504bb5ff5e7ccb9fc1b6fd4b3aadcbcd"
+  },
+  "rule_id": "coder.bun.telemetry-forbidden-properties",
+  "kind": "rule",
+  "title": "Keep plan-forbidden properties out of emit calls",
+  "activation": {
+    "facts": [
+      {
+        "fact": "language",
+        "values": [
+          "typescript",
+          "javascript"
+        ],
+        "observability": "observable_now",
+        "note": "Bun realization; source files of the Bun codebase."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "emit_call_naming_declared_item_present",
+          "tracking_plan_forbidden_properties_changed",
+          "emit_call_item_id_changed"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Requires an AST observer that finds every emit-like call (existing or changed) whose first argument is a concrete id held by the tracking-plan registry, reads the properties object on the same statement, and re-evaluates all such calls when a plan item's forbidden_properties list or a call's named item id changes. Not limited to edited calls."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "bun_telemetry_code:forbidden-property"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Validator finding from bun_telemetry_code after comparing normalized top-level keys against the item's forbidden_properties list."
+      },
+      {
+        "fact": "phase",
+        "values": [
+          "adopted"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Rule is inert until the repository has adopted the telemetry tracking plan (family-wide adoption gate)."
+      }
+    ],
+    "fires": [
+      "After adoption, any emit-like call names a declared tracking-plan item and its properties object has a top-level key in that item's forbidden_properties list (e.g. a raw payload, secret or prompt).",
+      "The plan forbids a snake_case name and the code writes the same name in camelCase as a top-level key of the properties object.",
+      "A plan change adds a name to an item's forbidden_properties list that an existing, unchanged emit call already passes.",
+      "A call's named item id is changed to an item whose forbidden list contains one of the call's existing keys."
+    ],
+    "doesNotFire": [
+      "The emit-like call's first argument is an id the registry does not hold (that is the raw-string rule's finding).",
+      "The properties object carries a key the plan merely does not declare (undeclared-key drift belongs to the generated contract).",
+      "The value is passed via a shorthand property, which carries no name of its own and is invisible to this scan.",
+      "A matching name appears only inside a nested object (nested objects are judged at their own level, not as top-level keys of this call).",
+      "The repository has not yet adopted the tracking plan."
+    ]
+  },
+  "given": "After adoption, an emit-like call (a telemetry emit whose first argument is a declared concrete tracking-plan item id) with a properties object literal following that argument on the same statement.",
+  "when": "The call exists or changes, or the named item's forbidden_properties list or the call's item id changes.",
+  "then": "No top-level named key of the properties object MAY match a property the plan forbids on that item, compared after stripping separators and folding case (shorthand properties carry no name and are not scanned; nested objects are judged at their own level).",
+  "prefer": [
+    "Pass the identifier, not the thing it identifies, and leave out any property the named item's plan forbids."
+  ],
+  "avoid": [
+    "Attaching raw payloads, secrets or prompts the plan forbids on the named item.",
+    "Evading the check by renaming case/separators (snake_case vs camelCase) instead of removing the property.",
+    "Treating properties the plan merely does not declare as forbidden or removing them for this rule; undeclared-key drift is the generated contract's concern."
+  ],
+  "unless": [
+    "The call names an id the registry does not hold: that is the raw-string rule's finding; double-reporting here would be noise.",
+    "Inert until adoption, like every rule in this family."
+  ],
+  "why": "The forbidden list is a privacy and cost promise, so it is enforced where data leaves: the emit call itself, against the plan entry the call names.",
+  "evidence": [
+    "bun_telemetry_code validator reports no forbidden-property finding for emit-like calls naming declared items.",
+    "For every emit call naming a declared item (not only changed ones), every normalized top-level key of the properties object is absent from that item's forbidden_properties list."
+  ],
+  "verifier_detail": [
+    "Scope: only emit-like calls whose first argument is a declared concrete id in the tracking-plan registry; undeclared ids are skipped (raw-string rule reports them). All qualifying calls are checked after adoption, regardless of whether the call itself changed.",
+    "properties_object: the object literal following the first argument of the emit-like call, on the same statement.",
+    "forbidden_property: a name in the item's forbidden_properties list (raw payloads, secrets, prompts): what must never leave the process on that item.",
+    "Normalization: every top-level key has separators stripped and case folded before comparison against the item's forbidden list; the plan writes snake_case, code may write camelCase.",
+    "Shorthand properties carry no name of their own and are invisible to this scan; nested objects are judged at their own level.",
+    "Properties the plan merely does not declare are not forbidden; undeclared-key drift is the generated contract's concern, not this rule's.",
+    "Source fix example (example-specific annotations):\n  telemetry.emit(\"telemetry:event:be:commons:response-invocation-accepted\", {\n    response_id: response.id,   // the identifier: allowed, planned, high-cardinality-declared\n    // raw_payload: response.raw,  // forbidden by the plan: never attach it\n  });",
+    "Implementation: validator bun_telemetry_code."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "kind: rule",
+    "status: active",
+    "Source name: Forbidden properties never reach an emit call",
+    "aliases: CODER-TELEMETRY-FORBIDDEN-PROPERTIES-001",
+    "severity: 3; disposition: strict",
+    "introduced_in: 0.7.0",
+    "implementation: {type: validator, ref: bun_telemetry_code}",
+    "Source term ids: forbidden_property, properties_object",
+    "Depends on planner.telemetry.tracking-plan-schema (forbidden-property list comes from the tracking-plan item)."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "strict: atdd-bun fails on every finding; it has no advisory mode and no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "avoid",
+      "text": "Evading the check by renaming case/separators instead of removing the property.",
+      "justification": "Metric-gaming guard derived from the source's normalized comparison (S009, S015); adds no new obligation beyond the normalized check."
+    },
+    {
+      "field": "prefer",
+      "text": "\"and leave out any property the named item's plan forbids\" on the identifier fix hint.",
+      "justification": "Restates the source example's 'forbidden by the plan: never attach it' (S025) in codebase-neutral form; it restricts only forbidden properties, not undeclared ones, so it adds no allowlist obligation."
+    },
+    {
+      "field": "given",
+      "text": "Parenthetical gloss of 'emit-like call' as a telemetry emit whose first argument is a declared item id.",
+      "justification": "Source does not define 'emit-like'; the gloss is derived from the source example (telemetry.emit) and from S014/S011 (first argument is the id, properties object follows it) to reduce coder ambiguity; it does not broaden scope."
+    },
+    {
+      "field": "then",
+      "text": "Top-level/shorthand/nested qualifiers in the coder-facing obligation.",
+      "justification": "Moved from verifier-only text (S015, S017, S018) into the coder field so coders do not recursively reject nested keys or treat shorthand as named; no new obligation."
+    },
+    {
+      "field": "activation",
+      "text": "language/change/finding/phase facts and fires/doesNotFire examples, including plan-change, item-id-change triggers and nested-object non-firing case.",
+      "justification": "Required structure; derived from the source's scope (all qualifying calls after adoption), exceptions and normative text."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Title rephrased imperatively; original name kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "then"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ],
+      "note": "Term id; definition carried in verifier_detail."
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "then",
+        "avoid[0]",
+        "why",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "then",
+        "verifier_detail[3]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit"
+      ],
+      "note": "Term id; definition carried in verifier_detail."
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "given",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "given",
+        "verifier_detail[0]",
+        "activation"
+      ],
+      "note": "Applies to all qualifying calls after adoption, not only changed ones."
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "then",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "then",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "then",
+        "verifier_detail[4]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "then",
+        "verifier_detail[4]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "verifier_detail[5]",
+        "avoid[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "verifier_detail[5]",
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "verifier_detail[6]"
+      ],
+      "note": "Example-specific annotation kept verbatim in the example."
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "verifier_detail[6]",
+        "avoid[0]",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "unless[1]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "audit",
+        "verifier_detail[7]"
+      ]
+    }
+  ]
+}

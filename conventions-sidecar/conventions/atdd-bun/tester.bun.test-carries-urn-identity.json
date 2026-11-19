@@ -1,0 +1,327 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/tester.bun/tester.bun.test-carries-urn-identity.convention.yaml",
+    "sha256": "4c5846bae7f9671eabf808f43ee3f134a67214113f0e15e9a60705dbdcbe8d10"
+  },
+  "rule_id": "tester.bun.test-carries-urn-identity",
+  "kind": "rule",
+  "title": "Declare a test URN header in every test file",
+  "activation": {
+    "facts": [
+      {
+        "fact": "path_glob",
+        "values": [
+          "**/*.test.*",
+          "**/*.spec.*"
+        ],
+        "observability": "observable_now",
+        "note": "Test files are identified by the *.test.* / *.spec.* naming pattern, in any language (stack-neutral obligation)."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "test"
+        ],
+        "observability": "observable_now",
+        "note": "Only test files are in scope; source files are excluded. Applies to every in-scope test file, whether new, edited or unchanged."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "missing_test_urn",
+          "urn_not_test_scheme",
+          "urn_below_first_code_line"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Produced by bun_tester_discipline_detector parsing the leading comment block of each scanned test file."
+      }
+    ],
+    "fires": [
+      "A new *.test.* file is created without a `// URN: test:...` line in its leading comment block.",
+      "An existing, unchanged *.spec.* file scanned by the coverage gate has its URN comment placed after the import statements.",
+      "A test file's leading comment block has a `URN:` field whose value does not use the `test:` scheme.",
+      "A wagon-level test file covering several acceptances is relied on for coverage but has no URN header."
+    ],
+    "doesNotFire": [
+      "A non-test source file (not *.test.* / *.spec.*) — that is the coder extension's business.",
+      "A test file inside a vendored or build directory.",
+      "A test file whose filename does not encode an acceptance id but whose header carries a valid `test:` URN."
+    ]
+  },
+  "given": "Any `*.test.*`/`*.spec.*` file (new or existing) outside vendored/build dirs",
+  "when": "it is in the test-file scan scope",
+  "then": "Its leading comment block, above the first real code line (imports included), carries `// URN: test:{wagon}:{feature}:{ACCEPTANCE-ID}`.",
+  "prefer": [
+    "Add the header above the imports:\n// URN: test:orders:checkout:E001-SMOKE-001-renders-row\n// Acceptance: acc:orders:E001-SMOKE-001-renders-row\n// Phase: SMOKE\n// Layer: integration",
+    "Bind via the header, keeping the file layout; multi-acceptance files need no rename."
+  ],
+  "avoid": [
+    "A URN below imports or code — it reads as missing.",
+    "A `URN:` value without the `test:` scheme.",
+    "Encoding acceptance ids in filenames instead of the header; filenames are never parsed."
+  ],
+  "unless": [
+    "Not a test file (source files are the coder extension's business).",
+    "In a vendored or build directory (never scanned)."
+  ],
+  "why": "The URN is the coverage gate's foundation: without it the gate cannot attribute the test or report coverage, and marks the acceptance uncovered while the test passes. Header, not filename, because wagon-level files cover several acceptances; a filename rule would force renaming the suite.",
+  "evidence": [
+    "bun_tester_discipline_detector reports no missing/invalid URN finding for the test file.",
+    "Reviewer sees `// URN: test:{wagon}:{feature}:{ACCEPTANCE-ID}` in the leading comment block before the first import/code line."
+  ],
+  "verifier_detail": [
+    "Detector parses the file's leading comment block (Bun line comments `//`) for a `URN:` field and requires the `test:` scheme; format `test:{wagon}:{feature}:{ACCEPTANCE-ID}`.",
+    "The header region ends at the first line of real code, so a URN below the imports is treated as missing.",
+    "Identity is never derived from the filename; header is authoritative (header_authority).",
+    "Scan scope: all *.test.* / *.spec.* files (not only changed ones); vendored and build directories are never scanned.",
+    "Stack-neutral obligation with a Bun-specific line-comment detector; realized by `bun_tester_discipline_detector` (implementation type: validator).",
+    "Without a test URN there is no edge from the test to anything in the graph; the gate cannot attribute the test and reports its acceptance as uncovered.",
+    "Severity 2; disposition strict (see shared policy.strict-disposition)."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "Aliases: BUN-TEST-CARRIES-URN-IDENTITY-001.",
+    "Bun realization of the core obligation `tester.filename.test-carries-urn-identity`; core carries no shared alias, so lineage is stated here. Core's counterpart is explicit that identity is the HEADER, not the filename, and this realization follows that exactly.",
+    "Header-over-filename is a deliberate, load-bearing choice and the same conclusion issue #1783 reached independently for backend TypeScript: a one-acceptance-per-filename rule would force a rename of the entire suite to satisfy a tool.",
+    "Implementation: {type: validator, ref: bun_tester_discipline_detector}.",
+    "Terms: test_urn = `test:{wagon}:{feature}:{ACCEPTANCE-ID}` in the leading comment block; header_authority = identity is the header, not filename, so wagon-level files need no rename."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Disposition strict: the extension (atdd-bun) fails on every finding; there is no advisory mode and no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "Activation facts, fires and doesNotFire scenarios derived from the statement, summary and exceptions; scope is all in-scope test files, stack-neutral, not restricted to changed files or a language.",
+      "justification": "Required by the target structure; no new obligation or narrowing introduced."
+    },
+    {
+      "field": "when",
+      "text": "'it is in the test-file scan scope' restates the source's universal 'every test file' scope as the When slot; it adds no change-only condition.",
+      "justification": "Structure requires a When; kept equivalent to the source."
+    },
+    {
+      "field": "evidence",
+      "text": "Evidence items phrased as detector-clean result and reviewer header inspection.",
+      "justification": "Structure requires how compliance is established; derived from detector description."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ],
+      "note": "Title rephrased imperatively."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "when",
+        "then",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "verifier_detail[4]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "avoid[2]",
+        "verifier_detail[2]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "verifier_detail[4]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "then",
+        "verifier_detail[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[2]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[0]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "then",
+        "avoid[0]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "why",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "unless[0]",
+        "activation",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "unless[1]",
+        "activation",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "identity",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

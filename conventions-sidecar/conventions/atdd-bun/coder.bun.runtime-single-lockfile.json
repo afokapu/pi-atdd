@@ -1,0 +1,444 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.bun/coder.bun.runtime-single-lockfile.convention.yaml",
+    "sha256": "94c4ebfa813ad0cdaea2baf0b565bffc453b197ed69bb4954d69d77631444027"
+  },
+  "rule_id": "coder.bun.runtime-single-lockfile",
+  "kind": "rule",
+  "title": "Keep Bun's lockfile as the only lockfile",
+  "activation": {
+    "facts": [
+      {
+        "fact": "layer",
+        "values": [
+          "atdd.workspace.bun"
+        ],
+        "observability": "observable_now",
+        "note": "The repository/workspace is declared as using Bun as its package manager (workspace declaration), independent of which lockfiles currently exist. Lockfile presence alone is not proof of the package-manager choice (e.g. mid-migration repos)."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "**/package-lock.json",
+          "**/yarn.lock",
+          "**/pnpm-lock.yaml",
+          "**/pnpm-lock.yml"
+        ],
+        "observability": "observable_now",
+        "note": "Foreign lockfile basenames present anywhere in the declared, non-excluded scan roots of the Bun workspace (excluding node_modules, dist, build, _generated), regardless of version-control status (committed or not)."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "lockfile",
+          "package_manifest"
+        ],
+        "observability": "observable_now",
+        "note": "Lockfiles and package.json are recognisable by basename."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "dependency_added",
+          "dependency_changed",
+          "lockfile_added"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Diff-level observer needed to know a dependency was added/changed in package.json or a foreign lockfile was introduced in this change. The agent's intent to run a particular install command is not observable; only the resulting diff is."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "bun_fullstack_detector:foreign_lockfile"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Detector finding reported at line 1 of each foreign lockfile."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "install",
+          "dependency",
+          "lockfile",
+          "npm install",
+          "yarn",
+          "pnpm",
+          "migrate to bun"
+        ],
+        "observability": "observable_now",
+        "note": "Task text mentioning dependency installation or package-manager migration. Text-based proxy only; there is no structured 'migrating to Bun' declaration."
+      }
+    ],
+    "fires": [
+      "In a declared Bun workspace, any `package-lock.json`, `yarn.lock` or `pnpm-lock.yaml`/`.yml` exists in a non-excluded scan root (committed or uncommitted).",
+      "In a declared Bun workspace, the current change adds or changes a dependency in a package manifest.",
+      "A repo declared as a Bun workspace while migrating to Bun still has its old lockfile present.",
+      "A monorepo package deliberately not on Bun has its own foreign lockfile inside the scanned tree of a Bun workspace."
+    ],
+    "doesNotFire": [
+      "A vendored or fixture lockfile inside `node_modules`, `dist`, `build` or `_generated`.",
+      "A Bun workspace whose only lockfile is `bun.lock`/`bun.lockb` and whose current change adds or changes no dependency.",
+      "A repository not declared as a Bun workspace."
+    ]
+  },
+  "given": "A declared Bun workspace (package manager chosen as Bun, independent of which lockfiles exist) with scan roots outside excluded trees",
+  "when": "the tree holds a foreign lockfile (`package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`/`.yml`), committed or not, or the current change adds or changes a dependency",
+  "then": "Keep Bun's lockfile as the single dependency-resolution source: remove npm, Yarn and pnpm lockfiles; none may sit alongside `bun.lock`/`bun.lockb`.",
+  "prefer": [
+    "During GREEN: if the current change adds a dependency, install it with Bun.",
+    "During GREEN: remove only foreign lockfiles; regenerate `bun.lock` only when dependency state actually changed; keep package-manager behavior otherwise untouched."
+  ],
+  "avoid": [
+    "Keeping a second lockfile as a temporary convenience, including during a migration window.",
+    "Switching package managers.",
+    "Updating unrelated dependencies.",
+    "Suppressing the finding for a monorepo package deliberately not on Bun; it stays reported until it moves to Bun or out of the scanned tree."
+  ],
+  "unless": [
+    "A vendored or fixture lockfile inside an excluded tree (`node_modules`, `dist`, `build`, `_generated`) is never scanned."
+  ],
+  "why": "Two lockfiles mean two resolvers disagree; whichever command a developer or CI runs wins, causing invisible drift and \"works on my machine, breaks in CI\". Risk peaks while migrating to Bun: the old lockfile is still committed, someone runs `npm install` out of habit, the trees fork, and a deploy fails much later.",
+  "evidence": [
+    "The current behavioral acceptance and the install/check path pass.",
+    "No foreign lockfile basename exists in the declared scan roots; only Bun's lockfile governs dependency resolution.",
+    "bun_fullstack_detector reports zero foreign-lockfile findings."
+  ],
+  "verifier_detail": [
+    "Foreign lockfile basenames: `package-lock.json` (npm), `yarn.lock` (Yarn), `pnpm-lock.yaml` and `pnpm-lock.yml` (pnpm) — resolution records written by a package manager that is not this stack's.",
+    "Detector is a zero-dependency Bun detector that walks the declared scan roots matching foreign lockfile BASENAMES and reports each at line 1 — the file itself is the fact, so there is no line to point at.",
+    "Excluded trees never scanned: `node_modules`, `dist`, `build`, `_generated`.",
+    "atdd-bun has no per-rule scope: a monorepo package deliberately NOT on Bun stays reported until it moves to Bun or out of the scanned tree; the finding is the stack decision's open item, not something to suppress.",
+    "Resolution drift: two lockfiles pin different versions of the same transitive dependency, so the installed tree depends on which tool ran last; it is invisible in review because nobody reads a lockfile diff.",
+    "Severity 3; disposition strict.",
+    "Migration detail: a repo moving to Bun passes through a window where the old lockfile is still committed; that window is exactly when the graphs diverge (someone runs `npm install` out of habit, the trees fork, discovered much later in a failing deploy). The rule matters more during a migration than after one."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "Alias: BUN-SINGLE-LOCKFILE-001.",
+    "Implementation: validator `bun_fullstack_detector` (family implementation on `atdd.workspace.bun`).",
+    "Bun-stack realization of the agnostic \"dependency resolution has one source of truth\" obligation.",
+    "Characterised as a \"one lockfile\" repo-hygiene obligation; the cheapest rule in the extension to satisfy and one of the most expensive to violate (failures cost hours per occurrence and are never attributed to their actual cause).",
+    "Source term ids: foreign_lockfile, resolution_drift."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Strict disposition: fails on every finding; no advisory mode, no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "Workspace fact `layer: atdd.workspace.bun`, doesNotFire entry 'A repository not declared as a Bun workspace', and task_term values.",
+      "justification": "Derived from the source's scope ('A repository whose package manager is Bun', enforced on `atdd.workspace.bun`); makes activation concrete and independent of lockfile presence without adding obligations."
+    },
+    {
+      "field": "when",
+      "text": "Trigger branch 'the current change adds or changes a dependency'.",
+      "justification": "Activation for the source's GREEN guidance (S027/S028: install added dependencies with Bun; regenerate bun.lock when dependency state changed); adds no new obligation."
+    },
+    {
+      "field": "evidence",
+      "text": "bun_fullstack_detector reports zero foreign-lockfile findings.",
+      "justification": "Restates the source's implementation reference as a verification step."
+    },
+    {
+      "field": "policy.strict-disposition",
+      "text": "'no advisory mode, no ratchet baseline' wording of the shared strict-disposition node.",
+      "justification": "Standard shared meaning of the source's `disposition: strict`; not a new obligation on this rule."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ],
+      "note": "title"
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "when",
+        "then",
+        "activation"
+      ],
+      "note": "Applies to any foreign lockfile present, committed or not."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[0]",
+        "when"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[4]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[4]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "why",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "why",
+        "avoid[0]",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "why",
+        "avoid[0]",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "why",
+        "verifier_detail[6]"
+      ],
+      "note": "Failure-mechanism example kept as reasoning, not as a standalone command prohibition."
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "why",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "structure"
+      ],
+      "note": "Heading; the canonical path is expressed directly by then."
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "prefer[0]",
+        "prefer[1]"
+      ],
+      "note": "GREEN association carried by the 'During GREEN:' prefix of both prefer entries."
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "structure"
+      ],
+      "note": "Heading; its items are avoid[0], avoid[1], avoid[2]."
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "structure"
+      ],
+      "note": "Heading; its items are evidence[0] and evidence[1]."
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "avoid[3]",
+        "verifier_detail[3]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "identity",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "identity",
+        "verifier_detail[5]",
+        "shared:policy.strict-disposition"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

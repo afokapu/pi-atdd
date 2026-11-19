@@ -1,0 +1,260 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.interface.orphan-detection.convention.yaml",
+    "sha256": "26f1d3b1ba3ab7b6d405b4bc006a38c038d0c012e966484f65117e3cd7edac95"
+  },
+  "rule_id": "planner.interface.orphan-detection",
+  "kind": "rule",
+  "title": "Resolve every wagon artifact URN to a registered contract",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "wagon manifest/artifact declaration",
+          "contract registry entry"
+        ],
+        "observability": "observable_now",
+        "note": "Wagon artifact files and contract registry files can be identified by path/kind. The constraint is state-based: it applies to every wagon artifact URN, whether or not the file changes in the current edit."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "orphaned URN (wagon artifact URN with no matching contract in the registry)"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Needs a resolver that matches each wagon artifact URN (e.g. contract:<domain>:<name>) to registry contract ids (e.g. <domain>:<name>:v*). Source implementation.type is none, so no existing resolver is established. This finding is the firing condition; every firing case requires it."
+      },
+      {
+        "fact": "phase",
+        "values": [
+          "migration phase2 (validate URNs resolve)",
+          "migration phase3 (generate missing contracts)"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Only orders remediation when a migration is in progress; phase alone never makes the rule fire, and it does not limit when the constraint applies."
+      }
+    ],
+    "fires": [
+      "Any wagon artifact URN, new or already existing and unchanged, has no matching contract in the registry (e.g. contract:ux:phantom with no ux:phantom:v* id).",
+      "A plan, wagon or registry is inspected or validated (inside or outside a migration) and at least one unresolved wagon artifact URN exists.",
+      "A registry contract is removed or renamed and no remaining registry contract matches a wagon artifact URN that referenced it.",
+      "A migration phase2 validation finds at least one wagon artifact URN that does not resolve to a registry contract."
+    ],
+    "doesNotFire": [
+      "Every wagon artifact URN resolves to an existing registry contract at some version (e.g. contract:ux:foundations -> ux:foundations:v1), including when a migration phase2 validation runs and reports zero unresolved URNs.",
+      "A registry contract is removed or renamed but every wagon artifact URN still resolves to a remaining matching contract (e.g. another version)."
+    ]
+  },
+  "given": "A wagon declares artifact URNs (e.g. contract:<domain>:<name>), whether new or existing, and a contract registry exists.",
+  "when": "You check, validate, plan or change wagons, their artifacts or the contract registry.",
+  "then": "Ensure every wagon artifact URN resolves to a matching contract in the registry (e.g. contract:<domain>:<name> -> <domain>:<name>:v*); any unresolved URN is an orphan and a violation.",
+  "prefer": [
+    "Validate that all wagon URNs resolve to registry contracts first (migration phase2), then generate the missing contracts for any orphaned URNs (migration phase3).",
+    "Treat orphan detection output as a work list of contracts to create, so each artifact gets a defined schema, version and API.",
+    "Check every wagon artifact URN, not only contract:<domain>:<name> ones; if you cannot establish how a URN form maps to a registry id, report it as unresolved rather than skipping it."
+  ],
+  "avoid": [
+    "Leaving any wagon artifact URN that names no contract in the registry (e.g. contract:ux:phantom with no ux:phantom:v* id), including pre-existing ones.",
+    "Removing or renaming a registry contract when it leaves a wagon URN with no remaining matching contract."
+  ],
+  "unless": [],
+  "why": "URNs are the bidirectional link between wagon artifacts and contracts; a URN that resolves to no contract breaks that link and leaves the artifact's schema, version and API undefined.",
+  "evidence": [
+    "Every wagon artifact URN maps to a registry contract (for contract:<domain>:<name> URNs, an id <domain>:<name> at some version).",
+    "Phase2 validation reports zero unresolved URNs; any orphans found were remediated by generating contracts (phase3)."
+  ],
+  "verifier_detail": [
+    "Resolution example: URN contract:<domain>:<name> matches registry id <domain>:<name>:v<N> for any version N. Positive: contract:ux:foundations resolves to id ux:foundations:v1 (linked, not orphan). Negative: contract:ux:phantom with no contract id ux:phantom:v* in registry (orphan = violation). These are examples; check all wagon artifact URNs, not only those in this form. The source defines no mapping for other URN forms; a URN whose resolution cannot be established is reported as unresolved, not skipped.",
+    "Each wagon URN without a matching contract is one violation (orphan_violation), regardless of whether it was changed in the current edit. Term ids: orphan_violation ('Orphaned URN definition'), orphan_remediation ('Resolving orphaned URNs').",
+    "Remediation phases: phase2 = validate all URNs resolve to contracts; phase3 = generate missing contracts for orphaned URNs. A phase2 run with zero unresolved URNs is compliant and is not a firing."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "source kind: constraint; status: active; source name: 'Interface: Orphan Detection'",
+    "implementation: {type: none}",
+    "source: legacy_path src/atdd/planner/conventions/interface.convention.yaml, legacy_sha sha256:3415a521b5eec18b, extraction_mode high_fidelity, legacy_section orphan-detection",
+    "parity: source_fragments_preserved, examples_preserved, implementation_preserved, fix_hint_preserved all true; reviewed_at 2026-06-16",
+    "Term ids: orphan_violation, orphan_remediation"
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire situations and observer notes",
+      "justification": "Schema requires concrete activation; derived from the statement and examples, no new obligation. Phase2 firing is now conditioned on an unresolved URN, per audit feedback."
+    },
+    {
+      "field": "avoid[1]",
+      "text": "Removing or renaming a registry contract when it leaves a wagon URN with no remaining matching contract.",
+      "justification": "Direct consequence of the source obligation (URN must resolve) viewed from the registry side; not a new obligation."
+    },
+    {
+      "field": "prefer[2]",
+      "text": "Check every wagon artifact URN, not only contract:<domain>:<name> ones; if you cannot establish how a URN form maps to a registry id, report it as unresolved rather than skipping it.",
+      "justification": "Addresses reviewer usability risk: the source illustrates only the contract:<domain>:<name> mapping but the statement covers all wagon artifact URNs ('URN must resolve to contract'); an unestablished resolution is not a resolution (unknown is not exempt). No new waiver, no new obligation beyond the source statement."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "given",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "why",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "audit",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "then",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "then",
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "then",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "verifier_detail[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "verifier_detail[0]",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "audit",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "prefer[0]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[2]"
+      ]
+    }
+  ]
+}

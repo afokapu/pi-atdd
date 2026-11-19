@@ -13,7 +13,7 @@ The eight canonical Given/When/Then acceptance files are in plan/acceptances/E00
 | D005 — unknown and incomplete graph | src/reasoning-context.ts, tests/reasoning-context.test.ts: unknown trusted phase/authority, missing mandatory endpoints, 44 unresolved external Bun edge references, no invented Flow links | PASS for those negative cases; graph closure remains INCOMPLETE |
 | D006 — Pi lifecycle + bypass | src/pi-activation.ts and src/repository-observer.ts, tests/pi-activation.test.ts and tests/repository-observer.test.ts: first edit, retry de-dup, new task reset, bash bypass, committed Git changes, no-repository UNKNOWN | PARTIAL: Git local observation works; JJ is best effort without parity tests, Git-ignored files and unobservable custom tool modifications remain possible, and this is not a security enforcement boundary |
 | D007 — governed challenge | src/challenge.ts, tests/challenge.test.ts: immutable pending request, correct canonical digest, affected rule relationships, evidence references and no self-approved/unverified decision | PARTIAL: tested with a mocked trusted reviewer; real authenticated Linear or other external reviewer adapter is not wired; cannot waive mandatory CI |
-| D008 — improved agent decisions | src/effectiveness.ts, tests/effectiveness.test.ts and docs/D008-OUTCOME-PROTOCOL.md: independent rerun catches a false-green claim, matched-pair summary tracks correct/failed tests, latency and injected tokens | **NOT RUN against weak or strong models.** Fixture-only comparisons do not prove a graph improves decisions. An actual blinded, equal-base, independently reviewed paired experiment remains a release blocker |
+| D008 — improved agent decisions | src/effectiveness.ts, tests/effectiveness.test.ts and docs/D008-OUTCOME-PROTOCOL.md: independent rerun catches a false-green claim, matched-pair summary tracks correct/failed tests, latency and injected tokens | **NOT SATISFIED.** A real Qwen2.5-Coder-0.5B graph/control Pi/JJ smoke ran, but all four agents made zero tool calls and changed no source; the 1-pass/2-fail independent acceptance stayed red in both conditions. It was not an equal-base, independently attested weak/strong D008 comparison. A qualified paired experiment remains a release blocker |
 
 ## Architecture and migration cautions
 
@@ -23,7 +23,7 @@ The eight canonical Given/When/Then acceptance files are in plan/acceptances/E00
 - Retraction over-deletes affected derivations and locally rederives from surviving extensional and unaffected positive facts; self-supporting cycles without grounded support cannot persist.
 - A Pi pre-edit block can be retried or bypassed via bash. Post-tool inspection reduces missed guidance in Git/JJ worktrees; it cannot ensure correctness or supersede independently required CI and behavioral review.
 - Reviewer capability checks are an interface that must be implemented by an externally authenticated adapter. A string appearing in a comment is not authority.
-- D008 outcomes must be measured with authentic agent trials; do not put fabricated model improvements into the ledger or close PLT-69 because the verification harness passes.
+- D008 outcomes require qualified, tool-executing paired agent trials and an authenticated evaluator. The [0.5B pilot](../experiments/weak-model-pi-jj/REPORT.md) is an unqualified feasibility result; do not put fabricated improvement into the ledger or close PLT-69 because its harness passed.
 
 ## Review boundary
 
@@ -37,7 +37,7 @@ The D008 checker was also tightened to reject uncommitted worktree changes, resu
 
 ## Current verified CI
 
-[GitHub Actions run 44279189265](https://github.com/afokapu/pi-atdd/actions/runs/44279189265) passed after the immutable-support correction, including TypeScript typechecks, unit/integration tests, the full pinned catalog, actual Pi RPC registration and local package installation. Subsequent documentation-only changes require a fresh status check at the final PR revision. **D008 remains NOT RUN with real models.**
+[GitHub Actions run 44279189265](https://github.com/afokapu/pi-atdd/actions/runs/44279189265) passed after the immutable-support correction, including TypeScript typechecks, unit/integration tests, the full pinned catalog, actual Pi RPC registration and local package installation. Subsequent documentation-only changes require a fresh status check at the final PR revision. **D008 remains without a valid matched model comparison.**
 
 
 ## Independent review reconciliation — 2026-11-18 (PR #2, review 5954595568)
@@ -56,4 +56,4 @@ Independent reviewer verdict: **RETURN / changes required**, not APPROVE. The fi
 
 ### What this does *not* close
 
-D008 remains **NOT RUN** with actual weak and strong coding models. The trusted manifest verifier is only an interface; a real authenticated evaluator, independent semantic review and recorded equal-base trials remain required. A mocked verifier used in a regression does not attest real trials. The physical path check reduces symlink escapes but does not eliminate time-of-check/time-of-use races, alternate mount namespaces or malicious tools. The Pi rendering receipt proves delivery of text to Pi, not that the agent read or followed it. The original 44 unresolved external graph edges, incomplete activation selectors and Flow/Bun migration gates remain explicit.
+D008 remains **NOT SATISFIED**; the exploratory real 0.5B model did not execute Pi tools and no qualifying weak/strong model comparison exists. The trusted manifest verifier is only an interface; a real authenticated evaluator, independent semantic review and recorded equal-base trials remain required. A mocked verifier used in a regression does not attest real trials. The physical path check reduces symlink escapes but does not eliminate time-of-check/time-of-use races, alternate mount namespaces or malicious tools. The Pi rendering receipt proves delivery of text to Pi, not that the agent read or followed it. The original 44 unresolved external graph edges, incomplete activation selectors and Flow/Bun migration gates remain explicit.

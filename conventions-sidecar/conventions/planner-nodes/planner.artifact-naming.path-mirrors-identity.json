@@ -1,0 +1,285 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.artifact-naming.path-mirrors-identity.convention.yaml",
+    "sha256": "aa14dd487361080a7ee2e175d7afaa61db17f0131a008347ac95e9ee2362681f"
+  },
+  "rule_id": "planner.artifact-naming.path-mirrors-identity",
+  "kind": "rule",
+  "title": "Place each declared contract schema file at the path its artifact identity spells out",
+  "activation": {
+    "facts": [
+      {
+        "fact": "phase",
+        "values": [
+          "CONFIRM"
+        ],
+        "observability": "needs_new_observer",
+        "note": "The validator runs when the plan is confirmed and blocks confirmation. Needs a phase observer."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "plan/wagon produced-artifact declaration with a contract field"
+        ],
+        "observability": "observable_now",
+        "note": "Produced-artifact declarations in planner-authored files can be parsed. Every one that declares a concrete schema file is in scope, whether or not it changed in this edit. The source has no change-only restriction."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "**/*.schema.json"
+        ],
+        "observability": "observable_now",
+        "note": "The declared contract is a concrete .schema.json file, wherever it currently sits. A file outside contracts/ is in scope and is a violation."
+      }
+    ],
+    "fires": [
+      "At CONFIRM, a plan declares a produced artifact whose contract is a concrete .schema.json file, whether it is new, edited or unchanged.",
+      "A produced artifact's concrete .schema.json contract sits outside contracts/ or under directories that do not match its identity.",
+      "A planner renames an artifact identity (an identity-only edit) and leaves the contract path as it was."
+    ],
+    "doesNotFire": [
+      "The artifact's contract is null.",
+      "The artifact's contract physical form is a directory reference, not a .schema.json file."
+    ]
+  },
+  "given": "A plan declares a produced artifact with an identity (theme:segment[:...][.segment]) and a concrete contract .schema.json file. This holds whether the declaration is new, edited (including identity-only renames) or unchanged.",
+  "when": "You author, edit or confirm a plan that contains such a declaration.",
+  "then": "Make the contract path mirror the identity exactly: every ':' and '.' boundary becomes a directory boundary under contracts/, and the leaf is the <aspect>.schema.json file (contracts/{theme}/.../{aspect}.schema.json).",
+  "prefer": [
+    "Derive the path mechanically: split the identity on ':' and '.', turn the segments into directories under contracts/, and put the .schema.json leaf last.",
+    "When you rename an identity, update the contract path in the same edit (and the reverse)."
+  ],
+  "avoid": [
+    "Putting a .schema.json outside contracts/, or under a directory that does not match an identity segment (an extra, missing or renamed folder). A mis-located .schema.json is a violation.",
+    "Picking a convenient or grouped folder layout that breaks the identity→path mapping.",
+    "Treating an existing, unchanged mis-pathed contract as out of scope."
+  ],
+  "unless": [
+    "The artifact's contract is null. Out of scope.",
+    "The contract's physical form is a directory reference, not a .schema.json file. Out of scope."
+  ],
+  "why": "When the path is derived from the identity, a contract file can be found from its identity without guessing. A mis-located schema blocks plan confirmation.",
+  "evidence": [
+    "For each produced artifact with a concrete .schema.json contract, the declared contract_path equals the path derived from its identity.",
+    "The CONFIRM-phase validator reports no mis-pathed contracts. It is confirm-blocking, and each failure reports artifact_name, contract_path and reason."
+  ],
+  "verifier_detail": [
+    "Mapping: split the identity on ':' and '.'. The segments are directories under contracts/, and the leaf is the .schema.json file.",
+    "Correct (from source): commons:identifiers.uuid -> contracts/commons/identifiers/uuid.schema.json",
+    "Correct (from source): commons:ux:foundations:color -> contracts/commons/ux/foundations/color.schema.json",
+    "Correct (from source): match:config -> contracts/match/config/config.schema.json (a two-segment identity: the leaf name also appears as the final directory).",
+    "Wrong (from source): commons:identifiers.uuid -> contracts/commons/WRONG/uuid.schema.json",
+    "Skip only artifacts whose contract is null or whose physical form is a directory reference. Every other concrete .schema.json contract is checked, including unchanged ones and ones outside contracts/. A mis-located .schema.json is a violation.",
+    "Validation family=format, template=path_mapping, variant=planner_artifact_path_mirrors_identity, subject_kind=artifact.",
+    "Phase CONFIRM, enforcement confirm-blocking.",
+    "Failure evidence fields: artifact_name, contract_path, reason."
+  ],
+  "audit": [
+    "schema_version: 1.0.0",
+    "kind: rule",
+    "status: active",
+    "name: Contract path mirrors artifact identity",
+    "implementation: validator test_artifact_path_mirrors_identity::test_confirm_blocks_mispathed_contract",
+    "term_id: artifact_path_mirrors_identity — 'the path-mirrors-identity rule for a produced contract file'",
+    "metadata: severity 3, disposition strict"
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "prefer",
+      "text": "When you rename an identity, update the contract path in the same edit (and the reverse).",
+      "justification": "Follows from the mapping and makes the obligation actionable during renames. It adds no new obligation."
+    },
+    {
+      "field": "verifier_detail",
+      "text": "The note on the match:config example (the leaf name also appears as the final directory).",
+      "justification": "The source example shows this but does not explain it. The note keeps the verifier from flagging the example as a mismatch."
+    },
+    {
+      "field": "why",
+      "text": "When the path is derived from the identity, a contract file can be found from its identity without guessing.",
+      "justification": "The source has no rationale field. This is the minimal engineering reason implied by the mapping. The blocking clause restates the source's confirm-blocking enforcement."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "when",
+        "then",
+        "prefer[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "unless[0]",
+        "unless[1]",
+        "avoid[0]",
+        "verifier_detail[5]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[0]",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[4]",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "verifier_detail[7]",
+        "activation",
+        "when"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "verifier_detail[7]",
+        "evidence[1]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "verifier_detail[8]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "verifier_detail[8]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "verifier_detail[8]",
+        "evidence[1]"
+      ]
+    }
+  ]
+}

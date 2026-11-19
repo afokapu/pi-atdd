@@ -1,0 +1,405 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.bun/coder.bun.design-primitives.convention.yaml",
+    "sha256": "b32a5bbbcc4f515fee2cb5f545e142f30ff610d87eca0d25d224dad100644282"
+  },
+  "rule_id": "coder.bun.design-primitives",
+  "kind": "rule",
+  "title": "Compose design-system primitives for interactive controls in app code",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          ".tsx",
+          ".jsx",
+          ".ts",
+          ".mts"
+        ],
+        "observability": "observable_now",
+        "note": "Component source (.tsx/.jsx) and HTML authored in string/template/tagged-template literals in .ts/.mts; plain .html is out of scope."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "!**/design/**",
+          "!**/design_system/**",
+          "!**/design-system/**",
+          "!**/*.test.*",
+          "!**/*.spec.*",
+          "!vendored/build directories"
+        ],
+        "observability": "observable_now",
+        "note": "Only app code outside the design root; tests and vendored/build dirs never scanned. The source names vendored/build directories without concrete globs; the verifier's own vendored/build exclusion list applies."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "**/design/**",
+          "**/design_system/**",
+          "**/design-system/**"
+        ],
+        "observability": "observable_now",
+        "note": "Evaluated at repository scope: a design root must exist in the repository; without one the rule is not judged (self-scoping)."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "raw <button|<input|<select|<textarea added or present in app code"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Requires the bun_design_system_detector (JSX scan plus literal-only scan of .ts/.mts) to report raw_control findings."
+      },
+      {
+        "fact": "language",
+        "values": [
+          "typescript",
+          "javascript"
+        ],
+        "observability": "observable_now",
+        "note": "Bun realization."
+      }
+    ],
+    "fires": [
+      "A .tsx/.jsx component outside the design root renders a raw <button> while the repo has a design/ directory with primitives.",
+      "A .ts/.mts server-rendered (htmx/Bun) handler returns a template literal containing `<input ` outside the design root.",
+      "A tagged-template literal in a .mts file contains `<select>` or `<textarea/` in app code, in any phase (including REFACTOR or review of existing code)."
+    ],
+    "doesNotFire": [
+      "The repository has no design, design_system, or design-system directory.",
+      "A primitive under the design root renders a raw <button>.",
+      "A *.test.* or *.spec.* file, or a vendored/build directory, contains raw controls.",
+      "A plain .html template contains <input>.",
+      "A .ts file has `a <input` in code position (comparison), an angle-bracket type assertion, a comment, or a regex literal mentioning <button."
+    ]
+  },
+  "given": "App code outside a design root (design/design_system/design-system): .tsx/.jsx, or .ts/.mts HTML in string/template/tagged-template literals (htmx/Bun shape).",
+  "when": "It renders an interactive control.",
+  "then": "Render it through a design-system primitive, never a raw lowercase <button>, <input>, <select>, or <textarea>.",
+  "prefer": [
+    "Use the existing primitive; pass required htmx/DOM attributes through it.",
+    "During GREEN: reuse the primitive that already represents the control.",
+    "During GREEN: extend only the smallest prop/attribute surface the current interaction requires.",
+    "During GREEN: create a new primitive only if none represents the control correctly."
+  ],
+  "avoid": [
+    "Raw interactive markup bypassing the primitive just to pass the acceptance.",
+    "Generic primitive props the current behavior does not need.",
+    "Restyling or migrating unrelated controls."
+  ],
+  "unless": [
+    "No design root in the repo (nothing to connect to yet; not judged).",
+    "The design system's own primitives.",
+    "Test files (*.test.*, *.spec.*) or vendored/build directories.",
+    "Plain .html templates (cannot import components)."
+  ],
+  "why": "Controls hold focus, disabled, error and loading states; each raw control re-implements them and diverges. Primitives keep controls themed, accessible, consistent.",
+  "evidence": [
+    "The bun_design_system_detector reports no raw_control findings in .tsx/.jsx or .ts/.mts literal HTML outside the design root.",
+    "Prove: the rendered interactive control comes through the design-system primitive.",
+    "Prove: the interaction acceptance passes."
+  ],
+  "verifier_detail": [
+    "design_root: a directory named `design`, `design_system`, or `design-system`. The first directory beneath it names the layer: `tokens` or `foundations`, `primitives`, `components`, `templates`. A repository with no design root is not judged (self-scoping): there is no system to connect to yet.",
+    "raw_control: a lowercase `<button`, `<input`, `<select`, or `<textarea` element written in app code — in JSX, or in the body of a string/template/tagged-template literal in a `.ts`/`.mts` file — followed by whitespace, `>`, or `/`.",
+    "Scope summary: flags raw interactive platform elements in component source (.tsx/.jsx) and in `.ts`/`.mts` literal HTML outside the design root.",
+    "Only literal text is judged in `.ts`/`.mts` files: code position (comparisons, angle-bracket type assertions), comments, and regex literals are never treated as markup, and a control spanning a `${…}` interpolation is read on its literal chunks alone.",
+    "Never scanned: test files (`*.test.*`, `*.spec.*`), vendored/build directories, the design system's own primitives (they render the raw elements), plain `.html` templates.",
+    "Disposition strict, severity 2: every finding fails."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "kind: rule",
+    "status: active",
+    "Bun realization of `coder.design.primitives` (metadata.core_obligation), mirroring `coder.vite.design-primitives`.",
+    "aliases: BUN-DESIGN-PRIMITIVES-001",
+    "introduced_in: 0.2.0",
+    "implementation: validator, ref bun_design_system_detector",
+    "Source term ids: design_root, raw_control.",
+    "Source fix_hint headings: 'Canonical path:' (prefer[0]), 'During GREEN:' (prefer[1..3]), 'Do not broaden:' (avoid[0..2]), 'Prove:' (evidence[1..2])."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire example situations and the observability classification of facts.",
+      "justification": "Required by the output schema; derived directly from source scope and exceptions, no new obligations."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ],
+      "note": "Title keeps the source name's obligation."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "when",
+        "then",
+        "why",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "given",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "given",
+        "activation",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "unless[0]",
+        "activation",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "audit",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "then",
+        "verifier_detail[1]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "structure",
+        "audit"
+      ],
+      "note": "Heading for prefer[0]."
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "prefer[1]",
+        "prefer[2]",
+        "prefer[3]"
+      ],
+      "note": "'During GREEN:' qualifier kept verbatim as prefix of prefer[1..3] only; it does not gate the rule's activation."
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "prefer[3]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "structure",
+        "audit"
+      ],
+      "note": "Heading for avoid[0..2]."
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "evidence[1]",
+        "evidence[2]"
+      ],
+      "note": "'Prove:' prefix kept on evidence items."
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "unless[2]",
+        "activation",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "unless[3]",
+        "activation",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "verifier_detail[3]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "identity",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "identity",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "audit",
+        "evidence[0]"
+      ]
+    }
+  ]
+}

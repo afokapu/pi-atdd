@@ -1,0 +1,456 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.htmx/coder.htmx.fragment-escapes-interpolation.convention.yaml",
+    "sha256": "3f1fbb316074d0b79f5a209cd1a9afbf1b8f5235bb5a13f646b2fe8d89a1a893"
+  },
+  "rule_id": "coder.htmx.fragment-escapes-interpolation",
+  "kind": "rule",
+  "title": "Escape every bare interpolation in an HTML fragment template literal",
+  "activation": {
+    "facts": [
+      {
+        "fact": "language",
+        "values": [
+          "typescript",
+          "javascript"
+        ],
+        "observability": "observable_now",
+        "note": "Server-rendered fragments are template literals in TS/JS source on a Bun + htmx workspace (atdd.workspace.bun)."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "source (non-test)"
+        ],
+        "observability": "observable_now",
+        "note": "Test files (*.test.*, *.spec.*) are excluded by the source."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "!**/*.test.*",
+          "!**/*.spec.*"
+        ],
+        "observability": "observable_now",
+        "note": "Exclusion of test files."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "html_bearing_template literal added or edited containing a bare_interpolation"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Diff-level fact for the coder; needs a brace-depth-aware template-literal extractor that keeps literals containing an opening tag and classifies interpolation expressions. The detector itself still scans every HTML-bearing literal in non-test source, not only changed ones."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "htmx_hypermedia_detector: bare interpolation in HTML-bearing template"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Detector finding from the htmx_hypermedia_detector family implementation."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "htmx",
+          "fragment",
+          "partial",
+          "hx-swap",
+          "render HTML"
+        ],
+        "observability": "observable_now",
+        "note": "Contextual hint only, not an independent sufficient trigger; the rule fires on the code shape."
+      }
+    ],
+    "fires": [
+      "A server handler returns a backtick template literal containing `<li class=\"order\">${order.title}</li>` that htmx swaps into the DOM.",
+      "A fragment helper interpolates `${title}` or `${user.name}` directly between or inside tags.",
+      "An edit adds a new property-chain interpolation (`${order.customer.name}`) to an existing markup template literal."
+    ],
+    "doesNotFire": [
+      "A template literal with no opening tag (log line, SQL string, URL).",
+      "An interpolation that is a call, e.g. `${escapeHtml(x)}` or `${rows.map(row).join(\"\")}` (detector-wise; review still applies to non-escaping calls).",
+      "Template literals in test files (`*.test.*`, `*.spec.*`)."
+    ]
+  },
+  "given": "Server code builds an HTML fragment as a template literal containing an opening tag; htmx inserts it via innerHTML with no auto-escaping in the path",
+  "when": "a value is interpolated into that markup",
+  "then": "Never interpolate a bare identifier or property chain (`${user.name}`) into the markup; route the value through an escaping helper at the interpolation site.",
+  "prefer": [
+    "`<li class=\"order\">${escapeHtml(order.title)}</li>` — escaped at the boundary.",
+    "Escape at the RENDER site, where the destination is known, so it is escaped exactly once.",
+    "Nest fragments via calls whose inner fragments escape their own data."
+  ],
+  "avoid": [
+    "`<li class=\"order\">${order.title}</li>` — raw data into markup.",
+    "Escaping at storage/fetch: double-escaped when it reaches a non-HTML sink.",
+    "A call that neither escapes nor nests (`${format(bio)}`): passes the detector, still a violation; review catches it.",
+    "The JSX habit of bare interpolation, assuming escaping happens underneath."
+  ],
+  "unless": [
+    "The literal has no opening tag (not markup; never scanned).",
+    "The interpolation is a call, treated as escaping or composition (detector scope; non-escaping calls remain a review concern).",
+    "Test files (`*.test.*`, `*.spec.*`)."
+  ],
+  "why": "Escaping is implicit in JSX (`{value}` auto-escaped) but explicit here; carrying over bare interpolation without the invisible escaping yields stored XSS in code that looks like what teams wrote before.",
+  "evidence": [
+    "htmx_hypermedia_detector reports zero bare_interpolation findings in HTML-bearing template literals of non-test files.",
+    "No interpolation in an HTML-bearing literal is a bare identifier or property chain; operator and literal expressions are outside this rule's scope.",
+    "Reviewer checks call interpolations that neither escape nor nest (e.g. `${format(bio)}`), since the detector passes them.",
+    "Values are escaped at the render site, not at storage/fetch (no double-escaping in non-HTML sinks)."
+  ],
+  "verifier_detail": [
+    "html_bearing_template: a backtick template literal whose text contains an opening tag (`<div`, `<li …`); that is the signal it is markup rather than a log line or SQL string. Literals without an opening tag are never scanned.",
+    "bare_interpolation: expression is only an identifier or property chain — `${title}`, `${order.customer.name}`; no call, no operator, no literal. This is raw data reaching markup and is flagged.",
+    "composition: an interpolation that is a CALL — `${escapeHtml(x)}`, `${rows.map(row).join(\"\")}` — either an escape helper or fragment nesting; deliberately out of scope because flagging it would bury the rule in false positives on legitimate composition.",
+    "Detector: zero-dependency Bun detector; extracts every template literal brace-depth aware (a nested object inside an interpolation does not end the literal early), keeps those containing an opening tag, flags bare identifier/property-chain interpolations.",
+    "Deliberately narrow so it is precise rather than noisy: catches the shape that is ALWAYS wrong (raw data dropped straight into markup) and says nothing about calls, which may be escaping helpers or nested fragments. A call that neither escapes nor nests (`${format(bio)}`) passes and must be caught by review; narrowing was the price of a signal a team will not switch off.",
+    "Excludes test files `*.test.*`, `*.spec.*`.",
+    "Disposition strict, severity 1 — this is the extension's security rule."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "Aliases: HTMX-FRAGMENT-ESCAPE-001, SECURITY-XSS-001.",
+    "Bun/htmx-stack realization of the agnostic 'untrusted data is escaped at the rendering boundary' obligation, enforced by the htmx_hypermedia_detector family implementation on atdd.workspace.bun.",
+    "implementation: {type: validator, ref: htmx_hypermedia_detector}.",
+    "Summary: a 'fragments escape their data' obligation, and the security-critical rule of the htmx extension.",
+    "Original name: HTML fragments escape interpolated values before htmx swaps them into the DOM."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "task_term values (htmx, fragment, partial, hx-swap, render HTML) and language facts",
+      "justification": "Contextual hints for observable activation derived from the source's Bun + htmx template-literal context; not new obligations or sufficient triggers."
+    },
+    {
+      "field": "prefer",
+      "text": "Nest fragments via calls whose inner fragments escape their own data.",
+      "justification": "Restates the source's 'composition' term as a coder move; inner fragments are themselves subject to this rule."
+    },
+    {
+      "field": "evidence",
+      "text": "evidence[1]-[3] wording",
+      "justification": "Derived directly from the bare_interpolation definition, the review note for non-escaping calls, and the render-site fix hint; scope limited to bare identifier/property-chain interpolations as in the source."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Rephrased as title; original kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "given",
+        "why",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[0]",
+        "given"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[1]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "verifier_detail[2]",
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "why",
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "why",
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "why",
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "verifier_detail[4]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "avoid[2]",
+        "verifier_detail[4]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "avoid[2]",
+        "verifier_detail[4]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "then",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "prefer[1]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "avoid[1]",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "identity",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "unless[2]",
+        "verifier_detail[5]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S045",
+      "dest": [
+        "identity",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S046",
+      "dest": [
+        "identity",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S047",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S048",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

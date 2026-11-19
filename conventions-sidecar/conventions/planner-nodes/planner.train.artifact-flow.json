@@ -1,0 +1,277 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.train.artifact-flow.convention.yaml",
+    "sha256": "baaac6ef0efc6684f2086d485da257ce9a8bcf211e9cf8f06964d962f7e67eda"
+  },
+  "rule_id": "planner.train.artifact-flow",
+  "kind": "rule",
+  "title": "Produce every train artifact before it is consumed",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "train",
+          "wagon_manifest"
+        ],
+        "observability": "observable_now",
+        "note": "Train definition files and wagon manifest files are identifiable by kind/location in the planning tree."
+      },
+      {
+        "fact": "operation",
+        "values": [
+          "create",
+          "edit"
+        ],
+        "observability": "observable_now",
+        "note": "Fires when a train definition or a wagon manifest is authored or changed."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "train",
+          "artifact flow",
+          "wagon",
+          "produce",
+          "consume"
+        ],
+        "observability": "observable_now",
+        "note": "Planning tasks that talk about trains moving artifacts between wagons."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "train step artifact added, renamed or reordered",
+          "train participant added or removed",
+          "artifact definition added, renamed or removed in a wagon manifest that participates in a train"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Requires a diff-level observer over train step lists and over manifests of wagons that participate in some train (cross-file resolution of participation)."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "artifact consumed before produced",
+          "artifact not defined in participant wagon manifests",
+          "artifact identifier does not match ^[a-z][a-z0-9-]*:[a-z][a-z0-9.-]*$"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Requires a detector that resolves produce/consume order and cross-references participant wagon manifests."
+      }
+    ],
+    "fires": [
+      "A planner adds a train step that consumes an artifact before it has been produced.",
+      "A planner adds a train step referencing an artifact that is not defined in participant wagon manifests.",
+      "A planner removes or renames an artifact definition in a participating wagon's manifest while a train still references it.",
+      "A planner names a train artifact without the {domain}:{resource} form."
+    ],
+    "doesNotFire": [
+      "Editing a wagon manifest whose wagon participates in no train.",
+      "Editing prose docs or acceptances that change neither a train's steps/participants nor a participating wagon's artifact definitions."
+    ]
+  },
+  "given": "A train whose participant wagons pass artifacts between them",
+  "when": "The planner authors or changes the train's steps, artifacts or participants, or changes artifact definitions in a participating wagon's manifest",
+  "then": "Every artifact in the train's flow must be produced before it is consumed.",
+  "prefer": [
+    "Name every flowing artifact as {domain}:{resource} matching ^[a-z][a-z0-9-]*:[a-z][a-z0-9.-]*$ — domain starts with a lowercase letter then lowercase letters, digits, hyphens; resource starts with a lowercase letter then lowercase letters, digits, dots, hyphens.",
+    "Define every flowing artifact in participant wagon manifests.",
+    "Order the flow so an artifact's producer comes before its consumers."
+  ],
+  "avoid": [
+    "Consuming an artifact before it has been produced.",
+    "Referencing an artifact that is not defined in participant wagon manifests.",
+    "Artifact names that do not match {domain}:{resource} (e.g. uppercase, no colon separator, leading digit, characters outside the allowed sets)."
+  ],
+  "unless": [],
+  "why": "Artifacts are what flows between train participants, so each must exist (be produced) before use and be defined where the participating wagons declare them.",
+  "evidence": [
+    "Walking the train's flow in order shows every consumed artifact was produced before it is consumed.",
+    "Every artifact referenced in the train is defined in participant wagon manifests.",
+    "Every artifact identifier matches ^[a-z][a-z0-9-]*:[a-z][a-z0-9.-]*$."
+  ],
+  "verifier_detail": [
+    "Term 'artifact': a domain:resource artifact in the flow. Pattern: ^[a-z][a-z0-9-]*:[a-z][a-z0-9.-]*$ (domain: lowercase letter then [a-z0-9-]; resource: lowercase letter then [a-z0-9.-]).",
+    "Term rules for artifact: (1) produced before consumed; (2) defined in participant wagons.",
+    "Source sample identifiers that satisfy the pattern (dotted resources allowed): material:raw-story, scenario:material.steps, match:dilemma.current."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "kind: rule; status: active",
+    "source: legacy_path src/atdd/planner/conventions/train.convention.yaml, legacy_section artifact_flow, legacy_sha 825602729f11a3a4, extraction_mode high_fidelity",
+    "parity: source_fragments_preserved true, examples_preserved true, implementation_preserved false, fix_hint_preserved false, reviewed_at 2026-06-16",
+    "Original name: Train artifact flow",
+    "Original statement: Artifacts flow between participants as {domain}:{resource}; they must be produced before consumed and be defined in participant wagon manifests.",
+    "Source examples (project-specific, kept for audit): material:raw-story, scenario:material.steps, match:dilemma.current"
+  ],
+  "splitSuggestion": [
+    {
+      "id": "planner.train.artifact-naming",
+      "then": "Every train artifact identifier must match {domain}:{resource} (^[a-z][a-z0-9-]*:[a-z][a-z0-9.-]*$).",
+      "segments": [
+        "S006",
+        "S012",
+        "S013",
+        "S014",
+        "S008",
+        "S009",
+        "S010"
+      ]
+    },
+    {
+      "id": "planner.train.artifact-defined-in-wagons",
+      "then": "Every artifact in a train's flow must be defined in participant wagon manifests.",
+      "segments": [
+        "S006",
+        "S016"
+      ]
+    }
+  ],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "split_suggestion",
+      "text": "The source statement bundles three obligations: domain:resource naming, produced-before-consumed, and definition in participant wagon manifests. Produced-before-consumed is kept in `then`; naming and manifest definition are kept in prefer/avoid/evidence and proposed as separate conventions planner.train.artifact-naming and planner.train.artifact-defined-in-wagons.",
+      "justification": "Rule 2 requires a single obligation in then."
+    },
+    {
+      "field": "activation",
+      "text": "doesNotFire situations, the wagon-manifest trigger for participating wagons, and the change/finding observers are authored, not in the source.",
+      "justification": "Schema requires observable activation and non-firing cases; manifest-only changes can invalidate the manifest-definition rule (S016) without a train edit."
+    },
+    {
+      "field": "why",
+      "text": "The source states no rationale; the why restates the source's own terms (artifacts flow between participants, must be produced before consumed and defined in participant wagons) without adding consequences.",
+      "justification": "Schema requires a why; kept to source-derived content only."
+    },
+    {
+      "field": "avoid[2]",
+      "text": "Illustrative failure modes (uppercase, missing colon, leading digit) derived directly from the source pattern.",
+      "justification": "Makes the source pattern actionable for the planner; no new constraint beyond the pattern."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Name kept as title basis and in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "then",
+        "prefer[0]",
+        "prefer[1]",
+        "avoid[0]",
+        "avoid[1]",
+        "avoid[2]",
+        "audit"
+      ],
+      "note": "Primary obligation (produced before consumed) in then; naming and manifest-definition in prefer/avoid; see split suggestion."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "verifier_detail[2]",
+        "audit"
+      ],
+      "note": "Project-specific example kept as verifier sample, not in coder fields."
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "verifier_detail[2]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[2]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[0]",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "prefer[0]",
+        "avoid[2]",
+        "verifier_detail[0]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "then",
+        "prefer[2]",
+        "avoid[0]",
+        "verifier_detail[1]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "prefer[1]",
+        "avoid[1]",
+        "verifier_detail[1]",
+        "evidence[1]"
+      ]
+    }
+  ]
+}

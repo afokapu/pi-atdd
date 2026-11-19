@@ -1,0 +1,363 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.bun/coder.bun.responsive-viewport-meta.convention.yaml",
+    "sha256": "71f76d76734014c2daef478080838f20f4cea084561d2455d17ce9b891a0f922"
+  },
+  "rule_id": "coder.bun.responsive-viewport-meta",
+  "kind": "rule",
+  "title": "Declare a device-width viewport in every full HTML document",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          ".html",
+          ".htm",
+          ".tsx",
+          ".jsx",
+          ".ts",
+          ".js"
+        ],
+        "observability": "observable_now",
+        "note": "Candidate file kinds that can hold or build a full HTML document."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "!**/node_modules/**",
+          "!**/dist/**",
+          "!**/build/**",
+          "!**/_generated/**"
+        ],
+        "observability": "observable_now",
+        "note": "Vendored and generated trees are never scanned."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "full_html_document"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Content observer that detects a file containing/rendering/building `<html>` (vs. a fragment). Applies to every such document in scope, existing or new; not limited to changed files."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "bun_responsive_detector:viewport-missing",
+          "bun_responsive_detector:viewport-width-incorrect",
+          "bun_responsive_detector:viewport-zoom-blocked"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Detector findings: meta absent, content lacks `width=device-width` (alone suffices), or zoom blocked."
+      }
+    ],
+    "fires": [
+      "An existing `.html` file containing `<html>` has no `<meta name=\"viewport\">`.",
+      "A `.tsx`/`.jsx` layout rendering `<html>` declares a viewport whose content lacks `width=device-width` (zoom otherwise allowed).",
+      "A `.ts`/`.js` template building a full document sets `user-scalable=no` or `maximum-scale` below 2.",
+      "A `.tsx` layout renders `<html>` with other meta tags but no viewport meta."
+    ],
+    "doesNotFire": [
+      "An HTML fragment or partial template with no `<html>` element.",
+      "Files under `node_modules`, `dist`, `build` or `_generated`.",
+      "A JSX layout whose viewport meta is present with `content={VIEWPORT}` (only presence is judged).",
+      "A viewport with `width=device-width, initial-scale=1, maximum-scale=5`."
+    ]
+  },
+  "given": "Any full HTML document in scope: an `.html`/`.htm` file, a `.tsx`/`.jsx` layout rendering `<html>`, or a `.ts`/`.js` template building one",
+  "when": "the document exists in the repository (new or existing)",
+  "then": "The document declares `<meta name=\"viewport\">` whose content sets `width=device-width`.",
+  "prefer": [
+    "Declare `<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">` in each full document and keep zoom available.",
+    "During GREEN: add or correct the single viewport declaration in the document/layout that serves the current behavior.",
+    "During GREEN: reuse the existing shared layout when one owns the document head."
+  ],
+  "avoid": [
+    "Duplicating viewport tags across fragments.",
+    "Blocking zoom (MUST NOT): `user-scalable=no` or a `maximum-scale` below 2.",
+    "Restructuring unrelated head markup."
+  ],
+  "unless": [
+    "Fragments that are not full documents (no `<html>`) are out of scope.",
+    "Viewport `content` given as a JSX expression (`content={VIEWPORT}`): the meta must be present; its value is not judged."
+  ],
+  "why": "Without a device-width viewport a phone renders a zoomed-out desktop layout, whatever the CSS says. Blocking zoom fails users who need to enlarge text, also an accessibility failure.",
+  "evidence": [
+    "The current browser acceptance passes.",
+    "The full document declares device width (`width=device-width`) in its viewport meta and permits zoom."
+  ],
+  "verifier_detail": [
+    "Scope: `.html`/`.htm` files, `.tsx`/`.jsx` layouts that render `<html>`, `.ts`/`.js` templates that build a full document; files without `<html>` are fragments and skipped. All in-scope documents are checked, not only changed ones.",
+    "Never scan vendored/generated trees: `node_modules`, `dist`, `build`, `_generated`.",
+    "Fail when `<meta name=\"viewport\">` is absent, or its content lacks `width=device-width`, or contains `user-scalable=no`, or a `maximum-scale` value below 2. Each condition alone is a finding.",
+    "If `content` is a JSX expression (`content={...}`), it cannot be read statically: require presence of the meta only, do not judge the value.",
+    "Implementation: validator `bun_responsive_detector`. Severity 3, disposition strict."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "kind: rule; status: active",
+    "Alias: BUN-RESPONSIVE-RESPONSIVE-VIEWPORT-META-001",
+    "introduced_in: 0.5.0; new in atdd-bun",
+    "implementation: {type: validator, ref: bun_responsive_detector}",
+    "Severity: 3; disposition: strict",
+    "Original name/summary: Every HTML document declares a device-width viewport and allows zoom."
+  ],
+  "splitSuggestion": [
+    {
+      "id": "coder.bun.viewport-allows-zoom",
+      "then": "A full HTML document's viewport meta MUST NOT block zoom with `user-scalable=no` or a `maximum-scale` below 2.",
+      "segments": [
+        "S006",
+        "S012",
+        "S020",
+        "S024"
+      ]
+    }
+  ],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Disposition: strict."
+    },
+    {
+      "id": "context.repo-topology.idioms",
+      "kind": "context",
+      "text": "frontend_settings: `atdd-bun.yaml` → `frontend.viewports` (the widths responsive specs render at; the smallest bounds fixed widths) and `frontend.breakpoints` (the widths media queries may use)."
+    }
+  ],
+  "additions": [
+    {
+      "field": "split_suggestion",
+      "text": "The source statement bundles two obligations (declare a device-width viewport; do not block zoom). `then` keeps only the device-width obligation; the zoom prohibition stays coder-facing as avoid[1] (MUST NOT) and should become separate convention `coder.bun.viewport-allows-zoom`.",
+      "justification": "Rule 2: one obligation in then; declare the split."
+    },
+    {
+      "field": "when",
+      "text": "\"the document exists in the repository (new or existing)\"",
+      "justification": "The output shape requires a when clause; the source's requirement is universal over every full document, so the trigger is phrased to impose no narrowing."
+    },
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire concrete examples and detector finding names",
+      "justification": "Illustrations derived directly from the source statement and exceptions; required by the output shape. Finding names are labels for the source's failure conditions."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "when",
+        "then",
+        "avoid[1]",
+        "verifier_detail[0]",
+        "verifier_detail[2]",
+        "activation"
+      ],
+      "note": "Zoom prohibition kept as avoid[1] (MUST NOT) and proposed as split convention."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit",
+        "shared:policy.strict-disposition"
+      ],
+      "note": "'New in atdd-bun' is provenance; 'strict' is the disposition."
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "shared:context.repo-topology.idioms"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "shared:context.repo-topology.idioms"
+      ],
+      "note": "Settings definition shared by responsive conventions; not used to decide this rule."
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "prefer[1]",
+        "prefer[2]"
+      ],
+      "note": "'During GREEN:' prefix carried explicitly on both prefer items."
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "activation",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "identity",
+        "verifier_detail[4]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "audit",
+        "verifier_detail[4]"
+      ]
+    }
+  ]
+}

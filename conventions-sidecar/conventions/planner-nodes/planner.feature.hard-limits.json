@@ -1,0 +1,218 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.feature.hard-limits.convention.yaml",
+    "sha256": "f5e6ece66b46ee947074d371fc88a2260fdfb539d640733e8b844ba242e4158f"
+  },
+  "rule_id": "planner.feature.hard-limits",
+  "kind": "rule",
+  "title": "Split any feature exceeding 2 new tables, 2 async jobs, or 2 integrations",
+  "activation": {
+    "facts": [
+      {
+        "fact": "task_term",
+        "values": [
+          "feature",
+          "plan",
+          "wagon",
+          "split",
+          "scope",
+          "table",
+          "async job",
+          "integration"
+        ],
+        "observability": "observable_now",
+        "note": "Task text names feature planning, scoping, or the limited resource kinds."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "feature plan",
+          "wagon manifest",
+          "feature definition"
+        ],
+        "observability": "observable_now",
+        "note": "Planner artifacts that declare a feature's scope."
+      },
+      {
+        "fact": "phase",
+        "values": [
+          "planning",
+          "implementation",
+          "review"
+        ],
+        "observability": "needs_new_observer",
+        "note": "The rule applies in any phase; a phase observer only helps route an over-limit feature found during implementation or review back to the planner. It is not an exclusion."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "feature has >2 new tables",
+          "feature has >2 async jobs",
+          "feature has >2 integrations"
+        ],
+        "observability": "llm_judged",
+        "note": "Counting from plan prose needs judgement. Only tables are qualified by 'new'; async jobs and integrations count whether they are new or existing. A structured counter would be a new observer."
+      }
+    ],
+    "fires": [
+      "A planned feature introduces 3 new tables.",
+      "A feature uses 3 async jobs, even if some of them already exist.",
+      "A feature depends on 3 integrations, even if some of them are already wired up.",
+      "During implementation or review, a feature turns out to exceed one of the ceilings."
+    ],
+    "doesNotFire": [
+      "A feature with exactly 2 new tables, 2 async jobs, and 2 integrations (the limit is not exceeded).",
+      "A feature that touches more than 2 existing tables but adds at most 2 new ones, and stays within the job and integration ceilings."
+    ]
+  },
+  "given": "A feature whose scope includes tables, async jobs, or integrations",
+  "when": "The planner authors, revises, or reviews the feature, or finds during any phase that the feature is over-limit",
+  "then": "If the feature has more than 2 new tables, more than 2 async jobs, or more than 2 integrations, split it so that every resulting feature stays within all three limits.",
+  "prefer": [
+    "Split along the excess. Move the extra tables, jobs, or integrations into a separate feature with its own acceptance."
+  ],
+  "avoid": [
+    "Leaving a feature that exceeds any one limit unsplit, or treating the limits as advisory.",
+    "Gaming the count, e.g. merging distinct jobs or tables into one, or wrapping several dependencies behind one facade.",
+    "Excluding existing jobs or integrations from the count. Only tables are limited to new ones."
+  ],
+  "unless": [],
+  "why": "Tables bring maintenance, schema-evolution, and performance cost. Async jobs bring operational complexity (monitoring, retry, inconsistency). Integrations bring external dependencies, security exposure, and failures you cannot control.",
+  "evidence": [
+    "For every feature, the reviewer counts new tables, async jobs, and integrations and confirms each count is <= 2.",
+    "If the original scope exceeded any limit, the plan shows the split into features that each satisfy all three limits."
+  ],
+  "verifier_detail": [
+    "Hard limits (term hard_limit: per-feature ceilings that force a split): new_tables = 2, async_jobs = 2, integrations = 2. The comparison is inclusive: <= 2 passes, > 2 requires a split.",
+    "Each limit is checked independently. Exceeding any one is a violation, even when the other two are within bounds.",
+    "Rationale per limit, from the source: new_tables (high maintenance/schema-evolution/perf cost); async_jobs (operational complexity: monitoring, retry, inconsistency); integrations (external deps, security, uncontrolled failure).",
+    "Only 'tables' carries the 'new' qualifier in the source. async_jobs and integrations have no new-only qualifier, so count every one the feature uses. The source has no phase restriction."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "source kind: constraint",
+    "status: active",
+    "source: legacy_path src/atdd/planner/conventions/feature.convention.yaml, legacy_section sizing.hard_limits, legacy_sha 4a95544261fb9541, extraction_mode high_fidelity",
+    "parity: source_fragments_preserved true, examples_preserved false, implementation_preserved false, fix_hint_preserved false, reviewed_at 2026-06-16",
+    "Source name: Feature hard limits",
+    "Term id: hard_limit"
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "avoid",
+      "text": "Gaming the count, e.g. merging distinct jobs or tables into one, or wrapping several dependencies behind one facade.",
+      "justification": "The authoring instructions require anti-patterns that cover metric gaming. This item only blocks circumvention of the source ceilings."
+    },
+    {
+      "field": "prefer",
+      "text": "Split along the excess. Move the extra tables, jobs, or integrations into a separate feature with its own acceptance.",
+      "justification": "The source requires a split but gives no fix hint (parity.fix_hint_preserved=false). This is a concrete, codebase-neutral way to split and adds no new obligation."
+    },
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire examples, including the boundary case of exactly 2, the existing-jobs/integrations case, and over-limit features discovered during implementation or review",
+      "justification": "Makes the inclusive <=2 threshold and the source's qualifier scope (only tables are 'new') concrete, without adding a phase restriction."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Source name informs the title."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "avoid[0]",
+        "avoid[2]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "why",
+        "verifier_detail[2]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[0]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[0]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[0]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[0]",
+        "then"
+      ]
+    }
+  ]
+}

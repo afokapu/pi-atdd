@@ -1,0 +1,413 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.bun/coder.bun.design-token-color.convention.yaml",
+    "sha256": "d0deecd6b7cf6b770af4ce6954a8c9e3470e1040dd2143dd648746ad43d875fb"
+  },
+  "rule_id": "coder.bun.design-token-color",
+  "kind": "rule",
+  "title": "Reference color tokens instead of raw color literals in UI files",
+  "activation": {
+    "facts": [
+      {
+        "fact": "path_glob",
+        "values": [
+          "repository contains a directory matching **/design/",
+          "**/design_system/",
+          "**/design-system/"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Repository-level design-root-exists fact (not a filter on the touched file's path): the rule applies only if such a directory exists anywhere in the repo. Needs an observer that checks repo tree for existence of a design root. Touched UI files may live anywhere, inside or outside the design root."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          ".tsx",
+          ".jsx",
+          ".html",
+          ".htm",
+          ".css",
+          ".ts",
+          ".mts"
+        ],
+        "observability": "observable_now",
+        "note": "Eligible UI file extensions anywhere in the repository; .ts/.mts only count for HTML they author in string/template/tagged-template literals. Excluded: test files (*.test.*, *.spec.*), vendored/build directories, and files under the design root's tokens/foundations layer."
+      },
+      {
+        "fact": "layer",
+        "values": [
+          "primitives",
+          "components",
+          "templates",
+          "UI code outside the design root"
+        ],
+        "observability": "observable_now",
+        "note": "Any UI file not in the tokens/foundations layer, including UI files outside the design root entirely."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "raw color literal written in a declaration value"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Diff/detector-level fact: bun_design_system_detector finding a hex/rgb(a)/hsl(a) literal in a CSS declaration, style attribute, <style> block, JSX style object, fill/stroke/bgcolor attribute, or .ts/.mts literal HTML."
+      }
+    ],
+    "fires": [
+      "A .tsx file under src/ (outside the design root) sets `style={{ color: '#333' }}` while the repository has a design root.",
+      "A .css file in the design root's components layer declares `background: rgba(0,0,0,.5)`.",
+      "A .ts file renders an HTML template literal containing `style=\"color: hsl(0 0% 20%)\"` or a `<style>` block with a hex color.",
+      "An .html/.jsx file sets a `fill`, `stroke` or `bgcolor` attribute to a hex color."
+    ],
+    "doesNotFire": [
+      "The repository has no design, design_system or design-system directory.",
+      "The raw color is in a file under the tokens/foundations layer.",
+      "The raw color is a custom property definition such as `--danger: #b91c1c`.",
+      "The value is a named color (`red`, `white`), `currentColor` or `transparent`.",
+      "The file is a test file (*.test.*, *.spec.*) or lives in a vendored/build directory.",
+      "A `#fade:hover {` selector, or a hex inside .ts/.mts code, comments or regex literals."
+    ]
+  },
+  "given": "A repository that has a design root, and a UI file anywhere in it (.tsx, .jsx, .html, .htm, .css, or HTML authored in .ts/.mts literals) outside the tokens/foundations layer",
+  "when": "A color is written in a CSS declaration, style attribute, <style> block, JSX style={{…}} object, or fill/stroke/bgcolor attribute",
+  "then": "Define the required color once in the tokens layer and reference that token (`var(--…)`) from UI code; never write a raw hex, rgb()/rgba() or hsl()/hsla() literal in the value.",
+  "prefer": [
+    "During GREEN: reuse an existing semantic color token when it already expresses the required role.",
+    "During GREEN: add the smallest new semantic token only when the current visual behavior needs a distinct value.",
+    "During GREEN: change only the affected UI reference."
+  ],
+  "avoid": [
+    "Do not broaden: retheming unrelated components.",
+    "Do not broaden: duplicating an existing token under a new name.",
+    "Do not broaden: using a raw literal as a temporary shortcut."
+  ],
+  "unless": [
+    "Custom property definitions (`--danger: #b91c1c`) define tokens wherever they live and are not flagged.",
+    "Named colors (`red`, `white`) and `currentColor`/`transparent` are not flagged."
+  ],
+  "why": "A raw color is a theme decision made in one place: it does not follow dark mode, drifts from the palette, and nobody can find it when the palette changes.",
+  "evidence": [
+    "The current visual or behavioral acceptance passes.",
+    "Affected UI files contain no raw color literal outside the tokens layer (bun_design_system_detector reports no finding)."
+  ],
+  "verifier_detail": [
+    "Raw color literal = a hex (`#rgb`/`#rrggbb`/`#rrggbbaa`), `rgb()`/`rgba()`, or `hsl()`/`hsla()` color written in a declaration value.",
+    "Scanned contexts: CSS declarations, `style` attributes, `<style>` blocks, JSX `style={{…}}` objects, `fill`/`stroke`/`bgcolor` attributes in .tsx, .jsx, .html, .htm, .css; plus inline `style=\"…\"` attributes and `<style>` text in HTML a .ts/.mts file renders from string/template/tagged-template literals.",
+    "Detector reads declarations from stylesheets, style attributes, style blocks, JSX style objects and .ts/.mts literal HTML, and flags raw color literals in their values.",
+    "Selectors are not values: `#fade:hover {` is never read as a color.",
+    "Design root = a directory named `design`, `design_system`, or `design-system`. The first directory beneath it names the layer: `tokens` or `foundations`, `primitives`, `components`, `templates`. A repository with no design root is not judged (self-scoping): there is no system to connect to yet. UI files outside the design root are judged when a design root exists.",
+    "The tokens/foundations layer is where raw colors are defined and is not scanned.",
+    "Test files (`*.test.*`, `*.spec.*`) and vendored/build directories are never scanned.",
+    "Custom property definitions (`--name: <color>`) are not flagged anywhere; named colors, `currentColor`, `transparent` are not flagged.",
+    "Only literal text is judged in .ts/.mts files: code, comments and regex literals are never read as declarations; a value spanning a `${…}` interpolation is judged on its literal chunks alone.",
+    "metadata: severity 2; disposition strict."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.2.0.",
+    "Aliases: BUN-DESIGN-TOKEN-COLOR-001.",
+    "Bun realization of core obligation `coder.design.token-color`, mirroring `coder.vite.design-token-color`.",
+    "implementation: validator, ref bun_design_system_detector.",
+    "Source term ids: design_root, raw_color_literal.",
+    "Source name: UI files use color tokens, not raw color literals."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "activation.fires/doesNotFire",
+      "text": "Concrete fire/no-fire situations",
+      "justification": "Required by the output schema; each is derived directly from the source statement, terms and exceptions; no new obligation."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Title rephrased imperatively; original name kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "when",
+        "then",
+        "activation",
+        "verifier_detail[0]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "given",
+        "activation",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "activation",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "activation",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "activation",
+        "given",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "then",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "verifier_detail[3]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "then"
+      ],
+      "note": "Canonical path is the primary obligation in then."
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "prefer[0]",
+        "prefer[1]",
+        "prefer[2]"
+      ],
+      "note": "'During GREEN:' qualifier retained on each prefer entry."
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "avoid[0]",
+        "avoid[1]",
+        "avoid[2]"
+      ],
+      "note": "'Do not broaden:' qualifier retained on each avoid entry."
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "structure"
+      ],
+      "note": "'Prove:' heading; the evidence array carries the proof items."
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "activation",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[7]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "given",
+        "activation",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[7]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "verifier_detail[8]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "identity",
+        "verifier_detail[9]"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "identity",
+        "verifier_detail[9]"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

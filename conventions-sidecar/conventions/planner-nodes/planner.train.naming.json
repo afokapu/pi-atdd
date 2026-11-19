@@ -1,0 +1,265 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.train.naming.convention.yaml",
+    "sha256": "b6f3aa94fd5b663ad5ac7c67661b033541241badb0c9ce46a431561ea4c6a20b"
+  },
+  "rule_id": "planner.train.naming",
+  "kind": "rule",
+  "title": "Give every train a typed kebab-case train_id",
+  "activation": {
+    "facts": [
+      {
+        "fact": "path_glob",
+        "values": [
+          "plan/_trains/**/*.yaml",
+          "plan/**/*.yaml"
+        ],
+        "observability": "observable_now",
+        "note": "Discovery signal only: YAML files under plan/_trains/ (including nested subdirectories) or elsewhere under plan/ are candidates. Path membership alone does not make a file a train document; README, notes and other non-train auxiliary files in the directory are out of scope."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "yaml"
+        ],
+        "observability": "observable_now",
+        "note": "Train documents are YAML; non-YAML files (e.g. README.md) are never train documents."
+      },
+      {
+        "fact": "operation",
+        "values": [
+          "create",
+          "edit",
+          "rename",
+          "move"
+        ],
+        "observability": "observable_now",
+        "note": "Any change to a train document, including edits to non-identity fields; the naming invariants hold for the whole document."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "train",
+          "train_id"
+        ],
+        "observability": "observable_now",
+        "note": "Planning tasks that mention defining, editing, renaming or moving a train."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "candidate YAML declares its own top-level train_id"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Content observer to surface candidates (including misplaced train documents outside plan/_trains/ or nested within it). A train_id field is a discovery signal, not proof: registries or files that merely reference train_ids are not train documents."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "train definition document"
+        ],
+        "observability": "llm_judged",
+        "note": "Final classification: the candidate's purpose is to define one train (its own identity, title and contents), as opposed to an auxiliary, registry or reference-only file."
+      }
+    ],
+    "fires": [
+      "Planner creates a new train definition document.",
+      "Planner edits any field of an existing train definition document, including only its title or only its wagon list.",
+      "Planner renames a train, changes its train_id, or moves its definition file.",
+      "A train definition document sits in a subdirectory of plan/_trains/, outside plan/_trains/, or under a filename that differs from its train_id."
+    ],
+    "doesNotFire": [
+      "Editing a README, notes or other non-train auxiliary file in plan/_trains/.",
+      "Editing a registry or other YAML that only references train_ids without defining a train.",
+      "Editing wagons, WMBTs or acceptances without creating, editing or moving any train definition document.",
+      "Code or doc changes that contain no train definition document."
+    ]
+  },
+  "given": "The change set contains a train definition document: a YAML file whose purpose is to define one train (its own train_id, title and contents), wherever it currently sits. Files that only reference trains, and non-train auxiliary files, are not train documents.",
+  "when": "the planner creates, edits, renames or moves it, or changes its train_id, title or file location",
+  "then": "Set train_id to the typed identity train:{subject}:{descriptive-name}, with both subject and descriptive name in kebab-case.",
+  "prefer": [
+    "Mandatory, not optional: store the file flat at plan/_trains/{train_id}.yaml, filename taken from the train_id.",
+    "Mandatory, not optional: write the title in Title Case."
+  ],
+  "avoid": [
+    "Untyped ids missing the train: prefix or the {subject} segment.",
+    "camelCase, snake_case, spaces or uppercase in subject or descriptive name.",
+    "Titles not in Title Case (e.g. lowercase or a copied kebab-case id).",
+    "Nested subdirectories under plan/_trains/, train files outside plan/_trains/, or a filename that differs from the train_id.",
+    "Renaming or adding train identity fields to README, registry or other non-train files."
+  ],
+  "unless": [],
+  "why": "A single typed, predictable train_id gives each train one identity from which its file path and references can be derived mechanically.",
+  "evidence": [
+    "Every train definition document sits directly in plan/_trains/ (no nesting, none elsewhere) and its basename equals its train_id.",
+    "Each train_id matches train:{subject}:{descriptive-name} with both segments kebab-case.",
+    "Each title is Title Case."
+  ],
+  "verifier_detail": [
+    "train_id pattern: ^train:[a-z0-9]+(-[a-z0-9]+)*:[a-z0-9]+(-[a-z0-9]+)*$ (kebab-case subject and descriptive name).",
+    "title: Title Case.",
+    "file: plan/_trains/{train_id}.yaml, flat (no subdirectories).",
+    "Term train_naming covers train_id, title, and file naming.",
+    "Candidate discovery: YAML under plan/ (nested or not) declaring its own top-level train_id; confirm it defines a train before applying checks. Skip non-YAML files and files that only reference train_ids."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "kind: rule; status: active",
+    "Source name: Train naming",
+    "source: legacy_path src/atdd/planner/conventions/train.convention.yaml, legacy_section naming, legacy_sha 825602729f11a3a4, extraction_mode high_fidelity",
+    "parity: source_fragments_preserved true, examples_preserved true, implementation_preserved false, fix_hint_preserved false, reviewed_at 2026-06-16",
+    "term_id: train_naming"
+  ],
+  "splitSuggestion": [
+    {
+      "id": "planner.train.title-case",
+      "then": "Write every train title in Title Case.",
+      "segments": [
+        "S006",
+        "S012"
+      ]
+    },
+    {
+      "id": "planner.train.file-location",
+      "then": "Store each train document flat at plan/_trains/{train_id}.yaml.",
+      "segments": [
+        "S006",
+        "S013"
+      ]
+    }
+  ],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "why",
+      "text": "A single typed, predictable train_id gives each train one identity from which its file path and references can be derived mechanically.",
+      "justification": "Source has no explicit rationale; the file-path derivation follows from S013 (plan/_trains/{train_id}.yaml) and the reference derivation from graph.json edges depending on this rule."
+    },
+    {
+      "field": "verifier_detail",
+      "text": "Concrete kebab-case regex for train_id.",
+      "justification": "Operationalises 'kebab-case' from the source for a detector; no new obligation."
+    },
+    {
+      "field": "activation",
+      "text": "Train document = YAML whose purpose is to define one train; path under plan/_trains/ and a train_id field are discovery signals only; auxiliary, registry and reference-only files excluded; content observer + LLM classification for final scope.",
+      "justification": "The source constrains train documents but does not define them; this scoping avoids misapplying the rule to non-train files while still detecting nested or misplaced train documents that violate S013. It narrows scope and adds no obligation."
+    },
+    {
+      "field": "avoid",
+      "text": "Renaming or adding train identity fields to README, registry or other non-train files.",
+      "justification": "Guard against misapplication identified by review; restates the scope limit, adds no obligation."
+    },
+    {
+      "field": "prefer",
+      "text": "'Mandatory, not optional' marker on title and file-location items.",
+      "justification": "Source states these as part of the rule statement (S006); placed in prefer only because then holds one obligation, so the marker prevents them being read as optional."
+    },
+    {
+      "field": "split_suggestion",
+      "text": "then keeps only the typed train_id obligation. Title Case (S012) and flat file location (S013) are independently testable and should become planner.train.title-case and planner.train.file-location; until then they remain here in prefer/avoid/evidence/verifier_detail so nothing is lost.",
+      "justification": "Rule 2: one obligation in then."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Basis for title."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "prefer[0]",
+        "prefer[1]",
+        "avoid[0]",
+        "avoid[1]",
+        "avoid[2]",
+        "avoid[3]",
+        "evidence[0]",
+        "evidence[1]",
+        "evidence[2]"
+      ],
+      "note": "train_id part in then; title and file parts in mandatory prefer items, avoid and proposed splits."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "then",
+        "verifier_detail[0]",
+        "avoid[0]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "prefer[1]",
+        "avoid[2]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "prefer[0]",
+        "avoid[3]",
+        "verifier_detail[2]"
+      ]
+    }
+  ]
+}

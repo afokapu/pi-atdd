@@ -1,0 +1,286 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.appendix.storage.convention.yaml",
+    "sha256": "8f504df9498f0cd0281d07fab6314644acbd3f61aad02bf3476ceb9fa6c2fb96"
+  },
+  "rule_id": "planner.appendix.storage",
+  "kind": "rule",
+  "title": "Store appendices in the appendices/ subdirectory of the artifact they describe",
+  "activation": {
+    "facts": [
+      {
+        "fact": "path_glob",
+        "values": [
+          "**/wagons/**",
+          "**/wagons/**/appendices/**",
+          "**/appendices/**",
+          "**/*_mockup_*",
+          "**/*_diagram_*"
+        ],
+        "observability": "observable_now",
+        "note": "These are discovery hints, not scope gates. They help find candidate appendix files, but the rule applies to any appendix describing a wagon/WMBT/feature/component wherever it is stored, including shared directories outside the wagon tree. A path alone does not prove a file is an appendix or which artifact it describes."
+      },
+      {
+        "fact": "operation",
+        "values": [
+          "create",
+          "move",
+          "rename",
+          "edit",
+          "review"
+        ],
+        "observability": "observable_now",
+        "note": "This is an unconditional storage invariant. It applies to any operation that touches or inspects an appendix: content edits of correctly stored appendices (applicable and compliant), and edits or reviews of misplaced ones (violations), wherever they are."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "appendix",
+          "appendices",
+          "mockup",
+          "diagram",
+          "supplementary"
+        ],
+        "observability": "observable_now",
+        "note": "Planning or review tasks that mention appendices."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "appendix file present outside an appendices/ subdirectory",
+          "appendix file under an appendices/ directory of a different artifact level than the one it describes",
+          "appendix file stored outside the wagon tree (e.g. a shared/central directory)"
+        ],
+        "observability": "needs_new_observer",
+        "note": "This needs a semantic classifier. It decides whether a file is an appendix (e.g. from the planner.appendix.naming-pattern filename) and which artifact it describes, then compares that with the file's actual directory. It applies to existing files anywhere in the repository, not only to newly added files or files in the wagon tree. These values identify violations; the rule still applies (and is satisfied) when none is present."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "appendix describes an artifact (wagon/wmbt/feature/component) not matching its storage location"
+        ],
+        "observability": "llm_judged",
+        "note": "When the filename prefix is missing or ambiguous, an LLM may have to judge which artifact the appendix describes."
+      }
+    ],
+    "fires": [
+      "A mockup, diagram or supplementary file is added for a wagon, WMBT, feature or component.",
+      "An appendix file sits directly in the artifact directory instead of in its appendices/ subdirectory, whether it was just added or already existed.",
+      "A WMBT appendix is stored in the wagon-level appendices/ directory instead of plan/{wmbt-id}/appendices/.",
+      "An existing appendix describing a wagon, WMBT, feature or component is found in an external shared directory (e.g. a central docs/ or assets/ folder outside the wagon tree), even if no one moved it in this change.",
+      "A reviewer or planner finds an existing misplaced appendix while reviewing or editing, even if it was not touched in this change.",
+      "An appendix is moved or renamed.",
+      "The content of an appendix that is already stored in the correct appendices/ subdirectory is edited. The rule applies and is satisfied as long as the file stays there."
+    ],
+    "doesNotFire": [
+      "Non-appendix plan artifacts (wagon manifest, WMBT, acceptance files) are added or edited in their normal locations.",
+      "Unrelated non-appendix code changes are made outside the wagons/ planning tree, and no appendix describing a wagon/WMBT/feature/component is added, moved, edited or inspected."
+    ]
+  },
+  "given": "An appendix (mockup, diagram or supplementary file) describes a wagon, WMBT, feature or component, wherever it is currently stored.",
+  "when": "You plan, add, move, rename, edit or review it, or come across it.",
+  "then": "Store the appendix in the appendices/ subdirectory of the artifact it describes, at that level's path: wagon {output_dir}/wagons/{wagon-name}/appendices/; wmbt {output_dir}/wagons/{wagon-name}/plan/{wmbt-id}/appendices/; feature {output_dir}/wagons/{wagon-name}/features/{feature-name}/appendices/; component {output_dir}/wagons/{wagon-name}/features/{feature-name}/components/{component-name}/appendices/.",
+  "prefer": [
+    "Use the most specific artifact level the appendix describes, and create its appendices/ if missing.",
+    "Move any misplaced appendix you find there, including ones in shared folders."
+  ],
+  "avoid": [
+    "Placing an appendix directly in the artifact directory (e.g. wagons/{wagon-name}/{file}).",
+    "Storing it at another artifact level or in a shared central folder."
+  ],
+  "unless": [],
+  "why": "Co-located appendices keep artifacts self-contained and make supplementary content discoverable relative to the artifact.",
+  "evidence": [
+    "Every appendix file describing a wagon, WMBT, feature or component has a parent directory named appendices/. That directory sits directly under the wagon, plan/{wmbt-id}, features/{feature-name} or components/{component-name} directory of the artifact the appendix describes. This holds for existing, edited and newly added files, wherever they were found.",
+    "Positive examples: demo/wagons/checkout-flow/appendices/checkout-flow_mockup_overview.png and demo/wagons/checkout-flow/plan/E023/appendices/E023_mockup_payment-error.png. Negative example: demo/wagons/checkout-flow/checkout-flow_mockup_overview.png (not in an appendices/ subdirectory)."
+  ],
+  "verifier_detail": [
+    "Term storage_location, rule 'Appendices stored in appendices/ subdirectory of artifact': appendices live in an appendices/ subdirectory of the artifact, with a level-specific path for wagon, wmbt, feature and component.",
+    "Location templates: wagon '{output_dir}/wagons/{wagon-name}/appendices/'; wmbt '{output_dir}/wagons/{wagon-name}/plan/{wmbt-id}/appendices/'; feature '{output_dir}/wagons/{wagon-name}/features/{feature-name}/appendices/'; component '{output_dir}/wagons/{wagon-name}/features/{feature-name}/components/{component-name}/appendices/'.",
+    "Identify appendix files by the planner.appendix.naming-pattern ({artifact}_{type}_{slug}.ext, e.g. E023_mockup_payment-error.png). The artifact prefix in the filename should match the artifact that owns the appendices/ directory. Path globs are discovery hints only; deciding that a file is an appendix and which artifact it describes is a semantic step.",
+    "Scan the whole repository, not only the diff or the wagon tree, so that existing misplaced appendices are reported too, including those in external shared directories. An edit to a correctly stored appendix is an applicable case that passes, not an out-of-scope one."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "kind: rule; status: active",
+    "implementation: {type: none} (no automated verifier in source)",
+    "source: legacy_path src/atdd/planner/conventions/appendix.convention.yaml, legacy_section storage, extraction_mode high_fidelity",
+    "parity: source_fragments_preserved, examples_preserved, implementation_preserved and fix_hint_preserved are all true; reviewed_at 2026-06-16",
+    "Original name: 'Appendix: Storage'; term_id storage_location",
+    "content.examples is duplicated in terms[0].examples.positive: demo/wagons/checkout-flow/appendices/checkout-flow_mockup_overview.png; demo/wagons/checkout-flow/plan/E023/appendices/E023_mockup_payment-error.png"
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "prefer",
+      "text": "Use the most specific artifact level; create appendices/ if missing; move misplaced appendices you find, including those in shared folders.",
+      "justification": "Restates the source statement ('at the location matching the artifact level') as concrete steps. It adds no new obligation."
+    },
+    {
+      "field": "avoid",
+      "text": "Storing an appendix at another artifact level or in a shared central folder.",
+      "justification": "Directly negates 'stored in an appendices/ subdirectory of the artifact they describe'."
+    },
+    {
+      "field": "verifier_detail",
+      "text": "The filename's artifact prefix should match the owning artifact directory. Scan the whole repository, not only the diff or wagon tree. Edits of correctly stored appendices are applicable, passing cases.",
+      "justification": "Derived from the graph edge to planner.appendix.naming-pattern and the source examples (E023 under plan/E023). The repository-wide scan follows from the source's unconditional storage invariant."
+    },
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire situations and facts. They include existing appendices anywhere, including external shared directories; path globs are discovery hints only.",
+      "justification": "The schema requires activation and the source has none explicitly. Revision 4 removed the current-location prerequisite, per the audit, so scope depends only on which artifact the appendix describes."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "when",
+        "then",
+        "activation"
+      ],
+      "note": "This is an unconditional invariant. Applicability depends on which artifact the appendix describes, not on where it currently sits, so it covers appendices found anywhere, including external shared directories."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "evidence[1]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "evidence[1]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[0]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[0]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "then",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "then",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "then",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "then",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "evidence[1]",
+        "avoid[0]"
+      ]
+    }
+  ]
+}

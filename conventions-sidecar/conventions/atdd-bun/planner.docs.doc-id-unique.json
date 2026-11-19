@@ -1,0 +1,381 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/planner.docs/planner.docs.doc-id-unique.convention.yaml",
+    "sha256": "558bc7d7001645f5443fcf19a5da67df17220b335d99811d103529bf22555311"
+  },
+  "rule_id": "planner.docs.doc-id-unique",
+  "kind": "rule",
+  "title": "Give every authored doc a corpus-unique doc-id",
+  "activation": {
+    "facts": [
+      {
+        "fact": "path_glob",
+        "values": [
+          "docs/**/*.adoc",
+          "!docs/dist/**"
+        ],
+        "observability": "observable_now",
+        "note": "Corpus = every authored .adoc beneath docs/, all areas including archive/, excluding generated docs/dist/. This is the primary gate: the invariant holds corpus-wide at all times."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "adoc"
+        ],
+        "observability": "observable_now",
+        "note": "Only AsciiDoc documents carry :doc-id: attributes."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "duplicate doc-id reported by docs_capability validator"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Sufficient trigger on its own: fires for ANY duplicate in the corpus, including pre-existing duplicates whose attributes were not touched. Detector output (validator docs_capability) must be surfaced as an activation fact."
+      },
+      {
+        "fact": "operation",
+        "values": [
+          "create",
+          "edit",
+          "move",
+          "archive"
+        ],
+        "observability": "observable_now",
+        "note": "Optional trigger, NOT a prerequisite: these operations commonly introduce collisions, but a duplicate violates the rule regardless of which operation (if any) is in progress."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "doc-id attribute added or changed"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Optional trigger, NOT a prerequisite: a diff-level observer parsing :doc-id: of touched docs gives early warning; absence of an id change does not exempt an existing duplicate."
+      }
+    ],
+    "fires": [
+      "Planner authors a new doc under docs/ whose :doc-id: equals one already declared elsewhere in docs/.",
+      "Planner archives a doc and writes its replacement with the same :doc-id: as the archived copy in docs/archive/.",
+      "Planner copies an existing .adoc as a template and keeps its :doc-id: unchanged.",
+      "A corpus validation (or a body-only edit / move of an unrelated doc) surfaces two existing docs that already share a :doc-id:, even though neither id was changed in this task."
+    ],
+    "doesNotFire": [
+      "Generated output beneath docs/dist/ shares an id with an authored doc.",
+      "An authored doc under docs/ declares no :doc-id: at all (that is planner.docs.identity-required).",
+      "Edits to a doc's body when every :doc-id: in the corpus is unique."
+    ]
+  },
+  "given": "The docs/ corpus: every authored .adoc, archive/ included, docs/dist/ excluded.",
+  "when": "Any declared `:doc-id:` is shared by another doc — newly introduced (create, copy, move, archive) or pre-existing and found by validation.",
+  "then": "Ensure no two authored documents in the corpus declare the same `:doc-id:`.",
+  "prefer": [
+    "Archived and replacement docs get DIFFERENT ids; the new one (`:status: current`) declares `:supersedes: <archived-id>`; the archived one is `:status: superseded`.",
+    "archive/ shares the id space on purpose: choose archived ids (e.g. `archive.<date>-<slug>`) that cannot collide."
+  ],
+  "avoid": [
+    "Re-using a current id in archive/: the resolver cannot tell superseding from superseded doc, so `:supersedes:` fails exactly where it is needed.",
+    "Deleting a doc to fix a duplicate; preserving history is the point.",
+    "Copying a template doc without changing its `:doc-id:`."
+  ],
+  "unless": [
+    "Generated output beneath `docs/dist/` is never scanned.",
+    "Docs with no `doc-id` belong to `planner.docs.identity-required`; only declared ids are compared."
+  ],
+  "why": "Uniqueness makes doc-id an identity, not a label, so every edge resolves to one target; a duplicate leaves `:supersedes: architecture.foo` unable to say which `architecture.foo` it means.",
+  "evidence": [
+    "The docs_capability validator reports no duplicate `:doc-id:` across every authored .adoc beneath docs/ (archive/ included, docs/dist/ excluded).",
+    "For any archived/replacement pair, the two docs carry distinct ids and the replacement declares `:supersedes:` pointing at the archived id; neither document was deleted.",
+    "Reviewer fix example (from source): give the archived document a distinct id and link the succession explicitly:\n  docs/architecture/shared-control-root.adoc\n    :doc-id: architecture.shared-control-root\n    :status: current\n    :supersedes: archive.2025-control-root\n\n  docs/archive/2025-control-root.adoc\n    :doc-id: archive.2025-control-root\n    :status: superseded"
+  ],
+  "verifier_detail": [
+    "Scope: every authored `.adoc` beneath `docs/`, across all areas, excluding `docs/dist/`. Uniqueness is global — `archive/` is NOT a separate id space. Checked over the whole corpus, not only touched files.",
+    "Report EVERY file carrying a duplicated id, not just the second one: there is no principled basis for calling one of them the original.",
+    "Only compare ids that were actually declared; documents with no `:doc-id:` are skipped here (reported by planner.docs.identity-required).",
+    "Severity 2; disposition strict."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "kind: rule",
+    "status: active",
+    "aliases: DOCS-IDENTITY-002",
+    "introduced_in: 0.1.0",
+    "implementation: {type: validator, ref: docs_capability}",
+    "severity: 2; disposition: strict",
+    "Source references: spec 2 §5.1 (uniqueness as precondition for edge resolution); spec 2 §5.2 calls the distinct-ids + :supersedes: shape load-bearing for #1782; spec 2 §2 *Out of scope* (preserving history, no deletion)."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "strict: atdd-bun fails on every finding; it has no advisory mode and no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "avoid",
+      "text": "Copying a template doc without changing its `:doc-id:`.",
+      "justification": "Concrete planner-facing instance of the source's single obligation (no two docs share a doc-id); adds no new obligation."
+    },
+    {
+      "field": "prefer",
+      "text": "Choose archived ids (e.g. `archive.<date>-<slug>`) that cannot collide.",
+      "justification": "Generalises the source fix_hint example id `archive.2025-control-root`; no new obligation."
+    },
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire scenarios and activation facts, including the pre-existing-duplicate scenario.",
+      "justification": "Required by schema; derived from the source's corpus-wide statement, corpus definition and exceptions."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ],
+      "note": "Rendered as title."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "why",
+        "audit"
+      ],
+      "note": "Spec reference kept in audit."
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "given",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "given",
+        "activation",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "avoid[0]"
+      ],
+      "note": "Explicitly stated in avoid[0]: the resolver cannot tell superseding from superseded doc."
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "evidence[2]",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "evidence[2]",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "evidence[2]",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "evidence[2]",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "unless[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "identity",
+        "verifier_detail[3]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

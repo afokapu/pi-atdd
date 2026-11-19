@@ -1,0 +1,310 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.theme.must-be-canonical.convention.yaml",
+    "sha256": "5335c19e047d6c552b82944687b98d030d4cfb87e0185718aea728b58cfe2d23"
+  },
+  "rule_id": "planner.theme.must-be-canonical",
+  "kind": "rule",
+  "title": "Declare every theme in the repository's plan/_themes.yaml",
+  "activation": {
+    "facts": [
+      {
+        "fact": "path_glob",
+        "values": [
+          "plan/**",
+          "plan/_themes.yaml"
+        ],
+        "observability": "observable_now",
+        "note": "Plan artifacts (wagons, trains, interlockings, contracts) and the theme registry live under plan/. Touching or validating plan/_themes.yaml alone activates the rule."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "wagon",
+          "train",
+          "interlocking",
+          "contract",
+          "theme-registry"
+        ],
+        "observability": "observable_now",
+        "note": "Artifact kinds that carry a theme field, plus the registry itself (registry-only edits and validation are in scope)."
+      },
+      {
+        "fact": "operation",
+        "values": [
+          "author",
+          "edit",
+          "validate"
+        ],
+        "observability": "observable_now",
+        "note": "Authoring, editing, or validating the plan or the registry."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "theme field added or changed",
+          "registry entry added, renamed, reordered, or removed"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Optional trigger only: a diff-level observer for theme and registry edits. The invariant also applies to unchanged artifacts and an unchanged registry."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "planner.theme.must-be-canonical: unresolved theme reference",
+          "planner.theme.must-be-canonical: non-kebab-case registry name",
+          "planner.theme.must-be-canonical: index 0 occupied by a name other than commons"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Findings from the planner static validator (planner.static.validators.bun) or a registry-shape observer that parses plan/_themes.yaml. The index-0 check is a reservation: it fires only when index 0 is populated with a name other than commons; an empty registry (no index 0) is not a reservation violation, and the source does not require a commons entry to exist."
+      }
+    ],
+    "fires": [
+      "A planner authors a new wagon, train, interlocking, or contract and sets its theme.",
+      "A planner changes the theme of an existing plan artifact.",
+      "A planner renames or removes an entry in plan/_themes.yaml that artifacts still reference.",
+      "The plan is validated and an existing, unchanged artifact references a theme not declared in plan/_themes.yaml.",
+      "A plan uses a theme name assumed to come from a package default taxonomy that is not declared in plan/_themes.yaml.",
+      "A planner edits or validates plan/_themes.yaml (even with no themed artifact touched) and the registry contains a non-kebab-case name.",
+      "A planner edits or validates plan/_themes.yaml and index 0 is populated with a name other than commons (e.g. after reordering, the resulting registry has another name at index 0).",
+      "Every artifact theme resolves, but the registry itself violates the kebab-case naming rule or the index-0 reservation for commons."
+    ],
+    "doesNotFire": [
+      "Plan validation or edits where every theme on every wagon, train, interlocking, and contract resolves to a value in plan/_themes.yaml, all registry names are kebab-case, and index 0 is either commons or unpopulated.",
+      "Code-only changes outside plan/ that neither touch plan/_themes.yaml nor reference wagon/train/interlocking/contract themes.",
+      "Adding a new kebab-case theme to plan/_themes.yaml at a nonzero index, with index 0 untouched and no artifact referencing an undeclared theme."
+    ]
+  },
+  "given": "A plan has plan/_themes.yaml and/or wagons, trains, interlockings, or contracts with a theme (new, changed, or unchanged); registry-only work included.",
+  "when": "The planner authors, edits, or validates a themed plan artifact or the registry.",
+  "then": "Every wagon, train, interlocking, and contract theme MUST resolve to a value in the repository-owned plan/_themes.yaml registry.",
+  "prefer": [
+    "Declare themes in plan/_themes.yaml with any kebab-case name.",
+    "Keep index 0 reserved for commons: if index 0 is populated, its name is commons.",
+    "Treat an unresolved theme as a plan error; fix the registry or the artifact.",
+    "Check all of: index 0, if populated, is commons; names are kebab-case; every artifact theme resolves. Resolution alone is not compliance."
+  ],
+  "avoid": [
+    "Relying on a package default taxonomy; none exists, and no game or toolkit vocabulary is supplied.",
+    "Expecting a package-default lookup to resolve an undeclared theme.",
+    "Any name other than commons at index 0.",
+    "Non-kebab-case theme names."
+  ],
+  "unless": [],
+  "why": "Themes are repository-owned with no package fallback, so an undeclared theme is a plan error. Downstream naming and boundary rules presuppose a resolvable theme.",
+  "evidence": [
+    "Every theme on wagons, trains, interlockings, and contracts (new or existing) appears as a value in plan/_themes.yaml (canonical_resolution).",
+    "In plan/_themes.yaml, index 0, if populated, is commons, and all names are kebab-case; checked even when no artifact changed and all references resolve.",
+    "The planner static validator (planner.static.validators.bun) reports no planner.theme.must-be-canonical findings."
+  ],
+  "verifier_detail": [
+    "Term canonical_resolution: a theme resolving to a value in plan/_themes.yaml. values: source=plan/_themes.yaml; package_defaults=none; consumer_repo=declares its own names.",
+    "Do not fall back to any package-default theme list; an undeclared theme is a plan error, not a package-default lookup.",
+    "Scope: themes on all wagon, train, interlocking, and contract artifacts in the plan, not only changed ones.",
+    "Registry names: any kebab-case name, except index 0 is reserved for commons. Reservation semantics: a finding only when index 0 is populated with a name other than commons; do not require that index 0 be populated or that a commons entry exist; evaluate the resulting registry after reorders rather than flagging the move itself. Check registry shape independently of reference resolution.",
+    "Severity 3; disposition strict."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "kind: rule",
+    "status: active",
+    "implementation: {type: validator, ref: planner.static.validators.bun}",
+    "source: legacy_path src/atdd/planner/conventions/theme.convention.yaml, legacy_section rules, legacy_sha 2ae106d04d77b06e, extraction_mode high_fidelity, legacy_rule_id planner.theme.must-be-canonical",
+    "aliases: PLANNER-THEME-CANONICAL-001",
+    "parity: source_fragments_preserved=true, examples_preserved=false, implementation_preserved=true, fix_hint_preserved=false, reviewed_at=2026-06-16",
+    "Original name: Theme must be repository-declared",
+    "Term id: canonical_resolution",
+    "metadata: severity 3, disposition strict"
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "Activation facts and fires/doesNotFire situations derived from the statement's artifact list, the registry path, and the registry kebab-case/index-0 reservation (including registry-only edits/validation). The index-0 check fires only when index 0 is occupied by a non-commons name; an absent index 0 is not a violation.",
+      "justification": "Schema requires observable activation; content restates source scope and the reservation as authored, without requiring a commons entry."
+    },
+    {
+      "field": "why",
+      "text": "Mention of downstream naming and boundary rules presupposing a resolvable theme.",
+      "justification": "Taken from graph.json edge context; adds no obligation."
+    },
+    {
+      "field": "avoid",
+      "text": "'Non-kebab-case theme names' derived from 'may choose any kebab-case name'.",
+      "justification": "Makes the source's naming constraint explicit as an anti-pattern."
+    },
+    {
+      "field": "prefer",
+      "text": "prefer[3]: check all three source constraints (index 0, if populated, is commons; kebab-case names; references resolve).",
+      "justification": "Agents may check only reference resolution; this lists existing source constraints (S006, S010) with the reservation as authored, adding no obligation."
+    },
+    {
+      "field": "verifier_detail",
+      "text": "Registry shape is checked independently of reference resolution; reservation semantics spelled out (populated index 0 must be commons; no mandatory commons entry; evaluate resulting registry after reorders).",
+      "justification": "Clarifies how to apply S010 faithfully; no new obligation."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Title rephrased imperatively; original name kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "when",
+        "then",
+        "evidence[0]",
+        "verifier_detail[2]",
+        "prefer[3]"
+      ],
+      "note": "Invariant applies to all themes, including unchanged ones."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "avoid[0]",
+        "why",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "activation",
+        "prefer[0]",
+        "prefer[1]",
+        "prefer[3]",
+        "avoid[2]",
+        "avoid[3]",
+        "evidence[1]",
+        "verifier_detail[3]"
+      ],
+      "note": "Index 0 is a reservation: if populated it must be commons; no mandatory commons entry."
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "prefer[2]",
+        "avoid[1]",
+        "why",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "identity",
+        "verifier_detail[4]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "identity",
+        "verifier_detail[4]",
+        "audit"
+      ],
+      "note": "Kept verbatim as 'disposition strict'; no further semantics inferred."
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "verifier_detail[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "verifier_detail[0]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "verifier_detail[0]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "verifier_detail[0]",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "verifier_detail[0]",
+        "why",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "avoid[0]"
+      ]
+    }
+  ]
+}

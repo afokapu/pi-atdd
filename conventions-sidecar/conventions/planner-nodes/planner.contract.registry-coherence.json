@@ -1,0 +1,368 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.contract.registry-coherence.convention.yaml",
+    "sha256": "e396bda89f4a5657b19367f5d60db78bcb32fbbbb05331b7c747ffa6b5849b3f"
+  },
+  "rule_id": "planner.contract.registry-coherence",
+  "kind": "rule",
+  "title": "Bind wagon produce/consume contracts to registered contract identities",
+  "activation": {
+    "facts": [
+      {
+        "fact": "path_glob",
+        "values": [
+          "plan/*/_*.yaml",
+          "contracts/_contracts.yaml"
+        ],
+        "observability": "observable_now",
+        "note": "Wagon manifests carry the produce/consume graph; the registry is the single source of truth for contract identities."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "produce entry added or edited",
+          "consume entry added or edited",
+          "contract field changed (including set to null)",
+          "registry entry added/removed/renamed"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Needs a diff-level observer over YAML produce/consume entries and registry keys."
+      },
+      {
+        "fact": "operation",
+        "values": [
+          "review",
+          "validate"
+        ],
+        "observability": "llm_judged",
+        "note": "Reviewing or validating an existing wagon graph also activates the rule, even with no edit, since the invariants hold over the whole graph."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "UNREGISTERED",
+          "NULL-CROSS-WAGON",
+          "UNCONSUMED"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Produced by the coherence validator test_contract_registry_coherence; requires the validator output to be surfaced as a fact. Any finding on the existing graph activates the rule."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "contract",
+          "produce",
+          "consume",
+          "wagon",
+          "registry",
+          "URN"
+        ],
+        "observability": "observable_now",
+        "note": "Planning tasks touching wagon interfaces or contracts."
+      }
+    ],
+    "fires": [
+      "A planner adds a consume entry whose contract: URN strips to an identity not present in contracts/_contracts.yaml.",
+      "A planner adds a produce entry for an artifact name that another wagon consumes, with contract: null.",
+      "A produce entry declares a non-null contract that no other wagon consumes and is not marked to: external.",
+      "A contract is renamed or removed from the registry while wagon manifests still reference its URN.",
+      "A planner reviews or validates existing wagon manifests that already contain an unregistered URN, a null-contract cross-wagon producer, or an unconsumed non-external produced contract — even without editing them."
+    ],
+    "doesNotFire": [
+      "NULL-CROSS-WAGON only: a produce entry with contract: null whose artifact name is not consumed by any other wagon is exempt from NULL-CROSS-WAGON; the rule is inactive only if UNREGISTERED and UNCONSUMED also hold for the rest of the graph.",
+      "UNCONSUMED only: a produced contract consumed by no wagon but explicitly marked to: external is exempt from UNCONSUMED; its URN must still resolve to a registered identity (UNREGISTERED), and NULL-CROSS-WAGON must still hold elsewhere.",
+      "Edits to wagon manifest fields unrelated to produce/consume (e.g. descriptions) that leave contract bindings unchanged — only when the graph already satisfies all three invariants.",
+      "Changes outside plan/ wagon manifests and the contract registry, when the existing graph already satisfies all three invariants."
+    ]
+  },
+  "given": "Wagon manifests (plan/<wagon>/_<wagon>.yaml) declare produce/consume entries; contracts/_contracts.yaml is the single source of truth for each contract's identity, path, theme, producers and consumers.",
+  "when": "You author, change, review or validate produce/consume entries, their contract: fields, or registry entries.",
+  "then": "Every non-null contract: URN on a produce or consume entry must, after stripping the contract: prefix, resolve to an identity registered in contracts/_contracts.yaml.",
+  "prefer": [
+    "Add new contract identities to the registry through its authoring flow (create_contract), so the registry entry carries identity, path, theme, producers and consumers.",
+    "Mandatory (NULL-CROSS-WAGON): give the producing entry of every cross-wagon edge (artifact name produced by one wagon, consumed by a different wagon) a non-null registered contract.",
+    "Mandatory (UNCONSUMED): mark a produced non-null contract that no other wagon consumes as to: external."
+  ],
+  "avoid": [
+    "URNs whose identity, after stripping the contract: prefix, is absent from the registry (typos, renamed or deleted contracts). A prefixed URN is valid when its stripped identity is a registry key.",
+    "contract: null on a cross-wagon producer (dangling producer, no contract binds the edge) — a required invariant, not optional.",
+    "A produced non-null contract no other wagon consumes and not marked to: external — a required invariant, not optional.",
+    "Silencing findings by nulling contract: or adding to: external to an internally consumed contract."
+  ],
+  "unless": [
+    "A produced contract with no consuming wagon is coherent if marked to: external (exempts UNCONSUMED only)."
+  ],
+  "why": "The registry owns contract identity and producer/consumer ownership; unregistered URNs, null-bound cross-wagon edges and orphan producers let plan graph and registry drift.",
+  "evidence": [
+    "test_contract_registry_coherence::test_contract_registry_coherence passes with no UNREGISTERED, NULL-CROSS-WAGON or UNCONSUMED findings (all three invariants are required).",
+    "Reviewer can map each contract: URN in the wagon manifests, after stripping the contract: prefix, to a key in contracts/_contracts.yaml.",
+    "Each cross-wagon edge has a non-null contract on its producing entry; each produced non-null contract has another consuming wagon or to: external."
+  ],
+  "verifier_detail": [
+    "Registry keys are contract identities; strip the 'contract:' URN prefix before lookup.",
+    "UNREGISTERED: every non-null contract: URN on any produce or consume entry must strip to an existing registry identity.",
+    "NULL-CROSS-WAGON: cross-wagon edges are keyed on artifact NAME — a name produced by one wagon and consumed by a different wagon; the producing entry must declare a non-null contract (contract: null there = dangling producer). Same-wagon produce/consume is not a cross-wagon edge.",
+    "UNCONSUMED: every produce entry with a non-null contract must be consumed by at least one OTHER wagon or carry to: external.",
+    "Three invariants are checked across the whole graph: plan/<wagon>/_<wagon>.yaml produce/consume entries of all wagons against contracts/_contracts.yaml. Exemptions are per-invariant (no cross-wagon edge exempts only NULL-CROSS-WAGON; to: external exempts only UNCONSUMED).",
+    "Disposition advisory, severity 3."
+  ],
+  "audit": [
+    "schema_version 1.1.0; source kind: constraint; status: active.",
+    "Source name: 'Contract registry producer/consumer coherence'.",
+    "Implementation: validator test_contract_registry_coherence::test_contract_registry_coherence.",
+    "Source: legacy_path docs/recompose, legacy_section contract-coherence, extraction_mode summary.",
+    "Closes the dangling-producer / contract: null class from the #250 audit.",
+    "Registry authored by create_contract (#1330); coherence validated here (#1332).",
+    "Parity: source_fragments_preserved true, examples_preserved false, implementation_preserved true, fix_hint_preserved false, reviewed_at 2026-07-02.",
+    "Glossary term ids: contract_registry, cross_wagon_edge, dangling_producer."
+  ],
+  "splitSuggestion": [
+    {
+      "id": "planner.contract.no-null-cross-wagon-producer",
+      "then": "The producing entry of every cross-wagon edge (artifact name produced by one wagon, consumed by another) must declare a non-null contract.",
+      "segments": [
+        "S012",
+        "S016",
+        "S026",
+        "S027",
+        "S028"
+      ]
+    },
+    {
+      "id": "planner.contract.produced-has-consumer",
+      "then": "Every produce entry with a non-null contract must be consumed by at least one other wagon or be marked to: external.",
+      "segments": [
+        "S013",
+        "S017"
+      ]
+    }
+  ],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "split_suggestion",
+      "text": "Source bundles three independent invariants (UNREGISTERED, NULL-CROSS-WAGON, UNCONSUMED). UNREGISTERED kept as then; the other two placed in prefer/avoid/unless/verifier_detail (explicitly labelled mandatory) and proposed as separate conventions planner.contract.no-null-cross-wagon-producer and planner.contract.produced-has-consumer.",
+      "justification": "Rule 2: one obligation per then; labels prevent the mandatory invariants from being read as optional preferences."
+    },
+    {
+      "field": "prefer",
+      "text": "prefer[0]: add new contract identities through the registry's authoring flow (create_contract). No edit-ordering is prescribed; only the resulting graph/registry state matters.",
+      "justification": "Source (S024) names create_contract as the registry's authoring flow; phrased as a pointer, not a sequencing requirement."
+    },
+    {
+      "field": "avoid",
+      "text": "Silencing findings by nulling contract: or adding to: external to an internally consumed contract.",
+      "justification": "Metric-gaming anti-pattern required by the schema; not stated in source but follows directly from the invariants."
+    },
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire scenarios, review/validate operation fact, and observability classifications; doesNotFire exemptions qualified per invariant.",
+      "justification": "Required by the output schema and audit feedback; derived from the source definitions of cross-wagon edge and to: external, and from the invariants holding across the whole graph."
+    },
+    {
+      "field": "coder_fields_length",
+      "text": "Coder-facing text slightly exceeds ~1,000 characters.",
+      "justification": "Losslessness of three invariants plus per-invariant exemption wins over brevity."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Reworded as title; original name kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "avoid[1]",
+        "avoid[2]",
+        "unless[0]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "given",
+        "why"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "given",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "then",
+        "verifier_detail[1]",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "prefer[1]",
+        "avoid[1]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "avoid[2]",
+        "unless[0]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "audit",
+        "why"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "then",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "avoid[1]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "avoid[2]",
+        "prefer[2]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "then",
+        "verifier_detail[0]",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "identity",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "identity",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "audit"
+      ],
+      "note": "Term id only; definition carried by S023."
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "given"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "audit",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "audit"
+      ],
+      "note": "Term id only; definition carried by S026."
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "audit"
+      ],
+      "note": "Term id only; definition carried by S028."
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "avoid[1]",
+        "verifier_detail[2]"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,422 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.journey.continuation-closure.convention.yaml",
+    "sha256": "56c447b05cfe98804ea53bdde68ad940138093a4341620872e9b5c61be08869c"
+  },
+  "rule_id": "planner.journey.continuation-closure",
+  "kind": "rule",
+  "title": "Close every journey's continuation topology",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "journey declaration",
+          "interlocking declaration",
+          "linear train declaration"
+        ],
+        "observability": "observable_now",
+        "note": "Subject kind is journey; any plan containing journeys is validated at CONFIRM whether or not anything changed. Edits to journeys, interlockings, routes or route-selected trains are additional authoring-time triggers, not prerequisites."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "journey",
+          "interlocking",
+          "continuation",
+          "terminal",
+          "route",
+          "train"
+        ],
+        "observability": "observable_now",
+        "note": "Planning tasks touching journey topology or route-selected trains (additional authoring-time trigger)."
+      },
+      {
+        "fact": "phase",
+        "values": [
+          "CONFIRM"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Primary, unconditional trigger: invariant over every declared journey, re-checked and confirm-blocking at CONFIRM for any task (planning, coding or test) regardless of which part of the plan changed. Needs a phase observer."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "continuation added/removed/edited",
+          "terminal added/removed/edited",
+          "interlocking route added/removed/renamed",
+          "journey entrypoint changed",
+          "route-to-train binding changed",
+          "selected linear train sequence changed (artifact added/removed/renamed)"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Optional earlier trigger only; needs a diff-level observer over journey, interlocking and train declarations. Train/binding edits can invalidate a continuation's artifact handoff without touching continuations. Absence of a change never exempts a journey from CONFIRM validation."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "journeyContinuationFindings"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Validator finding output (journey_id, interlocking_id, route_id, artifact, destination_interlocking_id, reason); needs an observer that surfaces it."
+      }
+    ],
+    "fires": [
+      "Any task reaches CONFIRM on a plan that declares at least one journey, even if no journey, interlocking, route or train declaration changed in this task (every journey is re-checked).",
+      "A reachable interlocking route has neither a continuation nor a terminal, or has both.",
+      "A route is added to a reachable interlocking without a continuation or terminal.",
+      "Two routes inside one reachable interlocking share a route_id.",
+      "A continuation names an artifact that does not occur in the linear train its source route selects, including after the route is rebound to another train or the train's sequence is edited.",
+      "A continuation's source route or destination interlocking does not exist.",
+      "A continuation/terminal is declared for an interlocking unreachable from the journey entrypoint.",
+      "Continuations form a cycle between interlockings."
+    ],
+    "doesNotFire": [
+      "Plans that declare no journeys at all (no journey subject to validate), even when they edit interlockings, routes or trains."
+    ]
+  },
+  "given": "A plan declares one or more journeys: each an entrypoint interlocking plus the interlockings reachable through continuations.",
+  "when": "The plan reaches CONFIRM (always, for every declared journey, changed or not); also earlier whenever you author or change routes, continuations, terminals, entrypoints, or the trains those routes select.",
+  "then": "Account for every reachable interlocking route exactly once: one continuation or one terminal, never both, never none.",
+  "prefer": [
+    "Walk from the entrypoint, listing each (interlocking_id, route_id) with its one outgoing declaration.",
+    "Declare an explicit terminal for each route that ends the journey.",
+    "At CONFIRM, re-run the closure walk over every declared journey, not only the ones you edited."
+  ],
+  "avoid": [
+    "Reusing a route_id inside one reachable interlocking; it must be unique.",
+    "Any continuation whose source route does not exist, whose artifact does not occur in the linear train that route selects, or whose destination interlocking does not exist; all three are mandatory.",
+    "Continuations or terminals on interlockings unreachable from the entrypoint; they are invalid.",
+    "Continuation cycles, even intended loops, until an explicit loop construct defines bounded/intentional repetition.",
+    "Implicit code-only handoffs or duplicate continuations."
+  ],
+  "unless": [],
+  "why": "Interlocking bilateral binding closes declaration→runtime→trace for one routing decision only; journey closure makes handoffs explicit, preventing silent gaps, duplicate continuations, disconnected fragments and artifact-free handoffs.",
+  "evidence": [
+    "The journeyContinuationFindings validator reports no findings for any declared journey at CONFIRM (confirm-blocking), including journeys unchanged by the current task.",
+    "Each finding identifies journey_id, interlocking_id, route_id, artifact, destination_interlocking_id and reason; a reviewer checks every reachable route maps to exactly one continuation or terminal, route_ids are unique per interlocking, and every continuation is anchored (source route, artifact in selected train, destination exist)."
+  ],
+  "verifier_detail": [
+    "route_key: the pair (interlocking_id, route_id); route_id must be unique inside each reachable interlocking so the topology key is unambiguous.",
+    "accounted_route: a reachable route with exactly one outgoing declaration — continuation or terminal, never both.",
+    "Reachability is computed starting from the journey's entrypoint interlocking via continuation edges; continuation or terminal declarations whose source interlocking is unreachable from the entrypoint are invalid.",
+    "Continuation validity (all mandatory): source route must exist; declared artifact must occur in the linear train selected by that route; destination interlocking must exist. artifact_handoff: a continuation artifact that appears in the selected train's declared sequence, proving the cross-interlocking edge is anchored in the plan rather than invented by runtime code. Re-evaluate whenever route-to-train binding or train sequence changes.",
+    "acyclic_topology: continuation edges may not form a cycle in this version; continuation cycles are rejected until an explicit loop construct defines bounded/intentional repetition, so termination and proof obligations are not implicit.",
+    "Validation family: closure; template: graph_route_space_closure; variant: planner_journey_continuation; subject_kind: journey; phase: CONFIRM; enforcement: confirm-blocking. Applies to every journey subject at CONFIRM with no change prerequisite.",
+    "Failure evidence fields: journey_id, interlocking_id, route_id, artifact, destination_interlocking_id, reason.",
+    "Severity 4; disposition: strict."
+  ],
+  "audit": [
+    "schema_version 1.0.0",
+    "source kind: constraint",
+    "status: active",
+    "source name: Journey continuation closure",
+    "implementation: validator planner.static.validators.bun::journeyContinuationFindings",
+    "metadata: severity 4, disposition strict, introduced_in 0.1.0",
+    "Source term ids: route_key, accounted_route, artifact_handoff, acyclic_topology",
+    "Segmentation reconciled against segments.json: statement (S006–S009), rationale (S010–S011) and term ids/texts (S012–S019)."
+  ],
+  "splitSuggestion": [
+    {
+      "id": "planner.journey.route-id-unique",
+      "then": "Give every route inside each reachable interlocking a unique route_id.",
+      "segments": [
+        "S006",
+        "S012",
+        "S013"
+      ]
+    },
+    {
+      "id": "planner.journey.continuation-anchored",
+      "then": "Every continuation must have an existing source route, an artifact occurring in that route's selected linear train, and an existing destination interlocking.",
+      "segments": [
+        "S007",
+        "S016",
+        "S017"
+      ]
+    },
+    {
+      "id": "planner.journey.no-unreachable-declarations",
+      "then": "Do not declare continuations or terminals for interlockings unreachable from the journey entrypoint.",
+      "segments": [
+        "S008"
+      ]
+    },
+    {
+      "id": "planner.journey.acyclic-continuations",
+      "then": "Continuation edges must not form a cycle until an explicit loop construct exists.",
+      "segments": [
+        "S009",
+        "S018",
+        "S019"
+      ]
+    }
+  ],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "split_suggestion",
+      "text": "Source bundles five checks (exactly-once accounting, route_id uniqueness, continuation anchoring, reachability of declarations, acyclicity). Exactly-once accounting kept in then; the others are stated as mandatory prohibitions in avoid, detailed in verifier_detail, and proposed as separate conventions in splitSuggestion.",
+      "justification": "One obligation per then (rule 2) while keeping every source requirement mandatory in active planner-facing text."
+    },
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire situations and change/task_term/file_kind facts (including route-to-train binding and train-sequence changes as optional earlier triggers) derived from the statement; CONFIRM validation of every journey is unconditional. Not literally in source.",
+      "justification": "Schema requires concrete activation; derived only from source content (phase CONFIRM, subject_kind journey, artifact must occur in the train selected by the route)."
+    },
+    {
+      "field": "prefer",
+      "text": "At CONFIRM, re-run the closure walk over every declared journey, not only the ones you edited.",
+      "justification": "Restates the source's CONFIRM-phase, journey-subject validation as a planner move so unchanged journeys are not skipped; no new obligation beyond the source."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Title rephrased imperatively; original name kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "then",
+        "avoid[0]",
+        "prefer[0]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "avoid[1]",
+        "verifier_detail[3]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "avoid[2]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "avoid[3]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "why",
+        "avoid[4]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "why",
+        "avoid[4]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[0]",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[1]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "then",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "verifier_detail[3]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "verifier_detail[3]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "verifier_detail[4]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "verifier_detail[4]",
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "verifier_detail[7]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "verifier_detail[7]",
+        "audit"
+      ],
+      "note": "Disposition kept verbatim as 'strict'; no further policy inferred."
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "activation",
+        "when",
+        "prefer[2]",
+        "verifier_detail[5]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "verifier_detail[5]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "activation",
+        "given",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "evidence[1]",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "evidence[1]",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "evidence[1]",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "evidence[1]",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "evidence[1]",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "evidence[1]",
+        "verifier_detail[6]"
+      ]
+    }
+  ]
+}

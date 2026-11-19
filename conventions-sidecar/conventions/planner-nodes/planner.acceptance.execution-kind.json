@@ -1,0 +1,246 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.acceptance.execution-kind.convention.yaml",
+    "sha256": "e6096d637d7117a0f38e3ce3ff105b2c269e4158fa637ba3ff046c80be36afee"
+  },
+  "rule_id": "planner.acceptance.execution-kind",
+  "kind": "rule",
+  "title": "Declare execution_kind on every acceptance, separate from harness/category",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "acceptance"
+        ],
+        "observability": "observable_now",
+        "note": "REQUIRED (jointly with operation): the changed artifact is an acceptance definition authored by the planner."
+      },
+      {
+        "fact": "operation",
+        "values": [
+          "create",
+          "edit"
+        ],
+        "observability": "observable_now",
+        "note": "REQUIRED (jointly with file_kind): any acceptance being authored or edited. Activation does not depend on whether execution_kind is already present or correct."
+      },
+      {
+        "fact": "task_has_acceptance",
+        "values": [
+          "true"
+        ],
+        "observability": "observable_now",
+        "note": "ALTERNATIVE trigger at task level: a planner task that produces or revises acceptances activates the rule even before a file diff exists."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "new acceptance added (with or without execution_kind)",
+          "existing acceptance edited while lacking execution_kind",
+          "execution_kind value added or changed",
+          "harness_codes/harness_types/category (re)selected"
+        ],
+        "observability": "needs_new_observer",
+        "note": "ALTERNATIVE refinements (any one suffices, none is a prerequisite): needs a diff/schema observer reading the acceptance's execution_kind and harness/category fields. Used to target the check, not to gate activation."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "execution_kind missing",
+          "execution_kind inconsistent with what the acceptance touches (live infra vs hermetic)",
+          "hermetic_integration acceptance uses fakes without a declared fidelity contract"
+        ],
+        "observability": "llm_judged",
+        "note": "OPTIONAL diagnostic trigger, NOT a prerequisite: such a finding re-fires the rule on an otherwise untouched acceptance; deciding whether verification touches live HTTP/DB/auth/deployment needs judgment of the acceptance text."
+      }
+    ],
+    "fires": [
+      "Planner authors a new acceptance, whether or not it already declares a correct execution_kind.",
+      "Planner edits an existing acceptance that lacks an execution_kind.",
+      "Planner (re)selects harness code/type or category on an acceptance.",
+      "An acceptance verifies against a live deployment, database, auth provider or HTTP endpoint and must be classified.",
+      "An acceptance uses recorded LLM responses or cassettes instead of live infrastructure and must be classified.",
+      "A review finding reports an acceptance whose execution_kind is missing or inconsistent with what it touches."
+    ],
+    "doesNotFire": [
+      "Editing plan or wagon prose that does not create or change an acceptance.",
+      "Code changes by a coder that do not touch acceptance definitions."
+    ]
+  },
+  "given": "You author or edit an acceptance, selecting harness code/type and category as usual.",
+  "when": "You classify the runtime environment it runs against.",
+  "then": "Add execution_kind as a separate axis: hermetic_integration (real subject, boundary shape and integration sequence, no live external infrastructure) or live_smoke (verified against real live HTTP, DB, auth or deployment).",
+  "prefer": [
+    "Select harness/category exactly as before, then add execution_kind.",
+    "hermetic_integration when the real integration runs without live infrastructure.",
+    "live_smoke when confidence comes from live infrastructure; SMOKE stays the live-infrastructure tier."
+  ],
+  "avoid": [
+    "Encoding runtime environment in harness codes/types or category, or changing those enums.",
+    "Marking hermetic_integration an acceptance that calls live infrastructure.",
+    "Fakes (cassettes, recorded LLM responses) in hermetic_integration without a declared fidelity contract.",
+    "Treating hermetic_integration as a substitute for SMOKE's live confidence."
+  ],
+  "unless": [],
+  "why": "Live vs hermetic is a different question from harness or category; a separate axis keeps those enums stable while making live-infrastructure dependence explicit.",
+  "evidence": [
+    "Every new or edited acceptance carries an execution_kind with value hermetic_integration or live_smoke.",
+    "harness_codes/harness_types/category values are drawn from the unchanged enums.",
+    "Acceptances marked hermetic_integration reference no live external infrastructure; any fakes they use have a declared fidelity contract.",
+    "Acceptances marked live_smoke verify against real live HTTP, DB, auth or deployment."
+  ],
+  "verifier_detail": [
+    "execution_kind is an enum with exactly two values: hermetic_integration, live_smoke.",
+    "execution_kind is orthogonal to harness_codes, harness_types and category; those enums are unchanged and must not be validated against execution_kind.",
+    "hermetic_integration: real subject, real boundary shape, real integration sequence, NO live external infrastructure; fakes (cassettes, recorded LLM responses) permitted only with a declared fidelity contract (detailed in planner.acceptance.hermetic-fake-contract).",
+    "live_smoke: verification against real live infrastructure (HTTP, DB, auth, deployment); SMOKE remains the live-infrastructure confidence tier.",
+    "Term definition: execution_kind = the runtime-environment classifier for an acceptance."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "source kind: family; status: active",
+    "Source name: Execution kind (runtime-environment axis)",
+    "source: legacy_path src/atdd/planner/conventions/acceptance.convention.yaml, legacy_section execution_kinds, legacy_sha 027e2d86ff127550, extraction_mode high_fidelity",
+    "Axis added per issue #690 as a NEW orthogonal axis; harness_codes/harness_types/category enums left unchanged.",
+    "parity: source_fragments_preserved true, examples_preserved false, implementation_preserved false, fix_hint_preserved false, reviewed_at 2026-06-16"
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "kind",
+      "text": "kind set to 'rule' (source kind is 'family')",
+      "justification": "Output schema requires kind 'rule'; source kind kept in audit."
+    },
+    {
+      "field": "avoid",
+      "text": "Marking hermetic_integration an acceptance that calls live infrastructure.",
+      "justification": "Direct negation of the source's 'NO live external infrastructure' definition, phrased as an anti-pattern for planners; not a new obligation."
+    },
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire situations and REQUIRED/ALTERNATIVE/OPTIONAL labelling of facts",
+      "justification": "Required by schema; derived from the source's scope (every acceptance authored or edited carries execution_kind)."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Informs title; original name kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "why",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "avoid[0]",
+        "verifier_detail[1]",
+        "audit"
+      ],
+      "note": "Issue #690 provenance to audit; enums-unchanged constraint to avoid/verifier."
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "given",
+        "then",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "then",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[4]",
+        "when"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "then",
+        "prefer[1]",
+        "avoid[1]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "avoid[2]",
+        "evidence[2]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "then",
+        "evidence[3]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "prefer[2]",
+        "avoid[3]",
+        "verifier_detail[3]"
+      ]
+    }
+  ]
+}

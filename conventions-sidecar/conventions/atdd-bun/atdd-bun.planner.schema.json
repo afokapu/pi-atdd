@@ -1,0 +1,276 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/atdd-bun.planner/atdd-bun.planner.schema.convention.yaml",
+    "sha256": "16d0a26451758b759e6ca1f5b4f38ae1feff129688306ffcc2f70f6d3974b591"
+  },
+  "rule_id": "atdd-bun.planner.schema",
+  "kind": "rule",
+  "title": "Keep every plan artifact valid against its package-shipped schema",
+  "activation": {
+    "facts": [
+      {
+        "fact": "layer",
+        "values": [
+          "plan"
+        ],
+        "observability": "observable_now",
+        "note": "Plan artifacts live in the planning tree; recognized by path/file kind."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "wagon",
+          "feature",
+          "wmbt",
+          "acceptance",
+          "train",
+          "train_interlocking",
+          "journey_topology",
+          "registry"
+        ],
+        "observability": "observable_now",
+        "note": "Each recognized artifact kind maps to a JSON Schema in planner-schemas/. Applies to every recognized artifact present, whether new, edited or unchanged."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "!**/node_modules/**",
+          "!**/dist/**",
+          "!**/build/**",
+          "!**/_generated/**"
+        ],
+        "observability": "observable_now",
+        "note": "Vendored and generated trees are never scanned (source exception)."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "planner_schema_validation"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Schema-violation findings come from the planner_schema_validation validator; it reports them under this rule or under the owning canonical rule (routing only, not an applicability exclusion)."
+      }
+    ],
+    "fires": [
+      "A planner creates or edits a wagon, feature, WMBT (with its acceptances), train, train interlocking, journey topology or registry file.",
+      "Plan validation runs over a repository containing existing, unchanged recognized plan artifacts.",
+      "A recognized plan artifact fails its JSON Schema, including violations that are reported under a canonical rule such as planner.train.naming."
+    ],
+    "doesNotFire": [
+      "Files under node_modules, dist, build or _generated.",
+      "Files that are not a recognized plan artifact kind."
+    ]
+  },
+  "given": "A recognized plan artifact (wagon, feature, WMBT and its acceptances, train, train interlocking, journey topology, registry) outside vendored/generated trees — new, edited or already present",
+  "when": "The planner authors or edits plan artifacts, or plan validation runs over the repository",
+  "then": "Every such artifact satisfies its JSON Schema in `planner-schemas/`.",
+  "prefer": [
+    "Correct the field the finding names, as the schema requires.",
+    "Check the artifact's schema in `planner-schemas/` before adding or renaming fields."
+  ],
+  "avoid": [
+    "Leaving a schema violation in place on the assumption that downstream rules will tolerate it — they assume the schema shape and break silently.",
+    "Editing or loosening the package-shipped schema to make an artifact pass."
+  ],
+  "unless": [
+    "Vendored and generated trees (`node_modules`, `dist`, `build`, `_generated`) are never scanned."
+  ],
+  "why": "The schemas are the shape every other rule assumes. An artifact that breaks its schema breaks those assumptions silently.",
+  "evidence": [
+    "The planner_schema_validation validator, run over all recognized plan artifacts in the repository (not only changed ones), reports no schema violations — neither under atdd-bun.planner.schema nor under the canonical rule a violation is routed to.",
+    "Each finding is fixed by correcting the named field as the schema requires."
+  ],
+  "verifier_detail": [
+    "Validate every recognized plan artifact (wagon, feature, WMBT and its acceptances, train, train interlocking, journey topology, registries) against its JSON Schema in `planner-schemas/`, regardless of whether it changed.",
+    "Routing: a violation that belongs to a canonical rule is reported under that rule (for example `planner.train.naming`); every other violation is reported under atdd-bun.planner.schema (catch-all). Routing decides attribution only; the artifact is still required to conform.",
+    "Never scan vendored/generated trees: `node_modules`, `dist`, `build`, `_generated`.",
+    "Validator prerequisite (from graph requires edge): schema validation operates on a parsed document, so parsing (atdd-bun.planner.parse) runs first. A parse failure is not an exemption from schema conformity; the artifact must both parse and conform.",
+    "Severity 3, disposition strict."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "Aliases: ATDD-BUN-PLANNER-SCHEMA.",
+    "Implementation: validator, ref planner_schema_validation.",
+    "Package rule, strict. Term package_rule: a rule of this package's own gates (`atdd-bun.*`), realized by a package guard rather than a canonical planner node. It is held to the same per-rule checks as every convention: a convention, strict, a failing fixture, relationship edges.",
+    "Summary: Plan artifacts satisfy their package-shipped schema."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Strict disposition: fails on every finding, no advisory mode, no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "avoid",
+      "text": "Editing or loosening the package-shipped schema to make an artifact pass.",
+      "justification": "Metric-gaming anti-pattern implied by 'package-shipped schema' being the fixed reference; authoring rules require naming gaming moves."
+    },
+    {
+      "field": "prefer",
+      "text": "Check the artifact's schema in `planner-schemas/` before adding or renaming fields.",
+      "justification": "Concrete planner move derived from the statement; makes the obligation actionable at authoring time."
+    },
+    {
+      "field": "verifier_detail",
+      "text": "Parsing (atdd-bun.planner.parse) runs before schema validation; parse failure is not an exemption.",
+      "justification": "Taken from graph.json requires edge, not from the source; stated as a validator prerequisite, not an applicability exclusion."
+    },
+    {
+      "field": "when",
+      "text": "'or plan validation runs over the repository' and 'new, edited or already present' in given.",
+      "justification": "Makes explicit the source's universal scope ('Every recognized plan artifact'), so unchanged artifacts are covered; not a new obligation."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ],
+      "note": "Rendered as title."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "then",
+        "activation",
+        "verifier_detail[0]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "verifier_detail[1]",
+        "evidence[0]"
+      ],
+      "note": "Routing of findings only; does not narrow applicability."
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "audit"
+      ],
+      "note": "Meta-requirement on package rules' own convention artifacts, not a planner decision."
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "audit",
+        "then"
+      ],
+      "note": "Duplicates name/statement."
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "why",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "prefer[0]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "unless[0]",
+        "activation",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "identity",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "audit",
+        "evidence[0]"
+      ]
+    }
+  ]
+}

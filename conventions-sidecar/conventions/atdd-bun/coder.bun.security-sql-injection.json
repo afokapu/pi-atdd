@@ -1,0 +1,326 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.bun/coder.bun.security-sql-injection.convention.yaml",
+    "sha256": "b4cbc3a446bbbf874762fd13c873305eaf7417c45a6206133163509b97267faa"
+  },
+  "rule_id": "coder.bun.security-sql-injection",
+  "kind": "rule",
+  "title": "Parameterise SQL; never interpolate or concatenate it",
+  "activation": {
+    "facts": [
+      {
+        "fact": "path_glob",
+        "values": [
+          "bun.lock",
+          "bun.lockb",
+          "bunfig.toml"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Bun stack/runtime scope: the repository (or package containing the changed file) is a Bun project, established by a stack observer that detects a Bun lockfile or bunfig.toml at the project root, or a file importing bun:sqlite / using Bun.sql. Language alone cannot distinguish Bun from Node.js, so this fact is required; no current observer reports project-level stack membership for a changed file, hence needs_new_observer."
+      },
+      {
+        "fact": "language",
+        "values": [
+          "typescript",
+          "javascript"
+        ],
+        "observability": "observable_now",
+        "note": "Code language of the changed file. Necessary but not sufficient: it must be combined with the Bun stack fact. Applies to source and test files alike; no file-kind restriction in the source."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "sql_text_passed_to_query_sink"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Code-level observer: SQL text is passed to a bun:sqlite query/run/exec/prepare call, Bun.sql, or a postgres/mysql client method. Applies to any such call (new, edited or existing being worked on); this is a scope signal, not an exclusive gate. Facts are conjunctive: Bun stack AND JS/TS language AND a query-sink call carrying SQL text."
+      }
+    ],
+    "fires": [
+      "In a Bun project, a bun:sqlite query/run/exec/prepare call receives an untagged template literal with a SQL keyword and a ${} interpolation.",
+      "In a Bun project, a bun:sqlite query/run/exec/prepare call receives a quoted SQL string followed by + concatenation.",
+      "In a Bun project, a postgres/mysql client method receives an untagged SQL template literal with ${} interpolation.",
+      "In a Bun project, a postgres/mysql client method receives a quoted SQL string concatenated with +.",
+      "In a Bun project, SQL text built by interpolation or concatenation is passed to Bun.sql as a plain string (not as a tagged template).",
+      "Any of the above shapes, in a Bun project, appears in a test file or in an existing call being touched."
+    ],
+    "doesNotFire": [
+      "A tagged template such as sql`... ${id}` (Bun.sql binds each substitution).",
+      "A template literal containing no SQL keyword (not SQL).",
+      "Static SQL with no interpolation or concatenation.",
+      "A query sink called with a placeholder string plus bound parameters, e.g. .get(id).",
+      "A postgres/mysql client call in a JavaScript/TypeScript project that is not a Bun project (e.g. a Node.js-only project); this Bun realization does not scope it."
+    ]
+  },
+  "given": "Bun-project code calls a query sink (bun:sqlite query/run/exec/prepare, Bun.sql, or a postgres/mysql client method)",
+  "when": "SQL text is passed to that sink",
+  "then": "Do not build that SQL by interpolating an untagged template literal or concatenating strings; use a tagged sql`` template or placeholders with bound parameters.",
+  "prefer": [
+    "db.query(\"SELECT * FROM orders WHERE id = ?\").get(id)  // bound parameter",
+    "await sql`SELECT * FROM orders WHERE id = ${id}`  // Bun.sql binds"
+  ],
+  "avoid": [
+    "db.query(`SELECT * FROM orders WHERE id = ${id}`)  // untagged: value spliced",
+    "A quoted SQL string followed by + and a value.",
+    "Mistaking an untagged template for a tagged one; they look almost identical."
+  ],
+  "unless": [
+    "Tagged templates (sql`...`) are parameterised by construction and never flagged.",
+    "Template literals with no SQL keyword are not SQL and are skipped.",
+    "Static SQL with no interpolation is not injectable."
+  ],
+  "why": "A tagged template parameterises each substitution; an untagged template or concatenation yields a finished string before the sink sees it, so values become SQL.",
+  "evidence": [
+    "bun_security_hygiene_detector reports no SECURITY-SQL-INJECTION-001 finding on the touched files (a finding is verification evidence, not a precondition for applying the rule).",
+    "Reviewer confirms every query-sink call touched passes either static SQL with no interpolation or concatenation, placeholders with bound parameters, or a tagged sql`` template."
+  ],
+  "verifier_detail": [
+    "Query sinks: bun:sqlite query / run / exec / prepare, Bun.sql, and postgres/mysql client methods (term query_sink: a call that executes SQL).",
+    "Flag a query-sink call whose first argument is a template literal containing both a SQL keyword and a ${} interpolation, or a quoted SQL string followed by +.",
+    "Term tagged_template: sql`…` — a template invoking a function that PARAMETERISES each substitution; safe by construction and visually almost identical to the untagged form that is not. The load-bearing subtlety: tagged is safe, untagged is not. The detector therefore flags only the untagged shape.",
+    "Skip: tagged templates; template literals with no SQL keyword; static SQL with no interpolation.",
+    "Severity 4; disposition strict (as stated in source metadata)."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "Aliases: SECURITY-SQL-INJECTION-001 (core alias).",
+    "Implementation: validator, ref bun_security_hygiene_detector (realizes core alias SECURITY-SQL-INJECTION-001).",
+    "Stack-neutral obligation, RE-REALIZED for Bun: the python-pytest sibling walks a Python AST for execute / executemany / raw / execute_sql and its own manifest scopes it 'python stack only'.",
+    "The tagged-vs-untagged template distinction has no Python analogue at all, which is why the rule had to be re-realized rather than translated."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "Activation facts and fires/doesNotFire examples, including a Bun stack/runtime fact (Bun lockfile/bunfig.toml or bun:sqlite/Bun.sql usage; needs_new_observer), the JS/TS language fact, and the code-level observer for SQL text passed to a query sink; non-Bun (e.g. Node.js-only) postgres/mysql calls listed as doesNotFire.",
+      "justification": "Required by the target structure; the source is the Bun realization (sinks named as 'Bun's sinks'), so the Bun scope is derived from the source; language alone cannot distinguish Bun from Node.js. Adds no new obligation."
+    },
+    {
+      "field": "evidence",
+      "text": "Evidence items (no detector finding; reviewer confirms each touched query-sink call uses static SQL without interpolation/concatenation, bound parameters, or a tagged template).",
+      "justification": "Source names the detector but no explicit evidence list; these restate the detector check and respect the source's static-SQL and tagged-template exceptions."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ],
+      "note": "Title."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit",
+        "activation"
+      ],
+      "note": "Bun scope (re-realized for Bun) informs the Bun stack activation fact."
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "given",
+        "activation",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[0]",
+        "given"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[2]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[2]",
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "verifier_detail[2]",
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "why",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "then",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "unless[2]",
+        "verifier_detail[3]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "identity",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "identity",
+        "verifier_detail[4]"
+      ],
+      "note": "Disposition strict preserved verbatim; no enforcement semantics invented."
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,417 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.wmbt.must-have-smoke-acceptance.convention.yaml",
+    "sha256": "d0820920fbd870e727a88a154903c4e90280e90bff85c3917f407095e8075818"
+  },
+  "rule_id": "planner.wmbt.must-have-smoke-acceptance",
+  "kind": "rule",
+  "title": "Declare at least one SMOKE acceptance on every WMBT",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "wmbt_yaml"
+        ],
+        "observability": "observable_now",
+        "note": "WMBT YAML files under the plan tree (resolvable via `atdd repo resolve <wmbt-urn>`). The rule is a standing invariant over every such file, regardless of whether it is being edited."
+      },
+      {
+        "fact": "operation",
+        "values": [
+          "create",
+          "modify",
+          "read",
+          "validate"
+        ],
+        "observability": "observable_now",
+        "note": "Fires when a WMBT is authored, edited, or merely inspected/reviewed/validated without edits; an existing noncompliant WMBT is in scope."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "planner.wmbt.must-have-smoke-acceptance"
+        ],
+        "observability": "observable_now",
+        "note": "Validator test_wmbt_has_smoke_acceptance reports a WMBT with 0 SMOKE acceptance URNs."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "docs-only",
+          "metadata-only"
+        ],
+        "observability": "llm_judged",
+        "note": "Whether a WMBT genuinely has no real infrastructure to verify (the only exception) is a judgement, not a mechanical fact."
+      }
+    ],
+    "fires": [
+      "A planner creates a new WMBT whose acceptances are all non-SMOKE harness types.",
+      "A planner edits a WMBT and removes or renames its only SMOKE acceptance.",
+      "A planner reviews or validates an existing, unedited WMBT that declares no SMOKE acceptance.",
+      "The validator reports a WMBT declaring 0 acceptance URNs with the SMOKE harness token."
+    ],
+    "doesNotFire": [
+      "A WMBT already declares an acceptance with URN acc:<wagon>:<wmbt_id>-SMOKE-NNN[-<slug>] and identity.phase SMOKE.",
+      "A genuinely docs-only / metadata WMBT with no real infrastructure carries an unexpired suppression marker on its urn: line.",
+      "Plan artefacts that are not WMBTs (wagon manifests, docs)."
+    ]
+  },
+  "given": "Any WMBT in the plan — new, edited, or existing and untouched",
+  "when": "the planner authors, edits, reviews or validates it",
+  "then": "Ensure it declares at least one acceptance whose identity.urn matches acc:<wagon>:<wmbt_id>-SMOKE-NNN[-<slug>] and whose identity.phase is SMOKE.",
+  "prefer": [
+    "Make the SMOKE acceptance the explicit real-infrastructure check between GREEN and REFACTOR.",
+    "Repair: `atdd repo resolve <wmbt-urn>`, open the WMBT YAML at the violation location, add the SMOKE acceptance, re-run the validator until clean."
+  ],
+  "avoid": [
+    "WMBTs with no declared real-infrastructure (SMOKE) check.",
+    "Assuming downstream SMOKE tests suffice without declaring the acceptance in the WMBT.",
+    "Suppressing a WMBT that exercises real infrastructure, or without an UNTIL expiry."
+  ],
+  "unless": [
+    "WMBT is genuinely docs-only / metadata with no real infra to verify: add `# atdd:suppress(planner.wmbt.must-have-smoke-acceptance) UNTIL=YYYY-MM-DD` on its urn: line, YYYY-MM-DD = today + 90 days."
+  ],
+  "why": "Tester rules only check coverage of SMOKE tests that exist; without a declared SMOKE acceptance the lifecycle has no explicit real-infrastructure verification before REFACTOR.",
+  "evidence": [
+    "Every WMBT YAML has at least one acceptance with identity.urn matching acc:<wagon>:<wmbt_id>-SMOKE-NNN[-<slug>] and identity.phase \"SMOKE\", or a valid suppression per unless[0]: the WMBT is genuinely docs-only/metadata with no real infrastructure to verify, and the marker `# atdd:suppress(planner.wmbt.must-have-smoke-acceptance) UNTIL=YYYY-MM-DD` sits on its urn: line with an unexpired UNTIL date set to today + 90 days when added.",
+    "pytest src/atdd/validators/conventions/coverage/test_wmbt_has_smoke_acceptance.py -v passes."
+  ],
+  "verifier_detail": [
+    "Count, per WMBT, acceptance URNs carrying the SMOKE harness token; a violation is a count of 0. Report location as the WMBT YAML path and line (e.g. plan/<wagon_dir>/<wmbt_id>.yaml:1). Applies to every WMBT file, edited or not.",
+    "Term smoke_acceptance: an acceptance URN carrying the SMOKE harness token; urn_shape acc:<wagon>:<wmbt_id>-SMOKE-NNN[-<slug>]; phase SMOKE.",
+    "Term suppression_marker: inline opt-out for genuinely docs-only WMBTs with no real infra; syntax `# atdd:suppress(planner.wmbt.must-have-smoke-acceptance) UNTIL=YYYY-MM-DD`; placement: the WMBT's urn: line, e.g. urn: \"wmbt:<wagon>:<wmbt_id>\"  # atdd:suppress(planner.wmbt.must-have-smoke-acceptance) UNTIL=YYYY-MM-DD. The source instructs substituting YYYY-MM-DD with today + 90 days.",
+    "Fix-hint resolve example from source: `atdd repo resolve wmbt:govern-lifecycle:E003` -> plan/govern_lifecycle/E003.yaml:1.",
+    "Validator implementation: conventions/coverage/test_wmbt_has_smoke_acceptance::test_fault_injection_legacy_parity_both_catch."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 3.50.0; aliases [].",
+    "Name: WMBT must have a SMOKE acceptance. Severity 3; disposition suppress-and-clean.",
+    "implementation: validator conventions/coverage/test_wmbt_has_smoke_acceptance::test_fault_injection_legacy_parity_both_catch.",
+    "source: legacy_path src/atdd/planner/conventions/wmbt.convention.yaml, section rules, legacy_sha 040256ed5588a6c7, extraction_mode high_fidelity, legacy_rule_id planner.wmbt.must-have-smoke-acceptance.",
+    "parity: source_fragments_preserved true, examples_preserved false, implementation_preserved true, fix_hint_preserved true, reviewed_at 2026-06-16.",
+    "Mirrors tester.smoke.pres (#293) / src/atdd/tester/conventions/smoke.convention.yaml::TESTER-SMOKE-PRES-001 (template pattern); closes the substrate-asymmetry incident in issue #681 where tester checked coverage of existing SMOKE tests but no rule required SMOKE acceptances to be declared in the first place."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire scenarios and activation facts (file_kind wmbt_yaml, operation create/modify/read/validate, llm_judged docs-only exception).",
+      "justification": "Required by the output schema; derived from the source statement ('Every WMBT'), fix hint and exception; adds no new obligation."
+    },
+    {
+      "field": "avoid",
+      "text": "Avoid suppressing WMBTs that exercise real infrastructure or without UNTIL expiry.",
+      "justification": "Restates the bounds of the authored exception (genuinely docs-only, UNTIL date) as an anti-pattern; no new waiver."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "then",
+        "why"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "why",
+        "avoid[1]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[0]",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "why",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "why",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "prefer[1]"
+      ],
+      "note": "Intro to the repair sequence."
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "verifier_detail[0]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "then",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "unless[0]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "unless[0]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[2]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "verifier_detail[2]",
+        "unless[0]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "unless[0]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "verifier_detail[1]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "verifier_detail[1]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S045",
+      "dest": [
+        "verifier_detail[2]",
+        "unless[0]"
+      ]
+    },
+    {
+      "seg": "S046",
+      "dest": [
+        "verifier_detail[2]",
+        "unless[0]"
+      ]
+    },
+    {
+      "seg": "S047",
+      "dest": [
+        "verifier_detail[2]",
+        "unless[0]"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,371 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.bun/coder.bun.green-header-runtime.convention.yaml",
+    "sha256": "da6be7412676fe344e5fe675caff660187c263e398750dc743546f6255995cc6"
+  },
+  "rule_id": "coder.bun.green-header-runtime",
+  "kind": "rule",
+  "title": "Declare the runtime the file executes in",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "implementation"
+        ],
+        "observability": "observable_now",
+        "note": "Every non-test implementation file, whether newly created or already existing, and regardless of whether its header is edited in the current change. Test files are excluded by the source."
+      },
+      {
+        "fact": "layer",
+        "values": [
+          "any"
+        ],
+        "observability": "observable_now",
+        "note": "No layer restriction: the obligation applies across all layers of the Bun stack (server and browser alike)."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "<files belonging to a project whose stack is Bun>"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Stack context must be explicit (repository stack configuration identifying the Bun realization). Language (TypeScript/JavaScript) is NOT a proxy, since the Vite stack uses the same languages with a different vocabulary. Needs an observer that resolves the file's stack from repository configuration."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "GREEN-HEADER-001",
+          "BUN-GREEN-HEADER-RUNTIME-001"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Whether the declared value matches the file's actual server/browser execution path (including genuine dual execution) needs an observer that traces the module's real runtime; the detector checks presence/vocabulary. Findings are repair triggers, not prerequisites for the obligation."
+      }
+    ],
+    "fires": [
+      "A new implementation file in a Bun-stack project has no `Runtime:` header line.",
+      "An existing implementation file in a Bun-stack project lacks a `Runtime:` line, even if the current change does not touch its header.",
+      "An implementation file's `Runtime:` value is not one of `bun`, `browser`, `isomorphic`.",
+      "An implementation file's declared runtime does not match where it actually executes (e.g. its execution path changed but the header was left untouched).",
+      "A module runs both server-side and again in the browser and is declared with a single-side value instead of `isomorphic`."
+    ],
+    "doesNotFire": [
+      "Test files.",
+      "Files in Vite or Python stacks (handled by their own per-stack detectors with their own vocabulary)."
+    ]
+  },
+  "given": "A non-test implementation file in a Bun-stack project, new or existing",
+  "when": "the file is present in the codebase (created, edited, or untouched) and its runtime declaration is checked",
+  "then": "The file MUST carry a `Runtime:` declaration naming where it actually executes: `bun`, `browser`, or `isomorphic`.",
+  "prefer": [
+    "During GREEN: derive the value from the real execution path created or used by the current acceptance (where the module is actually loaded and run), not from file location or hypothetical reuse.",
+    "During GREEN: keep an existing correct runtime declaration.",
+    "During GREEN: change only the header when the implementation already executes in the correct place.",
+    "Use `isomorphic` only for a module that genuinely runs both server-side and in the browser."
+  ],
+  "avoid": [
+    "Broadening the fix: moving code between server and browser merely to fit a preferred label.",
+    "Guessing `isomorphic` because the file could theoretically run in both places.",
+    "Picking a wrong single-side value for a module that really runs in both places."
+  ],
+  "unless": [
+    "Test files are excluded."
+  ],
+  "why": "Bun decides at run time what a bundler decides at build time, so a full-stack Bun module can routinely run in both places; without an `isomorphic` value authors would be forced to pick a wrong one and every downstream reader would inherit the error.",
+  "evidence": [
+    "bun_green_traceability_detector reports no GREEN-HEADER-001 / BUN-GREEN-HEADER-RUNTIME-001 finding for the file (findings are evidence/repair triggers, not activation prerequisites).",
+    "The declaration matches where the file actually executes (a valid value alone is not sufficient).",
+    "The current behavioral acceptance passes in its real runtime."
+  ],
+  "verifier_detail": [
+    "Runtime field = the `Runtime:` header line naming where the file executes; allowed values on Bun: `bun`, `browser`, `isomorphic`.",
+    "A missing declaration is reported at the URN line, or at the first meaningful line when there is no URN.",
+    "Test files are excluded from detection.",
+    "Severity 2; disposition strict (see shared:policy.strict-disposition).",
+    "Per-stack vocabulary: Vite reads `vite|browser|node`, Python reads `python`; `isomorphic` has no Vite counterpart and is the substantive Bun addition.",
+    "Rationale for isomorphic: a bundler stack decides at BUILD time which code reaches the browser, so a file is server or client by where the bundler puts it; Bun decides at RUN time, e.g. a fragment renderer used server-side and again after a client-side swap."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "Aliases: GREEN-HEADER-001 (shared core alias, also carried by the Python realization and coder.vite.green-header-runtime — one obligation, three per-stack detectors), BUN-GREEN-HEADER-RUNTIME-001.",
+    "Implementation: validator bun_green_traceability_detector.",
+    "Stack-neutral obligation (\"the file says where it runs\"), Bun-specific vocabulary; realized by bun_green_traceability_detector (core alias GREEN-HEADER-001).",
+    "Term ids: runtime_field, isomorphic."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "strict: the stack's checker fails on every finding; there is no advisory mode and no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire examples and activation facts (file_kind, layer=any, Bun stack context via path_glob, detector finding / execution-path observer).",
+      "justification": "Required by the output schema; derived directly from the source scope (every implementation file, test exclusion, Bun-specific vocabulary vs. Vite/Python, declaration must match actual execution)."
+    },
+    {
+      "field": "prefer[0]",
+      "text": "Clarifier '(where the module is actually loaded and run), not from file location or hypothetical reuse.'",
+      "justification": "Third-party reviewer flagged that coders may infer execution from file location; this restates 'real execution path' and S027's anti-guessing, adding no new obligation."
+    },
+    {
+      "field": "avoid",
+      "text": "Picking a wrong single-side value for a module that really runs in both places.",
+      "justification": "Restates source S018 (authors forced to pick a wrong one) as an anti-pattern; not a new obligation."
+    },
+    {
+      "field": "policy.strict-disposition",
+      "text": "Interpretation of `strict` as: fails on every finding, no advisory mode, no ratchet baseline.",
+      "justification": "Source only says disposition `strict`; the shared node carries the repository-wide meaning of that disposition value, it adds no rule-specific obligation."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ],
+      "note": "Title."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "given",
+        "activation"
+      ],
+      "note": "Universal: every implementation file, existing or new, regardless of phase or header edits."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "verifier_detail[0]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "prefer[3]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[4]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "why",
+        "verifier_detail[5]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "why",
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "structure"
+      ],
+      "note": "Heading; the canonical path is the then obligation."
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "prefer[0]",
+        "prefer[1]",
+        "prefer[2]"
+      ],
+      "note": "'During GREEN' scopes all three repair instructions and is stated explicitly in each."
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "avoid[0]"
+      ],
+      "note": "Do-not-broaden grouping retained in avoid wording."
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "structure"
+      ],
+      "note": "Heading; proof items are in evidence."
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "identity",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

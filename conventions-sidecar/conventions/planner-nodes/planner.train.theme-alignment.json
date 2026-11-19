@@ -1,0 +1,261 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.train.theme-alignment.convention.yaml",
+    "sha256": "b9c166fe4c09e480a5eeca2f8cd629aafb21d55fa5f3668bedcc3f4372640787"
+  },
+  "rule_id": "planner.train.theme-alignment",
+  "kind": "rule",
+  "title": "Declare each train's themes explicitly, primary theme first",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "train",
+          "wagon"
+        ],
+        "observability": "observable_now",
+        "note": "Train and wagon definition files are identifiable by path/kind in the planning area; wagon files matter because a wagon's theme and membership feed its train's theme fit."
+      },
+      {
+        "fact": "operation",
+        "values": [
+          "create",
+          "edit",
+          "delete",
+          "move"
+        ],
+        "observability": "observable_now",
+        "note": "Fires when a train is authored or edited, or when a wagon is created, edited, deleted, or moved between trains."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "train",
+          "theme",
+          "wagon"
+        ],
+        "observability": "observable_now",
+        "note": "Planning tasks that mention trains, themes, or adding/removing/moving/re-theming wagons."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "train created",
+          "train touched while lacking an explicit themes list",
+          "wagon added to or moved into a train",
+          "wagon removed from or moved out of a train (affects source and destination trains)",
+          "train themes list added, removed, changed or reordered",
+          "theme of an existing member wagon changed (in the wagon file or elsewhere)"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Diff-level observer over train and wagon files; must resolve every train whose membership, themes list or member-wagon themes changed, including the train a wagon left."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "train_themes_not_declared",
+          "wagons_mostly_off_primary_theme"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Detector reads each train: flags a missing/empty explicit themes list; separately reports how many member wagons match the first declared theme."
+      }
+    ],
+    "fires": [
+      "Planner creates a new train and assigns wagons to it",
+      "Planner touches a train that has no explicit themes list (missing declaration must be fixed, not skipped)",
+      "Planner adds or moves wagons into an existing train whose primary theme differs from the new wagons' theme",
+      "Planner removes a wagon from a train, or moves a wagon out of one train into another (both trains are rechecked)",
+      "Planner reorders a train's themes list, changing which theme is primary",
+      "Planner changes the theme of an existing wagon that belongs to a train, even when the train file itself is not edited"
+    ],
+    "doesNotFire": [
+      "Editing a wagon's acceptances without changing its theme or train membership",
+      "Editing code or tests outside planning artifacts",
+      "Validating that a theme name is canonical (covered by planner.theme.must-be-canonical)"
+    ]
+  },
+  "given": "A train groups themed wagons and may not yet declare a themes list.",
+  "when": "You create a train, touch one lacking an explicit themes list, change its themes or their order, add/remove/move its wagons, or re-theme a member wagon.",
+  "then": "The train declares its themes explicitly as a list whose first entry is its primary theme.",
+  "prefer": [
+    "Most wagons should match the primary (first declared) theme; keep it so when adding, moving or re-theming wagons.",
+    "For a train spanning multiple themes, list the dominant theme first, others after as secondary.",
+    "On a move, recheck both the train left and the train joined."
+  ],
+  "avoid": [
+    "Themes only implied by the train's name or wagons.",
+    "Letting most wagons drift to a secondary or undeclared theme.",
+    "Listing many secondary themes just to make off-theme wagons look aligned."
+  ],
+  "unless": [
+    "Secondary themes are allowed when a train spans multiple themes; not every wagon needs to match the primary."
+  ],
+  "why": "The primary theme is the first declared theme, so it exists only if themes are declared explicitly; most wagons matching it keeps the train coherent.",
+  "evidence": [
+    "Each affected train has an explicit, non-empty themes list; its first entry is the primary theme.",
+    "For each affected train, the count/ratio of member wagons matching the primary theme is reported (source: most should match)."
+  ],
+  "verifier_detail": [
+    "Term theme_alignment: primary theme is the first declared theme; most wagons match it.",
+    "Source example (single theme, illustrative): train:orders:checkout -> themes:[orders] (all wagons orders). This illustrates one aligned train; the general standard is 'most', not 'all'.",
+    "Source example (multi-theme): train:commerce:fulfilment -> themes:[orders, inventory].",
+    "Majority alignment is phrased in the source as 'should'; 'most' is not quantified. Report the matching ratio (reading 'most' as more than half) rather than inventing a stricter threshold or presenting it as this rule's mandatory gate.",
+    "A train with a missing or empty themes list is flagged (train_themes_not_declared); do not treat it as unknown/exempt.",
+    "Recheck every train whose membership changed (including the source train of a moved or removed wagon) and every train containing a wagon whose theme changed, not only trains whose file changed."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "kind: rule; status: active",
+    "source: legacy_path src/atdd/planner/conventions/train.convention.yaml, legacy_section theme_alignment, legacy_sha 825602729f11a3a4, extraction_mode high_fidelity",
+    "parity: source_fragments_preserved true, examples_preserved true, implementation_preserved false, fix_hint_preserved false, reviewed_at 2026-06-16",
+    "name: Train theme alignment",
+    "Source statement (verbatim): A train declares its themes explicitly; most wagons should match the primary declared theme; secondary themes are allowed when a train spans multiple themes."
+  ],
+  "splitSuggestion": [
+    {
+      "id": "planner.train.primary-theme-majority",
+      "then": "Most of a train's wagons should match its primary (first declared) theme; secondary themes are allowed when the train spans multiple themes.",
+      "segments": [
+        "S006",
+        "S008",
+        "S009",
+        "S012"
+      ]
+    }
+  ],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "split_suggestion",
+      "text": "Majority alignment ('most wagons should match the primary declared theme') is a separate obligation; proposed as planner.train.primary-theme-majority. In this rule it is kept at its source strength ('should') in prefer[0]/avoid[1].",
+      "justification": "One obligation per then; explicit declaration is the primary, unconditionally-stated obligation and the precondition for a primary theme to exist."
+    },
+    {
+      "field": "verifier_detail",
+      "text": "'Most' read as more than half for reporting; ratio reported, not a stricter threshold.",
+      "justification": "Source leaves 'most' unquantified; plain-language reading needed for consistent reporting without strengthening the 'should'."
+    },
+    {
+      "field": "verifier_detail",
+      "text": "Missing/empty themes list is flagged; recheck source and destination trains on moves/removals and trains containing re-themed wagons.",
+      "justification": "Operational consequences of the source statement; membership and wagon themes can change outside the train file."
+    },
+    {
+      "field": "prefer",
+      "text": "On a move, recheck both trains.",
+      "justification": "Removing a wagon can shift the source train's majority; operational consequence, not a new obligation."
+    },
+    {
+      "field": "avoid",
+      "text": "Listing many secondary themes just to make off-theme wagons look aligned.",
+      "justification": "Metric-gaming anti-pattern implied by the secondary-theme allowance; keeps the exception non-exploitable."
+    },
+    {
+      "field": "why",
+      "text": "Rationale phrased as train coherence with its declared primary theme.",
+      "justification": "Source gives no explicit rationale; restates the source term (primary = first declared; most wagons match) without new causal claims."
+    },
+    {
+      "field": "activation.doesNotFire",
+      "text": "Theme canonicality is covered by planner.theme.must-be-canonical.",
+      "justification": "Derived from graph.json requires-edge, to keep scope boundaries clear."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Basis for title."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "prefer[0]",
+        "prefer[1]",
+        "avoid[0]",
+        "avoid[1]",
+        "unless[0]",
+        "evidence[0]",
+        "evidence[1]",
+        "verifier_detail[3]",
+        "verifier_detail[4]",
+        "audit"
+      ],
+      "note": "Explicit declaration in then; majority alignment kept as 'should' in prefer[0]/avoid[1] and proposed as separate convention; secondary-theme allowance in unless/prefer[1]; verbatim in audit."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "verifier_detail[1]"
+      ],
+      "note": "Illustrative example only; not generalised to 'all wagons'."
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "verifier_detail[2]",
+        "prefer[1]"
+      ],
+      "note": "Neutralised in prefer; verbatim in verifier_detail."
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[0]",
+        "verifier_detail[3]",
+        "then",
+        "prefer[0]",
+        "evidence[0]",
+        "evidence[1]"
+      ]
+    }
+  ]
+}

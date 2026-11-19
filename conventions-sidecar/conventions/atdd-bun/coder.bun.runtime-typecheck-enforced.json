@@ -1,0 +1,653 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.bun/coder.bun.runtime-typecheck-enforced.convention.yaml",
+    "sha256": "7b55574ba86b0ee85da85babf6cd671f57b2aa15faabb4484d518b02e0a7b79e"
+  },
+  "rule_id": "coder.bun.runtime-typecheck-enforced",
+  "kind": "rule",
+  "title": "Wire a real no-emit typecheck into a TypeScript Bun project's check path",
+  "activation": {
+    "facts": [
+      {
+        "fact": "language",
+        "values": [
+          "typescript"
+        ],
+        "observability": "observable_now",
+        "note": "Tree contains at least one .ts/.tsx source."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "package.json",
+          "tsconfig.json",
+          "*.ts",
+          "*.tsx"
+        ],
+        "observability": "observable_now",
+        "note": "Scope requires a package.json AND at least one .ts/.tsx source; tsconfig, dependencies and scripts are read from these files."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "package.json",
+          "tsconfig*.json",
+          "**/*.ts",
+          "**/*.tsx"
+        ],
+        "observability": "observable_now",
+        "note": "Read at the consumer repository root."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "bun.lock",
+          "bun.lockb",
+          "bunfig.toml"
+        ],
+        "observability": "observable_now",
+        "note": "Declared addition: marker files used to identify the tree as a Bun project; the source says only 'Bun project'."
+      },
+      {
+        "fact": "operation",
+        "values": [
+          "edit",
+          "validate"
+        ],
+        "observability": "observable_now",
+        "note": "Any work on or validation of the project; standing obligation, not restricted to diffs touching config."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "repository-is-convention-hub"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Consumer vs convention-hub/package-repository classification; the hub is excluded. Needs a repository-classification observer."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "coder.bun.runtime-typecheck-enforced"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Validator result: missing typechecker dependency, missing tsconfig, no no-emit typecheck script, or demonstrably-not-strict tsconfig. Evaluated on every in-scope consumer project whether or not the current task edited these files."
+      }
+    ],
+    "fires": [
+      "Any work on or validation of a consumer Bun project with package.json and .ts/.tsx sources, regardless of whether the current change touches dependencies, tsconfig or scripts.",
+      "A Bun TypeScript project has no TypeScript (or native preview such as tsgo) in dependencies/devDependencies.",
+      "A Bun TypeScript project has no tsconfig.json.",
+      "A Bun TypeScript project has TypeScript and a tsconfig.json, but no script runs a no-emit typecheck.",
+      "A Bun TypeScript project's tsconfig.json that extends no base config sets \"strict\": false, or enables no strict-family flag."
+    ],
+    "doesNotFire": [
+      "A JS-only Bun app with no .ts/.tsx sources.",
+      "Strictness of a tsconfig that extends a base config (never reported; the other requirements still apply).",
+      "The convention hub/package repository whose .ts files are deliberately-wrong fixtures.",
+      "The script (HOW) requirement only: a project using any recognised no-emit checker (tsc --noEmit, tsgo --noEmit, vue-tsc, svelte-check, astro check, tsc --build) in any script, or a script named typecheck / check-types / types, satisfies that requirement — the rule still fires if the TypeScript dependency or tsconfig.json is missing or the tsconfig is demonstrably not strict."
+    ]
+  },
+  "given": "A consumer Bun project with a package.json and at least one .ts/.tsx source",
+  "when": "the project is worked on or validated (standing obligation)",
+  "then": "The project has TypeScript (or a native preview such as tsgo) as a dependency, a tsconfig.json, and a no-emit typecheck script wired into its check path.",
+  "prefer": [
+    "A script (e.g. `typecheck`) running a recognised no-emit checker such as `tsc --noEmit` or `tsgo --noEmit`, invoked by the developer/CI check scripts.",
+    "During GREEN: reuse the existing typechecker and strict config (which checker is the project's choice); add only the minimal missing dependency, config or script; fix type errors from the current behavior instead of weakening compiler options."
+  ],
+  "avoid": [
+    "A typecheck no developer/CI script invokes.",
+    "Relying on Bun: it strips types and bundles no tsc.",
+    "\"strict\": false, or no strict-family flag (e.g. `strict`, `noImplicitAny`), in a tsconfig extending no base.",
+    "Disabling strict checks or adding blanket ignores.",
+    "Replacing the typechecker without necessity, or migrating unrelated configuration while establishing the check."
+  ],
+  "unless": [
+    "No .ts/.tsx sources: out of scope.",
+    "Strictness only: a tsconfig that extends a base is never reported.",
+    "The convention hub is never scanned; its .ts files are fixtures."
+  ],
+  "why": "Bun strips types and ships no typechecker, so without a wired, actually run typecheck a Bun stack is by default less type-safe than a tsc-based one; shape detectors can't confirm code conforms to its types.",
+  "evidence": [
+    "package.json lists typescript (or a native preview such as tsgo) in dependencies or devDependencies, and a tsconfig.json exists.",
+    "Some script runs a recognised no-emit typechecker, or is named typecheck / check-types / types, and is part of the scripts a developer or CI runs to validate the project.",
+    "The no-emit typecheck succeeds through the repository's normal check path.",
+    "The current behavioral acceptance passes.",
+    "tsconfig.json is not demonstrably non-strict (or extends a base config)."
+  ],
+  "verifier_detail": [
+    "Scope: only trees that are genuinely TypeScript projects — a package.json AND at least one .ts/.tsx source. JS-only Bun apps carry no obligation at all.",
+    "typechecker = a tool that verifies types without emitting output. Recognised: `tsc --noEmit`, `tsgo --noEmit`, `vue-tsc`, `svelte-check`, `astro check`, `tsc --build`. Any of them in any script satisfies HOW; so does a script simply named `typecheck` / `check-types` / `types`. The obligation is that types ARE checked; WHICH checker is the project's business.",
+    "WHERE: TypeScript counts from `dependencies` or `devDependencies`.",
+    "check_path = the scripts a developer or CI runs to validate the project; a typecheck that exists but is never invoked is not wired in — it is a tool sitting beside the build, not part of it.",
+    "demonstrably_not_strict = tsconfig.json sets `\"strict\": false` outright, OR enables no flag of the strict family AND extends no base config. STRICTNESS is reported only when demonstrably off. A tsconfig that `extends` anything is NOT judged: the detector cannot resolve the base, and reporting what it cannot see would be a false positive (a rule that reports what it cannot see is worse than one that stays quiet).",
+    "Deliberately unforced in four ways (SCOPE, HOW, WHERE, STRICTNESS): the rule states a norm, not a blessed incantation.",
+    "Complementary, not overlapping, with the other Bun detectors, and that distinction is the reason the rule exists: every detector in this stack is regex-over-source and verifies SHAPE. E.g. coder.bun.interlocking-resolution-model-exists confirms an `InterlockingResolution` declaring its eight fields is present, but cannot confirm that what `resolveTrain` actually returns conforms to it — only a typechecker can, and only if one is actually run.",
+    "Bun executes .ts by STRIPPING types; it ships `bun test`, `bun install`, `bun build`, `Bun.serve` and a TS/JSX transpiler, but no typechecker (no bundled `tsc`); it transpiles and never checks, so `resolveTrain()` can return something structurally wrong and Bun will run it happily.",
+    "Applies to the consumer repository, never the hub. The hub is a package repository with no Bun application; its detectors are `.mjs` and its `.ts` files are deliberately-wrong fixtures that must NOT typecheck (e.g. `fixtures/dirty/interlocking_resolution_model/...` exists precisely to be malformed). The hub is never scanned by this rule.",
+    "Severity 2."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "kind: rule",
+    "status: active",
+    "aliases: BUN-TYPECHECK-ENFORCED-001",
+    "introduced_in: 0.1.0",
+    "implementation: validator, ref coder.bun.runtime-typecheck-enforced",
+    "Summary framing: 'Bun's own gap, stated as a convention.'",
+    "Source name: 'A TypeScript Bun project actually typechecks its types'",
+    "Disposition: strict; severity 2."
+  ],
+  "splitSuggestion": [
+    {
+      "id": "coder.bun.tsconfig-strict-not-disabled",
+      "then": "A Bun TypeScript project's tsconfig.json is not demonstrably non-strict (not \"strict\": false, and not lacking every strict-family flag while extending no base).",
+      "segments": [
+        "S015",
+        "S016",
+        "S017",
+        "S036",
+        "S037",
+        "S038",
+        "S039",
+        "S060"
+      ]
+    }
+  ],
+  "sharedNodes": [
+    {
+      "id": "policy.phase-loop",
+      "kind": "policy",
+      "text": "Prove: the current behavioral acceptance passes."
+    },
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "strict: the extension fails on every finding; it has no advisory mode and no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "split_suggestion",
+      "text": "Strictness (demonstrably_not_strict) is a separate obligation from wiring a typecheck; suggest coder.bun.tsconfig-strict-not-disabled. Kept in avoid/unless/verifier_detail here because the source validator reports it.",
+      "justification": "One-obligation rule: `then` covers only the wired no-emit typecheck."
+    },
+    {
+      "field": "activation",
+      "text": "Bun-marker file facts (bun.lock, bun.lockb, bunfig.toml), operation fact, hub-classification finding fact, and fires/doesNotFire examples derived from source scope, terms and exceptions.",
+      "justification": "Activation must be expressed as observable facts; the source names 'Bun project' and the hub exclusion without saying how to observe them. No new obligations added."
+    },
+    {
+      "field": "avoid[2]",
+      "text": "Examples of strict-family flags: `strict`, `noImplicitAny`.",
+      "justification": "Source says 'strict family' without enumerating; examples reduce coder ambiguity. Not an exhaustive detector list."
+    },
+    {
+      "field": "prefer[0]",
+      "text": "Concrete preferred move: a script (e.g. named typecheck) running one of the source's recognised no-emit checkers, invoked by the check scripts.",
+      "justification": "Gives the coder a concrete command; all commands and script names come from the source's typechecker term and HOW clause (full list in verifier_detail[1])."
+    },
+    {
+      "field": "policy.strict-disposition",
+      "text": "'no advisory mode and no ratchet baseline' wording of the shared strict-disposition node.",
+      "justification": "Standard shared-node expansion of the source's 'disposition: strict'; source itself only says 'strict'."
+    },
+    {
+      "field": "coder_text_length",
+      "text": "Coder-facing text slightly exceeds ~1,000 characters.",
+      "justification": "Lossless placement of the concrete checker move, GREEN-scoped remediation, scope/strictness/hub exceptions and do-not-broaden anti-patterns."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Rephrased as imperative title; original name kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "given",
+        "evidence[0]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "why",
+        "avoid[1]",
+        "verifier_detail[7]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "why"
+      ],
+      "note": "Kept conditional: 'without a wired, actually run typecheck ... by default'."
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "verifier_detail[1]"
+      ],
+      "note": "Term name 'typechecker' defined in verifier_detail[1]."
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[1]",
+        "prefer[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[3]"
+      ],
+      "note": "Term name 'check_path' defined in verifier_detail[3]."
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[3]",
+        "evidence[1]",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "avoid[0]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[4]"
+      ],
+      "note": "Term name 'demonstrably_not_strict' defined in verifier_detail[4]."
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "avoid[2]",
+        "verifier_detail[4]",
+        "evidence[4]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "verifier_detail[7]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "verifier_detail[7]"
+      ],
+      "note": "Project-specific example kept out of coder fields."
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "verifier_detail[6]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "verifier_detail[6]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "given",
+        "verifier_detail[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "given",
+        "verifier_detail[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "verifier_detail[1]",
+        "evidence[1]",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "verifier_detail[1]",
+        "evidence[1]",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "verifier_detail[2]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "verifier_detail[4]",
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "structure"
+      ],
+      "note": "Applicability heading; content in S041–S045."
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "unless[2]",
+        "verifier_detail[8]",
+        "given",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "verifier_detail[8]"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "verifier_detail[8]",
+        "unless[2]"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "verifier_detail[8]"
+      ]
+    },
+    {
+      "seg": "S045",
+      "dest": [
+        "verifier_detail[8]"
+      ]
+    },
+    {
+      "seg": "S046",
+      "dest": [
+        "structure"
+      ],
+      "note": "Heading for the canonical path, which is `then`."
+    },
+    {
+      "seg": "S047",
+      "dest": [
+        "then",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S048",
+      "dest": [
+        "prefer[1]"
+      ],
+      "note": "GREEN scope carried as the 'During GREEN:' prefix of the remediation preference."
+    },
+    {
+      "seg": "S049",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S050",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S051",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S052",
+      "dest": [
+        "structure"
+      ],
+      "note": "Do-not-broaden heading; items in avoid[3], avoid[4]."
+    },
+    {
+      "seg": "S053",
+      "dest": [
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S054",
+      "dest": [
+        "avoid[4]"
+      ]
+    },
+    {
+      "seg": "S055",
+      "dest": [
+        "avoid[4]"
+      ],
+      "note": "Rule-specific do-not-broaden item kept in this rule."
+    },
+    {
+      "seg": "S056",
+      "dest": [
+        "structure"
+      ],
+      "note": "Prove heading; items in evidence[2], evidence[3]."
+    },
+    {
+      "seg": "S057",
+      "dest": [
+        "evidence[3]",
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S058",
+      "dest": [
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S059",
+      "dest": [
+        "unless[0]"
+      ]
+    },
+    {
+      "seg": "S060",
+      "dest": [
+        "unless[1]"
+      ]
+    },
+    {
+      "seg": "S061",
+      "dest": [
+        "unless[2]",
+        "verifier_detail[8]"
+      ]
+    },
+    {
+      "seg": "S062",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S063",
+      "dest": [
+        "identity",
+        "verifier_detail[9]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S064",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S065",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S066",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

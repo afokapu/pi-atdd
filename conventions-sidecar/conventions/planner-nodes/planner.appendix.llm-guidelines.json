@@ -1,0 +1,484 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.appendix.llm-guidelines.convention.yaml",
+    "sha256": "95704fe3aab547d0ed183d296475ce4b6f5fb9562dafaa63e9a8f79bc717920b"
+  },
+  "rule_id": "planner.appendix.llm-guidelines",
+  "kind": "rule",
+  "title": "Read every provided appendix before planning from it",
+  "activation": {
+    "facts": [
+      {
+        "fact": "task_term",
+        "values": [
+          "appendix:",
+          "file path in user input",
+          "file URL in user input"
+        ],
+        "observability": "observable_now",
+        "note": "Source detection pattern: user includes a file path, mentions 'appendix:', or provides a file URL."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "png",
+          "jpg",
+          "svg",
+          "pdf",
+          "audio",
+          "video",
+          "spreadsheet",
+          "document",
+          "diagram"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Needs an observer that classifies the referenced appendix by type (mockup, spreadsheet, document, diagram, audio, video) to select the type-specific analysis."
+      },
+      {
+        "fact": "phase",
+        "values": [
+          "creation",
+          "disambiguation"
+        ],
+        "observability": "llm_judged",
+        "note": "Whether the planner is creating an output (wagon, WMBT, acceptance, feature, component) or routing an input with no clear intent keyword ('wagon', 'wmbt', etc.) is judged from the request; it selects which phase obligation in avoid applies."
+      }
+    ],
+    "fires": [
+      "User asks the planner to create a wagon, WMBT, acceptance, feature or component and attaches a mockup, diagram, spreadsheet, document, audio or video file.",
+      "User message contains 'appendix:' followed by a file path or URL.",
+      "User provides an appendix without an intent keyword such as 'wagon' or 'wmbt', so the planner must ask a clarifying question."
+    ],
+    "doesNotFire": [
+      "Planner request with no file path, file URL or 'appendix:' mention.",
+      "Coder or tester work that does not author planner artifacts."
+    ]
+  },
+  "given": "The user's input includes an appendix (file path, file URL, or 'appendix:' mention).",
+  "when": "You are about to create a planning output (wagon, WMBT, acceptance, feature, component) or to ask what the user wants to create.",
+  "then": "Read the appendix with the Read tool and grasp what it shows (multi-screen flow, single component, architecture, etc.) before producing the output or the question.",
+  "prefer": [
+    "Read PNG, JPG, SVG, PDF, audio and video directly as multimodal input.",
+    "Analyze by type: mockup → UI components, layouts, flows, states, interactions, responsive variants; spreadsheet → business rules, calculations, data models, validation constraints; document → requirements, constraints, specifications, acceptance criteria; diagram → architecture, entities, sequences, state transitions, relationships; audio → transcribe, extract user pain points, requirements, context, clarifications; video → workflows, interactions, pain points, existing behavior patterns.",
+    "Enrichment map when creating: wagon → more accurate description, domain model from diagrams/docs; WMBT → better when/must/then from flows/interactions; acceptance → harness (mockup→visual, diagram→integration); feature → component clustering from mockup sections; component → props/state/behavior from mockups and diagrams.",
+    "Grounded question shape: 'I see your mockup shows a login form - are you creating a wagon or adding a feature?'"
+  ],
+  "avoid": [
+    "Planning from the text request alone, ignoring a provided appendix.",
+    "When creating: producing an output not enriched with the appendix's type-specific content (prefer[1], prefer[2]). Required.",
+    "When creating: leaving the appendix unreferenced in the output's manifest. Required step; manifest structure is defined by the schema, not this convention.",
+    "When intent is unclear (no 'wagon', 'wmbt', etc.): asking an abstract question that ignores the appendix, e.g. 'What do you want to build?' The question must cite what the appendix shows."
+  ],
+  "unless": [],
+  "why": "Appendices only reduce ambiguity if consumed — to enrich generated artifacts and to ground routing questions in concrete content, cutting confusion and back-and-forth.",
+  "evidence": [
+    "The planner transcript shows the appendix was read (Read tool call on the referenced path/URL) before the output or question was produced.",
+    "Created artifacts contain details traceable to the appendix's type-specific content (e.g. components/flows from a mockup, entities from a diagram, rules from a spreadsheet), and acceptance harnesses match the appendix type (mockup → visual, diagram → integration).",
+    "When an output was created, its manifest references the appendix (in the schema-defined manifest structure).",
+    "Clarification questions asked after an appendix was provided without clear intent name concrete content from it (e.g. screens, entities, components) rather than being abstract."
+  ],
+  "verifier_detail": [
+    "Appendix detection pattern: file path in user input, the literal 'appendix:', or a file URL.",
+    "Disambiguation scenario: appendix provided without a clear intent keyword (no 'wagon', 'wmbt', etc.); expected flow: LLM uses Read tool to view the appendix → understands what it shows (multi-screen flow, single component, architecture, etc.) → asks a grounded clarification question.",
+    "Grounded-question examples: input 'mockup showing 3-screen checkout flow' → 'I see your mockup shows a multi-screen checkout flow. What would you like to create?'; input 'ERD diagram with 5 entities' → 'Your ERD shows 5 entities. Are you creating a new wagon, adding a feature, or defining component data structures?' Both an open follow-up and an options list are acceptable; what matters is the grounding statement.",
+    "Positive example: 'I see your mockup shows a login form - are you creating a wagon or adding a feature?' Negative example: 'What do you want to build?' (abstract question that ignores the provided appendix).",
+    "Implementation type: none (no automated detector; compliance is LLM/reviewer judged).",
+    "Creation workflow order: detect → read multimodally → analyze by type → enrich output → reference appendix in manifest. Manifest structure is defined in the schema, not in this convention."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "kind: rule; status: active",
+    "Original name: 'Appendix: Llm Guidelines'",
+    "implementation: {\"type\":\"none\"}",
+    "source: legacy_path src/atdd/planner/conventions/appendix.convention.yaml, legacy_section llm-guidelines, extraction_mode high_fidelity",
+    "parity: source_fragments_preserved, examples_preserved, implementation_preserved, fix_hint_preserved all true; reviewed_at 2026-06-16",
+    "Source term ids: during_creation (detect, read multimodally, analyze by type, enrich output, reference appendix in manifest) and during_disambiguation (read appendix, then ask a grounded question referencing the concrete artifact during routing)."
+  ],
+  "splitSuggestion": [
+    {
+      "id": "planner.appendix.creation-enrichment",
+      "then": "When creating a planning output with an appendix provided, enrich the output with the appendix's type-specific content per the enrichment map.",
+      "segments": [
+        "S011",
+        "S012",
+        "S017",
+        "S018",
+        "S019",
+        "S020",
+        "S021",
+        "S022",
+        "S023",
+        "S024",
+        "S025",
+        "S026",
+        "S027",
+        "S028",
+        "S029"
+      ]
+    },
+    {
+      "id": "planner.appendix.manifest-reference",
+      "then": "When creating a planning output from an appendix, reference the appendix in the output manifest (structure defined by the schema).",
+      "segments": [
+        "S030",
+        "S031"
+      ]
+    },
+    {
+      "id": "planner.appendix.grounded-clarification",
+      "then": "When an appendix is provided without a clear intent keyword, ask a clarification question that cites its concrete content instead of an abstract one.",
+      "segments": [
+        "S032",
+        "S033",
+        "S034",
+        "S037",
+        "S038",
+        "S039",
+        "S040",
+        "S041",
+        "S042",
+        "S043",
+        "S044",
+        "S045",
+        "S046"
+      ]
+    }
+  ],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "split_suggestion",
+      "text": "Source bundles four independently checkable obligations: read the appendix, enrich created outputs, reference it in the manifest, ask grounded clarification questions. This rule's 'then' keeps only the common gate (read and grasp the appendix before producing anything). The three phase-specific obligations keep required force here as phase-conditioned prohibitions (avoid[1] enrichment, avoid[2] manifest reference, avoid[3] grounded question), each marked required, and should become separate conventions: planner.appendix.creation-enrichment, planner.appendix.manifest-reference, planner.appendix.grounded-clarification.",
+      "justification": "One obligation in then without weakening any source workflow step to a preference."
+    },
+    {
+      "field": "evidence",
+      "text": "Evidence items describing how a reviewer establishes compliance (transcript Read call, traceable details, manifest reference, grounded questions).",
+      "justification": "Source has implementation type none and no explicit evidence; reviewers need concrete checks derived directly from the source workflow."
+    },
+    {
+      "field": "verifier_detail",
+      "text": "Note that both an open follow-up and an options list are acceptable in grounded questions.",
+      "justification": "Reflects the source's two examples (one open-ended, one with options) so verifiers do not mandate a format the source does not."
+    },
+    {
+      "field": "prefer",
+      "text": "Coder-facing text exceeds ~1,000 characters because the per-type analysis and per-artifact enrichment maps are decision-relevant for the planner and are kept in full.",
+      "justification": "Losslessness wins over brevity."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Replaced by imperative title; original name kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "given",
+        "when",
+        "prefer[1]",
+        "avoid[1]",
+        "avoid[2]",
+        "avoid[3]"
+      ],
+      "note": "Read in then; enrich, reference-in-manifest and grounded-question obligations as required phase-conditioned avoid items; split proposed."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "then",
+        "prefer[1]",
+        "avoid[1]",
+        "avoid[2]",
+        "verifier_detail[5]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "given",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "activation",
+        "given",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "then",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "prefer[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "prefer[1]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "avoid[1]",
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "prefer[2]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "avoid[2]",
+        "evidence[2]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "avoid[2]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "then",
+        "avoid[3]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "activation",
+        "avoid[3]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "then",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "then",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "avoid[3]",
+        "evidence[3]"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S045",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S046",
+      "dest": [
+        "avoid[3]",
+        "verifier_detail[3]"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,336 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/atdd-bun.topology/atdd-bun.topology.e2e-location.convention.yaml",
+    "sha256": "3a3b991bc851b86d597636200f5cb10a0defda3920348860cdca28955ab91f4c"
+  },
+  "rule_id": "atdd-bun.topology.e2e-location",
+  "kind": "rule",
+  "title": "Give every route and exposed journey a bound e2e proof at its canonical path",
+  "activation": {
+    "facts": [
+      {
+        "fact": "path_glob",
+        "values": [
+          "<plan_root>/**",
+          "<e2e_root>/interlockings/**/*.routes.test.ts",
+          "<e2e_root>/journeys/*.journey.test.ts",
+          "**/*.e2e.ts"
+        ],
+        "observability": "observable_now",
+        "note": "Plan declarations and e2e test paths resolved from the topology settings (defaults plan, e2e); vendored/generated trees excluded."
+      },
+      {
+        "fact": "layer",
+        "values": [
+          "e2e",
+          "plan"
+        ],
+        "observability": "observable_now",
+        "note": "Derived from topology roots in atdd-bun.yaml."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "atdd-bun.topology.e2e-location"
+        ],
+        "observability": "needs_new_observer",
+        "note": "The atdd_topology validator must parse the plan (declared routes, exposed journeys and their surfaces, declared features, WMBT-declared acceptances) and the e2e tests (URN, Acceptance line, Train/Journey binding) and scan ALL declared routes/exposed journeys, changed or not."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "interlocking route declared",
+          "journey exposed",
+          "e2e test added/moved/renamed/deleted",
+          "URN or binding line edited"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Diff-level observer; only an early trigger — the obligation also holds for unchanged existing routes/journeys."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "interlocking",
+          "route",
+          "journey",
+          "e2e",
+          "end-to-end",
+          "Playwright"
+        ],
+        "observability": "observable_now",
+        "note": "Task text mentions routes/journeys or e2e proofs."
+      }
+    ],
+    "fires": [
+      "A plan-declared interlocking route — new or long-existing and untouched — has no `<e2e_root>/interlockings/<interlocking>/<route>.routes.test.ts`.",
+      "An exposed journey has no `<e2e_root>/journeys/<journey>.journey.test.ts`, and (if its surfaces include `frontend`) no qualifying Playwright spec either.",
+      "For an interlocking route, a non-frontend exposed journey, or a frontend exposed journey that has no qualifying Playwright substitute: the Bun test at the canonical path carries no `test:{wagon}:{feature}:{acceptance}` URN, or its URN names a feature that is not declared.",
+      "For an interlocking route, a non-frontend exposed journey, or a frontend exposed journey that has no qualifying Playwright substitute: the Bun test at the canonical path has no `Acceptance: acc:{wagon}:{acceptance}` binding, or binds one that no WMBT declares.",
+      "A Playwright spec is the only proof relied on for a frontend exposed journey (no qualifying Bun test at the canonical path) and it lacks a `// Train:`/`// Journey:` binding, is bound to a different subject than its URN, or lacks a valid E2E/SMOKE URN for that subject.",
+      "A Playwright spec is the only proof relied on for an exposed journey whose surfaces do not include `frontend`."
+    ],
+    "doesNotFire": [
+      "Files under vendored or generated trees (`node_modules`, `dist`, `build`, `_generated`).",
+      "Wagon-level tests under `<test_root>` unrelated to any declared route or exposed journey.",
+      "A frontend exposed journey proven by a Playwright spec bound via `// Train:` (the route's train) or `// Journey:` (the journey) and carrying a valid E2E/SMOKE URN for that same subject — even if a nonqualifying Bun file also exists at the canonical path.",
+      "A Playwright spec that is not relied on as the substitute because the route/journey already has a qualifying Bun test at its canonical path (this rule does not judge such extra browser specs)."
+    ]
+  },
+  "given": "The plan declares an interlocking route or exposed journey (new or existing, changed or not)",
+  "when": "you change code or tests, or atdd_topology reports `atdd-bun.topology.e2e-location`",
+  "then": "Ensure it has a test at `<e2e_root>/interlockings/<interlocking>/<route>.routes.test.ts` (route) or `<e2e_root>/journeys/<journey>.journey.test.ts` (journey) carrying a `test:{wagon}:{feature}:{acceptance}` URN for a declared feature AND binding `Acceptance: acc:{wagon}:{acceptance}` declared by a WMBT; a file lacking either does not count.",
+  "prefer": [
+    "Add the test at exactly the path the finding names.",
+    "Copy feature and acceptance ids from the plan's declarations."
+  ],
+  "avoid": [
+    "Ad-hoc e2e locations found only by searching.",
+    "Undeclared features in URNs; Acceptance ids no WMBT declares; empty files at the path.",
+    "An `Acceptance:` line in a browser journey spec (`tester.htmx.journey-no-acceptance-marker`)."
+  ],
+  "unless": [
+    "Exposed journey with `frontend` surface: a Playwright `*.e2e.ts` spec substitutes when bound via `// Train:` (route's train) or `// Journey:` and carrying a valid E2E/SMOKE URN for that same subject (`test:train:<id>:E2E-NNN-…`, `test:journey:<id>:SMOKE-NNN-…`) instead of an `Acceptance:` line.",
+    "`node_modules`, `dist`, `build`, `_generated` are never scanned."
+  ],
+  "why": "One behaviour, one end-to-end proof at a path derived from the plan: a missing proof is found by path, not by searching.",
+  "evidence": [
+    "For every plan-declared interlocking route, `<e2e_root>/interlockings/<interlocking>/<route>.routes.test.ts` exists.",
+    "For every exposed journey, `<e2e_root>/journeys/<journey>.journey.test.ts` exists, or (frontend surface) a `*.e2e.ts` spec bound by `// Train:`/`// Journey:` with a valid E2E/SMOKE URN for that same subject.",
+    "Each Bun e2e test relied on as the proof carries a `test:{wagon}:{feature}:{acceptance}` URN for a declared feature and an `Acceptance: acc:{wagon}:{acceptance}` declared by a WMBT.",
+    "No browser journey spec contains an `Acceptance:` line.",
+    "The atdd_topology validator reports no `atdd-bun.topology.e2e-location` finding."
+  ],
+  "verifier_detail": [
+    "Paths resolve from the `topology:` keys in `atdd-bun.yaml`: `plan_root`, `source_root`, `test_root`, `e2e_root` (defaults `plan`, `src/wagons`, `tests/wagons`, `e2e`).",
+    "Route path: `<e2e_root>/interlockings/<interlocking>/<route>.routes.test.ts`; journey path: `<e2e_root>/journeys/<journey>.journey.test.ts`. Check every declared route/exposed journey, not only changed ones.",
+    "Bun test identity: URN `test:{wagon}:{feature}:{acceptance}` with the feature declared; `Acceptance: acc:{wagon}:{acceptance}` must be declared by a WMBT. A file at the path without both is a finding — unconditionally for interlocking routes and non-frontend exposed journeys; for frontend exposed journeys only when no qualifying Playwright substitute exists.",
+    "Playwright substitution only for exposed journeys whose surfaces include `frontend`: `*.e2e.ts` bound via `// Train:` (route's train) or `// Journey:` (the journey) and carrying `test:train:<id>:E2E-NNN-…` or `test:journey:<id>:SMOKE-NNN-…` for that same subject. Evaluate these qualifications only when the spec is relied on as the substitute (no qualifying Bun test at the canonical path).",
+    "Browser specs are identified by the URN instead of an `Acceptance:` line; `tester.htmx.journey-no-acceptance-marker` forbids `Acceptance:` on journey specs.",
+    "Never scan `node_modules`, `dist`, `build`, `_generated`.",
+    "Severity 3, disposition strict."
+  ],
+  "audit": [
+    "schema_version 1.1.0",
+    "kind: rule; status: active",
+    "aliases: ATDD-BUN-TOPOLOGY-E2E-LOCATION",
+    "introduced_in 0.6.0",
+    "implementation: validator, ref atdd_topology",
+    "Statement: 'Package rule, strict.'",
+    "Term package_rule: a rule of this package's own gates (`atdd-bun.*`), realized by a package guard rather than a canonical planner node. It is held to the same per-rule checks as every convention: a convention, strict, a failing fixture, relationship edges.",
+    "Term topology_settings: the `topology:` keys `plan_root`, `source_root`, `test_root`, `e2e_root` in `atdd-bun.yaml` (defaults `plan`, `src/wagons`, `tests/wagons`, `e2e`).",
+    "Source name: Every interlocking route and exposed journey has an end-to-end test at its canonical path",
+    "Summary: Every interlocking route and exposed journey has an end-to-end test at its canonical path.",
+    "Fix hint (source): Add the test at the path the finding names, or, on a frontend journey, a Playwright spec bound with `// Train:` or `// Journey:`."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Strict: the rule fails on every finding."
+    },
+    {
+      "id": "context.repo-topology.layers",
+      "kind": "context",
+      "text": "Topology settings (topology_settings): the `topology:` keys `plan_root`, `source_root`, `test_root`, `e2e_root` in `atdd-bun.yaml` (defaults `plan`, `src/wagons`, `tests/wagons`, `e2e`)."
+    }
+  ],
+  "additions": [
+    {
+      "field": "split_suggestion",
+      "text": "No split: the source states one obligation — a qualifying e2e proof per route/exposed journey — whose necessary qualifications are canonical path, declared-feature URN and WMBT-declared Acceptance binding (or, for frontend journeys, the bound Playwright substitute). All are in `then`/`unless` as mandatory.",
+      "justification": "Auditor: URN and Acceptance requirements must keep mandatory force, not be a preference or an unimplemented split."
+    },
+    {
+      "field": "prefer[1]",
+      "text": "Copy feature and acceptance ids from the plan's declarations rather than inventing them.",
+      "justification": "Reviewer usability risk: coders guessing identifiers; this is the direct way to satisfy the source's 'declared feature' / 'declared by a WMBT' conditions, adds no obligation."
+    },
+    {
+      "field": "activation",
+      "text": "Activation facts and fires/doesNotFire scenarios; Bun URN/Acceptance findings fire unconditionally for interlocking routes and non-frontend exposed journeys, and for frontend exposed journeys only when no qualifying Playwright substitute exists; Playwright qualifications are evaluated only when the spec is relied on as the substitute; extra browser specs alongside a qualifying Bun test are out of scope.",
+      "justification": "Required structure; auditor required narrowing the fires to failed substitution so compliant frontend journeys are not flagged."
+    },
+    {
+      "field": "verifier_detail[3]",
+      "text": "The `…` suffix of E2E/SMOKE URNs is kept as in the source; the source does not define it further.",
+      "justification": "Reviewer flagged the ellipsis; no format is invented."
+    },
+    {
+      "field": "coder_text_length",
+      "text": "Coder-facing text exceeds ~1,000 chars because canonical paths, URN formats and the substitution conditions must stay verbatim.",
+      "justification": "Losslessness wins over brevity."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Basis of the title"
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "then",
+        "avoid[1]",
+        "evidence[0]",
+        "evidence[1]",
+        "evidence[2]",
+        "verifier_detail[1]",
+        "verifier_detail[2]"
+      ],
+      "note": "Path, URN and Acceptance all mandatory in then"
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "unless[0]",
+        "evidence[1]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "unless[0]",
+        "avoid[2]",
+        "evidence[3]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "shared:context.repo-topology.layers",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "shared:context.repo-topology.layers",
+        "verifier_detail[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Duplicate of name"
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "why",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "prefer[0]",
+        "unless[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[5]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "identity",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

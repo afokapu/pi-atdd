@@ -1,0 +1,279 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.wagon.separability.convention.yaml",
+    "sha256": "cfc4b0565356b08dd887c17f06767c114b06b8d7e762158d46991b3cd5328e66"
+  },
+  "rule_id": "planner.wagon.separability",
+  "kind": "rule",
+  "title": "Keep each wagon at least as cohesive internally as coupled to any single neighbor wagon (advisory)",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "wagon manifest",
+          "WMBT definition"
+        ],
+        "observability": "observable_now",
+        "note": "Scope gate: the rule concerns the wagon/WMBT plan corpus. Composition: file_kind scopes the rule; EITHER the operation fact (an authoring edit) OR a corpus-wide assessment of existing eligible wagons triggers it. Neither an edit nor an already-emitted finding is required to assess an existing wagon."
+      },
+      {
+        "fact": "operation",
+        "values": [
+          "create",
+          "edit"
+        ],
+        "observability": "observable_now",
+        "note": "Alternative trigger (not a required gate): adding, moving or editing WMBTs (incl. object_of_control) or wagons changes the shared-token graph."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "[MERGE] wagon separability"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Alternative trigger (not a required gate): the separability validator builds the WMBT shared-token graph over the whole corpus and compares cohesion vs max single-neighbor coupling for every wagon meeting the min-graph-size guard."
+      }
+    ],
+    "fires": [
+      "A wagon meeting the min-graph-size guard has, on the single WMBT shared-token graph (edges = WMBT pairs sharing >= min_shared salient object_of_control tokens), fewer intra-wagon edges than the qualifying cross-wagon edges to some single neighbor wagon.",
+      "A corpus-wide separability assessment of existing wagons (no edit in progress) finds such a wagon and emits an advisory [MERGE] finding."
+    ],
+    "doesNotFire": [
+      "A wagon with fewer WMBTs than the configured min-graph-size guard (skipped, not flagged).",
+      "A wagon whose intra-wagon edge count is greater than or equal to its cross-wagon edge count with every single neighbor wagon (equality is separable).",
+      "Edits to code or tests that do not change wagons, WMBTs or their object_of_control."
+    ]
+  },
+  "given": "A wagon (at or above the min-graph-size guard) whose WMBTs, connected when they share >= min_shared salient object_of_control tokens, form one undirected graph with neighboring wagons' WMBTs",
+  "when": "You author or revise the wagon's WMBTs, allocate WMBTs across wagons, or review existing wagons",
+  "then": "Plan the wagon so its cohesion (intra-wagon WMBT edges) is >= its coupling (cross-wagon edges) to every single neighbor wagon; otherwise expect an advisory [MERGE] signal.",
+  "prefer": [
+    "When a wagon is more bound to one neighbor than to itself, treat the [MERGE] signal as an advisory hint to consider merging it with that neighbor.",
+    "Judge cohesion and coupling on the same WMBT shared-token graph so the two counts are commensurable."
+  ],
+  "avoid": [
+    "Treating a [MERGE] finding as blocking or gating the plan — it is advisory only and never blocks.",
+    "Flagging wagons below the min-graph-size guard on account of separability.",
+    "Rewording object_of_control tokens merely to dodge shared-token edges instead of reconsidering the wagon boundary."
+  ],
+  "unless": [
+    "The wagon is below the configured min-graph-size guard: it is skipped, not flagged."
+  ],
+  "why": "A wagon should be a separable unit of work; if it is more bound to one neighbor than to itself, its boundary may be wrong, so the advisory signal suggests considering a merge with its tightest neighbor.",
+  "evidence": [
+    "Separability validator output shows no [MERGE] advisory for the wagon, or the wagon is reported as skipped by the min-graph-size guard.",
+    "For a flagged wagon: cohesion(W) and max over neighbors N of coupling(W,N) counts from the single WMBT shared-token graph."
+  ],
+  "verifier_detail": [
+    "Build ONE undirected graph over all WMBTs; an edge joins two WMBTs that share >= min_shared salient tokens taken from object_of_control.",
+    "cohesion(W) = number of intra-wagon edges; coupling(W,N) = number of cross-wagon edges between W and neighbor N.",
+    "Separable iff cohesion(W) >= max over neighbors N of coupling(W,N) (term 'separable': cohesion(W) >= max-neighbor coupling(W,N) on the WMBT shared-token graph). Non-separable wagons emit an ADVISORY [MERGE] finding — more coupled to a neighbor than cohesive internally (term 'merge_signal': a wagon whose tightest single-neighbor coupling exceeds its internal cohesion — advisory hint to merge).",
+    "Cohesion and coupling must be measured on the same WMBT shared-token graph (commensurable).",
+    "Wagons below the min-graph-size guard are skipped, not flagged.",
+    "Token vocabulary, min_shared and min-graph-size are config-driven calibration knobs under planner.wagon.*; promotion to strict is deferred to calibration.",
+    "Disposition advisory, severity 2: never blocks."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "source kind: constraint",
+    "status: active",
+    "source name: Wagon separability (advisory)",
+    "implementation: validator conventions/sizing/test_wagon_separability::test_live_corpus_legacy_parity",
+    "source: legacy_path docs/recompose, legacy_section complexity-sizing, extraction_mode summary",
+    "parity: source_fragments_preserved true, examples_preserved false, implementation_preserved true, fix_hint_preserved false, reviewed_at 2026-06-18",
+    "metadata: severity 2, disposition advisory",
+    "terms: separable, merge_signal (definitions carried in verifier_detail)"
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "avoid",
+      "text": "Rewording object_of_control tokens merely to dodge shared-token edges instead of reconsidering the wagon boundary.",
+      "justification": "Metric-gaming guard required by authoring rules; the source defines the metric on object_of_control tokens, making this the obvious gaming vector."
+    },
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire situations, fact composition and observability notes",
+      "justification": "Required by schema; derived from source graph definition, guard, corpus-wide validator and disposition."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Title reworded with 'at least as' to keep equality separable; original name in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "why"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "then",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "identity",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "given",
+        "verifier_detail[0]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "then",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "then",
+        "verifier_detail[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[4]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "avoid[0]",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "unless[0]",
+        "avoid[1]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "identity",
+        "audit",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "identity",
+        "audit",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "verifier_detail[2]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "verifier_detail[2]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "verifier_detail[2]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "verifier_detail[2]",
+        "prefer[0]"
+      ]
+    }
+  ]
+}

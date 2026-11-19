@@ -1,0 +1,382 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.wagon.telemetry-filesystem.convention.yaml",
+    "sha256": "db51643789b7d43a4aecb64d62da5b4febc97a842ea2bd15cdefdcdbe8438040"
+  },
+  "rule_id": "planner.wagon.telemetry-filesystem",
+  "kind": "rule",
+  "title": "Map each telemetry URN to its telemetry/ directory of signal files",
+  "activation": {
+    "facts": [
+      {
+        "fact": "path_glob",
+        "values": [
+          "telemetry/**",
+          "telemetry/**/*.json"
+        ],
+        "observability": "observable_now",
+        "note": "Signal files live under telemetry/{theme}/{segments}/; the manifest is generated from telemetry/{domain}/{resource}/*.json."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "wagon manifest",
+          "acceptance",
+          "telemetry signal json",
+          "telemetry manifest"
+        ],
+        "observability": "observable_now",
+        "note": "Planner artifacts that declare telemetry: URNs, signal files, or the generated telemetry manifest."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "telemetry",
+          "telemetry URN",
+          "signal",
+          "metric",
+          "event",
+          "telemetry manifest"
+        ],
+        "observability": "observable_now",
+        "note": "Candidate signal only; must be confirmed by a telemetry URN, a telemetry/ path, or manifest generation in scope."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "telemetry URN declared, edited or renamed",
+          "signal file added, renamed or removed",
+          "telemetry manifest generation changed"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Diff-level observer needed to detect telemetry URN / signal-file / manifest-generation changes."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "telemetry URN without matching directory",
+          "signal filename not matching pattern",
+          "plane or measure outside controlled list",
+          "metric without measure / event with measure"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Detector over existing telemetry declarations and files; also fires on pre-existing noncompliance."
+      }
+    ],
+    "fires": [
+      "A wagon or acceptance declares, edits or renames a telemetry:{theme}:{segments} URN",
+      "A signal file is added, renamed or removed under telemetry/",
+      "A task validates or reviews existing telemetry URNs, their directories or signal filenames",
+      "An existing telemetry URN has no matching telemetry/{theme}/{segments}/ directory",
+      "An existing signal file uses a plane or measure outside the controlled lists, a metric lacks a measure, or an event carries one",
+      "The telemetry manifest is generated or its generation input is changed"
+    ],
+    "doesNotFire": [
+      "Plan edits that declare no telemetry URNs, touch nothing under telemetry/ and do not involve the telemetry manifest",
+      "Non-telemetry artifact URNs (covered by the general artifact-naming grammar)",
+      "A task merely mentioning the word 'event' or 'metric' with no telemetry URN, telemetry/ path or manifest in scope"
+    ]
+  },
+  "given": "A plan, wagon or acceptance declares telemetry:{theme}:{segments} URNs, or work touches, validates or generates from signal files under telemetry/.",
+  "when": "You author, edit, rename or validate a telemetry URN, its signal files, or the manifest built from them.",
+  "then": "Keep each URN's signals in telemetry/{theme}/{segments}/ as files named {signal-type}.{plane}[.{measure}].json, with a measure suffix on metric signals and none on event signals.",
+  "prefer": [
+    "Split the URN's ':' and '.' into path segments (telemetry:mechanic:decision.choice -> telemetry/mechanic/decision/choice/).",
+    "Metrics like metric.db.count.json; events like event.be.json.",
+    "Planes: ui, ux, be, nw, db, st, tm, sc, au, fn, if. Measures: count, duration, latency, size, rate, percentage."
+  ],
+  "avoid": [
+    "Metric files without a measure suffix.",
+    "Event files with a measure suffix.",
+    "Planes or measures outside the controlled lists.",
+    "Hand-editing the manifest; it is generated from telemetry/{domain}/{resource}/*.json."
+  ],
+  "unless": [],
+  "why": "A deterministic URN-to-path mapping lets tooling resolve URNs to signal files and generate the manifest from the filesystem; signal type (OpenTelemetry metric vs analytics event) decides whether a measure is needed.",
+  "evidence": [
+    "Every declared telemetry:{theme}:{segments} URN resolves to an existing directory telemetry/{theme}/{segments}/.",
+    "Each file in that directory matches {signal-type}.{plane}[.{measure}].json with measure present iff signal-type is metric.",
+    "Plane and measure tokens are members of the controlled lists.",
+    "The telemetry manifest is generated from telemetry/{domain}/{resource}/*.json (not hand-authored)."
+  ],
+  "verifier_detail": [
+    "URN form: telemetry:{theme}:{segments}; directory: telemetry/{theme}/{segments}/ (per example, '.' in segments becomes a path separator).",
+    "Filename pattern: {signal-type}.{plane}[.{measure}].json; event pattern {signal-type}.{plane}.json.",
+    "signal_type term (metric vs event): metric = OpenTelemetry metric, requires measure suffix; event = analytics event, no measure suffix.",
+    "telemetry_axes term (the controlled planes and measures): planes = [ui, ux, be, nw, db, st, tm, sc, au, fn, if]; measures (metrics only) = [count, duration, latency, size, rate, percentage].",
+    "Source example: telemetry:mechanic:decision.choice -> telemetry/mechanic/decision/choice/ (metric.db.count.json, metric.be.duration.json, event.be.json).",
+    "Manifest generation input (source wording, verbatim): telemetry/{domain}/{resource}/*.json."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "kind: rule",
+    "status: active",
+    "name: Telemetry URN -> filesystem",
+    "source: legacy_path src/atdd/planner/conventions/wagon.convention.yaml, legacy_section artifact_contracts.urn_format.telemetry_filesystem, legacy_sha ee0a3e1d5af414c9, extraction_mode high_fidelity",
+    "parity: source_fragments_preserved true, examples_preserved true, implementation_preserved false, fix_hint_preserved false, reviewed_at 2026-06-16",
+    "term ids: signal_type, telemetry_axes"
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "prefer[0]",
+      "text": "Explicit description of deriving path segments from the URN separators.",
+      "justification": "Restates the source mapping and example (S006, S010) as an actionable move; no new obligation."
+    },
+    {
+      "field": "avoid[3]",
+      "text": "Do not hand-edit the generated manifest.",
+      "justification": "Inverse of S009 ('Manifest is generated from ...') phrased for the planner; no new obligation beyond the source statement."
+    },
+    {
+      "field": "evidence[3]",
+      "text": "Manifest is generated from telemetry/{domain}/{resource}/*.json (not hand-authored).",
+      "justification": "Verification phrasing of S009; does not require a committed manifest or freshness check."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Name informs title; original kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "given",
+        "verifier_detail[0]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "then",
+        "avoid[0]",
+        "avoid[1]",
+        "verifier_detail[1]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "avoid[3]",
+        "evidence[3]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "prefer[0]",
+        "prefer[1]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "audit",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[2]",
+        "why",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[2]",
+        "why",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "audit",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "verifier_detail[3]",
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[3]"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,397 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/tester.bun/tester.bun.acceptance-covers-tag-well-formed.convention.yaml",
+    "sha256": "a7095e17f003ab3e08202f49408f4de7c834cc917b0946d6bc68036afdcdc265"
+  },
+  "rule_id": "tester.bun.acceptance-covers-tag-well-formed",
+  "kind": "rule",
+  "title": "Write every per-case @covers tag as a full acc:{wagon}:{ACCEPTANCE-ID} URN",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "bun-test-file"
+        ],
+        "observability": "needs_new_observer",
+        "note": "REQUIRED (AND). A file run by Bun's test runner: established from repository configuration (bunfig.toml, a `bun test` script) or from `bun:test` imports, or from the set of files the bun_tester_discipline_detector scans. No filename gate: name patterns such as *.test.* / *.spec.* (any extension, incl. .jsx/.mjs/.cjs) are only a non-exhaustive discovery hint; any Bun test file containing a per-case `// @covers` block is in scope regardless of its name or directory."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "per_case_covers_tag_present_added_or_edited"
+        ],
+        "observability": "needs_new_observer",
+        "note": "REQUIRED (AND). A `// @covers` comment block directly above an it()/test() exists in, is added to, or is edited in that file; pre-existing unchanged tags count. Needs a comment-block observer tied to it()/test() calls."
+      },
+      {
+        "fact": "layer",
+        "values": [
+          "test",
+          "acceptance-test"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Not a separate gate: implied by file_kind=bun-test-file. Not derived from paths, since custom Bun test layouts may not be path-identifiable."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "bun_tester_discipline_detector:malformed_covers_tag"
+        ],
+        "observability": "needs_new_observer",
+        "note": "NOT a prerequisite. Alternative trigger (OR) that forces a fix of an existing malformed tag, and the verification signal in evidence[0]. The guidance applies while writing well-formed tags too, when no finding exists. Combination: fires = (file_kind AND change) OR finding."
+      }
+    ],
+    "fires": [
+      "Adding a `// @covers` comment above an it()/test() in a Bun test file, whatever the file is named.",
+      "Editing an existing `// @covers` tag, e.g. adding a second acceptance URN to the same line.",
+      "A pre-existing, unchanged `// @covers E005-UNIT-001` in a Bun test file is reported by the detector; it must be fixed even though the diff did not touch it.",
+      "A tag names an ID that corresponds to no genuine acceptance; its shape is still validated."
+    ],
+    "doesNotFire": [
+      "An it()/test() case with no `@covers` tag at all; the file header binding still applies.",
+      "Editing only the file-level acceptance header (governed by the binding-declared convention).",
+      "Checking whether a well-formed URN resolves to an acceptance under `plan/`; that is a graph-level concern.",
+      "Test files not run by Bun (no Bun config or `bun test` script, no `bun:test` import, not scanned by the detector).",
+      "Non-test source files."
+    ]
+  },
+  "given": "A Bun test case (it()/test()) has a `// @covers` comment block directly above it, binding that ONE case (not the file) to acceptances",
+  "when": "the tester writes, edits, or encounters (existing, unchanged) any such tag",
+  "then": "Every tag in the block MUST be a full URN `acc:{wagon}:{ACCEPTANCE-ID}` (e.g. `// @covers acc:orders:E005-UNIT-001`), never a bare ID like `// @covers E005-UNIT-001`.",
+  "prefer": [
+    "Before tagging: identify the acceptance this exact case exercises, confirm its stimulus reaches that behavior, and that a behavioral assertion witnesses the declared outcome.",
+    "Several URNs on one line only when one case genuinely proves several acceptances.",
+    "Per-case tags plus the file header (two-level binding): many cases to one acceptance without one acceptance per file."
+  ],
+  "avoid": [
+    "Bare/partial IDs missing the `acc:` scheme or wagon.",
+    "Valid URNs added for coverage credit when the case does not exercise and assert them; fiction the detector cannot catch."
+  ],
+  "unless": [
+    "The case has no `@covers` tag: none is required; the file header binding still applies."
+  ],
+  "why": "A malformed tag is strict because it binds nothing while looking exactly like a working binding; tags are semantic claims too, so precision needs them well-formed and true.",
+  "evidence": [
+    "bun_tester_discipline_detector reports no malformed `@covers` tag in the scanned Bun test files (all existing tags, not only changed ones).",
+    "Reviewer confirms each tagged case's stimulus reaches the named acceptance behavior and at least one behavioral assertion witnesses its declared outcome (semantic truth is outside the detector's static reach)."
+  ],
+  "verifier_detail": [
+    "Collect the `// @covers` comment block immediately above each `it()` / `test()` and validate every tag in it (multiple tags per line allowed) against `acc:{wagon}:{ACCEPTANCE-ID}`; scan all existing tags, not only changed lines.",
+    "Only the tag's SHAPE is validated; resolving the URN against `plan/` is a graph-level concern, not this detector's.",
+    "Cases without any `@covers` tag produce no finding.",
+    "A well-formed but semantically false tag is outside the detector's static reach; guidance (prefer/avoid) must prevent that gaming.",
+    "Disposition strict, severity 3: any malformed tag fails; strict because a malformed tag binds nothing while looking to a reviewer like a working binding.",
+    "File scope: every Bun test file (from Bun configuration, `bun test` scripts, `bun:test` imports, or the detector's scanned set); filename patterns are a non-exhaustive hint, never a gate. Layer is implied by Bun test context, not inferred from paths."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "Original name: 'Per-case @covers tags are well-formed acceptance URNs'.",
+    "Alias: BUN-COVERS-TAG-WELL-FORMED-001.",
+    "Bun realization of the core obligation `tester.coverage.every-acceptance-criterion-must`; stack-neutral obligation, Bun-specific detector implementing the two-level binding model. Core carries no shared alias, so lineage is stated here.",
+    "Implementation: validator `bun_tester_discipline_detector`.",
+    "Terms: covers_tag = `// @covers acc:…` above an `it()`, binding one CASE rather than the file; two_level_binding = file header plus per-case tags.",
+    "Design rationale: 'The two-level model is the point'; argued for in design issue #1783; it is the reason a real 65-spec suite can adopt ATDD without a rename.",
+    "Disposition strict: atdd-bun fails on every finding; no advisory mode, no ratchet baseline."
+  ],
+  "splitSuggestion": [
+    {
+      "id": "tester.covers-tag-semantically-true",
+      "then": "A `@covers` tag names only acceptances whose behavior the case directly exercises and whose outcome it asserts; no tags added for coverage credit.",
+      "segments": [
+        "S018",
+        "S019",
+        "S020",
+        "S022",
+        "S026",
+        "S027",
+        "S028",
+        "S029",
+        "S030",
+        "S031"
+      ]
+    }
+  ],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "strict: the detector fails on every finding; there is no advisory mode and no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "split_suggestion",
+      "text": "The semantic-truth obligation (tag only acceptances the case exercises and asserts) is independent of the shape obligation and should be its own convention (tester.covers-tag-semantically-true); kept here in prefer/avoid/evidence so nothing is lost.",
+      "justification": "Rule 2: one obligation per `then`."
+    },
+    {
+      "field": "activation",
+      "text": "Activation combination (file_kind AND change) OR finding; filename patterns demoted to a non-exhaustive hint; layer implied by Bun test context; doesNotFire items about header-only edits, non-Bun and non-test files; fires item about pre-existing unchanged tags.",
+      "justification": "Auditor feedback: the source validates every per-case tag in any Bun test file, so activation must not be narrowed by filenames, paths, or by requiring a finding."
+    },
+    {
+      "field": "verifier_detail",
+      "text": "File scope determined from Bun configuration, `bun test` scripts, `bun:test` imports or the detector's scanned set rather than filename extension or path.",
+      "justification": "Needed for honest, non-narrowing activation; extension/path alone does not establish Bun or the test layer."
+    },
+    {
+      "field": "evidence",
+      "text": "Reviewer-based semantic check as an evidence item.",
+      "justification": "Source says the detector cannot catch semantically false tags and guidance must prevent it; a review step is the only way to establish that compliance."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "given",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "prefer[2]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "prefer[2]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "prefer[2]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "given",
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "prefer[2]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "prefer[0]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "why",
+        "verifier_detail[4]",
+        "identity"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "verifier_detail[3]",
+        "avoid[1]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "then",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "then",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "prefer[0]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "prefer[0]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "identity",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "identity",
+        "verifier_detail[4]",
+        "shared:policy.strict-disposition"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,410 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/tester.htmx/tester.htmx.e2e-binds-declared-subject.convention.yaml",
+    "sha256": "fa2b9079bc15ffab47d57c80cb804fb4c1b19fc377434226ef9e46e586890cbc"
+  },
+  "rule_id": "tester.htmx.e2e-binds-declared-subject",
+  "kind": "rule",
+  "title": "Bind each journey spec to a train or journey declared under plan/",
+  "activation": {
+    "facts": [
+      {
+        "fact": "path_glob",
+        "values": [
+          "plan/**"
+        ],
+        "observability": "observable_now",
+        "note": "Scope gate: rule applies only when the repository declares at least one train or journey under plan/."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "**/*.e2e.ts"
+        ],
+        "observability": "observable_now",
+        "note": "Candidate browser specs by filename; filename alone is not sufficient, see next fact."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "*.e2e.ts file run by Playwright"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Needs an observer resolving the Playwright test selection (config testMatch/testDir) so non-Playwright *.e2e.ts files do not activate."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "test file whose header comments carry a journey marker (// Train:, // Journey:, // URN: test:train:…, // URN: test:journey:…)"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Independent route: header-comment marker scan so misnamed browser specs are still judged; a URN mentioned in a string literal does not count."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "binding id does not resolve to a declared train/journey under plan/"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Produced by htmx_e2e_detector resolving each spec's header id against plan/; applies to all browser specs in the repository, existing or new."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "bound declared subject is not the subject the spec walks"
+        ],
+        "observability": "llm_judged",
+        "note": "Semantic check used by prefer/avoid when choosing the id; primary obligation belongs to the suggested split rule."
+      }
+    ],
+    "fires": [
+      "plan/ declares trains/journeys and an existing Playwright *.e2e.ts spec's header binds to an id with no declaration under plan/.",
+      "A test file not named *.e2e.ts whose `// Journey:` header names an undeclared journey.",
+      "A Playwright spec has no binding, two bindings, or an id the planner would reject.",
+      "A spec's binding resolves to a declared subject but not the one its browser path walks (prefer/avoid apply; obligation owned by the split rule tester.htmx.e2e-binding-matches-walked-subject)."
+    ],
+    "doesNotFire": [
+      "The repository has no plan (no trains, no journeys).",
+      "Files under node_modules, dist, build or _generated.",
+      "A unit test that merely mentions a journey URN inside a string.",
+      "A *.e2e.ts file not run by Playwright and with no journey marker header.",
+      "A malformed binding header (reported by tester.htmx.journey-binding-header instead)."
+    ]
+  },
+  "given": "plan/ declares at least one train or journey, and a browser spec exists (a *.e2e.ts file run by Playwright, or a test file with a journey marker header)",
+  "when": "the spec's binding is checked against plan/",
+  "then": "The train or journey the spec binds to MUST be declared under plan/.",
+  "prefer": [
+    "Bind to the declared subject the spec actually exercises: find the plan subject reached by its entrypoint and interactions; use that exact declared id in the header.",
+    "If the intended subject is absent from the plan, return to the authorized planning flow instead of inventing it in the tester repair."
+  ],
+  "avoid": [
+    "Choosing any resolvable declared subject merely to clear the finding (false journey coverage).",
+    "Changing the binding to match a convenient test that proves another journey.",
+    "Declaring a new train or journey solely so an existing spec has something to bind."
+  ],
+  "unless": [
+    "No plan (no trains, no journeys): out of scope.",
+    "node_modules, dist, build, _generated are never scanned.",
+    "Malformed bindings belong to tester.htmx.journey-binding-header."
+  ],
+  "why": "The binding traces a browser test to the plan it exercises; no binding, two bindings, or an id the planner would reject is untraceable. Resolution is necessary but not sufficient: the subject must be the one walked, and plan changes only when product behavior requires it.",
+  "evidence": [
+    "The binding id in the spec header resolves to a train or journey declared under plan/.",
+    "The browser path actually walks the bound subject.",
+    "The final observable assertion proves that subject's user-facing behavior.",
+    "plan/ was not changed only to give the spec something to bind."
+  ],
+  "verifier_detail": [
+    "browser_spec = a *.e2e.ts file run by Playwright, or any test file whose header comments carry a journey marker (`// Train:`, `// Journey:`, `// URN: test:train:…`, `// URN: test:journey:…`), so a misnamed one is still judged. A unit test that merely mentions a journey URN in a string is not one.",
+    "Report specs with no binding, two bindings, or an id the planner would reject as untraceable.",
+    "Skip node_modules, dist, build, _generated; skip entirely when no trains and no journeys are declared; leave malformed headers to tester.htmx.journey-binding-header.",
+    "Severity 3, disposition strict. Implemented by validator htmx_e2e_detector."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active.",
+    "Bun/htmx realization of tester.vite.e2e-names-valid-train (metadata.mirrors), strict; extended to journeys.",
+    "Aliases: BUN-E2E-E2E-BINDS-DECLARED-SUBJECT-001.",
+    "introduced_in 0.5.0.",
+    "implementation: {type: validator, ref: htmx_e2e_detector}.",
+    "Original name/summary: 'A journey spec binds to a train or journey plan/ declares'.",
+    "Source statement: 'When the repository declares a plan, the train or journey a journey spec binds to MUST be declared under plan/.'"
+  ],
+  "splitSuggestion": [
+    {
+      "id": "tester.htmx.e2e-binding-matches-walked-subject",
+      "then": "The declared train or journey a browser spec binds to MUST be the subject its browser path actually walks and its final observable assertion proves.",
+      "segments": [
+        "S014",
+        "S015",
+        "S017",
+        "S019",
+        "S020",
+        "S022",
+        "S023",
+        "S026",
+        "S027"
+      ]
+    },
+    {
+      "id": "tester.htmx.plan-not-changed-to-rescue-spec",
+      "then": "A train or journey MUST NOT be declared under plan/ solely to give an already-written spec something to bind; plan changes only when product behavior requires the subject.",
+      "segments": [
+        "S016",
+        "S024",
+        "S028"
+      ]
+    }
+  ],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "split_suggestion",
+      "text": "then is restricted to resolution; walked-subject correctness (S014) and not-rescuing-via-plan (S016) are separate obligations, proposed as tester.htmx.e2e-binding-matches-walked-subject and tester.htmx.plan-not-changed-to-rescue-spec. Their content remains here in prefer/avoid/why/evidence because it governs how this rule's finding is repaired.",
+      "justification": "Rule 2: one obligation per then; source says resolution is necessary but not sufficient."
+    },
+    {
+      "field": "evidence",
+      "text": "plan/ was not changed only to give the spec something to bind.",
+      "justification": "Makes the S016/S024 anti-pattern verifiable by reviewers."
+    },
+    {
+      "field": "activation",
+      "text": "Playwright-execution observer (config testMatch/testDir) as a needs_new_observer fact.",
+      "justification": "Source qualifies *.e2e.ts by 'run by Playwright'; filename alone cannot establish this."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Title paraphrases name."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "given",
+        "activation",
+        "audit"
+      ],
+      "note": "Plan-present scope applies to all browser specs; no operation gate."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "verifier_detail[0]",
+        "activation",
+        "given"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "audit",
+        "identity"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "why",
+        "verifier_detail[1]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "why",
+        "evidence[1]",
+        "activation"
+      ],
+      "note": "Primary obligation proposed in splitSuggestion."
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "avoid[2]",
+        "why",
+        "evidence[3]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "unless[2]",
+        "verifier_detail[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "identity",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "identity",
+        "verifier_detail[3]"
+      ],
+      "note": "Kept as the source label 'strict' only; no enforcement mechanics added."
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "audit",
+        "verifier_detail[3]"
+      ]
+    }
+  ]
+}

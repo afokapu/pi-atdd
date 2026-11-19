@@ -1,0 +1,70 @@
+schema_version: 1.1.0
+rule_id: coder.quality.mi
+kind: rule
+status: active
+name: TypeScript files keep a maintainability index of at least 20
+statement: >-
+  Every TypeScript/TSX file MUST score at least 20 on the approximate SEI maintainability index. Stack-
+  neutral obligation, NATIVE BUN detector transcribed from the python-pytest sibling
+  `coder.refactor.quality-mi-typescript` — the Halstead volume, the log terms and the comment term are the
+  same formula, verified identical to ten decimal places. Realized by `bun_ts_metrics_detector` (core
+  alias REFACTOR-QUALITY-MI-TS-001).
+terms:
+- term_id: maintainability_index
+  text: >-
+    the approximate SEI composite: 171 - 5.2*ln(V) - 0.23*avgCC - 16.2*ln(LOC) +
+    50*sin(sqrt(2.4*CM)), clamped to 0..100.
+- term_id: halstead_volume
+  text: >-
+    V — a regex-approximated operator/operand count standing in for the file's information
+    content. No AST, no external library.
+content:
+  summary: >-
+    MI = 171 - 5.2*ln(V) - 0.23*avgCC - 16.2*ln(LOC) + 50*sin(sqrt(2.4*CM)), clamped to 0..100, where V is
+    a regex-approximated Halstead volume, avgCC the average decision density per function, and CM the
+    comment ratio. No AST, no external library.
+  normative_text: |
+    MI is a composite, and that is the point: a file can pass every per-function threshold and still be unmaintainable through sheer accumulated size and operator density. MI is the only rule here that judges the FILE rather than its parts.
+    It is an approximation and is treated as one — the threshold of 20 is set low enough that a score below it indicates a file nobody should be asked to modify, not a file that is merely imperfect.
+    Treat a low score as a sensor for accumulated responsibilities and information density at file scope. Because MI combines size, branching, operator density, and comments, optimizing one term mechanically can improve the number without making the module easier to change; the repair should improve cohesion and ownership first.
+  fix_hint: |
+    Diagnose why the file has accumulated too much responsibility before optimizing the score.
+
+    Diagnose:
+      * identify cohesive responsibilities that change for different reasons,
+      * identify large decision-heavy regions and repeated logic that dominate the file,
+      * identify whether missing design context contributes to the file being hard to modify.
+
+    Prefer:
+      * extract a cohesive responsibility into its own module with a clear ownership boundary,
+      * simplify genuinely complex or duplicated logic as part of that extraction,
+      * add comments only where they explain real decisions or invariants.
+
+    Avoid:
+      * adding filler comments merely to improve the formula's comment term,
+      * splitting a file at an arbitrary line boundary or into tiny fragments solely to reduce LOC,
+      * moving complexity unchanged into a sibling module,
+      * introducing a generalized abstraction unrelated to the responsibilities already present.
+
+    Verify:
+      * existing behavior and tests remain green,
+      * the resulting modules each have a coherent reason to change,
+      * the triggering MI finding is gone without creating length, complexity, duplication, or dependency-flow violations,
+      * dependency direction remains consistent with the existing architecture,
+      * the refactor introduces no new ATDD Bun violations.
+  exceptions:
+  - Files that produce zero code lines after comment stripping score 100 and never fail.
+  - The score is clamped to the 0..100 range.
+  - Test files and vendored/build directories are outside the scan.
+metadata:
+  aliases:
+  # REFACTOR-QUALITY-MI-TS-001 is the SHARED core alias, also carried by the agnostic node and by
+  # its python-pytest realization. One obligation, two detectors, two runtimes.
+  - REFACTOR-QUALITY-MI-TS-001
+  severity: 2
+  # strict: atdd-bun fails on every finding; it has no advisory mode and no ratchet baseline.
+  disposition: strict
+  introduced_in: 0.1.0
+implementation:
+  type: validator
+  ref: bun_ts_metrics_detector

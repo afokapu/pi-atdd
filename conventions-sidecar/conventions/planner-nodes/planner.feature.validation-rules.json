@@ -1,0 +1,288 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.feature.validation-rules.convention.yaml",
+    "sha256": "77589b812d1fb51201fe84e93284202eb2f6438c9cba853306d2638c040f0c3d"
+  },
+  "rule_id": "planner.feature.validation-rules",
+  "kind": "rule",
+  "title": "Set feature size to max(WMBT size, Footprint size) and split features over limits",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "feature plan document (feature convention artifact)"
+        ],
+        "observability": "observable_now",
+        "note": "Feature plan files are identifiable by artifact kind/location in the planning tree."
+      },
+      {
+        "fact": "operation",
+        "values": [
+          "create",
+          "edit",
+          "validate"
+        ],
+        "observability": "observable_now",
+        "note": "Fires whenever a feature plan is authored, modified (any field, including prose) or validated; the invariant holds for every feature plan, not only sizing edits."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "size field set, changed or missing",
+          "covers_wmbts changed or missing",
+          "footprint (components/events/tables/jobs/integrations) changed or missing"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Diff/field-level observer on feature documents, including detection of absent sizing fields."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "size != max(WMBT size, Footprint size)",
+          "size field missing",
+          "size unverifiable because covers_wmbts or footprint is missing",
+          "component/event limit exceeded",
+          "hard limit (tables/jobs/integrations) exceeded"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Feature-sizing validator computing the WMBT bracket from covers_wmbts and footprint points, run over existing as well as new feature plans."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "feature",
+          "size",
+          "footprint",
+          "covers_wmbts",
+          "split feature",
+          "validate plan"
+        ],
+        "observability": "observable_now",
+        "note": "Planning task wording that touches features or their validation."
+      }
+    ],
+    "fires": [
+      "Planner authors a new feature plan, with or without sizing fields filled in yet.",
+      "Planner adds or removes WMBTs in covers_wmbts of an existing feature.",
+      "Planner adds components, events, tables, jobs or integrations to a feature's footprint.",
+      "Planner makes a prose-only edit to a feature whose existing size is wrong or whose footprint already exceeds a limit.",
+      "Planner validates/reviews existing feature plans, including ones missing size, covers_wmbts or footprint.",
+      "A feature's footprint exceeds the component/event limits or the hard limits for tables/jobs/integrations."
+    ],
+    "doesNotFire": [
+      "Editing a wagon, WMBT or acceptance document when no feature plan's sizing inputs or validity are affected.",
+      "Coder implementation work in application layers that does not touch planning artifacts."
+    ]
+  },
+  "given": "Any feature plan (new or existing, with or without complete size, covers_wmbts and footprint fields)",
+  "when": "The planner creates, edits (including prose-only) or validates that feature plan",
+  "then": "Ensure the feature's size field is present and equals exactly max(WMBT size, Footprint size), with the WMBT bracket from covers_wmbts and the Footprint size from the footprint point score.",
+  "prefer": [
+    "Derive the WMBT size bracket from covers_wmbts and score the footprint with the point system (defined in planner.feature.size-max-rule); take the larger.",
+    "Split a feature whose footprint exceeds component/event limits; always split one exceeding hard limits (tables/jobs/integrations); limit values come from planner.feature.hard-limits.",
+    "If covers_wmbts or footprint is missing, fill it in from the feature's scope before setting size; do not guess a size without both inputs."
+  ],
+  "avoid": [
+    "A size differing from max(WMBT size, Footprint size), e.g. using only one of the two.",
+    "Leaving an over-limit feature unsplit, even when only editing its prose.",
+    "Trimming covers_wmbts or under-reporting footprint to lower size or dodge a limit."
+  ],
+  "unless": [],
+  "why": "The convention defines feature size as the larger of the WMBT bracket and the footprint's architectural-complexity score, and requires features over component/event or hard limits to be split.",
+  "evidence": [
+    "Validator recomputes WMBT size from covers_wmbts and Footprint size from footprint points and checks size == max of the two; a missing size field is a failure.",
+    "Where covers_wmbts or footprint is missing, the validator reports the size as unverifiable (not as passing).",
+    "Validator checks footprint counts against component/event limits and hard limits (tables/jobs/integrations); any excess without a split is a failure."
+  ],
+  "verifier_detail": [
+    "size field must equal max(WMBT size, Footprint size).",
+    "covers_wmbts determines the WMBT size bracket.",
+    "Footprint scores architectural complexity using a point system.",
+    "Features exceeding component/event limits must be split.",
+    "Features exceeding hard limits (tables/jobs/integrations) MUST be split.",
+    "Term validation_rule: a feature sizing/limit validation rule.",
+    "Graph: requires planner.feature.hard-limits (limit values) and planner.feature.size-max-rule (max rule definition).",
+    "Run over all feature plans (existing and new), not only changed sizing fields."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "source kind: constraint",
+    "status: active",
+    "name: Feature validation rules",
+    "statement: A feature's size must equal max(WMBT size, Footprint size); features exceeding component/event/hard limits must be split.",
+    "source: legacy_path src/atdd/planner/conventions/feature.convention.yaml, legacy_section validation_rules, legacy_sha 4a95544261fb9541, extraction_mode high_fidelity",
+    "parity: source_fragments_preserved true, examples_preserved false, implementation_preserved false, fix_hint_preserved false, reviewed_at 2026-06-16",
+    "terms: validation_rule = a feature sizing/limit validation rule."
+  ],
+  "splitSuggestion": [
+    {
+      "id": "planner.feature.split-on-limits",
+      "then": "Split any feature whose footprint exceeds the component/event limits or the hard limits for tables/jobs/integrations.",
+      "segments": [
+        "S011",
+        "S012"
+      ]
+    }
+  ],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "split_suggestion",
+      "text": "Splitting on exceeded limits (S011, S012) is an independent obligation; propose planner.feature.split-on-limits (possibly merged with planner.feature.hard-limits).",
+      "justification": "Rule 2: one obligation in then; split obligation kept in prefer/avoid meanwhile."
+    },
+    {
+      "field": "avoid",
+      "text": "Trimming covers_wmbts or under-reporting footprint to lower size or dodge a limit.",
+      "justification": "Metric-gaming anti-pattern implied by the sizing rule; not literally in source."
+    },
+    {
+      "field": "then",
+      "text": "'present' — a missing size field is treated as a violation (evidence[0]).",
+      "justification": "Source requires size to equal the max; an absent size cannot satisfy that, so plans missing sizing fields are in scope."
+    },
+    {
+      "field": "prefer",
+      "text": "prefer[2]: if covers_wmbts or footprint is missing, fill it in before setting size; do not guess a size without both inputs.",
+      "justification": "Reviewer usability risk: planner needs guidance for incomplete plans. This is guidance on how to satisfy the size rule, not a new completeness requirement; the source itself does not require these fields independently."
+    },
+    {
+      "field": "evidence",
+      "text": "evidence[1]: missing covers_wmbts/footprint is reported as 'size unverifiable', not as an automatic failure and not as a pass.",
+      "justification": "Replaces the previous undeclared automatic failure for missing sizing inputs (auditor finding); the source only implies size cannot be confirmed without its inputs."
+    },
+    {
+      "field": "prefer",
+      "text": "References to planner.feature.size-max-rule (point system) and planner.feature.hard-limits (limit values) in prefer[0]/prefer[1].",
+      "justification": "Taken from graph.json requires-edges; tells the planner where the numeric point system and limits are defined (reviewer usability risk)."
+    },
+    {
+      "field": "activation",
+      "text": "Activation facts, fires and doesNotFire cases, including prose-only edits and validation of existing/incomplete feature plans.",
+      "justification": "Required by schema; source has no activation section and states an unconditional invariant."
+    },
+    {
+      "field": "verifier_detail",
+      "text": "Run over all feature plans (existing and new), not only changed sizing fields.",
+      "justification": "Mirrors the unconditional source invariant in verifier scope."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "basis for title"
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "prefer[1]",
+        "why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "then",
+        "avoid[0]",
+        "verifier_detail[0]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "then",
+        "prefer[0]",
+        "why",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "then",
+        "prefer[0]",
+        "why",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "prefer[1]",
+        "avoid[1]",
+        "why",
+        "verifier_detail[3]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "prefer[1]",
+        "avoid[1]",
+        "why",
+        "verifier_detail[4]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[5]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[5]",
+        "audit"
+      ]
+    }
+  ]
+}

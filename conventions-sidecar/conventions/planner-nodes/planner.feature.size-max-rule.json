@@ -1,0 +1,347 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.feature.size-max-rule.convention.yaml",
+    "sha256": "ca78dbad481947a12c794c3d87d13d663c95a5658ef11b04e839f7fdebfe4405"
+  },
+  "rule_id": "planner.feature.size-max-rule",
+  "kind": "rule",
+  "title": "Size each feature as max(WMBT-count size, footprint size)",
+  "activation": {
+    "facts": [
+      {
+        "fact": "layer",
+        "values": [
+          "planner"
+        ],
+        "observability": "observable_now",
+        "note": "Planner artifacts (features, wagons, WMBTs) are identifiable by path/file kind."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "feature",
+          "wmbt",
+          "wagon plan"
+        ],
+        "observability": "observable_now",
+        "note": "Feature/WMBT plan files can be matched by path glob and file kind. This alone activates the rule for any feature sizing, including XS/S features and Pass 1 before any footprint exists."
+      },
+      {
+        "fact": "phase",
+        "values": [
+          "planning (Pass 1)",
+          "post-decomposition (Pass 2)"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Selects which pass applies; needs an observer that knows whether WMBT decomposition is complete and a footprint has been computed. Not a prerequisite for activation."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "feature final size M or L",
+          "components > 8",
+          "events > 3",
+          "new events > 3"
+        ],
+        "observability": "needs_new_observer",
+        "note": "OPTIONAL violation trigger only, not an activation prerequisite: compliant features and Pass 1 sizing activate the rule without any finding. Requires a detector that counts WMBTs per feature and computes footprint."
+      }
+    ],
+    "fires": [
+      "A planner authors or edits a feature and assigns it a size from its WMBT count (Pass 1), even when the size is XS or S and no footprint exists yet.",
+      "After WMBT decomposition, a feature's footprint is computed and its final size must be reclassified (Pass 2), whether or not the result is compliant.",
+      "A feature has 11+ WMBTs or exceeds 8 components, 3 events, or 3 new events, and is about to be scheduled for execution.",
+      "A plan or doc edit states, restates or changes a feature's size or its execution eligibility, even if WMBT/component/event counts are unchanged."
+    ],
+    "doesNotFire": [
+      "Editing code or tests that do not define, size or schedule a planner feature.",
+      "Editing a feature's prose in a way that neither defines, changes nor restates its size or execution eligibility, and does not change its WMBTs, components or events.",
+      "Sizing a wagon or train as a whole rather than an individual feature."
+    ]
+  },
+  "given": "A feature has a WMBT count and, after decomposition, a footprint (components, events, new events).",
+  "when": "You size or reclassify the feature.",
+  "then": "Set the feature's final size to max(WMBT-count size, footprint size).",
+  "prefer": [
+    "Pass 1 (planning): size by WMBT count only, to unblock decomposition — XS ≤5, S 6–10, M 11–20, L >20.",
+    "Pass 2 (post-decomposition): compute the footprint, reclassify with the max rule, and gate M/L features.",
+    "Keep final size at S or smaller; split or stage any larger feature before execution — decompose/stage an M feature (11–20 WMBTs), split an L feature (>20 WMBTs) immediately.",
+    "Keep each feature within ≤8 components, ≤3 events, ≤3 new events."
+  ],
+  "avoid": [
+    "Taking the smaller of the two sizes or using only the WMBT count once a footprint exists.",
+    "Sending an M or L feature to execution without splitting or staging it.",
+    "Shaving WMBT counts or merging events/components on paper to land in S without actually reducing scope."
+  ],
+  "unless": [],
+  "why": "Blended strategy: WMBT count alone sizes the feature early so decomposition is unblocked (Pass 1); once the footprint is known, the max rule reclassifies the feature so the larger of the two sizes governs and M/L features are gated (Pass 2).",
+  "evidence": [
+    "Each feature records its WMBT-count size, its footprint size, and a final size equal to the larger of the two.",
+    "No feature with final size M or L enters execution; each was split or staged first.",
+    "Per-feature component, event and new-event counts are at or below 8, 3 and 3."
+  ],
+  "verifier_detail": [
+    "final_size_rule: final = max(wmbt_count_size, footprint_size); size order XS < S < M < L; max_size = S.",
+    "wmbt_bracket: XS ≤5 WMBTs; S 6–10; M 11–20 (decompose/stage); L >20 (split immediately).",
+    "Per-feature footprint limits: max_components = 8, max_events = 3, max_new_events = 3.",
+    "overflow_action: split or stage before execution; fail any feature whose final size > S at the execution gate.",
+    "Footprint size is computed per planner.feature.footprint-scoring; WMBT count comes from planner.feature.grouping-strategy."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "kind: rule; status: active",
+    "source: legacy_path src/atdd/planner/conventions/feature.convention.yaml, legacy_section 'sizing + rationale', legacy_sha 4a95544261fb9541, extraction_mode high_fidelity",
+    "parity: source_fragments_preserved true, examples_preserved false, implementation_preserved false, fix_hint_preserved false, reviewed_at 2026-06-16",
+    "Original name: 'Feature size is the max rule'",
+    "Original statement combined two obligations: 'Final feature size = max(WMBT-count size, Footprint size); features MUST be S or smaller, else split or stage before execution.'",
+    "Term ids: final_size_rule, wmbt_bracket"
+  ],
+  "splitSuggestion": [
+    {
+      "id": "planner.feature.size-cap-gate",
+      "then": "Do not send a feature whose final size exceeds S (i.e. M or L) to execution; split or stage it first (M: decompose/stage, L: split immediately), keeping ≤8 components, ≤3 events, ≤3 new events per feature.",
+      "segments": [
+        "S006",
+        "S010",
+        "S011",
+        "S013",
+        "S014",
+        "S018",
+        "S019",
+        "S020",
+        "S021",
+        "S026",
+        "S027"
+      ]
+    }
+  ],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "split_suggestion",
+      "text": "The source statement holds two obligations: (1) compute final size as max(WMBT-count size, footprint size) — kept in then; (2) cap final size at S and split/stage before execution — kept here in prefer[2]/avoid[1]/evidence/verifier_detail and proposed as separate convention planner.feature.size-cap-gate.",
+      "justification": "One-obligation rule for then; both requirements and traces are preserved."
+    },
+    {
+      "field": "why",
+      "text": "Rephrasing of 'Blended strategy' plus the Pass 1/Pass 2 text as the rationale ('so the larger of the two sizes governs').",
+      "justification": "Source gives no separate rationale; the why restates only source-authored content (S008–S010, S017) without new empirical claims."
+    },
+    {
+      "field": "avoid",
+      "text": "Shaving WMBT counts or merging events/components on paper to land in S without actually reducing scope; taking the smaller size or only WMBT count once a footprint exists.",
+      "justification": "Metric-gaming / misapplication anti-patterns required by the authoring rules; they follow from the max rule without adding an obligation."
+    },
+    {
+      "field": "evidence",
+      "text": "Each feature records its WMBT-count size, footprint size and final size.",
+      "justification": "Gives reviewers a way to check the max rule; the source states the rule but not how compliance is shown."
+    },
+    {
+      "field": "verifier_detail",
+      "text": "Size order XS < S < M < L and the cross-references to footprint-scoring and grouping-strategy.",
+      "justification": "The verifier needs these to compute max(); the cross-references come from graph.json edges."
+    },
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire situations",
+      "justification": "Required by the schema; derived from the source's scope (feature sizing in both passes and before execution)."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Basis of the title; original name kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "prefer[2]",
+        "avoid[1]",
+        "verifier_detail[0]",
+        "verifier_detail[3]",
+        "audit"
+      ],
+      "note": "Max calculation in then; S cap / split-or-stage gate in prefer[2], avoid[1] and proposed split convention."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "prefer[0]",
+        "why",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "prefer[1]",
+        "why",
+        "activation",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "prefer[3]",
+        "evidence[2]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "prefer[0]",
+        "prefer[2]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "prefer[2]",
+        "avoid[1]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "verifier_detail[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "then",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "verifier_detail[1]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[1]"
+      ]
+    }
+  ]
+}

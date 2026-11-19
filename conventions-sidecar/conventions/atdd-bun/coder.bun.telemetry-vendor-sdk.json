@@ -1,0 +1,334 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.bun/coder.bun.telemetry-vendor-sdk.convention.yaml",
+    "sha256": "8ed29a99c1c46deaeedd29cc656f62ca472fad44115c226c057c51270bef0257"
+  },
+  "rule_id": "coder.bun.telemetry-vendor-sdk",
+  "kind": "rule",
+  "title": "Keep telemetry vendor SDK imports out of core layers",
+  "activation": {
+    "facts": [
+      {
+        "fact": "layer",
+        "values": [
+          "domain",
+          "application",
+          "presentation",
+          "assembly"
+        ],
+        "observability": "observable_now",
+        "note": "File path carries a layer segment other than integration. Integration-layer files and unlayered entrypoints (composition root, scripts) are out of scope."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "!**/infrastructure/**"
+        ],
+        "observability": "observable_now",
+        "note": "Paths under an infrastructure/ directory are the adapter location and exempt."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "file contains an import (value or type-only) of a vendor_sdk package"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Needs an import-level observer matching the vendor_sdk package list against the file's current imports — covers pre-existing imports, newly added imports, and files newly moved into a prohibited layer, not only added lines."
+      }
+    ],
+    "fires": [
+      "A domain-layer file contains `import { trace } from \"@opentelemetry/api\"` to emit a span directly.",
+      "An application-layer file contains `import type { Scope } from \"@sentry/node\"` (type-only still counts).",
+      "A presentation-layer file imports `mixpanel` or `@amplitude/analytics-browser` to track an event.",
+      "A file that already imports `dd-trace` is moved from integration/ into an assembly-layer path."
+    ],
+    "doesNotFire": [
+      "An integration-layer file imports `@opentelemetry/api` to implement the TelemetryPort adapter.",
+      "A file under an infrastructure/ directory imports `@sentry/node`.",
+      "An unlayered composition root or script imports a vendor SDK to wire adapters.",
+      "A domain file imports only the neutral TelemetryPort type.",
+      "The repository has not adopted this rule family (rule is inert)."
+    ]
+  },
+  "given": "A layered source file (domain, application, presentation, assembly) not under an infrastructure/ directory",
+  "when": "it imports (value or type-only) a telemetry vendor SDK: @opentelemetry/*, @sentry/*, @datadog/*, dd-trace, newrelic, segment (bare or @segment/*), mixpanel (bare or @mixpanel/*), amplitude (bare or @amplitude/*), @posthog/*, @statsig/*, @braze/*, @heap/*, @rudderstack/*",
+  "then": "The file MUST NOT import a telemetry vendor SDK.",
+  "prefer": [
+    "Depend on the port; adapt at the edge: core takes a TelemetryPort parameter, e.g. in domain/: `export function acceptResponse(response, telemetry: TelemetryPort) { telemetry.emit(...); }` — no SDK.",
+    "Put the SDK in an adapter under infrastructure/ or the integration layer, e.g. infrastructure/otel-adapter.ts: `import { metrics } from \"@opentelemetry/api\";` — the SDK lives there and only there."
+  ],
+  "avoid": [
+    "Type-only vendor imports in core: the coupling is real even when erased.",
+    "Relabelling or moving a file just to escape the check instead of splitting port and adapter."
+  ],
+  "unless": [
+    "Integration layer or infrastructure/ path: exempt by design, the adapter belongs there.",
+    "Unlayered entrypoints (composition root, script): outside this rule — they wire adapters, they do not become one.",
+    "Inert until adoption, like every rule in this family."
+  ],
+  "why": "Core depends only on a TelemetryPort; once a domain module imports an exporter, every module behind it inherits the vendor and exporter-neutrality is gone.",
+  "evidence": [
+    "The bun_telemetry_code validator reports no finding for layered files outside integration/ and infrastructure/.",
+    "Review: no value or type-only vendor_sdk import exists in domain, application, presentation or assembly files outside infrastructure/.",
+    "Core telemetry emission goes through a TelemetryPort dependency; the SDK appears only in an integration-layer or infrastructure/ adapter."
+  ],
+  "verifier_detail": [
+    "vendor_sdk package matchers: @opentelemetry/*, @sentry/*, @datadog/*, dd-trace, newrelic, segment (bare or @segment/*), mixpanel (bare or @mixpanel/*), amplitude (bare or @amplitude/*), @posthog/*, @statsig/*, @braze/*, @heap/*, @rudderstack/*.",
+    "Scope: files whose path carries a layer segment (domain, application, presentation, integration, assembly). A vendor SDK import is allowed only when the layer is integration or the path sits under infrastructure/.",
+    "adapter_location = the integration layer, or an infrastructure/ directory — the outer ring where exporters are wired to the neutral TelemetryPort.",
+    "Type-only imports count as violations.",
+    "Unlayered files (no layer segment, e.g. composition root, scripts) are not checked.",
+    "Rule is inert until the repository adopts it (family-wide adoption gate).",
+    "Implemented by validator ref bun_telemetry_code; severity 2; disposition strict."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "kind: rule",
+    "status: active",
+    "aliases: CODER-TELEMETRY-VENDOR-SDK-001",
+    "introduced_in: 0.7.0",
+    "implementation: {type: validator, ref: bun_telemetry_code}",
+    "term ids: vendor_sdk, adapter_location",
+    "original name: Telemetry vendor SDKs stay in infrastructure adapters",
+    "original summary wording: 'every wagon behind it inherits the vendor, and the plan's exporter-neutrality promise is gone'",
+    "severity: 2; disposition: strict"
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Disposition strict: the checker fails on every finding; there is no advisory mode and no ratchet baseline."
+    },
+    {
+      "id": "context.repo-topology.layers",
+      "kind": "context",
+      "text": "Layer segments: domain, application, presentation, integration, assembly. The integration layer and infrastructure/ directories form the outer ring where adapters wire external SDKs to neutral ports; core layers depend only on ports. Unlayered entrypoints (composition root, scripts) wire adapters."
+    }
+  ],
+  "additions": [
+    {
+      "field": "avoid",
+      "text": "Relabelling or moving a file just to escape the check instead of splitting port and adapter.",
+      "justification": "Metric-gaming anti-pattern required by the author format; not present in the source."
+    },
+    {
+      "field": "activation",
+      "text": "Concrete fires/doesNotFire examples using vendor package names from the source list.",
+      "justification": "Activation examples are required; they only instantiate source-listed packages and layers."
+    },
+    {
+      "field": "split_suggestion",
+      "text": "None: the source has a single obligation (the import prohibition); port substitution and adapter placement are remediation in prefer.",
+      "justification": "Rule 2 compliance."
+    },
+    {
+      "field": "when",
+      "text": "Length note: coder-facing text exceeds the ~1,000-char target because the complete vendor_sdk package list is repeated in `when` so the coder sees the exact package boundary.",
+      "justification": "Losslessness/auditor requirement outweighs brevity."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Rephrased as imperative title; original name kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "when",
+        "then"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "when",
+        "verifier_detail[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[2]",
+        "prefer[1]",
+        "shared:context.repo-topology.layers"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "why",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "given",
+        "verifier_detail[1]",
+        "activation",
+        "shared:context.repo-topology.layers"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[1]",
+        "given",
+        "unless[0]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "avoid[0]",
+        "verifier_detail[3]",
+        "when"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "unless[0]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "unless[2]",
+        "activation",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "identity",
+        "verifier_detail[6]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "audit",
+        "verifier_detail[6]"
+      ]
+    }
+  ]
+}

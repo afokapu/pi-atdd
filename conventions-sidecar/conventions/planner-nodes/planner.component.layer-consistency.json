@@ -1,0 +1,517 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.component.layer-consistency.convention.yaml",
+    "sha256": "3b0c2d96563841c0ce00ff32cf40519929c55a6a0d0611bbb08505e0dd7fa222"
+  },
+  "rule_id": "planner.component.layer-consistency",
+  "kind": "rule",
+  "title": "Give every component URN a valid layer value",
+  "activation": {
+    "facts": [
+      {
+        "fact": "task_term",
+        "values": [
+          "component",
+          "URN",
+          "layer"
+        ],
+        "observability": "observable_now",
+        "note": "Task text mentions defining, reviewing or re-layering components."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "any artifact declaring component URNs (plans, wagons, WMBTs, acceptances, component specs, docs)"
+        ],
+        "observability": "observable_now",
+        "note": "Any file containing component:… URNs; not limited to changed or plan-only files."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "component URN added or modified"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Diff-level observer extracting added/changed component:… URNs; one trigger, not the only one."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "component URN missing layer value",
+          "component URN with a layer value outside the allowed set",
+          "component assigned to more than one layer"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Needs a URN parser/validator against the allowed layer set plus a membership observer; the source declares implementation type none."
+      }
+    ],
+    "fires": [
+      "Planner declares a new component URN in any planning artifact",
+      "Planner edits an existing component URN or its layer value",
+      "Any component URN (new or existing, changed or not) has no layer value or uses a non-allowed value such as \"service\"",
+      "A component is described as belonging to more than one layer"
+    ],
+    "doesNotFire": [
+      "Non-component URNs (e.g. wagon or acceptance URNs) that carry no layer by design",
+      "Work that neither declares, changes, nor inspects any component"
+    ]
+  },
+  "given": "A component exists or is being declared, identified by a component URN",
+  "when": "The planner writes, edits or reviews that component URN",
+  "then": "The component URN contains a valid layer value, exactly one of: presentation|application|domain|integration|assembly.",
+  "prefer": [
+    "Put the layer in the URN's layer segment (in the source example it is the final segment), using one value spelled exactly as in the allowed set.",
+    "For reference, each layer has typical methods / consumes / produces listed in context.repo-topology.layers (e.g. domain: process, calculate, applyRules).",
+    "If a component spans layers, split it into one component per layer, each with its own URN carrying that single layer value."
+  ],
+  "avoid": [
+    "Component URNs with no layer value.",
+    "Invented or synonym layer values (e.g. \"service\") outside the allowed set.",
+    "Assigning one component to more than one architectural layer (a component belongs to exactly one layer)."
+  ],
+  "unless": [],
+  "why": "Pinning each component to exactly one layer keeps the layered architecture honest and lets the URN's layer segment be trusted as the single source of truth for where a component lives.",
+  "evidence": [
+    "Each component is assigned to exactly one architectural layer.",
+    "Each component URN contains a valid layer value from {presentation, application, domain, integration, assembly}.",
+    "The chosen layer is consistent with that layer's typical methods / consumes / produces profile."
+  ],
+  "verifier_detail": [
+    "Check: URN contains valid layer: presentation|application|domain|integration|assembly (exact allowed values; anything else, e.g. \"service\", is a violation; a URN with no layer is a violation).",
+    "Compliant source example: 'component:resolve-dilemmas:choose-option:OptionValidator:backend:domain' — one valid layer (domain), located in the final URN segment.",
+    "Counter-example: a component URN with no layer segment, or with an invalid layer like \"service\".",
+    "Layer patterns (from valid_layers term): presentation typical_methods [render, handleInput, updateDisplay], consumes [user interactions, display updates], produces [ui events, user actions]; application typical_methods [execute, coordinate, validate], consumes [commands, queries], produces [events, responses]; domain typical_methods [process, calculate, applyRules], consumes [domain events], produces [domain events, state changes]; integration typical_methods [fetch, save, publish], consumes [external events], produces [external calls, persistence operations]; assembly has no pattern listed in source.",
+    "Source declares implementation: {type: none}.",
+    "Exactly-one-layer membership (term one_layer: 'Component belongs to exactly one layer') is a separate check: flag any component described or declared under more than one layer."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active.",
+    "implementation: {type: none}.",
+    "source: legacy_path src/atdd/planner/conventions/component.convention.yaml, legacy_sha sha256:8bfb25fd6c2bdb6e, extraction_mode high_fidelity, legacy_section layer-consistency.",
+    "parity: source_fragments_preserved, examples_preserved, implementation_preserved, fix_hint_preserved all true; reviewed_at 2026-06-16.",
+    "Original name: 'Component: Layer Consistency'.",
+    "Original statement: 'A component belongs to exactly one architectural layer, and its URN must contain a valid layer value.'",
+    "Term ids: one_layer (label 'Exactly one layer'), valid_layers (label 'Valid layer values', text 'The allowed architectural layer values, with typical methods, consumes, and produces per layer.').",
+    "Graph context (graph.json, not source.convention.yaml): requires planner.component.layer-assignment, finish_to_start, reason 'exactly-one-layer can only be checked once a layer has been assigned from the artifact type'."
+  ],
+  "splitSuggestion": [
+    {
+      "id": "planner.component.single-layer-membership",
+      "then": "Each component belongs to exactly one architectural layer; a component spanning layers is split into one component per layer.",
+      "segments": [
+        "S006",
+        "S013",
+        "S014",
+        "S015",
+        "S017"
+      ]
+    }
+  ],
+  "sharedNodes": [
+    {
+      "id": "context.repo-topology.layers",
+      "kind": "context",
+      "text": "Allowed architectural layers: presentation, application, domain, integration, assembly. Per-layer profile — presentation: typical methods render/handleInput/updateDisplay, consumes user interactions & display updates, produces ui events & user actions; application: typical methods execute/coordinate/validate, consumes commands & queries, produces events & responses; domain: typical methods process/calculate/applyRules, consumes domain events, produces domain events & state changes; integration: typical methods fetch/save/publish, consumes external events, produces external calls & persistence operations; assembly: no profile in source."
+    }
+  ],
+  "additions": [
+    {
+      "field": "split_suggestion",
+      "text": "The source statement holds two independently checkable obligations: (a) URN contains a valid layer value (kept in then) and (b) a component belongs to exactly one layer (kept as avoid[2]/evidence[0]/verifier_detail[5]); (b) should become its own convention planner.component.single-layer-membership.",
+      "justification": "One-obligation rule; auditor required separating membership cardinality from URN-value validity."
+    },
+    {
+      "field": "prefer[0]",
+      "text": "Layer value goes in the URN's layer segment (final segment in the source example), spelled exactly as in the allowed set.",
+      "justification": "Reviewer flagged missing URN position; derived descriptively from the source's only compliant example, not a new grammar rule."
+    },
+    {
+      "field": "prefer[1]",
+      "text": "Reference to the per-layer typical methods / consumes / produces profiles.",
+      "justification": "Descriptive pointer to the source's valid_layers profiles; it does not prescribe a selection or tie-breaking procedure."
+    },
+    {
+      "field": "prefer[2]",
+      "text": "If a component spans layers, split it into one component per layer, each with its own URN carrying that single layer value.",
+      "justification": "Operational consequence of 'exactly one layer'; tells the planner how to comply, not a new obligation."
+    },
+    {
+      "field": "activation.doesNotFire",
+      "text": "Non-component URNs; work not touching components.",
+      "justification": "Scoping for observable activation; source is silent but scoped to components."
+    },
+    {
+      "field": "evidence[2]",
+      "text": "Chosen layer consistent with the layer's typical methods/consumes/produces profile.",
+      "justification": "Turns the valid_layers patterns into a review check."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "avoid[2]",
+        "evidence[0]",
+        "evidence[1]",
+        "audit"
+      ],
+      "note": "URN-validity half in then; exactly-one-layer half in avoid[2]/evidence[0] and splitSuggestion."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[1]"
+      ],
+      "note": "Project-specific example kept for verifier only."
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[2]",
+        "avoid[0]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "avoid[2]",
+        "evidence[0]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "then",
+        "evidence[1]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "avoid[2]",
+        "evidence[0]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "then",
+        "verifier_detail[0]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "audit",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "then",
+        "shared:context.repo-topology.layers"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "then",
+        "shared:context.repo-topology.layers"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "then",
+        "shared:context.repo-topology.layers"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "then",
+        "shared:context.repo-topology.layers"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "then",
+        "shared:context.repo-topology.layers"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "verifier_detail[3]",
+        "shared:context.repo-topology.layers"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "verifier_detail[3]",
+        "shared:context.repo-topology.layers"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "verifier_detail[3]",
+        "shared:context.repo-topology.layers"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "verifier_detail[3]",
+        "shared:context.repo-topology.layers"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "verifier_detail[3]",
+        "shared:context.repo-topology.layers"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "verifier_detail[3]",
+        "shared:context.repo-topology.layers"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "verifier_detail[3]",
+        "shared:context.repo-topology.layers"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "verifier_detail[3]",
+        "shared:context.repo-topology.layers"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "verifier_detail[3]",
+        "shared:context.repo-topology.layers"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "verifier_detail[3]",
+        "shared:context.repo-topology.layers"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "verifier_detail[3]",
+        "shared:context.repo-topology.layers"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "verifier_detail[3]",
+        "shared:context.repo-topology.layers"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "verifier_detail[3]",
+        "shared:context.repo-topology.layers"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "verifier_detail[3]",
+        "shared:context.repo-topology.layers"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "verifier_detail[3]",
+        "shared:context.repo-topology.layers",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "verifier_detail[3]",
+        "shared:context.repo-topology.layers",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "verifier_detail[3]",
+        "shared:context.repo-topology.layers",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "verifier_detail[3]",
+        "shared:context.repo-topology.layers"
+      ]
+    },
+    {
+      "seg": "S045",
+      "dest": [
+        "verifier_detail[3]",
+        "shared:context.repo-topology.layers"
+      ]
+    },
+    {
+      "seg": "S046",
+      "dest": [
+        "verifier_detail[3]",
+        "shared:context.repo-topology.layers"
+      ]
+    },
+    {
+      "seg": "S047",
+      "dest": [
+        "verifier_detail[3]",
+        "shared:context.repo-topology.layers"
+      ]
+    },
+    {
+      "seg": "S048",
+      "dest": [
+        "verifier_detail[3]",
+        "shared:context.repo-topology.layers"
+      ]
+    },
+    {
+      "seg": "S049",
+      "dest": [
+        "verifier_detail[3]",
+        "shared:context.repo-topology.layers"
+      ]
+    },
+    {
+      "seg": "S050",
+      "dest": [
+        "verifier_detail[3]",
+        "shared:context.repo-topology.layers"
+      ]
+    },
+    {
+      "seg": "S051",
+      "dest": [
+        "verifier_detail[3]",
+        "shared:context.repo-topology.layers"
+      ]
+    },
+    {
+      "seg": "S052",
+      "dest": [
+        "verifier_detail[3]",
+        "shared:context.repo-topology.layers"
+      ]
+    }
+  ]
+}

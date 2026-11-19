@@ -1,0 +1,246 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.plan.confirm-before-author.convention.yaml",
+    "sha256": "23116f68ce81ff78ab57d362cf7195c4bf637781d74df4aece4d61eafbf0a49b"
+  },
+  "rule_id": "planner.plan.confirm-before-author",
+  "kind": "rule",
+  "title": "Author nothing before the operator ratifies the locked decomposition",
+  "activation": {
+    "facts": [
+      {
+        "fact": "phase",
+        "values": [
+          "plan-session:pre-ratify",
+          "plan-session:ratify",
+          "plan-session:author-on-confirm"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Needs an observer exposing the plan session's lock state (locked = operator ratified) to agent and verifier."
+      },
+      {
+        "fact": "operation",
+        "values": [
+          "atdd author <kind>",
+          "atdd plan confirm/author pass"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Needs a tool-call observer detecting who invokes an atdd author writer (agent vs atdd plan) and whether the session was locked at that moment."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "plan",
+          "decomposition",
+          "ratify",
+          "confirm",
+          "author"
+        ],
+        "observability": "observable_now",
+        "note": "Heuristic: task text indicates a decomposition-to-authoring session."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "**/plan/session*",
+          "**/PlanSession*"
+        ],
+        "observability": "observable_now",
+        "note": "Heuristic: edits to the session machine's author pass, where the lock guard lives."
+      }
+    ],
+    "fires": [
+      "The decomposition is proposed but not yet ratified, and an atdd author writer is about to be invoked for a unit.",
+      "The planner is tempted to call atdd author itself instead of letting atdd plan do it on confirm.",
+      "The operator has ratified and the session is locked: authoring must happen via atdd plan per locked unit, not by the agent.",
+      "The session machine's author pass (PlanSession.author()) is changed or reviewed."
+    ],
+    "doesNotFire": [
+      "Conversation about the decomposition in which no atdd author writer is invoked and no locked unit is authored.",
+      "Work outside a plan session (no decomposition-to-authoring flow)."
+    ]
+  },
+  "given": "A plan session whose decomposition the operator has not yet ratified and locked (the Ratify gate / confirm_boundary: where LLM/operator judgment ends and deterministic authoring begins).",
+  "when": "Any atdd author <kind> writer would be invoked for a unit of the decomposition.",
+  "then": "Author nothing until the operator confirms and the decomposition is locked.",
+  "prefer": [
+    "On ratification, let atdd plan (the system, not the agent) deterministically invoke atdd author <kind> per locked unit: complete, atomic, idempotently replayable.",
+    "In the session machine, keep the lock guard as the first statement of PlanSession.author(): raise SessionGateError when self.locked is False, before calling any author writer."
+  ],
+  "avoid": [
+    "Invoking an atdd author writer yourself, before or after ratification.",
+    "An author pass that invokes any writer while the session is unlocked, or a guard moved after the first writer call."
+  ],
+  "unless": [],
+  "why": "Ratify is the conversational-to-deterministic boundary; authoring only from an operator-locked decomposition keeps it complete, atomic and replayable rather than driven by unconfirmed agent judgment.",
+  "evidence": [
+    "Validator test_plan_confirm_before_author::test_confirm_before_author_is_enforced passes.",
+    "No atdd author writer invocation occurs in the session before the lock/ratification event; post-lock invocations come from atdd plan per locked unit.",
+    "PlanSession.author() raises SessionGateError when self.locked is False, as its first statement, before any author writer is called."
+  ],
+  "verifier_detail": [
+    "Normative: the session machine's author pass MUST refuse to invoke any atdd author writer until the session is locked by the operator's ratification.",
+    "Fix hint: PlanSession.author() must raise SessionGateError when self.locked is False, before calling any author writer. Keep the lock guard as the first statement of author().",
+    "Severity 4; disposition strict.",
+    "Term author_on_confirm: on confirm, atdd plan deterministically invokes atdd author per locked unit (complete, atomic, idempotently replayable)."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 3.124.0.",
+    "implementation: validator, ref test_plan_confirm_before_author::test_confirm_before_author_is_enforced.",
+    "Term ids: confirm_boundary, author_on_confirm."
+  ],
+  "splitSuggestion": [
+    {
+      "id": "planner.plan.author-on-confirm",
+      "then": "After ratification, authoring is performed only by atdd plan invoking atdd author per locked unit (complete, atomic, idempotently replayable), never by the agent.",
+      "segments": [
+        "S006",
+        "S017"
+      ]
+    }
+  ],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Disposition strict: the rule fails on every finding; no advisory mode, no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "Activation facts, fires/doesNotFire situations and heuristic path globs for the session machine.",
+      "justification": "Schema requires observable activation; source states no explicit triggers."
+    },
+    {
+      "field": "split_suggestion",
+      "text": "Post-ratification system-owned authoring (atdd plan invokes atdd author per locked unit) is a distinct obligation; kept in prefer[0]/avoid[0] here and suggested as planner.plan.author-on-confirm.",
+      "justification": "Keeps then to one obligation without losing the S006/S017 requirement."
+    },
+    {
+      "field": "avoid",
+      "text": "avoid[0] 'before or after ratification' derives from S006 'the system, not the agent' invokes atdd author.",
+      "justification": "Concrete anti-pattern restating the source; no new obligation."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "why",
+        "prefer[0]",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "verifier_detail[0]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[1]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "prefer[1]",
+        "avoid[1]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "identity",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "identity",
+        "verifier_detail[2]",
+        "shared:policy.strict-disposition"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "audit",
+        "given"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "given"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "audit",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[3]"
+      ]
+    }
+  ]
+}

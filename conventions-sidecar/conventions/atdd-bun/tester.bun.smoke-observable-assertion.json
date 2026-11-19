@@ -1,0 +1,438 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/tester.bun/tester.bun.smoke-observable-assertion.convention.yaml",
+    "sha256": "ba7c3981fd9b8860abb88eaeefde0a87bc696309a2d31e2bc9c637832d0fe1cb"
+  },
+  "rule_id": "tester.bun.smoke-observable-assertion",
+  "kind": "rule",
+  "title": "Assert SMOKE cases on operator-observable output that proves the acceptance outcome",
+  "activation": {
+    "facts": [
+      {
+        "fact": "phase",
+        "values": [
+          "SMOKE"
+        ],
+        "observability": "observable_now",
+        "note": "Test file's declared Phase; only SMOKE-phase files are in scope. This plus 'case makes assertions' is the full applicability condition."
+      },
+      {
+        "fact": "language",
+        "values": [
+          "typescript",
+          "javascript"
+        ],
+        "observability": "observable_now",
+        "note": "Bun test files."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "test"
+        ],
+        "observability": "observable_now",
+        "note": "Test files under the Bun test runner."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "bun_tester_discipline_detector: SMOKE case with assertions but no observable channel"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Detector-specific trigger only (requires the validator run). NOT a prerequisite: cases that do touch a channel (e.g. a generic 200) are still in scope for the semantic obligation."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "witness does not prove the claimed/bound acceptance outcome"
+        ],
+        "observability": "llm_judged",
+        "note": "Semantic trigger: whether the asserted evidence on the channel is acceptance-specific and would fail on regression; only a reviewer/LLM can judge this."
+      },
+      {
+        "fact": "task_has_acceptance",
+        "values": [
+          "true",
+          "false"
+        ],
+        "observability": "observable_now",
+        "note": "Whether an acceptance binding exists. Used to select the witness (the bound acceptance's Then), never to exempt unbound asserted SMOKE cases."
+      }
+    ],
+    "fires": [
+      "A SMOKE-phase test case asserts only on fields of an object the test built itself.",
+      "A SMOKE-phase test case asserts only on internal calls or mocks.",
+      "A SMOKE-phase test case asserts only a generic HTTP 200 while the bound acceptance promises specific visible content (even though the detector recognizes the channel).",
+      "An asserted SMOKE-phase case with no acceptance binding that asserts only on self-built objects."
+    ],
+    "doesNotFire": [
+      "A test whose declared Phase is not SMOKE.",
+      "A SMOKE case with no assertions at all (owned by other rules).",
+      "A SMOKE case asserting acceptance-specific content in the real HTTP response body, rendered markup, stdout/stderr, exit code, persisted state, or other operator-observable channel."
+    ]
+  },
+  "given": "A test file whose declared Phase is SMOKE contains a case that makes assertions",
+  "when": "the case's assertions are written or changed",
+  "then": "At least one assertion must check, on an operator-observable channel (HTTP response status/body, rendered markup, stdout/stderr, exit code, persisted state, or other operator-observable channel), the externally visible outcome the case claims — the bound acceptance's Then where one is bound — specifically enough that the case turns red if that behavior disappears.",
+  "prefer": [
+    "Read the acceptance's Then first; identify the externally visible consequence that discharges it.",
+    "Exercise the real path and assert on the real HTTP response and its markup (what htmx shows the user), stdout/stderr, exit code, persisted state, or other observable channel: `const res = await fetch(\"/orders\"); expect(res.status).toBe(200); expect(await res.text()).toContain(\"order-1\");` — status is transport evidence; the body check is the acceptance-specific witness."
+  ],
+  "avoid": [
+    "Asserting only on objects the test built: `const order = buildOrder({ sku: \"x\" }); expect(order.sku).toBe(\"x\");` — internal, not SMOKE evidence; it proves the constructor (a unit test's job).",
+    "Treating any observable assertion (e.g. a generic `200`) as sufficient when it does not prove the declared outcome.",
+    "Checking internal calls or mocks instead of the resulting system behavior."
+  ],
+  "unless": [
+    "The case makes no assertions at all — skipped here; other rules own that."
+  ],
+  "why": "The SMOKE label tells the gate real behaviour was exercised, so it must prove something an operator could witness; a self-built object or bare `200` leaves the acceptance (e.g. the new order being visible) unproven.",
+  "evidence": [
+    "bun_tester_discipline_detector reports no SMOKE case that makes assertions but touches none of the observable channels.",
+    "Reviewer confirms the real path was exercised (real HTTP request/process, not a self-built object or mock).",
+    "Reviewer confirms the witness would fail if the bound acceptance behavior regressed (matches the acceptance's Then, not merely 'server answered')."
+  ],
+  "verifier_detail": [
+    "Detector: bun_tester_discipline_detector (validator). Reports a SMOKE case that makes assertions but touches none of the observable channels.",
+    "Scope: only SMOKE-phase files are scanned; cases with no assertions are skipped (other rules own that).",
+    "observable_channel vocabulary (Bun/htmx-specific): an HTTP response status or body, rendered markup, stdout/stderr, an exit code, or persisted state; the fix hint also admits other observable channels.",
+    "self_constructed_object: a value the test built itself; asserting on it proves the constructor works, which is a unit test's job under a SMOKE label.",
+    "Division of labour: the detector recognizes the channel only; merely touching a channel is not semantically enough. Whether the evidence on that channel is acceptance-specific (e.g. body contains the created order, not just status 200) is judged by the agent/reviewer. A clean detector result does not establish compliance.",
+    "Severity 3."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "Alias: BUN-SMOKE-OBSERVABLE-ASSERTION-001.",
+    "Lineage: Bun realization of the core stack-neutral obligation `tester.smoke.operator-observable-assertion`. Stack-neutral obligation, Bun/htmx-specific channel vocabulary.",
+    "Re-realized rather than shared because the observable vocabulary is stack-specific: for this stack the canonical observation is often an HTTP response and the markup inside it, because that markup is what htmx puts in front of the user.",
+    "Implementation: {\"type\":\"validator\",\"ref\":\"bun_tester_discipline_detector\"}.",
+    "Disposition: strict; severity 3."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "strict: the gate fails on every finding; there is no advisory mode and no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire situations and the language/file_kind facts",
+      "justification": "Required by the output schema; derived directly from the source's statement, summary and exceptions, no new obligation."
+    },
+    {
+      "field": "then",
+      "text": "'the externally visible outcome the case claims — the bound acceptance's Then where one is bound'",
+      "justification": "Clarifies that the source's acceptance-binding selects the witness (S018) while the SMOKE obligation (S006) still applies to asserted cases without a binding; no new exemption or obligation."
+    },
+    {
+      "field": "note",
+      "text": "Coder-facing text exceeds ~1,000 characters",
+      "justification": "The source's code snippets, the open channel vocabulary, and the generic-200 anti-pattern are kept in then/prefer/avoid for losslessness."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ],
+      "note": "Reworded as title."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "given",
+        "activation",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "verifier_detail[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[2]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[3]",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[3]",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[0]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "avoid[0]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "avoid[1]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "avoid[1]",
+        "why",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "prefer[1]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "prefer[1]",
+        "then",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "evidence[2]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "activation",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "identity",
+        "verifier_detail[5]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S045",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S046",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

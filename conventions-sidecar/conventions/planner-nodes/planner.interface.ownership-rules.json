@@ -1,0 +1,346 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.interface.ownership-rules.convention.yaml",
+    "sha256": "f0ef3164e7f88da5f78e48a983433db1753f279a5ec4566a1db46dfe9abcb17c"
+  },
+  "rule_id": "planner.interface.ownership-rules",
+  "kind": "rule",
+  "title": "Give each artifact one producing wagon; consumers reference its contract",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "wagon manifest",
+          "wagon interface declaration (produce[]/consume[])"
+        ],
+        "observability": "observable_now",
+        "note": "Wagon manifests are identifiable by path/file kind."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "produce",
+          "consume",
+          "artifact",
+          "contract",
+          "producer",
+          "consumer",
+          "wagon interface"
+        ],
+        "observability": "observable_now",
+        "note": "Planning task text mentions artifact ownership or wagon interfaces."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "produce[] entry added or changed",
+          "consume[] entry added or changed",
+          "contract field added/removed on an interface entry"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Requires a diff-level observer over wagon manifest produce[]/consume[] entries."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "artifact declared in produce[] by more than one wagon",
+          "artifact consumed with no producing wagon (orphan)",
+          "consumer entry contract path differs from producer contract path (when both present)"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Cross-wagon ownership/coverage check; implementation.type is none in source, so no detector exists yet."
+      }
+    ],
+    "fires": [
+      "Planner adds a wagon that outputs an artifact and declares it in produce[]",
+      "Planner adds a consume[] entry to a wagon for an artifact produced by another wagon",
+      "Planner authors a new wagon interface and decides whether to include contract fields"
+    ],
+    "doesNotFire": [
+      "Edits to wagon fields unrelated to produce[]/consume[] (e.g. description, WMBT wording)",
+      "Implementation code changes inside a wagon that do not touch its interface declaration",
+      "Contract schema content edits that do not change which wagon produces or consumes the artifact"
+    ]
+  },
+  "given": "A plan declares wagon interfaces with produce[] and consume[] artifact entries",
+  "when": "The planner adds or changes a produce[] or consume[] entry for an artifact",
+  "then": "Declare the artifact in produce[] of exactly one wagon, which generates (owns) its contract; every other wagon using it declares it in consume[] and references that existing contract instead of generating its own.",
+  "prefer": [
+    "Producer entry: artifact name, destination, and (optionally) the path of the contract it generates",
+    "Consumer entry: same artifact name, `from` the producing wagon, and (if given) the producer's contract path",
+    "Contract field is optional on every entry but recommended; new wagons should add explicit contract references"
+  ],
+  "avoid": [
+    "Two wagons declaring the same artifact in produce[] (split ownership)",
+    "A consumer generating or redefining its own contract for an artifact another wagon produces",
+    "Consuming an artifact no wagon produces (orphan)"
+  ],
+  "unless": [
+    "Any entry may omit the contract field (required=false, backward compatibility); existing wagons work with implicit contracts"
+  ],
+  "why": "Single producer ownership with consumers referencing the same contract makes bidirectional producer/consumer coverage and orphan detection possible.",
+  "evidence": [
+    "For every artifact exactly one wagon lists it in produce[]; where that producer entry has a contract field, it points to the generated contract (implicit contracts without the field remain valid)",
+    "Every consume[] entry names a producing wagon in `from`; where both consumer and producer carry a contract path, they are equal",
+    "Recommendation check only (not a violation): whether newly added wagons carry explicit contract fields; absence is reported as a recommendation gap"
+  ],
+  "verifier_detail": [
+    "Role definitions: producer = generates artifact contract (wagon that declares artifact in produce[]); consumer = references existing contract (wagon that declares artifact in consume[]).",
+    "Contract field values: required=false, recommended=true; rationale: optional for backward compatibility, recommended for the artifact-centric contract system.",
+    "Absence of the contract field on any entry is never a violation (implicit contracts); on new wagons it is at most a recommendation gap.",
+    "Source positive example (producer): wagon resolve-dilemmas: produce name mechanic:decision.choice, to external, contract contracts/artifacts/decision/choice.json",
+    "Source positive example (consumer): wagon commit-state: consume name mechanic:decision.choice, from wagon:resolve-dilemmas, contract contracts/artifacts/decision/choice.json"
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "kind: rule; status: active",
+    "implementation: {type: none}",
+    "source: legacy_path src/atdd/planner/conventions/interface.convention.yaml, legacy_sha sha256:3415a521b5eec18b, extraction_mode high_fidelity, legacy_section ownership-rules",
+    "parity: source_fragments_preserved, examples_preserved, implementation_preserved, fix_hint_preserved all true; reviewed_at 2026-06-16",
+    "Original name: 'Interface: Ownership Rules'",
+    "Term ids: producer_consumer ('Producer and consumer roles'), contract_field ('Optional contract field')",
+    "Migration note: transition from implicit contracts (no contract field) to explicit contracts (with contract field); existing wagons work without contract field, new wagons should add explicit contract references"
+  ],
+  "splitSuggestion": [
+    {
+      "id": "planner.interface.explicit-contract-field",
+      "then": "Contract field is optional on every produce/consume entry; new wagons should (recommended, not required) add an explicit contract field pointing to the contract path.",
+      "segments": [
+        "S007",
+        "S020",
+        "S021",
+        "S022",
+        "S023",
+        "S024",
+        "S025",
+        "S026",
+        "S027",
+        "S028"
+      ]
+    }
+  ],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "split_suggestion",
+      "text": "The optional/recommended contract-field guidance is an independent recommendation; suggest separate convention planner.interface.explicit-contract-field.",
+      "justification": "Rule 2: keep one obligation in then."
+    },
+    {
+      "field": "avoid",
+      "text": "Two wagons both declaring the same artifact in produce[]; consuming an artifact no wagon produces (orphan).",
+      "justification": "Direct negations of 'single ownership' and 'orphan detection' in the source summary; no new obligation."
+    },
+    {
+      "field": "activation",
+      "text": "Activation facts, fires/doesNotFire situations.",
+      "justification": "Required by schema; derived from the source's scope (produce[]/consume[] declarations)."
+    },
+    {
+      "field": "evidence",
+      "text": "Consumer names producing wagon in `from`; contract paths equal only when both present; contract-field presence is checked only as a recommendation.",
+      "justification": "Operationalises 'references the existing contract' and mirrors the source consumer example without making the optional field mandatory."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Rewritten as imperative title; original name kept in audit"
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "given",
+        "when",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "prefer[0]",
+        "prefer[1]",
+        "prefer[2]",
+        "unless[0]"
+      ],
+      "note": "Optional on every entry"
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "why",
+        "avoid[0]",
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "then",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "then",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "verifier_detail[3]",
+        "prefer[0]"
+      ],
+      "note": "Project-specific example kept verbatim for verifier; generalised in prefer"
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "verifier_detail[4]",
+        "prefer[1]",
+        "evidence[1]"
+      ],
+      "note": "Project-specific example kept verbatim for verifier; generalised in prefer"
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "unless[0]",
+        "prefer[2]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "unless[0]",
+        "prefer[2]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "verifier_detail[1]",
+        "unless[0]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "verifier_detail[1]",
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "audit",
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "unless[0]",
+        "prefer[2]",
+        "evidence[2]",
+        "audit"
+      ],
+      "note": "evidence[2] is a recommendation check, not a requirement"
+    }
+  ]
+}

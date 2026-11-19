@@ -1,0 +1,358 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.bun/coder.bun.security-missing-auth.convention.yaml",
+    "sha256": "2b937475e7a1f3f2718be6a3f0d94fa261ca65e72bbf8e3f2ca39ba143b90544"
+  },
+  "rule_id": "coder.bun.security-missing-auth",
+  "kind": "rule",
+  "title": "Authorise inside every state-changing route handler",
+  "activation": {
+    "facts": [
+      {
+        "fact": "language",
+        "values": [
+          "typescript",
+          "javascript"
+        ],
+        "observability": "observable_now",
+        "note": "Bun stack realization."
+      },
+      {
+        "fact": "layer",
+        "values": [
+          "http-route",
+          "server-entry"
+        ],
+        "observability": "observable_now",
+        "note": "Routes are entries in the `routes` object of `Bun.serve` or branches of a `fetch` handler."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "source"
+        ],
+        "observability": "observable_now",
+        "note": "Test files are excluded."
+      },
+      {
+        "fact": "operation",
+        "values": [
+          "mutating_route_handler_present"
+        ],
+        "observability": "needs_new_observer",
+        "note": "A file-content observer must detect any POST/PUT/PATCH/DELETE route entry or `req.method === \"POST\"`-style branch in scope, whether or not it was changed in this diff."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "SECURITY-MISSING-AUTH-001"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Emitted by bun_security_hygiene_detector for each mutating handler whose body has no recognised auth call."
+      }
+    ],
+    "fires": [
+      "A `Bun.serve` routes object contains a POST/PUT/PATCH/DELETE entry (new or pre-existing) whose handler body contains no recognised authorisation call.",
+      "A `fetch` handler has a `req.method === \"POST\"` (or other mutating method) branch with no guard call inside that branch's body.",
+      "A mutating handler relies on an auth call made in a sibling route or elsewhere, not in its own body."
+    ],
+    "doesNotFire": [
+      "GET or HEAD handlers (public reads, e.g. htmx fragment loads).",
+      "Test files.",
+      "A mutating handler whose body calls a recognised guard (or a project guard whose name has been added to the recognised set)."
+    ]
+  },
+  "given": "A Bun route handler for POST, PUT, PATCH or DELETE (a `routes` entry of `Bun.serve` or a method branch of a `fetch` handler) in non-test source.",
+  "when": "The handler exists in the inspected source (any in-scope mutating handler, changed or not).",
+  "then": "The handler body MUST itself call a recognisable authorisation guard before any write.",
+  "prefer": [
+    "Call the guard first and let it throw or return early, e.g.\n  POST: async (req) => {\n    const user = await requireUser(req);   // authorise before any write\n    ...\n  }",
+    "If the handler delegates to a wrapper that authorises internally, call it by a recognised guard name, or add the wrapper/project guard name to the rule's recognised set."
+  ],
+  "avoid": [
+    "Relying on auth performed in a sibling route or another handler — it protects nothing for this handler.",
+    "Suppressing the rule because the project uses its own guard helper instead of adding that helper's name to the recognised set.",
+    "Adding auth requirements to GET/HEAD reads to satisfy the rule (out of scope; creates noise on the most common route in the codebase)."
+  ],
+  "unless": [
+    "GET and HEAD handlers are out of scope (reads).",
+    "Test files are excluded."
+  ],
+  "why": "A mutating handler with no auth call is the shape that leaks writes; public GETs are normal in a hypermedia/htmx app (how fragments load), so requiring auth on reads would be noise on the most common route — only mutating methods are checked, deliberately.",
+  "evidence": [
+    "bun_security_hygiene_detector reports no SECURITY-MISSING-AUTH-001 finding for any mutating handler in the inspected non-test source.",
+    "Reviewer sees the guard call inside each mutating handler's own body, before any write."
+  ],
+  "verifier_detail": [
+    "Detector finds each mutating route entry (POST/PUT/PATCH/DELETE) or `req.method === \"POST\"`-style guard, brace-matches ITS handler body, and reports the handler when no recognisable authorisation call appears inside it.",
+    "mutating_route: a POST, PUT, PATCH or DELETE handler; GET (and HEAD) out of scope.",
+    "authorisation_step: a recognisable guard call inside the handler body. The recognised set is broad on purpose — the rule asks whether the author considered auth at this handler at all, not which helper they used; it does not enforce one blessed helper.",
+    "Project-specific guards or authorising wrappers are supported by adding their names to the recognised set.",
+    "Bun has neither decorators nor a DI container: routes are entries in the `routes` object of `Bun.serve` or branches of a `fetch` handler, and authorisation is an ordinary call (so detection is call-based, not signature-based).",
+    "Severity 4; disposition strict."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "Original name: State-changing routes perform an authorisation check.",
+    "Aliases: SECURITY-MISSING-AUTH-001 — shared core alias, also carried by the agnostic node and its python-pytest realization.",
+    "Stack-neutral obligation, RE-REALIZED (not ported) for Bun: the python-pytest sibling matches a FastAPI decorator whose signature carries `Depends(get_current_user)`. Same obligation, new detector.",
+    "Realized by `bun_security_hygiene_detector` (implementation type validator, ref bun_security_hygiene_detector).",
+    "Metadata: severity 4, disposition strict."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "evidence",
+      "text": "Reviewer sees the guard call inside each mutating handler's own body, before any write.",
+      "justification": "Makes the source fix_hint ('authorise before any write', 'inside THIS handler') checkable by a reviewer; not a new obligation."
+    },
+    {
+      "field": "avoid",
+      "text": "Adding auth requirements to GET/HEAD reads to satisfy the rule.",
+      "justification": "Restates the source's deliberate mutating-only scope and noise rationale as a scope-creep anti-pattern."
+    },
+    {
+      "field": "when",
+      "text": "The handler exists in the inspected source (any in-scope mutating handler, changed or not).",
+      "justification": "The source statement has no explicit trigger event; this phrasing states its unconditional scope (every mutating handler) without narrowing it to diffs."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "given",
+        "when"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "given",
+        "activation",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[1]",
+        "given"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[1]",
+        "why",
+        "unless[0]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[2]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "verifier_detail[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "why",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "why",
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "verifier_detail[2]",
+        "verifier_detail[3]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "prefer[0]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "avoid[0]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "unless[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "unless[1]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "identity",
+        "verifier_detail[5]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "identity",
+        "verifier_detail[5]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

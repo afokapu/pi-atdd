@@ -9,20 +9,21 @@ test("bundled canonical Bun and Flow snapshots resolve offline without consumer 
   const cwd = mkdtempSync(join(tmpdir(), "pi-atdd-bundled-"));
   try {
     const { sources, selectors } = loadConfig(cwd);
-    assert.equal(sources.length, 2);
+    assert.equal(sources.length, 3, "ATDD-Bun, ATDD-Flow and the package-authored pi-atdd source (PLT-87)");
+    assert.equal(sources[2]!.id, "pi-atdd");
     assert.equal(sources[0]!.revision, "5945d97e18310e7c862c08e73985400935d21346");
     assert.equal(sources[1]!.revision, "2a66019a5ecf2b7a9f999ebfa04d04c9f548f19a");
     for (const source of sources) assert.equal(digestSource(source.path, source.kind), source.sha256);
     const catalog = loadCatalog(sources, cwd);
-    assert.equal(catalog.rules.size, 358);
+    assert.equal(catalog.rules.size, 359, "358 upstream conventions + shared.convention.propose");
     assert.equal(catalog.edges.length, 508);
     assert.equal(catalog.unresolvedEdges.length, 44);
     const review = resolveContext(catalog, selectors, "Final behavioral review", [], "task");
     assert.equal(review.status, "matched");
-    assert.ok(review.matchingIds.includes("atdd-bun.review.behavioral-reconciliation"));
-    assert.ok(review.matchingIds.includes("atdd-bun.review.owner-inspectability"));
+    assert.ok(review.matchingIds.includes("reviewer.reconciliation.behavioral"));
+    assert.ok(review.matchingIds.includes("reviewer.inspectability.owner"));
     const workflow = resolveContext(catalog, selectors, "Jujutsu integration branch", [], "task");
-    assert.ok(workflow.matchingIds.includes("atdd-workflow.workflow.lifecycle"));
+    assert.ok(workflow.matchingIds.includes("coach.workflow.lifecycle"));
     const unmatched = resolveContext(catalog, selectors, "unrecognized-opaque-task", [], "task");
     assert.equal(unmatched.status, "unresolved");
   } finally { rmSync(cwd, { recursive: true, force: true }); }
@@ -40,7 +41,7 @@ test("additional conventions and cross-source dependency edges can be added offl
     ].join("\n"));
     writeFileSync(join(cwd, "extra/relationships.yaml"), [
       "schema_version: 1.0.0", "nodes:", "  - local.checkpoint", "edges:",
-      "  - source_ref: local.checkpoint", "    target_ref: atdd-flow.collaboration",
+      "  - source_ref: local.checkpoint", "    target_ref: coach.collaboration.accountable-delegation",
       "    type: requires", "    constraint: mandatory", "    control: internal", ""
     ].join("\n"));
     const extensionSha = digestSource(join(cwd, "extra"), "extension");
@@ -55,12 +56,12 @@ test("additional conventions and cross-source dependency edges can be added offl
       "    sha256: " + extensionSha, "extraSelectors: [extras.yaml]", ""
     ].join("\n"));
     const { sources, selectors } = loadConfig(cwd);
-    assert.equal(sources.length, 3);
+    assert.equal(sources.length, 4);
     const catalog = loadCatalog(sources, cwd);
-    assert.equal(catalog.rules.size, 359);
+    assert.equal(catalog.rules.size, 360);
     assert.equal(catalog.edges.length, 509);
     const context = resolveContext(catalog, selectors, "checkpoint-signal", [], "task");
-    assert.deepEqual(context.matchingIds, ["atdd-flow.collaboration", "local.checkpoint"]);
+    assert.deepEqual(context.matchingIds, ["coach.collaboration.accountable-delegation", "local.checkpoint"]);
     writeFileSync(file, readFileSync(file, "utf8") + "\n# drift\n");
     assert.throws(() => loadCatalog(sources, cwd), GraphError);
   } finally { rmSync(cwd, { recursive: true, force: true }); }

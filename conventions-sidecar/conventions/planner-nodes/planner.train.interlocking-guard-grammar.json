@@ -1,0 +1,279 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.train.interlocking-guard-grammar.convention.yaml",
+    "sha256": "79140fd306598afd4c1cca701a444d4bf7efe4bd078f64b15e7f14bd7e246e18"
+  },
+  "rule_id": "planner.train.interlocking-guard-grammar",
+  "kind": "rule",
+  "title": "Write interlocking guards only in the declarative guard grammar",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "train",
+          "interlocking"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Subject kind is 'interlocking'; an observer must find train/interlocking definitions that contain guard expressions. The source names no path glob."
+      },
+      {
+        "fact": "phase",
+        "values": [
+          "CONFIRM"
+        ],
+        "observability": "needs_new_observer",
+        "note": "The validator runs at CONFIRM and blocks confirmation. It checks every interlocking guard, including unchanged ones."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "interlocking guard added",
+          "interlocking guard modified"
+        ],
+        "observability": "needs_new_observer",
+        "note": "This is an extra trigger, not a required condition. A diff-level observer can flag guard edits early while the plan is being written. Unchanged guards are still in scope at CONFIRM."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "planner_train_interlocking_guard_grammar"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Grammar validator finding (identifier_grammar_conformance template)."
+      }
+    ],
+    "fires": [
+      "A planner adds or edits a guard expression on a train interlocking.",
+      "CONFIRM validation runs over a plan whose interlockings contain guards, including guards that were not changed.",
+      "A guard uses arbitrary executable Python (eval, a function call other than exists(field), a lambda, a method call) or an operator outside the allowed set.",
+      "A guard reads a TrainResult that is not completed or is not at a declared route boundary.",
+      "The CONFIRM grammar validator reports an invalid token in an interlocking guard."
+    ],
+    "doesNotFire": [
+      "Plans or trains that declare no interlocking guard expressions.",
+      "Plan prose or acceptance text that is not an interlocking guard expression."
+    ]
+  },
+  "given": "A train interlocking declares guard expressions",
+  "when": "the planner writes or edits a guard, or the plan reaches CONFIRM",
+  "then": "Every guard uses only the guard grammar. Inputs: action/request inputs, an explicit state snapshot, and a completed TrainResult only at declared route boundaries. Operators: == != < <= > >= and or not exists(field) in.",
+  "prefer": [
+    "Pure comparisons and boolean combinations over declared input and snapshot fields.",
+    "exists(field) to test whether a field is present.",
+    "Pass needed data through the explicit state snapshot."
+  ],
+  "avoid": [
+    "Raw Python eval or arbitrary executable code: calls other than exists(field), imports, lambdas, method calls, comprehensions. Plain references to allowed input fields are fine.",
+    "Side effects or non-deterministic inputs (time, randomness, environment, I/O).",
+    "Reading a TrainResult that is not completed or is outside a declared route boundary.",
+    "Disguising disallowed tokens to get past the validator."
+  ],
+  "unless": [],
+  "why": "Guards decide routing. Declarative, deterministic, side-effect-free guards keep routes reproducible and statically checkable. Raw eval allows arbitrary code execution.",
+  "evidence": [
+    "The CONFIRM validator (test_sequence_diagram_sanity::test_interlocking_guard_grammar_is_safe) passes for every interlocking guard.",
+    "Every guard token is an allowed input reference, a literal, or one of: == != < <= > >= and or not exists(field) in.",
+    "On failure, the report names interlocking_id, guard_id, expression, invalid_token and reason."
+  ],
+  "verifier_detail": [
+    "Validation family: grammar; template: identifier_grammar_conformance; variant: planner_train_interlocking_guard_grammar; subject_kind: interlocking.",
+    "Phase: CONFIRM. Enforcement: confirm-blocking. Severity: 3. Disposition: strict. Scope: all interlocking guards, changed or not.",
+    "Allowed operators: == != < <= > >= and or not in, plus the call form exists(field). Field references to allowed inputs are valid. Any other call, operator, or executable construct is an invalid_token.",
+    "Allowed inputs: action/request inputs, explicit state snapshot, and a completed TrainResult only at declared route boundaries.",
+    "failure_evidence fields: interlocking_id, guard_id, expression, invalid_token, reason."
+  ],
+  "audit": [
+    "schema_version: 1.0.0",
+    "kind: rule; status: active",
+    "implementation: {type: validator, ref: test_sequence_diagram_sanity::test_interlocking_guard_grammar_is_safe}",
+    "Term id: guard_grammar (defines the allowed inputs and operators).",
+    "Source name: Interlocking guard grammar.",
+    "Graph: requires planner.train.interlocking-home (the guard grammar is declared on a homed interlocking)."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Strict disposition: the convention fails on every finding; there is no advisory mode."
+    }
+  ],
+  "additions": [
+    {
+      "field": "prefer",
+      "text": "Concrete preferred moves (pure comparisons, exists(field) for presence, explicit snapshot).",
+      "justification": "Turns the allowed grammar into actionable planner moves; adds no new obligation."
+    },
+    {
+      "field": "avoid",
+      "text": "Enumerated forbidden constructs (calls other than exists(field), imports, lambdas, method calls, comprehensions, time/random/env inputs, disguising tokens).",
+      "justification": "Makes 'declarative, deterministic, side-effect-free; raw Python eval forbidden' concrete and covers metric gaming. exists(field) and plain field references remain permitted."
+    },
+    {
+      "field": "why",
+      "text": "Engineering reason (reproducible, statically checkable routing; eval allows arbitrary code).",
+      "justification": "The source gives no explicit rationale; this is derived from the statement."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "avoid[0]",
+        "avoid[1]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ],
+      "note": "Term id label; the term's content is in then/verifier_detail."
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "then",
+        "prefer[0]",
+        "prefer[1]",
+        "prefer[2]",
+        "avoid[2]",
+        "verifier_detail[2]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "identity",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "identity",
+        "verifier_detail[1]",
+        "shared:policy.strict-disposition"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[1]",
+        "activation",
+        "when"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "verifier_detail[0]",
+        "activation",
+        "given"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "evidence[2]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "evidence[2]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "evidence[2]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "evidence[2]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "evidence[2]",
+        "verifier_detail[4]"
+      ]
+    }
+  ]
+}

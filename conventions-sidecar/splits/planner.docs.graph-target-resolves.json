@@ -1,0 +1,1030 @@
+{
+  "schema": "pi-atdd/convention-sidecar-split/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/planner.docs/planner.docs.graph-target-resolves.convention.yaml",
+    "sha256": "657225233b92125b2667e2d72d65dc0ebc7cfc92b2c9e023d3d42449281683ea"
+  },
+  "source_rule_id": "planner.docs.graph-target-resolves",
+  "rationale": "The source contains independent obligations, each with its own trigger, evidence and reader. (1) AUTHORING: every relationship attribute on an .adoc document must name a declared doc-id. This is verified by zero unresolved-target findings. (2) RESOLVER BEHAVIOUR: build the declared-id set first, admit only declared targets, and report every other edge. Never fabricate a node and never drop an edge. This is verified by a node-count test and a reported-finding test. The resolver architecture is four separately violable obligations: (3) exactly ONE resolver; (4) it lives in this docs extension; (5) the graph is derived on demand and never persisted; (6) graph_builder.py is not reused. Round 3 changes, both from the audit: the round-2 architecture bundle is now split into parts (3) to (6), and the single-MODULE evidence is replaced by a single-IMPLEMENTATION criterion that may span several modules. Joint delivery is kept as follows. The author part requires resolve-or-report. Resolve-or-report requires each architecture part, and each architecture part requires resolve-or-report, so firing any one delivers all of them. The original remapped prerequisites are unchanged.",
+  "parts": [
+    {
+      "rule_id": "planner.docs.graph-target-resolves.author-declared-target",
+      "kind": "rule",
+      "title": "Point every doc relationship at a declared doc-id",
+      "activation": {
+        "facts": [
+          {
+            "fact": "file_kind",
+            "values": [
+              "adoc"
+            ],
+            "observability": "observable_now",
+            "note": "Authored .adoc documents. The graph is derived from their attributes."
+          },
+          {
+            "fact": "change",
+            "values": [
+              "relationship_attribute_added_or_changed",
+              "doc_id_removed_or_changed",
+              "adoc_document_deleted"
+            ],
+            "observability": "needs_new_observer",
+            "note": "Needs a diff-level observer for :decides:/:supersedes:/:implements:/:depends-on: lines, and for corpus changes that leave existing, unchanged relationships unresolved."
+          },
+          {
+            "fact": "finding",
+            "values": [
+              "unresolved_relationship_target"
+            ],
+            "observability": "needs_new_observer",
+            "note": "Emitted by the docs_capability resolver over the whole corpus."
+          },
+          {
+            "fact": "task_term",
+            "values": [
+              "decides",
+              "supersedes",
+              "implements",
+              "depends-on",
+              "doc-id",
+              "ADR",
+              "documentation graph"
+            ],
+            "observability": "observable_now",
+            "note": "The task shows doc-relationship authoring or corpus restructuring."
+          }
+        ],
+        "fires": [
+          "A planner adds `:implements: purpose.wortrees` (a typo), and no document declares that id.",
+          "A planner adds `:depends-on:` pointing at a document they have not written yet.",
+          "A planner deletes a document, or changes its `:doc-id:`, while other documents still name the old id.",
+          "An edit to a document that still carries an unresolved relationship attribute."
+        ],
+        "doesNotFire": [
+          "A document has no relationship attributes. An absent attribute is not an unresolved edge.",
+          "Work on the resolver's own design or code. The resolver parts cover that work, and they are delivered with this part through `requires`."
+        ]
+      },
+      "given": "An authored .adoc corpus whose documents carry relationship attributes (`:decides:`, `:supersedes:`, `:implements:`, `:depends-on:`).",
+      "when": "You add or change such an attribute, edit a document that has one, or delete a document or change a `:doc-id:` that other documents may name.",
+      "then": "Every relationship attribute MUST name a doc-id that some document in the corpus actually declares in its `:doc-id:`.",
+      "prefer": [
+        "Either declare the target, or fix the reference: `:implements: purpose.worktrees` resolves, while `purpose.wortrees` (a typo) is REPORTED.",
+        "If the target does not exist yet, the reference is premature. Author the target document first.",
+        "Use only the four shipped verbs: `decides`, `supersedes`, `implements`, `depends-on`."
+      ],
+      "avoid": [
+        "Edges to a document you only intend to write. To every reader and every tool, they look the same as edges to a deleted document.",
+        "`refines`. It is deliberately not shipped (spec 2 §9 Decision 3)."
+      ],
+      "unless": [
+        "An absent attribute is not an unresolved edge. Only declared relationships are resolved."
+      ],
+      "why": "Resolve or report, never invent. A target outside the declared-id set is a REPORTED finding, never a synthesized node. This is the one hard requirement of spec 2 §5.4.",
+      "evidence": [
+        "Run the docs_capability resolver over the whole corpus. Every relationship target is in the declared-id set, and there are zero unresolved-target findings."
+      ],
+      "verifier_detail": [
+        "declared_id_set: the set of `:doc-id:` values read from the authored corpus, built BEFORE any edge is resolved. It is closed and enumerable, which is precisely why the documentation graph can hold a discipline the traceability graph does not.",
+        "relationship_attribute: one of the four confirmed verbs of spec 2 §5.2 (`decides`, `supersedes`, `implements`, `depends-on`). `refines` is deliberately NOT shipped (spec 2 §9 Decision 3).",
+        "Exception: an absent attribute is not an unresolved edge. Only declared relationships are resolved."
+      ],
+      "audit": [
+        "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0; aliases DOCS-GRAPH-001 (via parent alias).",
+        "metadata: severity 1, disposition strict (see shared:policy.strict-disposition).",
+        "implementation: {type: validator, ref: docs_capability}.",
+        "Source statement: the one hard requirement of spec 2 §5.4 and the flagship rule of the planner.docs extension."
+      ],
+      "additions": [
+        {
+          "field": "activation",
+          "text": "Facts, fires and doesNotFire scenarios, including the routing of resolver work to the sibling parts.",
+          "justification": "The schema requires activation. Derived from S006, S048, S053-S054 and S055-S056."
+        }
+      ]
+    },
+    {
+      "rule_id": "planner.docs.graph-target-resolves.resolve-or-report",
+      "kind": "rule",
+      "title": "Docs-graph resolver: resolve or report, never fabricate a node",
+      "activation": {
+        "facts": [
+          {
+            "fact": "task_term",
+            "values": [
+              "docs resolver",
+              "documentation graph",
+              "docs_capability",
+              "graph build",
+              "unresolved edge",
+              "fabricated node"
+            ],
+            "observability": "observable_now",
+            "note": "Plans, WMBTs or acceptances that specify or change how the docs graph is built."
+          },
+          {
+            "fact": "change",
+            "values": [
+              "docs_resolver_source_changed",
+              "docs_resolver_acceptance_changed"
+            ],
+            "observability": "needs_new_observer",
+            "note": "Needs a mapping from the docs-extension resolver code and its acceptances to these change values."
+          }
+        ],
+        "fires": [
+          "A planner writes the WMBT or acceptance for the docs-graph resolver.",
+          "A change to how the resolver handles an edge whose target is not declared.",
+          "A proposal to make unresolved targets a warning, to drop them quietly, or to add a stub node for them."
+        ],
+        "doesNotFire": [
+          "Pure .adoc authoring with no resolver work. .author-declared-target covers that, and it requires this part."
+        ]
+      },
+      "given": "The docs-graph resolver that turns .adoc relationship attributes into graph edges.",
+      "when": "You plan, specify or change how that resolver builds the graph.",
+      "then": "The resolver MUST build the declared-id set first, admit an edge only if its target is in that set, and report every other edge as a finding. It must never synthesize a node for an undeclared target and never silently drop the edge.",
+      "prefer": [
+        "Write the acceptance so that it asserts the graph NODE COUNT directly, not merely the finding. An unresolved edge adds no node.",
+        "Also assert that every unresolved edge appears as a reported finding, so that none is silently dropped."
+      ],
+      "avoid": [
+        "An ensure-node-on-edge pattern. In `graph_builder.py:215`, `_ensure_node` synthesizes a bare node for any unseen URN, and `add_edge` calls it on BOTH endpoints. So any edge that names a non-existent target conjures that target into being."
+      ],
+      "unless": [
+        "Nothing is exempt from the no-fabrication half. There is no configuration that permits synthesis.",
+        "An absent attribute is not an unresolved edge. Only declared relationships are resolved."
+      ],
+      "why": "Fabrication is worse than absence. An absent parent leaves an orphan, and an orphan check catches it. A fabricated parent makes the node look CONNECTED, which defeats that check. This defect has ALREADY HAPPENED: 147 of 168 containment edges in the repository's other graph hang off invented nodes.",
+      "evidence": [
+        "A resolver test asserts the graph node count directly. Adding an edge to an undeclared target leaves the node count unchanged.",
+        "The same test asserts that each unresolved edge appears as a REPORTED finding, so that none is dropped."
+      ],
+      "verifier_detail": [
+        "fabrication: creating a graph node for a target no document declares, so that an edge appears to resolve. This rule exists to make that defect impossible.",
+        "declared_id_set: the set of `:doc-id:` values read from the authored corpus, built BEFORE any edge is resolved. Because the set is closed and enumerable, the documentation graph can hold this discipline when the traceability graph cannot.",
+        "Resolve or report, never invent. A target outside the set is a REPORTED finding. It is NEVER synthesized into a node, and never silently dropped.",
+        "Mechanism of the known defect, in `src/atdd/coach/utils/graph/graph_builder.py:215`: `_ensure_node` synthesizes a bare node for any URN not yet seen, and `add_edge` calls it on BOTH endpoints of every edge.",
+        "WHY FABRICATION IS WORSE THAN ABSENCE: an absent parent leaves a node orphaned, and an orphan check catches it. A fabricated parent makes the node look CONNECTED, so fabrication defeats the check more thoroughly than absence does. That is why the test asserts NODE COUNT and not merely the finding."
+      ],
+      "audit": [
+        "metadata: severity 1, disposition strict (see shared:policy.strict-disposition). implementation: {type: validator, ref: docs_capability}.",
+        "This is not a stylistic preference. The defect has ALREADY HAPPENED in this repository's other graph, which is why spec 2 §5.4 states it as non-negotiable.",
+        "Reproduced live on the ATDD working tree, 2026-09-06 (#1758): total nodes 3208; fabricated nodes 44 (feature 28, wagon 6, train 6, test 4); feature -> component CONTAINS (urn-structure) 168; parent DECLARED 21 (12.5%); parent INVENTED 147 (87.5%). 147 of 168 containment edges point at features that no file declares, hanging off 28 invented nodes."
+      ],
+      "additions": [
+        {
+          "field": "activation",
+          "text": "Task-term and change facts, and fires/doesNotFire scenarios for resolver planning and changes.",
+          "justification": "The schema requires activation. Derived from S021, S032-S034 and S040-S041. The change values are marked needs_new_observer."
+        },
+        {
+          "field": "when",
+          "text": "Framed as 'plan, specify or change' (WMBTs and acceptances).",
+          "justification": "Wording for the planner audience. The source obligation (S021, S040-S041) is unchanged."
+        }
+      ]
+    },
+    {
+      "rule_id": "planner.docs.graph-target-resolves.one-resolver",
+      "kind": "rule",
+      "title": "Exactly one docs-graph resolver",
+      "activation": {
+        "facts": [
+          {
+            "fact": "task_term",
+            "values": [
+              "docs resolver",
+              "documentation graph",
+              "resolve relationships",
+              "doc-id lookup"
+            ],
+            "observability": "observable_now",
+            "note": "Plans that introduce or relocate code that resolves doc relationships."
+          },
+          {
+            "fact": "change",
+            "values": [
+              "docs_resolver_source_changed",
+              "new_doc_relationship_resolution_code"
+            ],
+            "observability": "needs_new_observer",
+            "note": "Needs detection of code paths that resolve .adoc relationship attributes."
+          }
+        ],
+        "fires": [
+          "A plan adds a second place that resolves doc relationships, for example a separate lookup inside the ADR registry or inside a lint check."
+        ],
+        "doesNotFire": [
+          "Pure .adoc authoring with no resolver work."
+        ]
+      },
+      "given": "The docs-graph resolver.",
+      "when": "You plan code that resolves doc relationship attributes.",
+      "then": "There MUST be exactly ONE docs-graph resolver. Every consumer goes through it, and no second implementation is added.",
+      "prefer": [
+        "Call the existing resolver instead of re-resolving `:doc-id:` targets locally."
+      ],
+      "avoid": [
+        "A second resolver implementation. #1755 documents seven reimplementations of lifecycle resolution."
+      ],
+      "unless": [],
+      "why": "Reimplementations diverge (spec 2 §5.4, citing #1755 on the seven reimplementations of lifecycle resolution).",
+      "evidence": [
+        "There is exactly one resolver implementation. It may span several modules, and no other code path resolves doc relationship attributes."
+      ],
+      "verifier_detail": [
+        "The resolver: there is exactly ONE of it (spec 2 §5.4, citing #1755 on the seven reimplementations of lifecycle resolution)."
+      ],
+      "audit": [
+        "metadata: severity 1, disposition strict (see shared:policy.strict-disposition). implementation: {type: validator, ref: docs_capability}."
+      ],
+      "additions": [
+        {
+          "field": "activation",
+          "text": "Task-term and change facts, and fires/doesNotFire scenarios.",
+          "justification": "The schema requires activation. Derived from S044-S046."
+        },
+        {
+          "field": "evidence",
+          "text": "One resolver implementation (which may span modules), and no other resolving code path.",
+          "justification": "An observable restatement of S045 ('exactly ONE of it'). It does not demand a single module."
+        },
+        {
+          "field": "prefer",
+          "text": "Call the existing resolver instead of re-resolving locally.",
+          "justification": "The positive form of S045. No new obligation."
+        }
+      ]
+    },
+    {
+      "rule_id": "planner.docs.graph-target-resolves.extension-local",
+      "kind": "rule",
+      "title": "The docs-graph resolver lives in the docs extension",
+      "activation": {
+        "facts": [
+          {
+            "fact": "task_term",
+            "values": [
+              "docs resolver",
+              "documentation graph",
+              "shared graph utility",
+              "coach utils"
+            ],
+            "observability": "observable_now",
+            "note": "Plans that decide where the resolver code is placed."
+          },
+          {
+            "fact": "change",
+            "values": [
+              "docs_resolver_source_changed",
+              "docs_resolver_moved"
+            ],
+            "observability": "needs_new_observer",
+            "note": "Needs a path mapping for the docs extension."
+          }
+        ],
+        "fires": [
+          "A plan puts the docs-graph resolver in a shared utility package outside the docs extension."
+        ],
+        "doesNotFire": [
+          "Pure .adoc authoring with no resolver work."
+        ]
+      },
+      "given": "The docs-graph resolver.",
+      "when": "You plan where the resolver code lives.",
+      "then": "The resolver MUST live in this docs extension.",
+      "prefer": [],
+      "avoid": [
+        "Placing the resolver in a shared package outside the docs extension."
+      ],
+      "unless": [],
+      "why": "Spec 2 §5.4 places the resolver in this extension.",
+      "evidence": [
+        "The resolver's code is located inside the docs extension."
+      ],
+      "verifier_detail": [
+        "The resolver lives in this extension (spec 2 §5.4)."
+      ],
+      "audit": [
+        "metadata: severity 1, disposition strict (see shared:policy.strict-disposition). implementation: {type: validator, ref: docs_capability}."
+      ],
+      "additions": [
+        {
+          "field": "activation",
+          "text": "Task-term and change facts, and fires/doesNotFire scenarios.",
+          "justification": "The schema requires activation. Derived from S044-S045."
+        },
+        {
+          "field": "evidence",
+          "text": "The resolver code is located inside the docs extension.",
+          "justification": "An observable restatement of S045 ('lives in this extension')."
+        },
+        {
+          "field": "avoid",
+          "text": "Placing the resolver outside the extension.",
+          "justification": "The negative form of S045. No new obligation."
+        }
+      ]
+    },
+    {
+      "rule_id": "planner.docs.graph-target-resolves.derived-not-persisted",
+      "kind": "rule",
+      "title": "Derive the docs graph on demand and never persist it",
+      "activation": {
+        "facts": [
+          {
+            "fact": "task_term",
+            "values": [
+              "persist graph",
+              "graph cache",
+              "doc registry",
+              "edge registry",
+              "documentation graph"
+            ],
+            "observability": "observable_now",
+            "note": "Plans that decide whether or how the docs graph is stored."
+          },
+          {
+            "fact": "change",
+            "values": [
+              "docs_graph_artifact_persisted"
+            ],
+            "observability": "needs_new_observer",
+            "note": "Needs detection of committed or written docs-graph artifacts."
+          }
+        ],
+        "fires": [
+          "A plan proposes persisting the docs graph, or keeping a hand-maintained registry of edges."
+        ],
+        "doesNotFire": [
+          "Pure .adoc authoring with no graph-storage work."
+        ]
+      },
+      "given": "The docs graph.",
+      "when": "You plan how the graph is built or stored.",
+      "then": "The graph MUST be derived from the `.adoc` attributes and rebuilt on demand. It must never be persisted.",
+      "prefer": [
+        "Rebuild the graph on demand from the `.adoc` attributes (spec 2 §5.3)."
+      ],
+      "avoid": [
+        "A persisted graph. It would be a second registry, and a second registry drifts."
+      ],
+      "unless": [],
+      "why": "A persisted graph would be a second registry, and a second registry drifts (spec 2 §5.3).",
+      "evidence": [
+        "No persisted docs-graph artifact exists. The graph is rebuilt from the .adoc attributes."
+      ],
+      "verifier_detail": [
+        "The graph is DERIVED from the `.adoc` attributes and rebuilt on demand (spec 2 §5.3). A persisted graph would be a second registry, and a second registry drifts."
+      ],
+      "audit": [
+        "metadata: severity 1, disposition strict (see shared:policy.strict-disposition). implementation: {type: validator, ref: docs_capability}."
+      ],
+      "additions": [
+        {
+          "field": "activation",
+          "text": "Task-term and change facts, and fires/doesNotFire scenarios.",
+          "justification": "The schema requires activation. Derived from S020."
+        },
+        {
+          "field": "evidence",
+          "text": "No persisted graph artifact; the graph is rebuilt from the attributes.",
+          "justification": "An observable restatement of S020."
+        }
+      ]
+    },
+    {
+      "rule_id": "planner.docs.graph-target-resolves.no-graph-builder",
+      "kind": "rule",
+      "title": "Do not build the docs graph on graph_builder.py",
+      "activation": {
+        "facts": [
+          {
+            "fact": "task_term",
+            "values": [
+              "graph_builder",
+              "_ensure_node",
+              "add_edge",
+              "reuse graph"
+            ],
+            "observability": "observable_now",
+            "note": "Plans that consider reusing the existing traceability graph code."
+          },
+          {
+            "fact": "change",
+            "values": [
+              "docs_extension_imports_graph_builder"
+            ],
+            "observability": "needs_new_observer",
+            "note": "Needs import detection of src/atdd/coach/utils/graph/graph_builder.py from the docs extension."
+          }
+        ],
+        "fires": [
+          "A plan proposes building the docs graph on top of `graph_builder.py`."
+        ],
+        "doesNotFire": [
+          "Work on the traceability graph itself, not on the docs graph."
+        ]
+      },
+      "given": "The docs-graph resolver.",
+      "when": "You plan what the resolver builds on.",
+      "then": "The resolver MUST NOT reuse `src/atdd/coach/utils/graph/graph_builder.py`.",
+      "prefer": [],
+      "avoid": [
+        "Reusing `graph_builder.py`. It is the substrate that lacks the no-fabrication discipline."
+      ],
+      "unless": [],
+      "why": "`graph_builder.py` is the substrate that lacks this discipline: it fabricates nodes.",
+      "evidence": [
+        "The docs extension does not import `graph_builder.py`."
+      ],
+      "verifier_detail": [
+        "Do NOT reuse `src/atdd/coach/utils/graph/graph_builder.py`. It is the substrate that lacks this discipline."
+      ],
+      "audit": [
+        "metadata: severity 1, disposition strict (see shared:policy.strict-disposition). implementation: {type: validator, ref: docs_capability}."
+      ],
+      "additions": [
+        {
+          "field": "activation",
+          "text": "Task-term and change facts, and fires/doesNotFire scenarios.",
+          "justification": "The schema requires activation. Derived from S042-S043."
+        },
+        {
+          "field": "evidence",
+          "text": "No import of graph_builder.py from the docs extension.",
+          "justification": "An observable restatement of S042."
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "source": "planner.docs.graph-target-resolves.author-declared-target",
+      "target": "planner.docs.graph-target-resolves.resolve-or-report",
+      "type": "requires",
+      "reason": "The source makes 'the target must be declared' and 'an undeclared target is reported, never synthesized, never dropped' one joint statement (S006-S008)."
+    },
+    {
+      "source": "planner.docs.graph-target-resolves.resolve-or-report",
+      "target": "planner.docs.graph-target-resolves.one-resolver",
+      "type": "requires",
+      "reason": "The no-fabrication discipline holds only if a single resolver carries it (S044-S046)."
+    },
+    {
+      "source": "planner.docs.graph-target-resolves.resolve-or-report",
+      "target": "planner.docs.graph-target-resolves.extension-local",
+      "type": "requires",
+      "reason": "The disciplined resolver is the one in this extension (S045)."
+    },
+    {
+      "source": "planner.docs.graph-target-resolves.resolve-or-report",
+      "target": "planner.docs.graph-target-resolves.derived-not-persisted",
+      "type": "requires",
+      "reason": "Resolution runs over the derived graph and is rebuilt on demand (S020-S021)."
+    },
+    {
+      "source": "planner.docs.graph-target-resolves.resolve-or-report",
+      "target": "planner.docs.graph-target-resolves.no-graph-builder",
+      "type": "requires",
+      "reason": "graph_builder.py fabricates nodes, so reusing it would break resolve-or-report (S042-S043)."
+    },
+    {
+      "source": "planner.docs.graph-target-resolves.one-resolver",
+      "target": "planner.docs.graph-target-resolves.resolve-or-report",
+      "type": "requires",
+      "reason": "The single resolver must carry the resolve-or-report discipline. This edge keeps joint delivery."
+    },
+    {
+      "source": "planner.docs.graph-target-resolves.extension-local",
+      "target": "planner.docs.graph-target-resolves.resolve-or-report",
+      "type": "requires",
+      "reason": "The extension-local resolver must carry the resolve-or-report discipline. This edge keeps joint delivery."
+    },
+    {
+      "source": "planner.docs.graph-target-resolves.derived-not-persisted",
+      "target": "planner.docs.graph-target-resolves.resolve-or-report",
+      "type": "requires",
+      "reason": "The derivation must admit only declared targets. This edge keeps joint delivery."
+    },
+    {
+      "source": "planner.docs.graph-target-resolves.no-graph-builder",
+      "target": "planner.docs.graph-target-resolves.resolve-or-report",
+      "type": "requires",
+      "reason": "The reason not to reuse graph_builder.py is resolve-or-report (S043). This edge keeps joint delivery."
+    }
+  ],
+  "edgeRemap": [
+    {
+      "original": {
+        "source_ref": "planner.docs.graph-target-resolves",
+        "target_ref": "planner.docs.doc-id-unique",
+        "type": "requires"
+      },
+      "remappedTo": [
+        "planner.docs.graph-target-resolves.author-declared-target",
+        "planner.docs.graph-target-resolves.resolve-or-report"
+      ],
+      "reason": "A target resolves only if exactly one document declares it. This matters both to the author naming a target and to the resolver admitting the edge."
+    },
+    {
+      "original": {
+        "source_ref": "planner.docs.graph-target-resolves",
+        "target_ref": "planner.docs.identity-required",
+        "type": "requires"
+      },
+      "remappedTo": [
+        "planner.docs.graph-target-resolves.author-declared-target",
+        "planner.docs.graph-target-resolves.resolve-or-report"
+      ],
+      "reason": "The declared-id set comes from :doc-id: attributes. The author's target must be declared there, and the resolver builds the set from them before resolving any edge."
+    },
+    {
+      "original": {
+        "source_ref": "planner.docs.adr-registry-derived",
+        "target_ref": "planner.docs.graph-target-resolves",
+        "type": "requires"
+      },
+      "remappedTo": [
+        "planner.docs.graph-target-resolves.resolve-or-report"
+      ],
+      "reason": "The registry is a projection of :decides: edges and is only as trustworthy as edge resolution. resolve-or-report in turn requires all four architecture parts."
+    }
+  ],
+  "aliasOf": {
+    "planner.docs.graph-target-resolves": [
+      "planner.docs.graph-target-resolves.author-declared-target",
+      "planner.docs.graph-target-resolves.resolve-or-report",
+      "planner.docs.graph-target-resolves.one-resolver",
+      "planner.docs.graph-target-resolves.extension-local",
+      "planner.docs.graph-target-resolves.derived-not-persisted",
+      "planner.docs.graph-target-resolves.no-graph-builder"
+    ]
+  },
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Severity 1, disposition strict: the rule fails on any finding. There is no advisory mode and no ratchet baseline."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "structure"
+      ],
+      "note": "The source id becomes the alias in aliasOf and the prefix of every part id."
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "planner.docs.graph-target-resolves.author-declared-target:then",
+        "planner.docs.graph-target-resolves.resolve-or-report:then"
+      ],
+      "note": "The name has two halves. 'Resolves against a declared doc-id' goes to the author part, and 'no node is fabricated' goes to resolve-or-report."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "planner.docs.graph-target-resolves.author-declared-target:given",
+        "planner.docs.graph-target-resolves.author-declared-target:then"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "planner.docs.graph-target-resolves.resolve-or-report:then",
+        "planner.docs.graph-target-resolves.author-declared-target:why",
+        "planner.docs.graph-target-resolves.resolve-or-report:verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "planner.docs.graph-target-resolves.resolve-or-report:then",
+        "planner.docs.graph-target-resolves.resolve-or-report:prefer[1]",
+        "planner.docs.graph-target-resolves.resolve-or-report:evidence[1]",
+        "planner.docs.graph-target-resolves.resolve-or-report:verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "planner.docs.graph-target-resolves.author-declared-target:why",
+        "planner.docs.graph-target-resolves.author-declared-target:audit[3]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "planner.docs.graph-target-resolves.author-declared-target:verifier_detail[0]",
+        "planner.docs.graph-target-resolves.resolve-or-report:verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "planner.docs.graph-target-resolves.author-declared-target:verifier_detail[0]",
+        "planner.docs.graph-target-resolves.resolve-or-report:then",
+        "planner.docs.graph-target-resolves.resolve-or-report:verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "planner.docs.graph-target-resolves.author-declared-target:verifier_detail[0]",
+        "planner.docs.graph-target-resolves.resolve-or-report:verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "planner.docs.graph-target-resolves.author-declared-target:verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "planner.docs.graph-target-resolves.author-declared-target:given",
+        "planner.docs.graph-target-resolves.author-declared-target:prefer[2]",
+        "planner.docs.graph-target-resolves.author-declared-target:verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "planner.docs.graph-target-resolves.author-declared-target:avoid[1]",
+        "planner.docs.graph-target-resolves.author-declared-target:verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "planner.docs.graph-target-resolves.resolve-or-report:verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "planner.docs.graph-target-resolves.resolve-or-report:verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "planner.docs.graph-target-resolves.resolve-or-report:verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "planner.docs.graph-target-resolves.author-declared-target:why",
+        "planner.docs.graph-target-resolves.resolve-or-report:verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "planner.docs.graph-target-resolves.derived-not-persisted:then",
+        "planner.docs.graph-target-resolves.derived-not-persisted:prefer[0]",
+        "planner.docs.graph-target-resolves.derived-not-persisted:avoid[0]",
+        "planner.docs.graph-target-resolves.derived-not-persisted:why",
+        "planner.docs.graph-target-resolves.derived-not-persisted:verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "planner.docs.graph-target-resolves.resolve-or-report:then",
+        "planner.docs.graph-target-resolves.author-declared-target:evidence[0]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "planner.docs.graph-target-resolves.resolve-or-report:audit[1]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "planner.docs.graph-target-resolves.resolve-or-report:audit[1]",
+        "planner.docs.graph-target-resolves.resolve-or-report:why"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "planner.docs.graph-target-resolves.resolve-or-report:audit[1]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "planner.docs.graph-target-resolves.resolve-or-report:audit[2]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "planner.docs.graph-target-resolves.resolve-or-report:audit[2]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "planner.docs.graph-target-resolves.resolve-or-report:audit[2]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "planner.docs.graph-target-resolves.resolve-or-report:audit[2]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "planner.docs.graph-target-resolves.resolve-or-report:audit[2]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "planner.docs.graph-target-resolves.resolve-or-report:audit[2]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "planner.docs.graph-target-resolves.resolve-or-report:audit[2]",
+        "planner.docs.graph-target-resolves.resolve-or-report:why"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "planner.docs.graph-target-resolves.resolve-or-report:avoid[0]",
+        "planner.docs.graph-target-resolves.resolve-or-report:verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "planner.docs.graph-target-resolves.resolve-or-report:avoid[0]",
+        "planner.docs.graph-target-resolves.resolve-or-report:verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "planner.docs.graph-target-resolves.resolve-or-report:avoid[0]",
+        "planner.docs.graph-target-resolves.resolve-or-report:verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "planner.docs.graph-target-resolves.resolve-or-report:why",
+        "planner.docs.graph-target-resolves.resolve-or-report:verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "planner.docs.graph-target-resolves.resolve-or-report:why",
+        "planner.docs.graph-target-resolves.resolve-or-report:verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "planner.docs.graph-target-resolves.resolve-or-report:why",
+        "planner.docs.graph-target-resolves.resolve-or-report:verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "planner.docs.graph-target-resolves.resolve-or-report:why",
+        "planner.docs.graph-target-resolves.resolve-or-report:verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "planner.docs.graph-target-resolves.resolve-or-report:why",
+        "planner.docs.graph-target-resolves.resolve-or-report:verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "planner.docs.graph-target-resolves.resolve-or-report:prefer[0]",
+        "planner.docs.graph-target-resolves.resolve-or-report:evidence[0]",
+        "planner.docs.graph-target-resolves.resolve-or-report:verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "planner.docs.graph-target-resolves.resolve-or-report:prefer[0]",
+        "planner.docs.graph-target-resolves.resolve-or-report:evidence[0]",
+        "planner.docs.graph-target-resolves.resolve-or-report:verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "planner.docs.graph-target-resolves.no-graph-builder:then",
+        "planner.docs.graph-target-resolves.no-graph-builder:avoid[0]",
+        "planner.docs.graph-target-resolves.no-graph-builder:verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "planner.docs.graph-target-resolves.no-graph-builder:avoid[0]",
+        "planner.docs.graph-target-resolves.no-graph-builder:why",
+        "planner.docs.graph-target-resolves.no-graph-builder:verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "planner.docs.graph-target-resolves.one-resolver:verifier_detail[0]",
+        "planner.docs.graph-target-resolves.extension-local:verifier_detail[0]"
+      ],
+      "note": "This is the subject 'The resolver', which is shared by the one-resolver and extension-local parts."
+    },
+    {
+      "seg": "S045",
+      "dest": [
+        "planner.docs.graph-target-resolves.extension-local:then",
+        "planner.docs.graph-target-resolves.extension-local:why",
+        "planner.docs.graph-target-resolves.extension-local:verifier_detail[0]",
+        "planner.docs.graph-target-resolves.one-resolver:then",
+        "planner.docs.graph-target-resolves.one-resolver:why",
+        "planner.docs.graph-target-resolves.one-resolver:verifier_detail[0]"
+      ],
+      "note": "'Lives in this extension' goes to extension-local, and 'exactly ONE of it' goes to one-resolver. The spec 2 §5.4 / #1755 citation is kept in both parts."
+    },
+    {
+      "seg": "S046",
+      "dest": [
+        "planner.docs.graph-target-resolves.one-resolver:avoid[0]",
+        "planner.docs.graph-target-resolves.one-resolver:why",
+        "planner.docs.graph-target-resolves.one-resolver:verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S047",
+      "dest": [
+        "planner.docs.graph-target-resolves.author-declared-target:prefer[0]"
+      ]
+    },
+    {
+      "seg": "S048",
+      "dest": [
+        "planner.docs.graph-target-resolves.author-declared-target:prefer[0]",
+        "planner.docs.graph-target-resolves.author-declared-target:activation"
+      ]
+    },
+    {
+      "seg": "S049",
+      "dest": [
+        "planner.docs.graph-target-resolves.author-declared-target:prefer[0]"
+      ]
+    },
+    {
+      "seg": "S050",
+      "dest": [
+        "planner.docs.graph-target-resolves.author-declared-target:prefer[1]"
+      ]
+    },
+    {
+      "seg": "S051",
+      "dest": [
+        "planner.docs.graph-target-resolves.author-declared-target:prefer[1]"
+      ]
+    },
+    {
+      "seg": "S052",
+      "dest": [
+        "planner.docs.graph-target-resolves.author-declared-target:prefer[1]"
+      ]
+    },
+    {
+      "seg": "S053",
+      "dest": [
+        "planner.docs.graph-target-resolves.author-declared-target:avoid[0]"
+      ]
+    },
+    {
+      "seg": "S054",
+      "dest": [
+        "planner.docs.graph-target-resolves.author-declared-target:avoid[0]",
+        "planner.docs.graph-target-resolves.author-declared-target:activation"
+      ]
+    },
+    {
+      "seg": "S055",
+      "dest": [
+        "planner.docs.graph-target-resolves.author-declared-target:unless[0]",
+        "planner.docs.graph-target-resolves.author-declared-target:verifier_detail[2]",
+        "planner.docs.graph-target-resolves.resolve-or-report:unless[1]"
+      ]
+    },
+    {
+      "seg": "S056",
+      "dest": [
+        "planner.docs.graph-target-resolves.author-declared-target:unless[0]",
+        "planner.docs.graph-target-resolves.author-declared-target:verifier_detail[2]",
+        "planner.docs.graph-target-resolves.resolve-or-report:unless[1]"
+      ]
+    },
+    {
+      "seg": "S057",
+      "dest": [
+        "planner.docs.graph-target-resolves.resolve-or-report:unless[0]"
+      ],
+      "note": "This states that no waiver exists for the no-fabrication half. It adds no waiver."
+    },
+    {
+      "seg": "S058",
+      "dest": [
+        "planner.docs.graph-target-resolves.resolve-or-report:unless[0]"
+      ]
+    },
+    {
+      "seg": "S059",
+      "dest": [
+        "audit",
+        "structure"
+      ],
+      "note": "The DOCS-GRAPH-001 alias attaches to the parent alias, which resolves to all parts."
+    },
+    {
+      "seg": "S060",
+      "dest": [
+        "shared:policy.strict-disposition",
+        "planner.docs.graph-target-resolves.author-declared-target:audit[1]",
+        "planner.docs.graph-target-resolves.resolve-or-report:audit[0]",
+        "planner.docs.graph-target-resolves.one-resolver:audit[0]",
+        "planner.docs.graph-target-resolves.extension-local:audit[0]",
+        "planner.docs.graph-target-resolves.derived-not-persisted:audit[0]",
+        "planner.docs.graph-target-resolves.no-graph-builder:audit[0]"
+      ]
+    },
+    {
+      "seg": "S061",
+      "dest": [
+        "shared:policy.strict-disposition",
+        "planner.docs.graph-target-resolves.author-declared-target:audit[1]",
+        "planner.docs.graph-target-resolves.resolve-or-report:audit[0]",
+        "planner.docs.graph-target-resolves.one-resolver:audit[0]",
+        "planner.docs.graph-target-resolves.extension-local:audit[0]",
+        "planner.docs.graph-target-resolves.derived-not-persisted:audit[0]",
+        "planner.docs.graph-target-resolves.no-graph-builder:audit[0]"
+      ]
+    },
+    {
+      "seg": "S062",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S063",
+      "dest": [
+        "audit",
+        "planner.docs.graph-target-resolves.author-declared-target:audit[2]",
+        "planner.docs.graph-target-resolves.resolve-or-report:audit[0]",
+        "planner.docs.graph-target-resolves.one-resolver:audit[0]",
+        "planner.docs.graph-target-resolves.extension-local:audit[0]",
+        "planner.docs.graph-target-resolves.derived-not-persisted:audit[0]",
+        "planner.docs.graph-target-resolves.no-graph-builder:audit[0]"
+      ]
+    }
+  ]
+}

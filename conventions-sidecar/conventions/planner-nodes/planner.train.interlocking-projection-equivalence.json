@@ -1,0 +1,267 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.train.interlocking-projection-equivalence.convention.yaml",
+    "sha256": "fb0f50fd56eeab265ae8bae2e12b6f09f969a6c4b8d1e398256d3df6547b4b7f"
+  },
+  "rule_id": "planner.train.interlocking-projection-equivalence",
+  "kind": "rule",
+  "title": "Keep every referenced train sequence equal to its interlocking route projection",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "interlocking",
+          "train"
+        ],
+        "observability": "observable_now",
+        "note": "Subject kind is interlocking; the rule covers every train spec that an interlocking route references, whether or not it was edited."
+      },
+      {
+        "fact": "phase",
+        "values": [
+          "CONFIRM"
+        ],
+        "observability": "observable_now",
+        "note": "Validator runs in CONFIRM and is confirm-blocking; at CONFIRM every referenced train sequence is checked, including pre-existing mismatches."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "interlocking route added/edited",
+          "referenced train sequence added/edited"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Optional, earlier trigger only (not a prerequisite): a diff observer resolving interlocking route -> referenced train_id could warn the planner while editing either side. Absence of an edit does not exempt a sequence."
+      }
+    ],
+    "fires": [
+      "CONFIRM runs and any interlocking route references a train whose sequence differs from the route projection in step order, intent, from, to or artifact — including mismatches that already existed and were not touched in this change.",
+      "Example: a planner edits an interlocking route so its projection now differs from the referenced train sequence.",
+      "Example: a planner edits a train sequence that an interlocking route references, without updating the route projection.",
+      "Example: a new interlocking route references an existing train whose sequence does not match the route projection."
+    ],
+    "doesNotFire": [
+      "A train that no interlocking route references.",
+      "A referenced train whose sequence already equals the route projection on step, intent, from, to and artifact (e.g. only prose/metadata differs); any mismatch on those five fields still fires regardless of what was edited."
+    ]
+  },
+  "given": "An interlocking route references a train, so the route has a projected sequence and the train has its own sequence.",
+  "when": "Any referenced train sequence is checked at CONFIRM — whether or not you edited the route or the train in this plan (editing either side is the common way to introduce a mismatch).",
+  "then": "Make the referenced train sequence equal the interlocking route projection step by step on step, intent, from, to and artifact.",
+  "prefer": [
+    "Change the route and the referenced train sequence in the same plan step so they stay equal.",
+    "Compare step by step on all five fields (step, intent, from, to, artifact) for every referenced train before handing off to CONFIRM, including untouched ones."
+  ],
+  "avoid": [
+    "Matching only some fields (e.g. same steps but different artifact or from/to) and calling the sequences equivalent.",
+    "Editing only one side and leaving the other to drift.",
+    "Removing the train reference or editing the validator's expected projection only to get rid of the failure."
+  ],
+  "unless": [],
+  "why": "Guard coverage and the rest of the route reasoning are proven against the route-to-train projection, so a train that diverges from its route breaks that proof. The check is strict and blocks CONFIRM.",
+  "evidence": [
+    "test_sequence_diagram_sanity::test_train_sequence_matches_interlocking_projection passes for every interlocking route that references a train.",
+    "Any failure reports interlocking_id, route_id, train_id, step, field, expected and actual; with zero such failures the rule is satisfied."
+  ],
+  "verifier_detail": [
+    "Term projection_equivalence: the referenced train sequence equals the route projection by step, intent, from, to and artifact.",
+    "Validation family=coherence, template=resolved_fact_agreement, variant=planner_train_interlocking_projection_equivalence, subject_kind=interlocking.",
+    "Phase CONFIRM, enforcement confirm-blocking; severity 4, disposition strict.",
+    "Failure evidence fields: interlocking_id, route_id, train_id, step, field, expected, actual."
+  ],
+  "audit": [
+    "schema_version 1.0.0; kind constraint; status active.",
+    "Implementation: validator test_sequence_diagram_sanity::test_train_sequence_matches_interlocking_projection.",
+    "Graph context: requires planner.train.interlocking-home (projection equivalence presupposes the homed interlocking); planner.train.interlocking-guard-coverage requires this rule."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "why",
+      "text": "Guard coverage and the rest of the route reasoning are proven against the route-to-train projection, so a train that diverges from its route breaks that proof.",
+      "justification": "Source has no why; taken from the graph.json edge reason (interlocking-guard-coverage requires this rule)."
+    },
+    {
+      "field": "avoid",
+      "text": "Editing only one side and leaving the other to drift; removing the train reference or editing the expected projection only to get rid of the failure; partial field matching.",
+      "justification": "Concrete anti-patterns (including metric gaming) that follow from the equality statement; no new obligation."
+    },
+    {
+      "field": "prefer",
+      "text": "Change both sides in the same plan step; compare all five fields for every referenced train before CONFIRM.",
+      "justification": "Concrete moves derived directly from the statement; no new obligation."
+    },
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire situations and the optional diff-observer note for earlier warning.",
+      "justification": "Required by the schema; derived from the statement, subject_kind and CONFIRM phase. Edits are examples, not necessary conditions."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ],
+      "note": "title"
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "given"
+      ],
+      "note": "Unconditional equality; when/activation cover every referenced sequence at CONFIRM."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "verifier_detail[0]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "identity",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "identity",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "activation",
+        "when",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "verifier_detail[2]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "activation",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "evidence[1]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "evidence[1]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "evidence[1]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "evidence[1]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "evidence[1]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "evidence[1]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "evidence[1]",
+        "verifier_detail[3]"
+      ]
+    }
+  ]
+}
