@@ -1,0 +1,18 @@
+Title: Escape every bare interpolation in an HTML fragment template literal
+Given: Server code builds an HTML fragment as a template literal containing an opening tag; htmx inserts it via innerHTML with no auto-escaping in the path
+When: a value is interpolated into that markup
+Then: Never interpolate a bare identifier or property chain (`${user.name}`) into the markup; route the value through an escaping helper at the interpolation site.
+Prefer:
+- `<li class="order">${escapeHtml(order.title)}</li>` — escaped at the boundary.
+- Escape at the RENDER site, where the destination is known, so it is escaped exactly once.
+- Nest fragments via calls whose inner fragments escape their own data.
+Avoid:
+- `<li class="order">${order.title}</li>` — raw data into markup.
+- Escaping at storage/fetch: double-escaped when it reaches a non-HTML sink.
+- A call that neither escapes nor nests (`${format(bio)}`): passes the detector, still a violation; review catches it.
+- The JSX habit of bare interpolation, assuming escaping happens underneath.
+Unless:
+- The literal has no opening tag (not markup; never scanned).
+- The interpolation is a call, treated as escaping or composition (detector scope; non-escaping calls remain a review concern).
+- Test files (`*.test.*`, `*.spec.*`).
+Why: Escaping is implicit in JSX (`{value}` auto-escaped) but explicit here; carrying over bare interpolation without the invisible escaping yields stored XSS in code that looks like what teams wrote before.

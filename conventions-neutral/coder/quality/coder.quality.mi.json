@@ -1,0 +1,419 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.quality.mi",
+  "legacyId": "coder.bun.quality-mi",
+  "core": {
+    "title": "Keep every scanned source file's maintainability index at or above 20",
+    "given": "Any scanned (non-test, non-vendored, non-build) source file (the profile's source suffixes define 'source'; the never-scanned trees are the profile's stack-wide exclusion list)",
+    "when": "its approximate SEI maintainability index is evaluated",
+    "then": "The file MUST score at least 20 on the approximate SEI maintainability index.",
+    "prefer": [
+      "Treat a low score as a sensor for accumulated responsibility; repair cohesion and ownership first. Before optimizing the score, diagnose: responsibilities changing for different reasons, decision-heavy regions and repeated logic dominating the file, missing design context.",
+      "Extract a cohesive responsibility into its own module with a clear ownership boundary.",
+      "Simplify genuinely complex or duplicated logic as part of that extraction.",
+      "Comment only real decisions or invariants."
+    ],
+    "avoid": [
+      "Filler comments to improve the formula's comment term.",
+      "Splitting at an arbitrary line boundary or into tiny fragments solely to reduce LOC.",
+      "Moving complexity unchanged into a sibling module.",
+      "A generalized abstraction unrelated to the responsibilities already present."
+    ],
+    "unless": [
+      "The file produces zero code lines after comment stripping (scores 100, never fails).",
+      "The file is a test file or in a vendored/build tree (outside the scan; the trees are the profile's stack-wide exclusion list, exact classification owned by the checker)."
+    ],
+    "why": "MI alone judges the whole FILE: a file can pass every per-function threshold yet be unmaintainable through accumulated size and operator density. 20 is deliberately low—below it nobody should be asked to modify the file—and since MI mixes size, branching, density and comments, gaming one term moves the number without making the module easier to change.",
+    "evidence": [
+      "The stack's maintainability-metrics check no longer reports the triggering finding (score >= 20) for the file.",
+      "Fixing the finding creates no new length, complexity, duplication or dependency-flow violations.",
+      "Existing behavior and tests remain green after the refactor.",
+      "Each resulting module has a coherent reason to change.",
+      "Dependency direction remains consistent with the existing architecture.",
+      "The refactor introduces no new violations of the stack's ATDD conventions.",
+      "Diff review shows no filler comments, arbitrary line-boundary splits, or complexity moved unchanged into a sibling module."
+    ],
+    "verification": [
+      "A repository-wide metrics check scores every scanned source file—changed or not, in every phase—and fails when a file's maintainability index falls below 20; the score is an approximation and is treated as one.",
+      "The metric is the approximate SEI maintainability index: MI = 171 - 5.2*ln(V) - 0.23*avgCC - 16.2*ln(LOC) + 50*sin(sqrt(2.4*CM)), clamped to the 0..100 range, where V is the operator/operand volume standing in for the file's information content, avgCC is the average decision density per function, CM is the comment ratio, and LOC is code lines; how each term is measured (AST, tokenizer or approximation) is the realization's choice.",
+      "A file producing zero code lines after comment stripping scores 100 and never fails.",
+      "Test files and the trees on the profile's stack-wide exclusion list are outside the scan; every other file with a source suffix is scanned regardless of whether it changed. The exact classification of the excluded trees is owned by the stack's checker.",
+      "Strict disposition: the rule fails on every finding; no advisory mode and no ratchet baseline. Severity 2."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "scanned source file: a file with the profile's source suffixes, in the scanned roots, that is neither a test file nor in a never-scanned (vendored/build) tree; every scanned file counts, changed or not, in every phase"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "test file",
+            "file in a never-scanned (vendored/build) tree"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "maintainability-metrics check reports a scanned file below 20"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "Any scanned source file, edited or untouched, scores below 20 on the approximate SEI maintainability index.",
+        "A source module has accumulated enough size, operator density and branching to score below 20, even though every function passes its own complexity/length thresholds.",
+        "The agent is working in or near a large source file that the metrics check flagged for a low score."
+      ],
+      "doesNotFire": [
+        "A test file with a low score (test files are outside the scan).",
+        "A file in a vendored or build tree (never scanned).",
+        "A source file that is empty or contains only comments (zero code lines after comment stripping score 100).",
+        "A source file scoring 20 or more, even if imperfect.",
+        "A file that is not scanned source per the profile."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "tooling.languages",
+      "meaning": "Which languages the scanned source is written in; the obligation applies to files in those languages.",
+      "bunValue": "typescript"
+    },
+    {
+      "key": "suffix.source",
+      "meaning": "Suffixes of the source files that the metrics scan judges.",
+      "bunValue": ".ts, .tsx"
+    },
+    {
+      "key": "roots.scan",
+      "meaning": "Which repository roots the repository-wide check scans: the whole repository (the scan's positive globs are unanchored).",
+      "bunValue": "**/*.ts, **/*.tsx"
+    },
+    {
+      "key": "roots.excluded",
+      "meaning": "The stack-wide list of never-scanned trees; the exact classification is owned by the checker, per core verification.",
+      "bunValue": "vendored directories, build directories"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "activation.facts[3]",
+      "text": "bun_ts_metrics_detector: MI < 20",
+      "reason": "Finding id of this rule's Bun detector; the core names the finding generically (metrics check below threshold) and only records that surfacing it needs a new observer."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "bun_ts_metrics_detector no longer reports the triggering MI finding",
+      "reason": "Validator/detector id is a realization detail; the core's evidence refers to the stack's maintainability-metrics check generically."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "text": "No AST, no external library: all terms are computed by regex approximation.",
+      "reason": "Pure implementation choice of the Bun-native detector; other stacks may measure the metric's terms with an AST or a library without changing the obligation. The formula and its components stay in core verification."
+    },
+    {
+      "item": "verifier_detail[7]",
+      "text": "Native Bun detector formula (Halstead volume, log terms, comment term) is verified identical to the python-pytest sibling to ten decimal places.",
+      "reason": "Provenance cross-check between the Bun and python-pytest realizations; meaningless outside that pair of stacks."
+    },
+    {
+      "item": "verifier_detail[8]",
+      "text": "Implementation: validator bun_ts_metrics_detector.",
+      "reason": "Validator id of this rule's realization; the core's verification describes the check generically."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:suffix.source",
+        "profile:tooling.languages",
+        "profile:roots.excluded"
+      ],
+      "note": "'TypeScript/TSX' instantiates the profile's source suffixes and language; the exclusion set (non-test, non-vendored, non-build) keeps Bun's exact scope shape, with the never-scanned trees coming from the profile's stack-wide list."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Metric evaluation is stack-neutral."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then"
+      ],
+      "note": "Threshold 20 and the approximate SEI maintainability index stay in the core; the source itself declares the obligation stack-neutral."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Already neutral (file-scope composite reasoning); kept verbatim."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]"
+      ],
+      "note": "Role-level diagnosis guidance; neutral."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]"
+      ],
+      "note": "Neutral."
+    },
+    {
+      "item": "prefer[2]",
+      "as": [
+        "core:prefer[2]"
+      ],
+      "note": "Neutral."
+    },
+    {
+      "item": "prefer[3]",
+      "as": [
+        "core:prefer[3]"
+      ],
+      "note": "Neutral."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Neutral."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Neutral."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]"
+      ],
+      "note": "Neutral."
+    },
+    {
+      "item": "avoid[3]",
+      "as": [
+        "core:avoid[3]"
+      ],
+      "note": "Neutral."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]",
+        "core:verification"
+      ],
+      "note": "Zero-code-line exception is metric-level, not stack-level; mirrored in verification entry 3."
+    },
+    {
+      "item": "unless[1]",
+      "as": [
+        "core:unless[1]",
+        "core:verification",
+        "profile:roots.excluded"
+      ],
+      "note": "Kept to exactly Bun's exclusions: test files and vendored/build trees. Not broadened to all generated trees; the trees are the profile's stack-wide list and the checker owns the exact classification (verification entry 4)."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ],
+      "note": "Neutral evidence is 'the metrics check no longer reports the finding'; the detector id itself is Bun-only."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]"
+      ],
+      "note": "Neutral (rule categories named generically)."
+    },
+    {
+      "item": "evidence[2]",
+      "as": [
+        "core:evidence[2]"
+      ],
+      "note": "Neutral."
+    },
+    {
+      "item": "evidence[3]",
+      "as": [
+        "core:evidence[3]"
+      ],
+      "note": "Neutral."
+    },
+    {
+      "item": "evidence[4]",
+      "as": [
+        "core:evidence[4]"
+      ],
+      "note": "Neutral."
+    },
+    {
+      "item": "evidence[5]",
+      "as": [
+        "core:evidence[5]"
+      ],
+      "note": "'ATDD Bun violations' generalized to 'violations of the stack's ATDD conventions'; same obligation, suite name instantiated per stack."
+    },
+    {
+      "item": "evidence[6]",
+      "as": [
+        "core:evidence[6]"
+      ],
+      "note": "Neutral (diff review is generic)."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "The exact formula with coefficients and operations (171 - 5.2*ln(V) - 0.23*avgCC - 16.2*ln(LOC) + 50*sin(sqrt(2.4*CM)), clamped to 0..100) is stack-neutral mathematics and is kept verbatim in verification entry 2; only the measurement approach is realization-specific."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Component definitions (volume, average decision density per function, comment ratio, code lines) are neutral and included in verification entry 2; the regex-approximation phrasing is Bun's, covered by verifier_detail[2] as bunOnly."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "Detector implementation property (no AST, regex approximation)."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Clamping to 0..100 is part of the metric scale; verification entry 2."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification",
+        "core:unless[0]"
+      ],
+      "note": "Zero-code-line scoring; verification entry 3 and unless[0]."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "as": [
+        "core:verification",
+        "profile:roots.scan",
+        "profile:roots.excluded"
+      ],
+      "note": "Scan scope: the scan roots come from the profile (roots.scan), the never-scanned trees from roots.excluded, the changed-or-not policy and the test-file exclusion are rule scope conditions in verification entries 1 and 4; the checker owns the exact exclusion classification."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Threshold fail condition and approximation caveat; verification entries 1 and 2."
+    },
+    {
+      "item": "verifier_detail[7]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "Cross-stack provenance check of the Bun detector."
+    },
+    {
+      "item": "verifier_detail[8]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "Validator id is a realization detail."
+    },
+    {
+      "item": "verifier_detail[9]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Per-rule severity and strict disposition belong to the rule, not the profile; verification entry 5."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:tooling.languages"
+      ],
+      "note": "The language fact folds into the file_kind scan fact; the language itself is a profile value."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:suffix.source"
+      ],
+      "note": "Source suffixes instantiate the profile's suffix.source; the whole-file judgment is neutral."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[0]",
+        "core:activation.facts[1]",
+        "profile:roots.scan",
+        "profile:roots.excluded"
+      ],
+      "note": "The positive globs identify the scan roots (repository-wide); the negations are the test-file scope condition and the profile's never-scanned trees — nothing beyond them is excluded."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[2]",
+        "bunOnly"
+      ],
+      "note": "Finding fact kept neutrally (metrics check below threshold, needs_new_observer, activates remediation guidance only); the finding id is Bun-only."
+    }
+  ],
+  "neutralityNotes": "The obligation is stack-neutral and stays whole in the core: every scanned source file, changed or not, must score at least 20 on the approximate SEI maintainability index. The exact formula (171 - 5.2*ln(V) - 0.23*avgCC - 16.2*ln(LOC) + 50*sin(sqrt(2.4*CM)), clamped to 0..100) is neutral mathematics and is kept verbatim in core verification; what could NOT be made neutral is how the terms are measured — the Bun detector's regex approximation, no-AST/no-library approach and its ten-decimal cross-check against the python-pytest sibling are bunOnly. Which files are scanned comes from the profile (tooling.languages, suffix.source, roots.scan, roots.excluded); under the Bun profile the scan set is exactly every non-test, non-vendored, non-build TS/TSX file — no broader generated-source exclusion is added — and the checker owns the exact classification of excluded trees. Detector/validator/finding ids (bun_ts_metrics_detector) are bunOnly. 'ATDD Bun violations' was generalized to 'violations of the stack's ATDD conventions' — no obligation added or dropped.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.quality-mi.json",
+      "sha256": "b9799ca5463f21131abc4eb1bed5645949b9ea3218e0846d73f3d33e0394ff1a"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

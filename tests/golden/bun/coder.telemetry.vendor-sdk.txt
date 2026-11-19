@@ -1,0 +1,15 @@
+Title: Keep telemetry vendor SDK imports out of core layers
+Given: A layered source file (domain, application, presentation, assembly) not under an infrastructure/ directory
+When: it imports (value or type-only) a telemetry vendor SDK: @opentelemetry/*, @sentry/*, @datadog/*, dd-trace, newrelic, segment (bare or @segment/*), mixpanel (bare or @mixpanel/*), amplitude (bare or @amplitude/*), @posthog/*, @statsig/*, @braze/*, @heap/*, @rudderstack/*
+Then: The file MUST NOT import a telemetry vendor SDK.
+Prefer:
+- Depend on the port; adapt at the edge: core takes a TelemetryPort parameter, e.g. in domain/: `export function acceptResponse(response, telemetry: TelemetryPort) { telemetry.emit(...); }` — no SDK.
+- Put the SDK in an adapter under infrastructure/ or the integration layer, e.g. infrastructure/otel-adapter.ts: `import { metrics } from "@opentelemetry/api";` — the SDK lives there and only there.
+Avoid:
+- Type-only vendor imports in core: the coupling is real even when erased.
+- Relabelling or moving a file just to escape the check instead of splitting port and adapter.
+Unless:
+- Integration layer or infrastructure/ path: exempt by design, the adapter belongs there.
+- Unlayered entrypoints (composition root, script): outside this rule — they wire adapters, they do not become one.
+- Inert until adoption, like every rule in this family.
+Why: Core depends only on a TelemetryPort; once a domain module imports an exporter, every module behind it inherits the vendor and exporter-neutrality is gone.

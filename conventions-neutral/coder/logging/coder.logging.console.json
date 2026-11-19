@@ -1,0 +1,334 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.logging.console",
+  "legacyId": "coder.bun.logging-console",
+  "core": {
+    "title": "No ad-hoc print logging in application source",
+    "given": "An application source file of the stack (not a test, vendored or build file).",
+    "when": "Code calls the stack's ad-hoc print or logging construct, for any purpose (log, diagnostic or CLI interface output).",
+    "then": "Do not use the stack's ad-hoc print or logging calls in application source; log via the structured logger.",
+    "prefer": [
+      "Emit log output through the structured logger; the logger owns level, timestamp and correlation.",
+      "A CLI entry point whose standard output IS its user interface writes that output through the raw stream-write construct (errors to the error stream); it says plainly that it is the interface, not a log."
+    ],
+    "avoid": [
+      "Ad-hoc print calls for log output, including the error-stream variant: the error stream is still unlevelled, uncorrelated and not queryable.",
+      "Per-file exemptions from this rule (none exist), and raw stream writes for output that is really a log rather than a CLI's interface."
+    ],
+    "unless": [
+      "Occurrences inside a comment or string literal (masked by the scan, never flagged).",
+      "Test files and vendored or build directories."
+    ],
+    "why": "The ad-hoc print call carries no level, timestamp or request correlation, so production logs become one unfilterable stream; and a module shared across server and client runtimes may send its output to the end user instead of the operator.",
+    "evidence": [
+      "The stack's hygiene check reports no unlevelled-print finding across in-scope application source (not only changed files).",
+      "Review: log output goes through the structured logger (levels, timestamps, correlation); CLI interface output uses the raw stream-write construct."
+    ],
+    "verification": [
+      "A source-hygiene validator flags every call to the stack's ad-hoc print constructs in application source, scanning with strings and comments masked, so an occurrence inside a comment or string literal never trips the rule.",
+      "The scan covers all in-scope application source, not only changed files.",
+      "Test files and vendored or build directories are excluded from the scan; the exclusion only scopes the check, it does not weaken the obligation on application source. The exact classification of test, vendored and build files is owned by this rule's checker, not by the stack-wide never-scanned tree list.",
+      "Only the ad-hoc print constructs are matched; the CLI's raw stream writes to the standard streams are not flagged, and no per-file exemption from this rule exists.",
+      "Severity 2, disposition strict."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "application_source"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "unlevelled_print_call"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "A boundary handler or application-layer service module in application source logs with the ad-hoc print call.",
+        "A module shared by the server and client runtimes uses the ad-hoc print call in an error path.",
+        "A CLI entry point in application source prints its user-facing output with the ad-hoc print call.",
+        "An existing application source file already contains an ad-hoc print call."
+      ],
+      "doesNotFire": [
+        "The ad-hoc print construct appears only inside a comment or a string literal.",
+        "Ad-hoc print calls in test files.",
+        "Ad-hoc print calls in vendored or build output directories.",
+        "A CLI writes its user-facing output through the raw stream-write construct."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "tooling.languages",
+      "meaning": "Which languages' production source the rule's scan covers; the core applies to whatever languages the stack declares.",
+      "bunValue": "typescript, javascript (activation.facts[0].values: \"Bun stack source files.\")"
+    },
+    {
+      "key": "idiom.adhoc_print_calls",
+      "meaning": "The stack's concrete ad-hoc print or logging calls (no level, timestamp or correlation) that application source must not use for output.",
+      "bunValue": "console.log, console.info, console.warn, console.error, console.debug, console.trace, console.dir"
+    },
+    {
+      "key": "idiom.structured_logger",
+      "meaning": "The stack's concrete structured logger that owns level, timestamp and correlation — the required channel for log output.",
+      "bunValue": "the project logger that owns levels, timestamps and correlation (e.g. logger.info(\"processing order\", { orderId: order.id }))"
+    },
+    {
+      "key": "idiom.cli_interface_output",
+      "meaning": "How a CLI entry point writes user-facing interface output directly to the standard output and error streams (interface output, not a log).",
+      "bunValue": "process.stdout.write (errors: process.stderr.write)"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "idiom.adhoc_print_calls",
+      "group": "idiom",
+      "meaning": "The stack's concrete ad-hoc print or logging calls (no level, timestamp or correlation) that application source must not use for output.",
+      "bunValue": "console.log, console.info, console.warn, console.error, console.debug, console.trace, console.dir",
+      "whyNoExistingKey": "The idiom group covers handlers, guards, imports, control flow and markup constructs, but has no key for the language's print or logging construct."
+    },
+    {
+      "key": "idiom.structured_logger",
+      "group": "idiom",
+      "meaning": "The stack's concrete structured logger that owns level, timestamp and correlation — the required channel for log output.",
+      "bunValue": "the project logger that owns levels, timestamps and correlation (e.g. logger.info(\"processing order\", { orderId: order.id }))",
+      "whyNoExistingKey": "No existing key names the stack's logging channel; the core must point at the concrete logger without naming one itself."
+    },
+    {
+      "key": "idiom.cli_interface_output",
+      "group": "idiom",
+      "meaning": "How a CLI entry point writes user-facing interface output directly to the standard output and error streams (interface output, not a log).",
+      "bunValue": "process.stdout.write (errors: process.stderr.write)",
+      "whyNoExistingKey": "No existing key covers direct standard-stream writes used as a CLI's user interface."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "evidence[0]",
+      "text": "bun_security_hygiene_detector reports no LOGGING-PRINT-001 finding",
+      "reason": "Detector and finding ids of this one rule are realization details (PLT-84 rule 7); the core names the check generically."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "Detector: bun_security_hygiene_detector (validator), core alias LOGGING-PRINT-001.",
+      "reason": "Detector, validator and finding ids are Bun realization details; the core's verification describes the check generically."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "text": "atdd-bun has no per-rule scope to exempt a file.",
+      "reason": "A capability limitation of the Bun runner that backs avoid[1]; the core keeps only the neutral 'no per-file exemptions exist'."
+    },
+    {
+      "item": "activation.facts[2]",
+      "text": "finding value LOGGING-PRINT-001, reported by bun_security_hygiene_detector (a console.log/info/warn/error/debug/trace/dir call outside masked strings and comments).",
+      "reason": "The finding id and detector name are realization details; the core activation fact uses a neutral finding name."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given"
+      ],
+      "note": "'Bun' is the realization label; the scope (application source, not test, vendored or build files) is neutral and stated exactly as Bun states it; language coverage comes from profile tooling.languages."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when",
+        "profile:idiom.adhoc_print_calls"
+      ],
+      "note": "The purpose list (log, diagnostic, CLI interface output) is neutral; the concrete console.* method list is profile data."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "profile:idiom.adhoc_print_calls",
+        "profile:idiom.structured_logger"
+      ],
+      "note": "One obligation: forbid the ad-hoc print calls, log via the structured logger; both concrete constructs come from the profile."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Unlevelled, unfiltered stream and server-vs-client misdelivery are stack-neutral; 'browser devtools' generalized to client runtimes."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]",
+        "profile:idiom.structured_logger"
+      ],
+      "note": "Neutral: log output goes through the structured logger, which owns level, timestamp and correlation. The concrete logger call stays in the realization and profile."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]",
+        "profile:idiom.cli_interface_output"
+      ],
+      "note": "CLI whose standard output IS its UI is neutral; process.stdout.write and process.stderr.write are the profile's concrete construct."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]",
+        "profile:idiom.adhoc_print_calls"
+      ],
+      "note": "Includes the error-stream variant (still unlevelled, uncorrelated, not queryable); the concrete calls are profile data."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]",
+        "profile:idiom.cli_interface_output"
+      ],
+      "note": "Metric-gaming guard: no per-file exemptions, and no raw stream writes for output that is really a log."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]",
+        "core:verification"
+      ],
+      "note": "Comment and string-literal masking is a generic scanner behavior, restated in verification."
+    },
+    {
+      "item": "unless[1]",
+      "as": [
+        "core:unless[1]",
+        "core:verification"
+      ],
+      "note": "Exclusion only scopes the check and is kept exactly as Bun states it; the exact classification of test, vendored and build files is owned by this rule's checker and stays in the rule's verification, not mapped to the stack-wide never-scanned list roots.excluded."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ],
+      "note": "Repository-wide (not only changed files) zero-finding evidence is neutral; the detector and finding names are bunOnly."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]",
+        "profile:idiom.structured_logger",
+        "profile:idiom.cli_interface_output"
+      ],
+      "note": "Review evidence is neutral; the concrete logger and stream-write constructs come from the profile."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "profile:idiom.adhoc_print_calls",
+        "bunOnly"
+      ],
+      "note": "Generic check description and the matched-call list (profile); the detector, validator and alias ids are bunOnly."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Masked strings and comments is a generic scan behavior."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Exclusion from the scan only scopes the check; the exact classification of test, vendored and build files is checker-owned and kept in this rule's verification rather than drawn from the stack-wide roots.excluded list."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification",
+        "profile:idiom.adhoc_print_calls",
+        "profile:idiom.cli_interface_output",
+        "bunOnly"
+      ],
+      "note": "Only the ad-hoc print constructs are matched and raw stream writes are not flagged (neutral + profile); the atdd-bun per-rule-scope limitation is bunOnly."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Per-rule severity and disposition belong to the core's verification, not to a profile key."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "as": [
+        "core:why",
+        "profile:idiom.adhoc_print_calls"
+      ],
+      "note": "Term unlevelled_output: its neutral content (no level, timestamp or correlation; operator vs end-user destination) lives in why."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "as": [
+        "core:then",
+        "core:prefer[0]",
+        "profile:idiom.structured_logger"
+      ],
+      "note": "Term structured_logger: the neutral 'logger owns levels, timestamps and correlation' shapes then and prefer[0]; the concrete logger is profile data."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "profile:tooling.languages"
+      ],
+      "note": "The fact vocabulary has no 'language' fact; language scoping is profile data (typescript, javascript)."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[0]",
+        "core:verification"
+      ],
+      "note": "file_kind application_source is neutral and covers any application source file, new or existing; the note's path-based exclusion of test files and vendored or build directories only scopes the check and stays in this rule's verification, since the checker owns the exact classification."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[1]",
+        "bunOnly"
+      ],
+      "note": "The finding fact is kept with a neutral value (unlevelled_print_call, needs_new_observer); the id LOGGING-PRINT-001 and detector name are bunOnly."
+    }
+  ],
+  "neutralityNotes": "The concrete forbidden call set (console.*), the structured logger and the CLI stream-write construct have no existing vocabulary key; they are carried as data through three proposed idiom keys (idiom.adhoc_print_calls, idiom.structured_logger, idiom.cli_interface_output), so the core names only the neutral concepts 'ad-hoc print call', 'structured logger' and 'raw stream write'. Detector, validator and finding ids (bun_security_hygiene_detector, LOGGING-PRINT-001) stay Bun-only per the notProfileKeys list. The exclusion of test files and vendored or build directories is stated in the core exactly as Bun states it and stays in this rule's verification: bun.json defers the exact classification to its checker (it lists no concrete excluded paths for this rule), so the exclusion is not mapped to the stack-wide never-scanned list roots.excluded, and no broader 'generated source' exemption is introduced. activation.facts[0] (language) has no slot in the closed fact vocabulary, so language scoping moved to profile key tooling.languages. The 'browser devtools' consequence is generalized to client runtimes, which preserves the obligation without naming a runtime.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.logging-console.json",
+      "sha256": "301fc80ba1f36b189b165a2c0b07d5c060ecd552be1da40b1feb44dd2eaadee1"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 4,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3 -> pi-claude-cli/claude-opus-5-5",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

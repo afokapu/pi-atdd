@@ -1,0 +1,16 @@
+Title: Point htmx verb attributes at same-origin paths, never absolute URLs
+Given: A scanned template or source file contains an htmx verb attribute (hx-get, hx-post, hx-put, hx-patch, hx-delete — attributes that make an element issue an HTTP request).
+When: The agent works in that code; every verb attribute present is in scope, including existing unchanged ones.
+Then: Every verb attribute MUST address a same-origin path (root-relative, e.g. /api/orders, resolved against the document's origin) and MUST NOT carry an absolute (http://, https://) or protocol-relative (//host/…) URL.
+Prefer:
+- Replace the absolute URL with the path: hx-get="/api/orders", not hx-get="https://api.example.com/orders".
+- If the upstream is genuinely remote, add a same-origin proxy route on the server (e.g. /api/orders via Bun.serve) whose handler calls upstream, so the origin decision lives in one auditable place.
+- Use the same-origin path form for every hypermedia control in the app.
+Avoid:
+- Baking a foreign, staging or third-party host into a verb attribute.
+- Scattering cross-origin decisions across templates instead of a server proxy route.
+- Suppressing an absolute-URL endpoint finding — it is not suppressible.
+Unless:
+- Path-only values (/orders, ./orders, orders) are same-origin and never flagged.
+- Non-verb htmx attributes (hx-target, hx-swap, hx-trigger) are out of scope: they carry selectors and modifiers, not endpoints.
+Why: htmx swaps the response markup straight into the live DOM with no parse step, so the endpoint origin is a trust boundary: a foreign origin fails three ways — CORS breaks once it drops permissive headers, it is an untrusted-HTML injection point, and a baked-in staging host reaches production invisible to env vars and config review.

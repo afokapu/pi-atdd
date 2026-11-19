@@ -1,0 +1,461 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.hypermedia.fragment-escapes-interpolation",
+  "legacyId": "coder.htmx.fragment-escapes-interpolation",
+  "core": {
+    "title": "Escape every bare value interpolated into a markup fragment",
+    "given": "Server-side code builds a markup fragment as an interpolated string (a markup-bearing string, its text containing an opening tag), and the client inserts it into the page as markup with no auto-escaping anywhere in the path",
+    "when": "a value is interpolated into that markup",
+    "then": "Never interpolate a bare value (a variable or property reference) directly into the markup; route the value through an escaping helper at the interpolation site.",
+    "prefer": [
+      "Escape at the interpolation site: the value passes through the escaping helper inside the markup expression — escaped at the boundary.",
+      "Escape at the RENDER site, where the destination is known, so it is escaped exactly once.",
+      "Nest fragments via calls whose inner fragments escape their own data."
+    ],
+    "avoid": [
+      "A bare value dropped straight into the markup — raw data into the rendered fragment.",
+      "Escaping at storage/fetch: double-escaped when it reaches a non-markup sink.",
+      "An interpolation that is a call which neither escapes nor nests: it passes the check, but is still a violation; review catches it.",
+      "Carrying over the bare-interpolation habit from a stack whose markup interpolation is auto-escaped, assuming the escaping still happens invisibly underneath."
+    ],
+    "unless": [
+      "The string contains no markup (no opening tag; not markup — never scanned).",
+      "The interpolation is a call, treated as escaping or composition (check scope; non-escaping calls remain a review concern).",
+      "Test files (unit test / acceptance test roles), identified positively by the profile's test-kind name patterns."
+    ],
+    "why": "In a stack whose component markup auto-escapes interpolated values, escaping is implicit; in a string-interpolation fragment pipeline it is explicit. Carrying over bare interpolation without the invisible escaping yields stored XSS in code that looks like what the team wrote before.",
+    "evidence": [
+      "This rule's markup-escape check reports zero bare-value interpolation findings in markup-bearing strings of non-test source files.",
+      "No interpolation in a markup-bearing string is a bare variable or property reference; operator and literal expressions are outside this rule's scope.",
+      "Review checks call interpolations that neither escape nor nest, since the check passes them.",
+      "Values are escaped at the render site, not at storage/fetch (no double-escaping in non-markup sinks)."
+    ],
+    "verification": [
+      "A static check over non-test production source flags every interpolation into a markup-bearing string whose expression is only a bare value (a variable or property reference). A string counts as markup-bearing when its text contains an opening tag — the signal it is markup rather than a log line, query string or URL; strings without an opening tag are never scanned. This opening-tag criterion and the no-auto-escaping condition are part of the rule, not profile data.",
+      "The check scans every markup-bearing string in non-test source in scope, not only changed ones; the change fact is an activation hint for the coder, not the check's scope.",
+      "Interpolations that are calls are deliberately out of the check's scope (they may be escape helpers or fragment composition, and flagging them would bury the rule in false positives on legitimate composition). A call that neither escapes nor nests passes the check and must be caught by review — the narrowing is the price of a precise signal a team will not switch off.",
+      "Test files are excluded from the check; the exclusion is the rule's policy, and the profile's test-kind name patterns identify test files positively.",
+      "Disposition strict, severity 1 — this is the security rule of the hypermedia fragment rules."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "source (non-test)"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "markup-bearing string added or edited containing a bare value interpolation"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "this rule's markup-escape check: bare value interpolation in a markup-bearing string"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "task_term",
+          "values": [
+            "fragment",
+            "partial",
+            "render markup",
+            "hypermedia"
+          ],
+          "observability": "observable_now"
+        }
+      ],
+      "fires": [
+        "A boundary or presentation handler returns a markup fragment that the page inserts as markup, with a value interpolated directly between or inside its tags.",
+        "A fragment helper interpolates a value directly between or inside the tags of the markup it builds.",
+        "An edit adds a new nested-property interpolation to an existing markup-bearing string."
+      ],
+      "doesNotFire": [
+        "A string with no markup in it (a log line, a query string, a URL) — never scanned.",
+        "An interpolation that is a call, e.g. an escape helper or a fragment-composition call (check-wise; a non-escaping call is still a review concern).",
+        "Markup-bearing strings in test files (unit test / acceptance test roles)."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "idiom.markup_kinds",
+      "meaning": "Artifact-kind data only: which artifact kinds count as the server-rendered markup whose fragments this rule guards. The opening-tag detection criterion and the no-auto-escaping condition are part of the rule itself, not this key.",
+      "bunValue": "server-rendered HTML fragment (htmx fragment)"
+    },
+    {
+      "key": "idiom.markup_interpolation",
+      "meaning": "The stack's construct for building markup with interpolated values — the interpolated string this rule's check scans for bare value interpolations (proposed key; see proposedKeys).",
+      "bunValue": "backtick template literal"
+    },
+    {
+      "key": "suffix.unit_test",
+      "meaning": "Positive name patterns that identify unit-test files in this stack, so the check and activation can scope themselves to non-test source; the exclusion policy itself stays with the rule (core verification).",
+      "bunValue": "**/*.test.*, **/*.spec.*"
+    },
+    {
+      "key": "tooling.languages",
+      "meaning": "The languages of production source whose string-interpolation constructs the check scans.",
+      "bunValue": "typescript, javascript"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "idiom.markup_interpolation",
+      "group": "idiom",
+      "meaning": "The stack's construct for building markup with interpolated values — the interpolated string a markup-escape check scans for bare value interpolations.",
+      "bunValue": "backtick template literal",
+      "whyNoExistingKey": "idiom.markup_kinds lists markup artifact kinds (static pages, templates, server-rendered output) in which declarative constructs appear; it does not document the string-interpolation construct itself, and no other idiom key covers how the stack interpolates values into a markup string."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "given",
+      "text": "htmx inserts it via innerHTML with no auto-escaping in the path",
+      "reason": "The framework insertion mechanism and DOM sink of the Bun realization; the core keeps the neutral condition 'the client inserts the fragment into the page as markup with no auto-escaping anywhere in the path' in the rule itself."
+    },
+    {
+      "item": "prefer[0]",
+      "text": "`<li class=\"order\">${escapeHtml(order.title)}</li>` — escaped at the boundary.",
+      "reason": "Concrete template-literal syntax and escape-helper spelling of the Bun realization; the core keeps the neutral move (escape at the interpolation site) and bun.json remains the reference example."
+    },
+    {
+      "item": "avoid[0]",
+      "text": "`<li class=\"order\">${order.title}</li>` — raw data into markup.",
+      "reason": "Concrete template-literal syntax; no stack-neutral spelling of the example exists."
+    },
+    {
+      "item": "why",
+      "text": "Escaping is implicit in JSX (`{value}` auto-escaped) but explicit here",
+      "reason": "JSX names a specific framework syntax; the core generalizes to 'a stack whose markup interpolation is auto-escaped'."
+    },
+    {
+      "item": "avoid[3]",
+      "text": "The JSX habit of bare interpolation, assuming escaping happens underneath.",
+      "reason": "Names the JSX syntax; the core keeps the role-level habit."
+    },
+    {
+      "item": "avoid[2]",
+      "text": "A call that neither escapes nor nests (`${format(bio)}`): passes the detector, still a violation; review catches it.",
+      "reason": "Concrete call-interpolation syntax of the stack; the neutral statement is core:avoid[2]."
+    },
+    {
+      "item": "evidence[2]",
+      "text": "e.g. `${format(bio)}`",
+      "reason": "Concrete call-interpolation syntax of the stack."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "htmx_hypermedia_detector reports zero bare_interpolation findings in HTML-bearing template literals of non-test files.",
+      "reason": "Names this rule's detector id and its finding term; the core's evidence states the same zero-finding bar generically."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "a backtick template literal whose text contains an opening tag (`<div`, `<li …`)",
+      "reason": "'Backtick template literal' is the stack's interpolated-markup construct, supplied to the core by the proposed profile key idiom.markup_interpolation; the markup-bearing criterion (text contains an opening tag) stays in the core's rule text."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "text": "Detector: zero-dependency Bun detector; extracts every template literal brace-depth aware (a nested object inside an interpolation does not end the literal early), keeps those containing an opening tag, flags bare identifier/property-chain interpolations.",
+      "reason": "Detector implementation and template-literal extraction mechanics (brace-depth awareness) are realization details; the core describes the check generically."
+    },
+    {
+      "item": "activation.facts[0]",
+      "text": "language: typescript, javascript — 'Server-rendered fragments are template literals in TS/JS source on a Bun + htmx workspace (atdd.workspace.bun).'",
+      "reason": "Languages and workspace naming are stack data supplied by the profile (tooling.languages); the core carries no language fact."
+    },
+    {
+      "item": "activation.facts[2]",
+      "text": "path_glob: !**/*.test.*, !**/*.spec.*",
+      "reason": "The negated exclusion globs are this realization's spelling of the test exclusion; the exclusion policy stays in core:verification and the positively identifying patterns (**/*.test.*, **/*.spec.*) are the suffix.unit_test profile value."
+    },
+    {
+      "item": "activation.facts[4]",
+      "text": "finding: htmx_hypermedia_detector: bare interpolation in HTML-bearing template",
+      "reason": "Detector and finding ids of this rule are realization details; the core names the check generically."
+    },
+    {
+      "item": "activation.facts[5]",
+      "text": "task_term values htmx, hx-swap (framework-specific terms)",
+      "reason": "Framework-specific task terms; the core keeps the neutral terms (fragment, partial, render markup, hypermedia)."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:idiom.markup_kinds",
+        "profile:idiom.markup_interpolation",
+        "bunOnly"
+      ],
+      "note": "Neutral core keeps the markup-bearing criterion (text contains an opening tag) and the no-auto-escaping condition in the rule. idiom.markup_kinds supplies only the artifact kind (server-rendered HTML fragment); the proposed idiom.markup_interpolation supplies the interpolated-string construct; the htmx/innerHTML insertion mechanism is bunOnly."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then"
+      ],
+      "note": "One obligation: no bare value into markup; escape at the interpolation site. The `${user.name}` spelling stays in the Bun example."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why",
+        "bunOnly"
+      ],
+      "note": "Neutralized to the auto-escaping-stack habit; the JSX reference is Bun-side concrete."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]",
+        "bunOnly"
+      ],
+      "note": "Neutral move: escape at the interpolation site / boundary; concrete example is Bun."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]"
+      ],
+      "note": "Already neutral ('non-HTML sink' generalized to 'non-markup sink' in the avoid counterpart)."
+    },
+    {
+      "item": "prefer[2]",
+      "as": [
+        "core:prefer[2]"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]",
+        "bunOnly"
+      ],
+      "note": "Neutral: raw data into the rendered fragment; concrete example is Bun."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Neutral with 'non-HTML sink' read as 'non-markup sink'."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]",
+        "core:verification"
+      ],
+      "note": "Non-escaping call passes the check, still a violation, caught by review; the call spelling is Bun."
+    },
+    {
+      "item": "avoid[3]",
+      "as": [
+        "core:avoid[3]",
+        "bunOnly"
+      ],
+      "note": "Neutral habit statement; JSX named only on the Bun side."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]",
+        "core:verification"
+      ],
+      "note": "No markup (no opening tag) — never scanned; the opening-tag criterion is part of the rule, not profile data."
+    },
+    {
+      "item": "unless[1]",
+      "as": [
+        "core:unless[1]",
+        "core:verification"
+      ],
+      "note": "Call interpolations treated as escaping or composition (check scope); non-escaping calls remain a review concern."
+    },
+    {
+      "item": "unless[2]",
+      "as": [
+        "core:unless[2]",
+        "profile:suffix.unit_test"
+      ],
+      "note": "Test files out of scope at role level; the exclusion policy stays in core:verification, and the positively identifying unit-test name patterns (**/*.test.*, **/*.spec.*) are the profile value — covering exactly the Bun test-file scope."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ],
+      "note": "Zero-findings bar stated generically; detector id and finding term are Bun."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]"
+      ],
+      "note": "Neutral: bare variable/property reference; operator and literal expressions out of scope."
+    },
+    {
+      "item": "evidence[2]",
+      "as": [
+        "core:evidence[2]",
+        "bunOnly"
+      ],
+      "note": "Review covers non-escaping calls; the `${format(bio)}` spelling is Bun."
+    },
+    {
+      "item": "evidence[3]",
+      "as": [
+        "core:evidence[3]"
+      ],
+      "note": "Render-site escaping, no double-escaping in non-markup sinks."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "profile:idiom.markup_interpolation",
+        "bunOnly"
+      ],
+      "note": "Markup-bearing = contains an opening tag: kept in the rule. The 'backtick template literal' construct is profile data via the proposed idiom.markup_interpolation (artifact kinds alone, idiom.markup_kinds, do not document a string construct)."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "core:then"
+      ],
+      "note": "Bare value = variable or property reference only; no call, no operator, no literal — neutral definition backing the obligation."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification",
+        "core:unless[1]"
+      ],
+      "note": "Call interpolations deliberately out of scope (false-positive rationale); escape helper or fragment nesting."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Neutral part: the check scans every markup-bearing string in non-test source and flags bare-value interpolations. Detector id, brace-depth template-literal extraction mechanics are Bun."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification",
+        "core:avoid[2]",
+        "core:evidence[2]"
+      ],
+      "note": "Deliberate narrowness for precision; non-escaping calls pass the check and must be caught by review."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "as": [
+        "core:verification",
+        "profile:suffix.unit_test"
+      ],
+      "note": "Test-file exclusion is the rule's policy (core:verification); the profile supplies the positive identifying patterns, not the exclusion itself."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Strict disposition, severity 1 — per-rule enforcement stays with the rule, not the profile."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "profile:tooling.languages",
+        "bunOnly"
+      ],
+      "note": "Language scoping is stack data (profile); the core carries no language fact."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:suffix.unit_test"
+      ],
+      "note": "file_kind: non-test source; tests identified positively via the profile's unit-test patterns."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:verification",
+        "profile:suffix.unit_test",
+        "bunOnly"
+      ],
+      "note": "The negated globs are the realization's spelling of the test exclusion (bunOnly); positively they identify unit-test files (suffix.unit_test); the exclusion policy itself lives in core:verification."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[1]",
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Diff-level fact neutralized (markup-bearing string with a bare value interpolation); 'detector scans all, not only changed' kept in verification; extractor mechanics are Bun."
+    },
+    {
+      "item": "activation.facts[4]",
+      "as": [
+        "core:activation.facts[2]",
+        "bunOnly"
+      ],
+      "note": "Finding fact kept generically; the detector/finding id is Bun."
+    },
+    {
+      "item": "activation.facts[5]",
+      "as": [
+        "core:activation.facts[3]",
+        "bunOnly"
+      ],
+      "note": "Contextual hint only; neutral terms kept, framework terms (htmx, hx-swap) are Bun."
+    }
+  ],
+  "neutralityNotes": "The obligation itself (no bare value into markup; escape at the interpolation/render site) is fully neutral, and the opening-tag markup-bearing criterion and the no-auto-escaping condition are part of the rule text, not profile data. Per the audit fixes: idiom.markup_kinds now carries artifact-kind data only (server-rendered HTML fragment); the interpolated-string construct is bound through the proposed key idiom.markup_interpolation, since no existing vocabulary key documents that meaning; and the test-file exclusion is expressed with positive unit-test identifying patterns under suffix.unit_test (**/*.test.*, **/*.spec.*, exactly the Bun test-file scope), while the exclusion policy itself stays in core:verification. What could not be made neutral and stays in the Bun realization: the template-literal/backtick interpolation syntax and its brace-depth-aware extraction mechanics, the concrete examples (`${escapeHtml(order.title)}`, `${format(bio)}`), the JSX comparison, the htmx/hx-swap/innerHTML insertion details, this rule's detector/finding ids (htmx_hypermedia_detector, bare_interpolation), and the negated-exclusion-glob spelling. The check's deliberate narrowness (calls out of scope, non-escaping calls left to review) and the strict/severity-1 enforcement are kept in core:verification, so instantiation with the Bun profile plus these bunOnly items imposes exactly the bun.json obligation — no exceptions dropped, none added.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.htmx.fragment-escapes-interpolation.json",
+      "sha256": "b2c798bb95cdc602c2d74c03831f85038cb22e1db66f9cdc84a8e9daea3be5c6"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

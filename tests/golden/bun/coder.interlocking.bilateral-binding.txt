@@ -1,0 +1,17 @@
+Title: Keep interlocking declaration, runtime, Station Master and trace bilaterally bound (Bun)
+Given: A Bun consumer repo with an interlocking route space (plan/_trains/_interlockings/**) or an InterlockingRunner
+When: you add, change or delete any binding surface (interlocking YAML, train artifact, runtime resolver/delegation, JOURNEY_MAP, trace emission or e2e trace test), or the detector reports a binding violation
+Then: Keep all five directions closed: every declared route resolves through InterlockingRunner to its declared trainId (train artifact exists); the runtime resolves only declared routeIds/trainIds before TrainRunner delegation; every JOURNEY_MAP mapping points at an existing declared interlocking; every entrypoint.exposed=true interlocking is reachable via one of its entrypoint.actions; every executed route emits trace metadata whose interlockingId/routeId resolve to the declared YAML.
+Prefer:
+- Close the direction named in the violation: add the missing train artifact; remove or declare a hidden routeId/trainId literal; repoint the JOURNEY_MAP path at the real YAML; wire the exposed interlocking's entrypoint.action into JOURNEY_MAP; assert only declared trace interlockingId/routeId values.
+- If an interlocking is genuinely internal, set entrypoint.exposed:false with a reason instead of wiring it.
+- Read core `entrypoint.exposed`/`entrypoint.actions` as owned by core; follow core if its name or shape changes.
+- Follow the additive call chain (core runtime spec #1251): interlocking YAML -> entrypoint.actions[] -> JOURNEY_MAP action -> InterlockingRunner.resolveTrain(...) -> InterlockingResolution(routeId, trainId, category, guardId, resolutionStrategy, ...) -> TrainRunner.execute(selectedTrainId) -> trace(interlockingId, routeId, selectedTrainId, ...), so the validator can resolve the trace back to the YAML route.
+Avoid:
+- Hidden routes: runtime routeId/selectedTrainId literals declared in no interlocking YAML.
+- Parallel reachability fields (`entrypoints`, `runtime_exposure`, `station_actions`, `exposed_actions`, `reachability`) that fork core `entrypoint` — schema drift; replace them with core `entrypoint`.
+- Dangling JOURNEY_MAP mappings, executed routes without trace emission, or trace assertions on undeclared values.
+Unless:
+- Interlockings with entrypoint.exposed:false (internal-transition-only / library-only / planned-not-exposed) carry no Station-Master-reachability (declaration_to_station) obligation.
+- A tree with no interlocking route space and no InterlockingRunner is not an interlocking system; the rule does not bite.
+Why: Bilateral binding is what makes interlocking a route-control system rather than a description; any broken direction lets declaration, runtime, Station Master and trace drift apart silently, so it blocks CI.

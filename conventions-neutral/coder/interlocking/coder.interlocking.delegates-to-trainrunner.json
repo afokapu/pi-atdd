@@ -1,0 +1,405 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.interlocking.delegates-to-trainrunner",
+  "legacyId": "coder.bun.interlocking-delegates-to-trainrunner",
+  "core": {
+    "title": "Delegate train execution from the InterlockingRunner to the TrainRunner; never execute wagons in interlocking code",
+    "given": "An application module defines an InterlockingRunner (route control)",
+    "when": "you add or change anything in that module (imports, action handling, train execution)",
+    "then": "Resolve one admissible train and delegate its execution to the TrainRunner's execute entry point; the InterlockingRunner must never execute wagons itself.",
+    "prefer": [
+      "Delegate instead of executing: resolve the admissible train for the action, then hand that train to the TrainRunner and return the result of its execution — do not loop over the steps yourself"
+    ],
+    "avoid": [
+      "Importing a wagon entry module anywhere in the InterlockingRunner module",
+      "Invoking a direct train-execution entry point from interlocking code",
+      "Iterating a train's step sequence — its ordered steps — as an executor loop; the concrete sequence construct and executor-loop idiom are per-stack profile data (idiom.step_sequence_loop)",
+      "Otherwise invoking wagon steps, choosing the next step inside a train, or bypassing the TrainRunner"
+    ],
+    "unless": [
+      "The production TrainRunner itself is the legitimate wagon-step executor; its own step loop is exempt"
+    ],
+    "why": "Interlocking is route control, not execution: the TrainRunner is the single component that runs wagons and carries Cargo between them; a second executor would compete with it.",
+    "evidence": [
+      "The stack's direct-execution check reports no direct-execution finding in any InterlockingRunner-defining module",
+      "The InterlockingRunner's execute path returns the result of delegating the resolved train to the TrainRunner"
+    ],
+    "verification": [
+      "Strict disposition, severity 4: a newly introduced direct-execution pattern is not suppressible and fails the check run.",
+      "The check flags, in any InterlockingRunner-defining module: a direct import of a wagon entry module, a call of a direct train-execution entry point, and a step-sequence iteration used as an executor loop. How these patterns are recognized concretely is the per-stack detector's concern (profile: layout.wagon_entry, idiom.direct_train_execution, idiom.step_sequence_loop).",
+      "The check exempts the production TrainRunner itself: its own step loop is legitimate and not flagged. Which module is the TrainRunner is the per-stack detector's concern.",
+      "Scope: every InterlockingRunner-defining module wherever it lives in the application. Which trees a detector actually scans is the per-stack realization's concern; a narrower scan path (the trains tree in the reference realization) is a detector-scope limitation, not part of the obligation."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "interlocking_runner_module"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "module_touched",
+            "wagon_entry_import_added",
+            "direct_execution_call_added",
+            "step_sequence_loop_added"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "task_term",
+          "values": [
+            "InterlockingRunner",
+            "interlocking",
+            "route control",
+            "resolveTrain"
+          ],
+          "observability": "observable_now"
+        }
+      ],
+      "fires": [
+        "Adding or editing any InterlockingRunner-defining module in the application, wherever it lives",
+        "An InterlockingRunner-defining module gains an import of a wagon entry module, anywhere in the module",
+        "Interlocking code invokes a direct train-execution entry point or iterates a train's step sequence to run steps"
+      ],
+      "doesNotFire": [
+        "Editing the production TrainRunner itself, including its own step loop",
+        "Changes to wagon modules or other code that never defines an InterlockingRunner",
+        "A tree with no InterlockingRunner at all (covered by the companion rule that requires one to exist)"
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "tooling.languages",
+      "meaning": "The languages of production source; the realization uses them to gate this rule to TypeScript/JavaScript modules. The neutral core does not gate on language.",
+      "bunValue": "typescript, javascript"
+    },
+    {
+      "key": "layout.wagon_entry",
+      "meaning": "Which module is a wagon's entry module, so that 'importing a wagon entry module anywhere in the InterlockingRunner module' is recognizable per stack.",
+      "bunValue": "src/<wagon>/wagon.ts"
+    },
+    {
+      "key": "idiom.direct_train_execution",
+      "meaning": "The stack's call that executes a train's steps directly, outside the TrainRunner, so that 'invoking a direct train-execution entry point' is recognizable per stack.",
+      "bunValue": "runTrain(...)"
+    },
+    {
+      "key": "idiom.step_sequence_loop",
+      "meaning": "The stack's construct for a train's step sequence and its direct iteration as an executor — where a train exposes its ordered steps and what looping over them to run steps looks like — so that 'iterating a train's step sequence as an executor loop' is recognizable per stack.",
+      "bunValue": "the train's ordered steps held on `<expr>.sequence` (e.g. `train.sequence`), executed directly by a loop such as `for (... of <expr>.sequence)`"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "layout.wagon_entry",
+      "group": "layout",
+      "meaning": "The entry module of one wagon — the module exposing the wagon's steps, whose import by interlocking code is the flagged pattern.",
+      "bunValue": "src/<wagon>/wagon.ts",
+      "whyNoExistingKey": "layout.wagon_dir gives only the wagon's directory; no key says which module inside it is the wagon's entry module."
+    },
+    {
+      "key": "idiom.direct_train_execution",
+      "group": "idiom",
+      "meaning": "The stack's call that executes a train's steps directly, outside the TrainRunner.",
+      "bunValue": "runTrain(...)",
+      "whyNoExistingKey": "The idiom group covers boundary, validation, nesting and markup idioms; nothing names the direct train-execution entry point that competes with the TrainRunner."
+    },
+    {
+      "key": "idiom.step_sequence_loop",
+      "group": "idiom",
+      "meaning": "The stack's construct for a train's step sequence — where a train exposes its ordered steps — and the iteration idiom that executes them directly instead of delegating to the TrainRunner.",
+      "bunValue": "the train's ordered steps held on `<expr>.sequence` (e.g. `train.sequence`), executed directly by a loop such as `for (... of <expr>.sequence)`",
+      "whyNoExistingKey": "The idiom group covers boundary, validation, nesting and markup idioms; nothing names a train's step-sequence member or its direct iteration as an executor."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "given",
+      "text": "\"A Bun application module defines an InterlockingRunner\"",
+      "reason": "Names the Bun application; the neutral core says 'an application module'."
+    },
+    {
+      "item": "then",
+      "text": "delegate its execution to `TrainRunner.execute(selectedTrainId, ...)`",
+      "reason": "Concrete call signature of the reference realization's API; the core names the TrainRunner's execute entry point generically."
+    },
+    {
+      "item": "prefer[0]",
+      "text": "Delegate instead of executing:\n  execute(action, inputs, state) {\n    const res = this.resolveTrain(action, inputs, state);\n    return new TrainRunner(res.trainPath).execute(res.trainId, inputs);  // delegate, do not loop\n  }",
+      "reason": "Concrete TypeScript delegation example; bun.json is delivered as the worked reference example, so the core keeps only the role-level shape."
+    },
+    {
+      "item": "avoid[0]",
+      "text": "Importing a `src/<wagon>/wagon.ts` module anywhere in the InterlockingRunner module",
+      "reason": "Concrete wagon entry-module path and file name; per stack this comes from the profile (layout.wagon_entry)."
+    },
+    {
+      "item": "avoid[1]",
+      "text": "Calling `runTrain(...)` from interlocking code",
+      "reason": "The direct-execution helper's identifier is a per-stack idiom (idiom.direct_train_execution)."
+    },
+    {
+      "item": "avoid[2]",
+      "text": "Looping over `<expr>.sequence` (e.g. `train.sequence`) as a step executor",
+      "reason": "Concrete sequence member and executor-loop syntax of the reference realization; per stack this construct comes from the profile (idiom.step_sequence_loop), and recognizing it in code is the per-stack detector's concern."
+    },
+    {
+      "item": "avoid[4]",
+      "text": "Suppressing a new direct-execution finding: the rule is strict, not suppressible, and fails CI",
+      "reason": "Enforcement wording tied to the reference realization's CI pipeline; the disposition itself is captured generically in core verification."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "The interlocking_delegates detector reports no direct_wagon_execution finding in any InterlockingRunner-defining module",
+      "reason": "Detector and finding ids of this rule are realization details; the core states the check generically."
+    },
+    {
+      "item": "evidence[1]",
+      "text": "returns the result of TrainRunner.execute(selectedTrainId, ...) for the resolved train",
+      "reason": "Concrete API signature; the neutral core says 'returns the result of delegating the resolved train to the TrainRunner'."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "the JS realization scans each InterlockingRunner-defining module under `src/trains/**`",
+      "reason": "Detector scan path and JS-realization scope; bun.json itself states that path is not a prerequisite of the obligation, so the core stays app-wide."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "text": "Flag: (a) direct import of a `src/<wagon>/wagon.ts` wagon module, (b) a `runTrain(...)` call, (c) a `for (... of <expr>.sequence)` executor loop.",
+      "reason": "Concrete TypeScript recognition patterns; supplied per stack by layout.wagon_entry, idiom.direct_train_execution and idiom.step_sequence_loop, while the exact recognition mechanics stay with the per-stack detector."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "text": "Term direct_wagon_execution: an InterlockingRunner module importing a wagon module, calling `runTrain(...)`, or looping over `<expr>.sequence` as a step executor — competing with TrainRunner.",
+      "reason": "Finding-term id plus its concrete instances; realization detail. The three concrete constructs are supplied per stack by layout.wagon_entry, idiom.direct_train_execution and idiom.step_sequence_loop, and the generic content is already in core verification and the avoid list."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "text": "Member of the `bun_interlocking_infrastructure` FAMILY detector (checks/interlocking_delegates.mjs).",
+      "reason": "Detector family and checker file path are realization details."
+    },
+    {
+      "item": "activation.facts[0]",
+      "text": "fact language = [typescript, javascript], note \"Bun-stack realization.\"",
+      "reason": "The values are stack profile data (tooling.languages); the language-gating fact itself stays in the realization, because 'language' is not a neutral fact kind — the neutral core does not gate on language, and its activation rests on the file-kind/change/task-term facts."
+    },
+    {
+      "item": "activation.facts[1]",
+      "text": "note: \"anywhere in the Bun app\" and \"The detector currently only scans src/trains/**\"",
+      "reason": "The Bun-app phrasing and the detector's scan path are realization details; the neutral fact keeps only the file kind and its observer need."
+    },
+    {
+      "item": "activation.facts[2]",
+      "text": "values `runTrain_call_added`, `sequence_executor_loop_added`; note: \"diff-level facts currently surfaced only by the interlocking_delegates.mjs detector findings\"",
+      "reason": "The runTrain identifier and the detector file name are realization-specific; neutral values are direct_execution_call_added and step_sequence_loop_added."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "bunOnly"
+      ],
+      "note": "Obligation trigger is neutral; only the 'Bun application' qualifier is realization-specific."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Unchanged in substance; 'module' is used as a generic unit term."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "bunOnly"
+      ],
+      "note": "The single obligation is kept; the concrete call form TrainRunner.execute(selectedTrainId, ...) is the reference realization's API surface."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Neutral once InterlockingRunner/TrainRunner/wagon/Cargo are read as ATDD-runtime architecture vocabulary, not stack names."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]",
+        "bunOnly"
+      ],
+      "note": "Core keeps the role-level shape (resolve, hand to the TrainRunner, return its result, do not loop); the TypeScript snippet is the reference example."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]",
+        "profile:layout.wagon_entry",
+        "bunOnly"
+      ],
+      "note": "Neutral: importing a wagon entry module anywhere in the InterlockingRunner module; the concrete path comes from the profile."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]",
+        "profile:idiom.direct_train_execution",
+        "bunOnly"
+      ],
+      "note": "Neutral: invoking a direct train-execution entry point; the identifier runTrain(...) is per-stack."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]",
+        "profile:idiom.step_sequence_loop",
+        "bunOnly"
+      ],
+      "note": "Neutral: iterating a train's step sequence as an executor; the concrete `<expr>.sequence` member and for-of loop idiom are per-stack profile data (idiom.step_sequence_loop), not repeated in the core."
+    },
+    {
+      "item": "avoid[3]",
+      "as": [
+        "core:avoid[3]"
+      ],
+      "note": "Already neutral; mirrors the agnostic spec's must-not list (execute wagon steps, choose the next step inside a train, bypass the TrainRunner)."
+    },
+    {
+      "item": "avoid[4]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Enforcement (strict, not suppressible, fails the run) maps to core verification; 'fails CI' names the reference pipeline."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]"
+      ],
+      "note": "Neutral TrainRunner exemption, also restated in core verification."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ],
+      "note": "Check-generic evidence in the core; the detector/finding ids (interlocking_delegates, direct_wagon_execution) are realization."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]",
+        "bunOnly"
+      ],
+      "note": "Neutral: the execute path returns the TrainRunner's result for the resolved train; the exact signature is realization."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "The deference ('which module is scanned and how patterns are recognized is the per-stack detector's concern'), the app-wide scope and the TrainRunner exemption go to verification; src/trains/** and 'JS realization' are realization."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "profile:layout.wagon_entry",
+        "profile:idiom.direct_train_execution",
+        "profile:idiom.step_sequence_loop",
+        "bunOnly"
+      ],
+      "note": "Generic flag list in core verification; the three concrete patterns are supplied per stack by the three profile keys."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "profile:layout.wagon_entry",
+        "profile:idiom.direct_train_execution",
+        "profile:idiom.step_sequence_loop",
+        "bunOnly"
+      ],
+      "note": "The finding-term id direct_wagon_execution is a realization detail; the concrete constructs in its definition (wagon entry module, runTrain(...), `<expr>.sequence` loop) are the per-stack profile data above, and its generic content is already in core verification and the avoid list."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "Detector family membership and checker file path are realization details."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Per-rule severity and disposition belong to core verification, not to the profile."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "profile:tooling.languages",
+        "bunOnly"
+      ],
+      "note": "The production-language values typescript/javascript are stack profile data (tooling.languages), so the profile is populated with them; the language-gating fact itself has no neutral fact kind, so it stays with the realization and the neutral core does not gate on language."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[0]",
+        "bunOnly"
+      ],
+      "note": "The file_kind fact is neutral and needs a new observer; the note's 'Bun app' scope and src/trains/** detector path are realization."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[1]",
+        "bunOnly"
+      ],
+      "note": "Change fact kept with neutralized values (runTrain_call_added -> direct_execution_call_added, sequence_executor_loop_added -> step_sequence_loop_added); the note's detector file name is realization."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[2]"
+      ],
+      "note": "Task terms are ATDD-runtime vocabulary (interlocking, route control, resolveTrain), observable now; kept verbatim."
+    }
+  ],
+  "neutralityNotes": "InterlockingRunner, TrainRunner, wagon, train, step sequence and Cargo are the ATDD runtime's own architecture vocabulary (agnostic core spec afokapu/atdd#1251), not stack names, so the core keeps them; it names no stack, runtime, framework, language, package manager, file suffix or path. Everything concrete about recognizing the forbidden patterns is per-stack profile data: the wagon entry module (proposed layout.wagon_entry), the direct-execution call (proposed idiom.direct_train_execution) and the step-sequence executor loop (proposed idiom.step_sequence_loop); how a detector recognizes those constructs in code remains the per-stack realization's concern. The reference detector's src/trains/** scan scope is narrower than the app-wide obligation; bun.json itself states the path is not a prerequisite, so the core stays app-wide. The language activation fact (typescript/javascript) is stack profile data (tooling.languages) that the realization uses for language gating; 'language' is not a neutral fact kind, so the neutral core does not gate on it. The doesNotFire cross-reference to coder.bun.interlocking-runner-exists was neutralized to 'the companion rule that requires an InterlockingRunner to exist', since rule ids are realization-scoped.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.interlocking-delegates-to-trainrunner.json",
+      "sha256": "ac316f67d0ae2a821ca72495438f063b086b97049fa689f6533a91b559cfdc36"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

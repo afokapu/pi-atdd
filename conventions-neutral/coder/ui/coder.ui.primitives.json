@@ -1,0 +1,426 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.ui.primitives",
+  "legacyId": "coder.bun.design-primitives",
+  "core": {
+    "title": "Compose design-system primitives for interactive controls in app code",
+    "given": "Application code outside the design-system root that renders user-facing markup: component source, or markup embedded in string literals of source files (the profile's markup kinds).",
+    "when": "It renders an interactive control.",
+    "then": "Render it through a design-system primitive, never a raw interactive control element (the profile's interactive-controls list).",
+    "prefer": [
+      "Use the existing primitive; pass the required attributes through it.",
+      "During GREEN: reuse the primitive that already represents the control.",
+      "During GREEN: extend only the smallest property or attribute surface the current interaction requires.",
+      "During GREEN: create a new primitive only if none represents the control correctly."
+    ],
+    "avoid": [
+      "Raw interactive markup bypassing the primitive just to pass the acceptance.",
+      "Generic primitive parameters the current behavior does not need.",
+      "Restyling or migrating unrelated controls."
+    ],
+    "unless": [
+      "No design-system root in the repository (nothing to connect to yet; not judged).",
+      "The design system's own primitives.",
+      "Test files (per the profile's test-file patterns) and vendored/build trees (never scanned).",
+      "Static markup files of the profile's markup file kinds (suffix.markup): markup file kinds outside the judged markup kinds (idiom.markup_kinds), which cannot consume components."
+    ],
+    "why": "Controls hold focus, disabled, error and loading states; each raw control re-implements them and diverges. Primitives keep controls themed, accessible, consistent.",
+    "evidence": [
+      "The stack's raw-control check reports no findings in markup-bearing code outside the design-system root.",
+      "Prove: the rendered interactive control comes through the design-system primitive.",
+      "Prove: the interaction acceptance passes."
+    ],
+    "verification": [
+      "Scope: the check flags raw interactive controls (the profile's interactive-controls list) written in markup-bearing application code — component source and string-embedded markup (the profile's markup kinds) — outside the design-system root.",
+      "Self-scoping: a repository with no design-system root is not judged; there is no system to connect to yet.",
+      "Only literal markup text is judged where markup is embedded in code: code positions (comparisons, type assertions), comments, and regex literals are never treated as markup, and a control spanning an interpolation is read on its literal chunks alone.",
+      "Never scanned: test files (the profile's test-file patterns), vendored/build trees (never scanned stack-wide; the exact vendored/build classification belongs to the checker's own exclusion list, not to this rule), the design system's own files, and the profile's static markup file kinds (suffix.markup).",
+      "Disposition strict, severity 2: every finding fails."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "markup-bearing application source (component source, or markup embedded in string literals) outside a design-system root, which must exist in the repository"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "a raw interactive control added or already present in that code"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "A component outside the design-system root renders a raw interactive control while the repository's design-system root holds primitives.",
+        "A handler outside the design-system root returns markup embedded in a string literal that contains a raw interactive control.",
+        "String-embedded markup anywhere in application source contains a raw interactive control, in any phase (including REFACTOR or review of existing code)."
+      ],
+      "doesNotFire": [
+        "The repository has no design-system root.",
+        "A primitive inside the design-system root renders the raw control.",
+        "A test file or a vendored/build tree contains raw controls.",
+        "A static markup file of the profile's markup file kinds (suffix.markup) contains a raw interactive control.",
+        "Markup-like text in code position (a comparison, a type assertion), a comment, or a regex literal mentions a control name."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "suffix.source",
+      "meaning": "Suffixes of the production source files whose markup is judged (component source and source files with string-embedded markup).",
+      "bunValue": ".tsx, .jsx, .ts, .mts"
+    },
+    {
+      "key": "suffix.unit_test",
+      "meaning": "Name patterns of the test files that are never scanned (this stack uses one pattern set for its test files).",
+      "bunValue": "*.test.*, *.spec.*"
+    },
+    {
+      "key": "suffix.markup",
+      "meaning": "Suffixes of the static markup file kinds that are never scanned: markup file kinds outside the judged markup kinds (idiom.markup_kinds), which cannot consume components. This closed profile set — not an open capability test — defines the excluded markup artifacts.",
+      "bunValue": "Plain .html templates (cannot import components)"
+    },
+    {
+      "key": "idiom.markup_kinds",
+      "meaning": "Which artifact kinds count as the markup that is judged (where a raw interactive control can be written); markup file kinds outside this set (suffix.markup) are exempt.",
+      "bunValue": "component source (.tsx/.jsx) and HTML authored in string/template/tagged-template literals in .ts/.mts (htmx/Bun shape)"
+    },
+    {
+      "key": "tooling.languages",
+      "meaning": "Languages of production source, fixing the language scope of the scan.",
+      "bunValue": "typescript, javascript"
+    },
+    {
+      "key": "roots.design",
+      "meaning": "The design-system root whose primitives application code must compose; its absence self-scopes the rule off.",
+      "bunValue": "a directory named `design`, `design_system`, or `design-system` (globs **/design/**, **/design_system/**, **/design-system/**); the first directory beneath it names the layer: `tokens` or `foundations`, `primitives`, `components`, `templates`"
+    },
+    {
+      "key": "idiom.interactive_controls",
+      "meaning": "The raw interactive control constructs of the stack's markup that application code must render through design-system primitives.",
+      "bunValue": "a lowercase `<button`, `<input`, `<select`, or `<textarea` element written in app code — in JSX, or in the body of a string/template/tagged-template literal in a `.ts`/`.mts` file — followed by whitespace, `>`, or `/`"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "roots.design",
+      "group": "roots",
+      "meaning": "Root of the repository's design system (where primitives live); application code outside it must compose its primitives, and a repository without it is not judged.",
+      "bunValue": "a directory named `design`, `design_system`, or `design-system` (globs **/design/**, **/design_system/**, **/design-system/**); the first directory beneath it names the layer: `tokens` or `foundations`, `primitives`, `components`, `templates`",
+      "whyNoExistingKey": "No roots.* key names the design-system tree, and the closed role-parameter list has no design-system role, so roles.<role>.path cannot express it."
+    },
+    {
+      "key": "idiom.interactive_controls",
+      "group": "idiom",
+      "meaning": "The stack's raw interactive control constructs that application markup must render through design-system primitives.",
+      "bunValue": "a lowercase `<button`, `<input`, `<select`, or `<textarea` element written in app code — in JSX, or in the body of a string/template/tagged-template literal in a `.ts`/`.mts` file — followed by whitespace, `>`, or `/`",
+      "whyNoExistingKey": "idiom.markup_kinds identifies which artifacts are markup, but no idiom key lists the constructs that count as interactive controls; that set is stack-specific (web form controls in this realization)."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "given",
+      "text": "(htmx/Bun shape)",
+      "reason": "Names this realization's framework and runtime; the core describes string-embedded markup generically and takes the concrete embedding shapes from the profile's markup kinds."
+    },
+    {
+      "item": "prefer[0]",
+      "text": "pass required htmx/DOM attributes through it",
+      "reason": "htmx/DOM attributes are this stack's attribute idiom; the core keeps only 'the required attributes'."
+    },
+    {
+      "item": "activation.facts[3]",
+      "text": "Requires the bun_design_system_detector (JSX scan plus literal-only scan of .ts/.mts) to report raw_control findings.",
+      "reason": "Detector and finding ids of this one rule are realization details; the core keeps the neutral change fact and its needs_new_observer classification."
+    },
+    {
+      "item": "activation.facts[4]",
+      "text": "language: typescript, javascript ('Bun realization.')",
+      "reason": "The stack's languages are profile data (tooling.languages); the neutral core scopes by artifact kind, not by language name."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "The bun_design_system_detector reports no raw_control findings in .tsx/.jsx or .ts/.mts literal HTML outside the design root.",
+      "reason": "Detector and finding ids are realization details; the core's evidence names the raw-control check generically."
+    }
+  ],
+  "classification": [
+    {
+      "item": "title",
+      "as": [
+        "core:title"
+      ],
+      "note": "Already stack-neutral; kept verbatim."
+    },
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:suffix.source",
+        "profile:idiom.markup_kinds",
+        "bunOnly"
+      ],
+      "note": "Suffix list and the string-literal embedding shape come from the profile; the '(htmx/Bun shape)' phrase is realization flavor kept in bunOnly."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "profile:idiom.interactive_controls"
+      ],
+      "note": "The obligation is neutral; the four raw element names are the profile's interactive-controls list (proposed key)."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Kept verbatim; names no stack."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]",
+        "bunOnly"
+      ],
+      "note": "Core keeps 'required attributes'; the htmx/DOM wording is bunOnly."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]"
+      ],
+      "note": "Neutral as-is; 'During GREEN' is stack-neutral ATDD process vocabulary."
+    },
+    {
+      "item": "prefer[2]",
+      "as": [
+        "core:prefer[2]"
+      ],
+      "note": "'prop' generalized to 'property or attribute'."
+    },
+    {
+      "item": "prefer[3]",
+      "as": [
+        "core:prefer[3]"
+      ],
+      "note": "Neutral as-is."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Neutral as-is."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "'props' generalized to 'parameters'."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]"
+      ],
+      "note": "Neutral as-is."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]",
+        "core:verification"
+      ],
+      "note": "Self-scoping kept both as an unless item and as a verification entry."
+    },
+    {
+      "item": "unless[1]",
+      "as": [
+        "core:unless[1]",
+        "profile:roots.design"
+      ],
+      "note": "Neutral as-is; the design system's location is the roots.design value."
+    },
+    {
+      "item": "unless[2]",
+      "as": [
+        "core:unless[2]",
+        "profile:suffix.unit_test"
+      ],
+      "note": "Concrete test patterns come from the profile. 'Vendored/build trees' stays a neutral never-scanned concept: the exact classification is the checker's own stack-wide exclusion list, kept as deference in core:verification, not as per-rule profile data."
+    },
+    {
+      "item": "unless[3]",
+      "as": [
+        "core:unless[3]",
+        "profile:suffix.markup",
+        "profile:idiom.markup_kinds"
+      ],
+      "note": "The excluded markup artifact set is closed and profile-bound: exactly the profile's markup file kinds (suffix.markup) that fall outside the judged markup kinds (idiom.markup_kinds). The Bun '.html templates' instance arrives via suffix.markup; 'cannot consume components' remains only as the rationale of that closed set, not as an open exemption criterion."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ],
+      "note": "Detector/finding ids are realization details; the core's evidence names the check generically."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]"
+      ],
+      "note": "Neutral as-is."
+    },
+    {
+      "item": "evidence[2]",
+      "as": [
+        "core:evidence[2]"
+      ],
+      "note": "Neutral as-is."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "profile:roots.design",
+        "core:verification"
+      ],
+      "note": "Directory names and the layer taxonomy are the (proposed) roots.design value; the no-design-root self-scoping sentence is generic verification."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "profile:idiom.interactive_controls",
+        "core:verification"
+      ],
+      "note": "The concrete element set and match shape are the (proposed) idiom.interactive_controls value; verification describes the flag generically."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification",
+        "profile:idiom.markup_kinds"
+      ],
+      "note": "Scope summary generalized to markup-bearing code per the profile's markup kinds."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Literal-only judging kept generically; 'angle-bracket type assertions' generalized to 'type assertions'."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification",
+        "profile:suffix.unit_test",
+        "profile:suffix.markup",
+        "profile:roots.design"
+      ],
+      "note": "Never-scanned list. Test patterns and the excluded static markup kinds are profile data (suffix.unit_test, suffix.markup); the vendored/build exclusion defers to the checker's own stack-wide list, and that deference stays in core:verification rather than in a profile value."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Per-rule severity and disposition are rule properties, not profile keys."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:suffix.source",
+        "profile:idiom.markup_kinds"
+      ],
+      "note": "The suffix list is profile data; the core fact states markup-bearing source generically."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[0]",
+        "core:verification",
+        "profile:roots.design",
+        "profile:suffix.unit_test"
+      ],
+      "note": "Exclusion globs folded into the core's outside-the-design-root file_kind fact and the verification never-scanned entry; the concrete design-root globs are the roots.design value; the vendored/build part defers to the checker's own list in core:verification."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roots.design"
+      ],
+      "note": "Design-root existence folded into the core's file_kind fact values; the concrete globs are the roots.design value."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[1]",
+        "bunOnly"
+      ],
+      "note": "The neutral change fact is core; the detector requirement and scan specifics are realization details."
+    },
+    {
+      "item": "activation.facts[4]",
+      "as": [
+        "profile:tooling.languages",
+        "bunOnly"
+      ],
+      "note": "Stack languages are profile data; the neutral core has no language fact (scope is by artifact kind)."
+    },
+    {
+      "item": "activation.fires",
+      "as": [
+        "core:activation.fires"
+      ],
+      "note": "Examples neutralized to component/handler/string-literal roles; the concrete Bun examples remain in bun.json as the reference realization."
+    },
+    {
+      "item": "activation.doesNotFire",
+      "as": [
+        "core:activation.doesNotFire"
+      ],
+      "note": "Examples neutralized (no design root, design-system files, tests/vendored, profile-bound static markup files, code-position false positives); the concrete examples remain in bun.json."
+    }
+  ],
+  "neutralityNotes": "The obligation itself (compose design-system primitives for interactive controls) is fully stack-neutral; only its data is stack-specific. The excluded markup artifact set is closed and profile-bound (suffix.markup kinds outside the judged idiom.markup_kinds), so an otherwise in-scope artifact cannot become exempt by merely being unable to consume components; the Bun instance of that set is plain .html templates. The vendored/build exclusion is not per-rule profile data: it defers to the checker's own stack-wide never-scanned list, and that deference is kept in core:verification. Two pieces of data had no closed vocabulary key and are proposed: roots.design (where the design system lives) and idiom.interactive_controls (which constructs count as raw interactive controls). Kept in the realization (bunOnly): the htmx/Bun string-embedding shape, the htmx attribute idiom, the language fact, and this rule's detector/finding ids (bun_design_system_detector, raw_control). 'During GREEN', 'REFACTOR', and 'acceptance' are ATDD process terms and stay in the core.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.design-primitives.json",
+      "sha256": "b68d74105bee8b8fa7b03b48114e3e1c8421424e386f60bb4239c955f4d3029d"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

@@ -1,0 +1,348 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.telemetry.raw-string-emit",
+  "legacyId": "coder.bun.telemetry-raw-string-emit",
+  "core": {
+    "title": "No undeclared raw-string telemetry names",
+    "given": "A non-test source file in a repository that has adopted a telemetry tracking plan",
+    "when": "An emit-like call — a function or method named in the stack's telemetry emit vocabulary — passes an event-shaped string literal as its first argument",
+    "then": "That string MUST be a concrete telemetry id declared in the tracking plan.",
+    "prefer": [
+      "Declare the event in the tracking plan first, then emit through the plan using its declared id.",
+      "Once generated telemetry contracts ship, emit via the contract constant rather than a raw string."
+    ],
+    "avoid": [
+      "Emitting an undeclared event name as a raw string literal.",
+      "Hiding an undeclared name behind a computed value (a variable, an interpolated expression, a contract constant) to dodge the check.",
+      "Treating this name-resolution check as proof of transaction ordering or other runtime properties."
+    ],
+    "unless": [
+      "Test files: assertion code legitimately names events it is proving.",
+      "Non-event-shaped strings (log levels, single-word keys) — some other concern.",
+      "Repository has not adopted the tracking plan (inert until adoption)."
+    ],
+    "why": "Undeclared event strings are how tracking plans rot: the string compiles, the dashboard never fills, and nobody owns the difference. The registry is the list of names that may be emitted.",
+    "evidence": [
+      "The stack's telemetry name-resolution check reports no undeclared event-shaped string literal as first argument of an emit-like call in non-test source.",
+      "Every event-shaped literal emitted resolves to a declared concrete telemetry id in the tracking plan."
+    ],
+    "verification": [
+      "Strict disposition: fails on every finding; there is no advisory mode and no ratchet baseline. Severity 3.",
+      "Only calls from the emit vocabulary whose first argument is a literal string are checked; the vocabulary is matched both as a bare function call and as a method call, per the profile's emit idiom.",
+      "Calls with computed first arguments (variables, interpolated expressions, contract constants) are invisible to this check by design.",
+      "Which strings count as event-shaped is decided by the stack's event-shape classifier; non-event strings (log levels, single-word keys) never trigger and are some other concern.",
+      "Resolution target: the declared concrete telemetry ids of the tracking plan (registry), placed per the profile's plan-item layout. A declared id passed as a raw string passes today; once generated contracts ship, emitting even a declared id by string is the drift the contract exists to prevent, and the rule tightens with it.",
+      "Name-resolution check only: it does not attempt to prove transaction ordering or any other runtime property.",
+      "Test files are excluded; the exact path/file-kind classification is owned by the checker, not by profile data. Scope is every qualifying call in the repository, not only changed ones. The rule is inert until the repository adopts the telemetry tracking plan."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "source (non-test)"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "emit-like call with an event-shaped string-literal first argument that is not a declared concrete telemetry id"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "task_term",
+          "values": [
+            "repository has adopted the telemetry tracking plan"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "Any non-test source file (existing or newly written) contains an emit-like call whose first argument is an event-shaped string literal that is not a declared telemetry id in the tracking plan.",
+        "A call on the emit vocabulary (function or method) passes an event-shaped literal for which no matching item exists in the plan.",
+        "A previously declared item is removed from the registry while a raw-string emit of its id remains in source."
+      ],
+      "doesNotFire": [
+        "The emit-like call is in a test file asserting on the event it proves.",
+        "The first argument is a non-event-shaped string such as a log level or a single lowercase key.",
+        "The first argument is computed (variable, interpolated expression, contract constant) — invisible to this check by design.",
+        "The repository has not adopted the telemetry plan (rule is inert until adoption).",
+        "The string literal is a declared concrete telemetry id (passes today, until generated contracts ship)."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "idiom.telemetry_emit_calls",
+      "meaning": "The stack's emit-like call vocabulary: names of functions/methods that emit a telemetry event; only a call whose first argument is a literal string counts as emit-like.",
+      "bunValue": "emit, emitted, track, capture, record, logEvent, emitEvent, sendEvent — matched both as bare function and as method call; only calls whose first argument is a string literal are checked."
+    },
+    {
+      "key": "idiom.telemetry_event_shapes",
+      "meaning": "Which string shapes the stack's classifier treats as event-shaped (event-name-like) versus non-event strings such as log levels or single-word keys.",
+      "bunValue": "telemetry: URN, snake_case, camelCase with an internal case shift, or Title Case analytics name. Single lowercase words (log levels, keys) are not event names."
+    },
+    {
+      "key": "urn.telemetry",
+      "meaning": "The id shape of a concrete telemetry event declared in the tracking plan — the string a raw-string emit must resolve to.",
+      "bunValue": "telemetry:event:be:commons:response-invocation-accepted (shape telemetry:event:<side>:<domain>:<item>)"
+    },
+    {
+      "key": "layout.plan_item",
+      "meaning": "Where one declared telemetry event of the tracking plan lives: a tracking-plan declaration is a plan artifact, and this key gives its path under the plan root — the resolution target of the name check.",
+      "bunValue": "telemetry/<domain>/<item>/event.<side>.json (e.g. telemetry/commons/response-invocation-accepted/event.be.json)"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "idiom.telemetry_emit_calls",
+      "group": "idiom",
+      "meaning": "The stack's emit-like call vocabulary: names of functions/methods that emit a telemetry event; only a call whose first argument is a literal string counts as emit-like.",
+      "bunValue": "emit, emitted, track, capture, record, logEvent, emitEvent, sendEvent — matched both as bare function and as method call; only calls whose first argument is a string literal are checked.",
+      "whyNoExistingKey": "The idiom group covers routing, auth, validation, import, machinery, markup and nesting idioms, but has no key for the telemetry emit idiom."
+    },
+    {
+      "key": "idiom.telemetry_event_shapes",
+      "group": "idiom",
+      "meaning": "Which string shapes the stack's classifier treats as event-shaped versus non-event strings such as log levels or single-word keys.",
+      "bunValue": "telemetry: URN, snake_case, camelCase with an internal case shift, or Title Case analytics name. Single lowercase words (log levels, keys) are not event names.",
+      "whyNoExistingKey": "No existing key describes how the stack recognizes an event-name-shaped string."
+    },
+    {
+      "key": "urn.telemetry",
+      "group": "urn",
+      "meaning": "The id shape of a concrete telemetry event declared in the tracking plan.",
+      "bunValue": "telemetry:event:be:commons:response-invocation-accepted (shape telemetry:event:<side>:<domain>:<item>)",
+      "whyNoExistingKey": "urn.<artifact> accepts only component, acceptance, smoke_acceptance, train, wmbt, wagon, feature, journey; telemetry is not among the artifacts."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "evidence[0]",
+      "text": "bun_telemetry_code validator",
+      "reason": "Validator id of this rule's Bun realization; per the notProfileKeys policy the core names the check generically."
+    },
+    {
+      "item": "activation.facts[1]",
+      "text": "Requires the bun_telemetry_code validator: AST match of the emit vocabulary (emit, emitted, track, capture, record, logEvent, emitEvent, sendEvent) as function or method with a string-literal first argument, event-shape classifier, and resolution against declared ids in the tracking plan. Applies to every qualifying call in the repository, existing or new, not only changed calls.",
+      "reason": "Names the concrete detector/validator implementation and its AST mechanics; the core describes the check generically and takes vocabulary and shapes from the profile."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given"
+      ],
+      "note": "Already neutral; the non-test file-kind scope is checker-owned classification, kept as a deference in core verification rather than profile data."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when",
+        "profile:idiom.telemetry_emit_calls"
+      ],
+      "note": "The concrete vocabulary list (emit, emitted, track, capture, record, logEvent, emitEvent, sendEvent) is stack idiom data supplied by the profile; the core keeps only 'function or method from the emit vocabulary'."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "profile:urn.telemetry",
+        "profile:layout.plan_item"
+      ],
+      "note": "Single obligation, already neutral; what counts as a declared concrete telemetry id comes from urn.telemetry (id shape) and layout.plan_item (declaration placement)."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]",
+        "profile:urn.telemetry",
+        "profile:layout.plan_item"
+      ],
+      "note": "Neutral form is 'declare first, then emit through the plan'; the concrete declaration path and id example are the profile keys' bunValues, with the full example left to the Bun reference realization."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]"
+      ],
+      "note": "'Generated contracts' and 'contract constant' are stack-neutral concepts here; no stack is named."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "'Template literal' generalized to 'interpolated expression'; obligation unchanged (metric-gaming guard)."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]",
+        "core:verification"
+      ],
+      "note": "Scope limitation of the check; restated in verification as 'name-resolution check only'."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]",
+        "core:verification"
+      ],
+      "note": "Test-role exception; the exact test-file classification is owned by the checker and deferred in verification, not profile data."
+    },
+    {
+      "item": "unless[1]",
+      "as": [
+        "core:unless[1]",
+        "profile:idiom.telemetry_event_shapes"
+      ],
+      "note": "Exception is expressed by the stack's event-shape classifier; the concrete shape list is profile data."
+    },
+    {
+      "item": "unless[2]",
+      "as": [
+        "core:unless[2]"
+      ],
+      "note": "Adoption condition, already neutral; also carried as activation.facts[2]."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ],
+      "note": "Neutral restatement names the check generically; the validator id bun_telemetry_code is Bun-only."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]",
+        "profile:layout.plan_item"
+      ],
+      "note": "Neutral restatement drops the concrete declaration path; that path is the plan-item layout key's bunValue."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "profile:idiom.telemetry_emit_calls"
+      ],
+      "note": "Function-or-method matching and literal-first-argument-only are neutral check mechanics; the vocabulary list is profile data."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "core:avoid[1]"
+      ],
+      "note": "Designed invisibility of computed arguments; grounds the avoid[1] gaming guard."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification",
+        "profile:idiom.telemetry_event_shapes",
+        "core:unless[1]"
+      ],
+      "note": "Shape list is profile data; the never-trigger rule for non-event strings is the unless[1] exception."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification",
+        "core:prefer[1]",
+        "profile:layout.plan_item"
+      ],
+      "note": "Registry resolution target, passes-today semantics and future tightening kept in verification and prefer[1]; where declarations live is layout.plan_item."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Name-resolution-only scope."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "as": [
+        "core:verification",
+        "core:unless[0]",
+        "core:unless[2]"
+      ],
+      "note": "Test exclusion (deferred to the checker's own path/file-kind classification), inert-until-adoption, and repository-wide scope all restated neutrally in verification."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Per-rule severity and disposition are core verification, not profile keys."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]"
+      ],
+      "note": "File-kind fact kept neutral; the note's path/file-kind classification is checker-owned and deferred in verification, not profile data."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:idiom.telemetry_emit_calls",
+        "profile:idiom.telemetry_event_shapes",
+        "bunOnly"
+      ],
+      "note": "Finding fact is neutral; the note's validator id and AST specifics are Bun-only; vocabulary and shapes come from the profile."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[2]"
+      ],
+      "note": "Adoption task term, already neutral; needs_new_observer kept."
+    }
+  ],
+  "neutralityNotes": "The obligation itself (declare telemetry ids in the tracking plan before emitting them as raw strings) is fully stack-neutral. What could not be neutralized inline is stack data, carried by profile keys: the emit-call vocabulary and the event-shape classifier (proposed in the idiom group) and the tracking-plan id shape (proposed as urn.telemetry); a tracking-plan declaration is a plan artifact, so its placement uses the existing layout.plan_item key with the Bun telemetry path as its value. The non-test source scope and test-file exclusion are checker-owned path/file-kind classification and stay a deference in core verification; the authoritative realization supplies no source suffixes or name patterns, so no suffix key is required. 'String literal' and 'computed argument' are kept as near-universal concepts; the Bun-specific 'template literal' is generalized to 'interpolated expression' without changing the obligation. The validator id bun_telemetry_code and its AST-matching mechanics remain Bun-only (notProfileKeys); the core's verification describes the check generically, including its designed blind spot for computed arguments, its repository-wide scope, the deferred test-file classification, inert-until-adoption, and the strict severity-3 disposition.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.telemetry-raw-string-emit.json",
+      "sha256": "6afb4af054051c7e1364ad8cd1f4bbf5ba5aa0f092d43159315cbd7d6560dca5"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

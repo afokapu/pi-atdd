@@ -1,0 +1,327 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.telemetry.forbidden-properties",
+  "legacyId": "coder.bun.telemetry-forbidden-properties",
+  "core": {
+    "title": "Keep plan-forbidden properties out of emit calls",
+    "given": "After adoption, an emit-like call (a telemetry emit that names a declared concrete tracking-plan item id) that supplies the call's properties; how the call names the id and carries its properties is the profile's telemetry emit idiom.",
+    "when": "The call exists or changes, or the named item's forbidden_properties list or the call's item id changes.",
+    "then": "No top-level named property of the call's properties MAY match a property the plan forbids on that item, compared after stripping separators and folding case (property entries that carry no name of their own are not scanned; nested property groups are judged at their own level).",
+    "prefer": [
+      "Pass the identifier, not the thing it identifies, and leave out any property the named item's plan forbids."
+    ],
+    "avoid": [
+      "Attaching raw payloads, secrets or prompts the plan forbids on the named item.",
+      "Evading the check by renaming case/separators (snake_case vs camelCase) instead of removing the property.",
+      "Treating properties the plan merely does not declare as forbidden or removing them for this rule; undeclared-key drift is the generated contract's concern."
+    ],
+    "unless": [
+      "The call names an id the registry does not hold: that is the raw-string rule's finding; double-reporting here would be noise.",
+      "Inert until adoption, like every rule in this family."
+    ],
+    "why": "The forbidden list is a privacy and cost promise, so it is enforced where data leaves: the emit call itself, against the plan entry the call names.",
+    "evidence": [
+      "The telemetry-code check reports no forbidden-property finding for emit-like calls naming declared items.",
+      "For every emit call naming a declared item (not only changed ones), every normalized top-level property of the call's properties is absent from that item's forbidden_properties list."
+    ],
+    "verification": [
+      "Scope: only emit-like calls that name a declared concrete id in the tracking-plan registry, recognized by the profile's telemetry emit idiom; calls naming an id the registry does not hold are skipped (the raw-string rule reports them). All qualifying calls are checked after adoption, regardless of whether the call itself changed.",
+      "Properties: the named properties supplied with the emit-like call, in whatever shape the profile's telemetry emit idiom recognizes; only their top-level named entries are compared.",
+      "forbidden_property: a name in the item's forbidden_properties list (raw payloads, secrets, prompts): what must never leave the process on that item.",
+      "Normalization: every top-level property name has separators stripped and case folded before comparison against the item's forbidden list; the plan and the code may use different naming conventions (e.g. snake_case in the plan, camelCase in the code).",
+      "Property entries that carry no name of their own are invisible to this scan; nested property groups are judged at their own level, not as top-level entries of this call.",
+      "Properties the plan merely does not declare are not forbidden by this rule; undeclared-key drift is the generated contract's concern, not this rule's.",
+      "The check is realized as a telemetry-source code validator; the detector, validator and finding ids of this rule are realization details of each stack.",
+      "Disposition: strict — the check fails on every finding; no advisory mode and no ratchet baseline. Severity: 3."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "source"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "emit_call_naming_declared_item_present",
+            "tracking_plan_forbidden_properties_changed",
+            "emit_call_item_id_changed"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "forbidden-property"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "phase",
+          "values": [
+            "adopted"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "After adoption, any emit-like call names a declared tracking-plan item and a top-level property of its properties is in that item's forbidden_properties list (e.g. a raw payload, secret or prompt).",
+        "The plan forbids a snake_case name and the code writes the same name in camelCase as a top-level property of the call's properties.",
+        "A plan change adds a name to an item's forbidden_properties list that an existing, unchanged emit call already passes.",
+        "A call's named item id is changed to an item whose forbidden list contains one of the call's existing keys."
+      ],
+      "doesNotFire": [
+        "The emit-like call names an id the registry does not hold (that is the raw-string rule's finding).",
+        "The call's properties carry a name the plan merely does not declare (undeclared-key drift belongs to the generated contract).",
+        "The value is passed via a property entry that carries no name of its own, which this scan cannot see.",
+        "A matching name appears only inside a nested property group (nested groups are judged at their own level, not as top-level properties of this call).",
+        "The repository has not yet adopted the tracking plan."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "tooling.languages",
+      "meaning": "The languages of production source; they scope which files this rule's check scans (the neutral counterpart of the language activation fact).",
+      "bunValue": "typescript, javascript"
+    },
+    {
+      "key": "idiom.telemetry_emit_call",
+      "meaning": "How a telemetry emit-like call is recognized in the stack's source: which part of the call names the declared tracking-plan item id, and what construct supplies the call's properties.",
+      "bunValue": "a telemetry emit whose first argument is a declared concrete tracking-plan item id, with a properties object literal following that argument on the same statement"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "idiom.telemetry_emit_call",
+      "group": "idiom",
+      "meaning": "The stack's shape of a telemetry emit-like call: which part of the call names the declared tracking-plan item id, and what construct supplies the call's properties collection.",
+      "bunValue": "a telemetry emit whose first argument is a declared concrete tracking-plan item id, with a properties object literal following that argument on the same statement",
+      "whyNoExistingKey": "The idiom group covers routes, gates, imports, markup and machinery, but has no key for the telemetry client's emit call shape; without it a stack cannot say how an 'emit-like call' and its properties are recognized in its syntax (another stack may name the id and supply properties differently, e.g. without an object literal)."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "evidence[0]",
+      "text": "bun_telemetry_code validator",
+      "reason": "Validator id of this one rule is a realization detail; the core evidence names the check generically."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "text": "Source fix example (example-specific annotations): telemetry.emit(\"telemetry:event:be:commons:response-invocation-accepted\", { response_id: response.id, // raw_payload: response.raw, });",
+      "reason": "Concrete code example in the stack's telemetry-client syntax; bun.json itself is the delivered reference example, so the core does not repeat it."
+    },
+    {
+      "item": "verifier_detail[7]",
+      "text": "Implementation: validator bun_telemetry_code.",
+      "reason": "Validator id is a realization detail; the core's verification describes the check generically."
+    },
+    {
+      "item": "activation.facts[2]",
+      "text": "bun_telemetry_code:forbidden-property",
+      "reason": "Finding id prefixed with the Bun validator id; the core keeps only the generic finding kind 'forbidden-property'."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:idiom.telemetry_emit_call"
+      ],
+      "note": "The obligation-level situation (an emit-like call naming a declared item, supplying its properties) is neutral; the concrete argument position and object-literal syntax of the Bun gloss are NOT in the core — they are the Bun value of the telemetry emit idiom (proposed key)."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Neutral as written; 'forbidden_properties' is the tracking-plan schema's field name, not a stack term."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then"
+      ],
+      "note": "'Top-level key of the properties object' generalized to 'top-level named property of the call's properties'; 'shorthand properties' to 'property entries that carry no name of their own'; 'nested objects' to 'nested property groups'."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Neutral as written."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]"
+      ],
+      "note": "Neutral as written."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Neutral as written."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Neutral as written; snake_case/camelCase are naming styles, not stack names."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]"
+      ],
+      "note": "Neutral as written; 'the generated contract' names the sibling convention, not a stack."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]"
+      ],
+      "note": "Neutral as written; 'the raw-string rule' is the sibling rule of the same family."
+    },
+    {
+      "item": "unless[1]",
+      "as": [
+        "core:unless[1]"
+      ],
+      "note": "Neutral as written; the adoption gate is family-wide."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ],
+      "note": "The evidence statement is neutral once the validator id is genericized; 'bun_telemetry_code' stays in bunOnly."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]"
+      ],
+      "note": "Neutralized: 'top-level key of the properties object' became 'top-level property of the call's properties'; its all-calls scope is restated in core verification via verifier_detail[0]."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Check scope: calls naming a declared id (recognized by the profile's telemetry emit idiom, not by an argument position in the core), all qualifying calls after adoption regardless of change; undeclared ids left to the raw-string rule."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "profile:idiom.telemetry_emit_call"
+      ],
+      "note": "The core keeps only the neutral definition — the named properties supplied with the call, shape from the idiom; the object-literal and argument-position syntax ('the object literal following the first argument... on the same statement') is the Bun value of the telemetry emit idiom, not core content."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Definition of forbidden_property; neutral as written."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Normalization rule; neutral, with snake_case/camelCase kept as naming-style examples ('key' generalized to 'property name')."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "'Shorthand properties' generalized to nameless property entries; 'nested objects' to nested property groups judged at their own level."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Undeclared keys are out of scope; the coder-facing counterpart is core avoid[2]."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "Concrete source fix example; the core keeps role-level prefer/avoid only."
+    },
+    {
+      "item": "verifier_detail[7]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "Validator id is a realization detail; core verification describes the check generically."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:tooling.languages"
+      ],
+      "note": "'language' is not a neutral fact kind; the core states file_kind 'source' and the concrete languages come from the profile."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]"
+      ],
+      "note": "Change values are neutral; the observer note (every qualifying call, not only edited ones, reading the call's properties in the idiom's shape) folds into core verification and the idiom key."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[2]",
+        "bunOnly"
+      ],
+      "note": "Core fact value is the generic finding kind 'forbidden-property'; the validator-prefixed id is bunOnly."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[3]"
+      ],
+      "note": "Neutral as written; family-wide adoption gate."
+    }
+  ],
+  "neutralityNotes": "The obligation itself is stack-neutral: telemetry emit calls, the tracking plan's forbidden_properties list, normalized top-level property comparison, the adoption gate, and the raw-string/generated-contract boundaries name no stack. Per the round-2 audit, the concrete properties syntax is delegated to the profile: the core speaks only of an emit-like call naming a declared item and the named properties it supplies, while the argument position (first argument is the id) and the object-literal-on-the-same-statement shape live in the proposed idiom.telemetry_emit_call key's Bun value, so another stack (e.g. one that builds properties without an object literal) can supply its own equivalent. 'Shorthand properties' is generalized to 'property entries that carry no name of their own' and 'nested objects' to 'nested property groups'. Kept Bun-specific: the validator and finding ids (bun_telemetry_code, bun_telemetry_code:forbidden-property) and the concrete telemetry.emit fix example. The 'language' activation fact became the neutral file_kind fact 'source', with the concrete languages supplied by the profile (tooling.languages). bun.json gives no source-root or exclusion list for this rule, so no roots requirement was invented.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.telemetry-forbidden-properties.json",
+      "sha256": "fb81658001add317bd26546fde778b337fc5e4d5bc819e32b730b42e83dff564"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

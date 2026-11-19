@@ -1,0 +1,374 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.complexity.cyclomatic",
+  "legacyId": "coder.bun.complexity-cyclomatic",
+  "core": {
+    "title": "Keep each function's cyclomatic complexity at or below 10",
+    "given": "Any production source function (3+ code lines, outside test files and the stack-wide excluded trees), whether changed or not",
+    "when": "its cyclomatic complexity (1 + each decision point counted by the stack's complexity measure) exceeds 10",
+    "then": "Restructure it to score at or below 10 by separating decisions into coherent, nameable responsibilities without changing behaviour.",
+    "prefer": [
+      "Diagnose first: group branches by policy/responsibility, separate validation and guards from the core operation, spot repeated compound conditions that are a domain predicate.",
+      "Extract a coherent decision or policy into an intention-revealing function.",
+      "Replace repeated compound conditions with well-named predicates.",
+      "Dispatch table/strategy only for a genuinely stable key-to-behaviour mapping.",
+      "Keep the caller's control flow showing the important choices."
+    ],
+    "avoid": [
+      "Moving the same branch tree unchanged into a generically named helper.",
+      "Indirect data structures or opaque encodings used solely to lower the score.",
+      "Scattering one policy across tiny functions whose interaction is harder to follow.",
+      "Changing boolean semantics, branch order or fallback behaviour."
+    ],
+    "unless": [
+      "Function with fewer than 3 code lines (not scored: a two-line function is not a complexity problem).",
+      "Test file or any tree on the stack-wide exclusion list, e.g. vendored or build output (outside the scan)."
+    ],
+    "why": "Complexity approximates the test cases needed to pin behaviour; above ~10 paths full coverage stops being written and defects settle in untested paths. The score senses too many decisions in one responsibility; hiding branching only hides the signal.",
+    "evidence": [
+      "The stack's metrics check reports no complexity finding for the triggering function (the triggering violation is gone).",
+      "Existing behaviour and path-focused tests remain green.",
+      "Extracted code introduces no new nesting, duplication or length violation, and the refactor introduces no new violations of the stack's conventions.",
+      "Reviewer confirms the resulting decision boundaries correspond to meaningful responsibilities that are easier to name, test and reason about, rather than a relocated or opaquely encoded branch tree."
+    ],
+    "verification": [
+      "Threshold: cyclomatic complexity <= 10 per function; a score above 10 is a finding. Applies to every in-scope function, changed or unchanged (no baseline).",
+      "Counting: complexity = 1 + each decision point; a decision point is a construct adding an independent path. Which constructs count is given by the stack's complexity measure (its control-flow branch forms, short-circuit and nullish operators, and conditional expressions).",
+      "Trivial function: a function under three code lines is skipped and not scored.",
+      "Scan scope: production source only. Test files and the stack-wide excluded trees (vendored and generated code) are outside the scan; the exact exclusion list is the one stack-wide list, not owned by this rule.",
+      "The threshold and the counting arithmetic belong to this rule's shared definition and must not drift between stack realizations: a repository that switches realizations must see the same numbers - only the tool that runs the count differs.",
+      "Disposition strict: the check fails on every finding; no advisory mode and no ratchet baseline (existing violations in unchanged code are findings too). Severity 3.",
+      "Realized by the stack's metrics detector (a validator): it scores every in-scope function, changed or not, and emits this rule's finding for each function above the threshold; where such a detector already exists, only its output needs consuming - no new observer."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "source"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "cyclomatic_complexity_above_threshold"
+          ],
+          "observability": "observable_now"
+        }
+      ],
+      "fires": [
+        "An existing, unchanged production source function of 3+ code lines already scores 11 or more - strict scope has no baseline, so it fires too.",
+        "A new or edited production source function of 3+ code lines scores 11 or more (1 + the decision points the stack's measure counts).",
+        "A refactor adds branches or boolean operators to a function, pushing it above 10."
+      ],
+      "doesNotFire": [
+        "A function with fewer than 3 code lines, however many operators it has.",
+        "Functions in test files or in the stack's excluded (vendored/generated) trees.",
+        "A function scoring exactly 10."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "tooling.languages",
+      "meaning": "The languages of production source, so the core's 'production source function' scope binds to the stack's source language.",
+      "bunValue": "typescript, tsx"
+    },
+    {
+      "key": "suffix.source",
+      "meaning": "The file suffixes that identify a production source file (the scan's file-kind filter).",
+      "bunValue": "File extension .ts/.tsx."
+    },
+    {
+      "key": "idiom.complexity_measure",
+      "meaning": "Which constructs the stack counts as decision points when measuring a function's cyclomatic complexity.",
+      "bunValue": "complexity = 1 + each decision point. Decision points: if / else if / for / while / do / catch / case keywords, each && / || / ?? operator, each ternary."
+    },
+    {
+      "key": "roots.excluded",
+      "meaning": "The one stack-wide list of vendored and generated trees that are never scanned; this rule's 'outside vendored/build dirs' exclusion is that list.",
+      "bunValue": "vendored/build directories"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "idiom.complexity_measure",
+      "group": "idiom",
+      "meaning": "How cyclomatic complexity is measured in the stack's syntax: which constructs count as decision points (control-flow branch forms, short-circuit and nullish operators, conditional expressions).",
+      "bunValue": "complexity = 1 + each decision point. Decision points: if / else if / for / while / do / catch / case keywords, each && / || / ?? operator, each ternary.",
+      "whyNoExistingKey": "idiom.control_keywords is scoped by its doc to nesting depth only, and no other idiom key carries the decision-point set (boolean/nullish operators and ternaries included) that a cyclomatic-complexity count needs; a near-synonym reuse would blur the two measures."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "activation.facts[2]",
+      "text": "Emitted by the existing bun_ts_metrics_detector (the source's realizing validator) for any in-scope function scoring above 10, changed or not; no new observer is required, only consuming its output.",
+      "reason": "Detector and finding ids of this rule (bun_ts_metrics_detector, COMPLEXITY-CYCLOMATIC-TS-001) are realization details; the core keeps the generic finding fact and describes the check generically in verification."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "bun_ts_metrics_detector reports no COMPLEXITY-CYCLOMATIC-TS-001 finding for the triggering function (the triggering violation is gone).",
+      "reason": "Names this rule's Bun detector and finding id; the neutral core states the same evidence as 'the stack's metrics check reports no complexity finding'."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "text": "Thresholds and counting rule are transcribed from the python-pytest sibling coder.refactor.complexity-cyclomatic-typescript and verified to produce identical numbers; the arithmetic must not drift so a repo switching providers sees the same numbers - only the runner differs (native Bun, no Python interpreter).",
+      "reason": "Names another stack's realization and this stack's runtime. The neutral invariant (identical arithmetic and numbers across realizations) is kept in core:verification; the sibling-rule and runner specifics stay here."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "text": "Detector: bun_ts_metrics_detector (validator); core alias COMPLEXITY-CYCLOMATIC-TS-001.",
+      "reason": "Detector and alias ids of this single rule are realization details; core:verification names the check generically (the stack's metrics detector)."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:tooling.languages",
+        "profile:suffix.source",
+        "profile:roots.excluded"
+      ],
+      "note": "'TypeScript/TSX source' becomes production source via the profile's languages/source suffixes; 'test, vendored and build dirs' becomes test files plus the stack-wide exclusion list; 'whether changed or not' kept."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when",
+        "profile:idiom.complexity_measure"
+      ],
+      "note": "'1 + each decision point exceeds 10' is neutral; the concrete decision-point list (if/else if/for/while/do/catch/case, &&/||/??, ternary) is the stack's counting idiom, supplied by the proposed profile key."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then"
+      ],
+      "note": "Already stack-neutral; carried verbatim."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Already stack-neutral; carried verbatim."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]"
+      ],
+      "note": "Role/responsibility level already; carried verbatim."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]"
+      ],
+      "note": "Neutral; carried verbatim."
+    },
+    {
+      "item": "prefer[2]",
+      "as": [
+        "core:prefer[2]"
+      ],
+      "note": "Neutral; carried verbatim."
+    },
+    {
+      "item": "prefer[3]",
+      "as": [
+        "core:prefer[3]"
+      ],
+      "note": "Neutral; carried verbatim."
+    },
+    {
+      "item": "prefer[4]",
+      "as": [
+        "core:prefer[4]"
+      ],
+      "note": "Neutral; carried verbatim."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Neutral; carried verbatim."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Neutral; carried verbatim."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]"
+      ],
+      "note": "Neutral; carried verbatim."
+    },
+    {
+      "item": "avoid[3]",
+      "as": [
+        "core:avoid[3]"
+      ],
+      "note": "Neutral; carried verbatim."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]"
+      ],
+      "note": "The 3-code-line trivial-function minimum is rule arithmetic and stays in the core; the TS-flavoured 'two-line arrow' example is generalized to 'a two-line function'."
+    },
+    {
+      "item": "unless[1]",
+      "as": [
+        "core:unless[1]",
+        "core:verification",
+        "profile:roots.excluded"
+      ],
+      "note": "Test files and vendored/build trees are outside the scan; the concrete excluded trees are the one stack-wide list (roots.excluded), with the deference kept in verification."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ],
+      "note": "Neutral core: the stack's metrics check reports no complexity finding; the Bun detector/finding names are bunOnly."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]"
+      ],
+      "note": "Neutral; carried verbatim."
+    },
+    {
+      "item": "evidence[2]",
+      "as": [
+        "core:evidence[2]"
+      ],
+      "note": "'no new ATDD Bun violations' is generalized to 'no new violations of the stack's conventions' - same obligation, stack-neutral wording."
+    },
+    {
+      "item": "evidence[3]",
+      "as": [
+        "core:evidence[3]"
+      ],
+      "note": "Neutral; carried verbatim."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Threshold and no-baseline scope are stack-neutral enforcement; entry 1 of the verification array."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "profile:idiom.complexity_measure"
+      ],
+      "note": "The formula '1 + each decision point' is neutral; the concrete decision-point list is the stack idiom carried by the proposed key; entry 2 of the verification array."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Term decision_point neutralized to 'a construct adding an independent path'; folded into entry 2 of the verification array."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Term trivial_function (under three code lines, not scored) is rule arithmetic; entry 3 of the verification array."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification",
+        "profile:roots.excluded"
+      ],
+      "note": "Exclusion of test files and vendored/build trees only scopes the check; kept generically in verification with the exact list owned stack-wide."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "The cross-realization invariant (arithmetic must not drift, only the runner differs) is neutral and kept as entry 5 of the verification array; the python-pytest sibling and native-Bun specifics are bunOnly."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "Detector name and core alias of this one rule are realization details; the check is described generically as the stack's metrics detector in verification."
+    },
+    {
+      "item": "verifier_detail[7]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Severity 3 and strict disposition (no advisory mode, no ratchet baseline, unchanged-code violations count) belong to the rule's verification, not to the profile; entries 6 and 7 of the verification array."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:tooling.languages",
+        "profile:suffix.source"
+      ],
+      "note": "The language fact restricts scope to the stack's source language; neutrally this is the file_kind=source fact, with languages and source suffixes supplied by the profile."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[0]"
+      ],
+      "note": "The file_kind=source fact is already neutral and becomes the core's first activation fact; its note (test files and vendored/build dirs excluded) is covered by unless[1] and verification."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[1]",
+        "bunOnly"
+      ],
+      "note": "Generically: a finding of this rule's check, emitted for any in-scope function above the threshold, changed or not, observable by consuming the existing detector's output. The Bun finding/detector ids are bunOnly."
+    }
+  ],
+  "neutralityNotes": "The rule is substantively stack-neutral: threshold 10, the '1 + each decision point' formula, the 3-code-line trivial-function minimum and the strict disposition are kept in the core because the rule itself demands they not drift between realizations; only the concrete decision-point construct list is stack-specific and is supplied through the proposed key idiom.complexity_measure. Generalizations made: 'TypeScript/TSX source function' -> production source function (profile: tooling.languages, suffix.source); 'test, vendored and build dirs' -> test files plus the one stack-wide exclusion list (roots.excluded), with the checker's ownership of the exact list kept in verification; 'a two-line arrow' -> 'a two-line function'; 'no new ATDD Bun violations' -> 'no new violations of the stack's conventions'; the fires/doesNotFire examples speak of production source functions instead of .ts/.tsx files. Detector, finding and alias ids (bun_ts_metrics_detector, COMPLEXITY-CYCLOMATIC-TS-001) and the python-pytest sibling transcription note remain bunOnly.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.complexity-cyclomatic.json",
+      "sha256": "7908379b988e1513485b361538c384459eb66002d8dda8d39cc8b32282292a64"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 1,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

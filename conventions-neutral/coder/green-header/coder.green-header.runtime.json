@@ -1,0 +1,348 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.green-header.runtime",
+  "legacyId": "coder.bun.green-header-runtime",
+  "core": {
+    "title": "Declare the runtime the file executes in",
+    "given": "A non-test implementation file in a project governed by this convention's structure profile, new or existing",
+    "when": "the file is present in the codebase (created, edited, or untouched) and its runtime declaration is checked",
+    "then": "The file MUST carry the profile's runtime declaration with a value from the stack's runtime vocabulary that names where the file actually executes (the server-side value, the client-side value, or, for a module that genuinely executes in both, the both-sides value when the vocabulary provides one).",
+    "prefer": [
+      "During GREEN: derive the value from the real execution path created or used by the current acceptance (where the module is actually loaded and run), not from file location or hypothetical reuse.",
+      "During GREEN: keep an existing correct runtime declaration.",
+      "During GREEN: change only the declaration header when the implementation already executes in the correct place.",
+      "Use the both-sides value only for a module that genuinely runs in both execution environments."
+    ],
+    "avoid": [
+      "Broadening the fix: moving code between execution environments merely to fit a preferred label.",
+      "Guessing the both-sides value because the file could theoretically run in both places.",
+      "Picking a wrong single-side value for a module that really runs in both places."
+    ],
+    "unless": [
+      "Files in test roles (unit test, acceptance test, e2e test) are excluded."
+    ],
+    "why": "Where a module executes is not evident from its location, and a wrong or missing declaration is inherited by every downstream reader; when the stack's execution model can run one module in more than one environment, the vocabulary must offer a both-sides value, or authors would be forced to pick a wrong single-side one.",
+    "evidence": [
+      "The convention check for this rule reports no finding for the file (findings are evidence and repair triggers, not activation prerequisites).",
+      "The declaration matches where the file actually executes (a valid value alone is not sufficient).",
+      "The current behavioral acceptance passes in its real runtime."
+    ],
+    "verification": [
+      "The check verifies, for every in-scope implementation file, that the runtime declaration is present and that its value belongs to the stack's runtime vocabulary; files in test roles are excluded from detection.",
+      "The check does not by itself verify that the declared value matches the file's actual execution path, including genuine dual execution; that needs an execution-path observer, and findings are repair triggers, not activation prerequisites.",
+      "A missing declaration is reported at the file's URN binding line, or at the first meaningful line when the file has no URN.",
+      "Severity 2; disposition strict: the stack's checker fails on every finding, with no advisory mode and no ratchet baseline."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "implementation"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "role",
+          "values": [
+            "any"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "declaration_missing",
+            "declaration_value_not_in_vocabulary",
+            "declaration_mismatches_actual_execution"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "A new implementation file has no runtime declaration line.",
+        "An existing implementation file lacks a runtime declaration, even if the current change does not touch its header.",
+        "An implementation file's declared value is not one of the stack's allowed runtime values.",
+        "An implementation file's declared runtime does not match where it actually executes (e.g. its execution path changed but the declaration was left untouched).",
+        "A module genuinely runs in both execution environments and is declared with a single-side value instead of the both-sides value."
+      ],
+      "doesNotFire": [
+        "Files in test roles (unit test, acceptance test, e2e test).",
+        "Files governed by another stack's structure profile (each stack realizes this obligation with its own vocabulary and check)."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "idiom.runtime_declaration",
+      "meaning": "The header construct by which an implementation file declares the runtime environment it executes in; this is the declaration the core's obligation, prefer and avoid items read and write.",
+      "bunValue": "the `Runtime:` header line naming where the file executes"
+    },
+    {
+      "key": "idiom.runtime_values",
+      "meaning": "The stack's closed vocabulary of runtime-declaration values and what each names: the server-side value, the client-side value, and — when the stack's execution model can run one module in both — a both-sides value.",
+      "bunValue": "`bun`, `browser`, `isomorphic`; allowed values on Bun, where `isomorphic` means a module that genuinely runs both server-side and in the browser"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "idiom.runtime_declaration",
+      "group": "idiom",
+      "meaning": "The stack's construct by which a source file declares the runtime environment it executes in (e.g. a header line), which a runtime-declaration rule reads and repairs.",
+      "bunValue": "`Runtime:` header line naming where the file executes",
+      "whyNoExistingKey": "No idiom key covers a file-header declaration of execution environment: urn.binding.* is only for URN/artifact binding and idiom.comment_marker only gives comment syntax."
+    },
+    {
+      "key": "idiom.runtime_values",
+      "group": "idiom",
+      "meaning": "The stack's closed vocabulary of runtime-declaration values and what each names: the server-side value, the client-side value, and a both-sides value when the execution model can run one module in both environments.",
+      "bunValue": "`bun`, `browser`, `isomorphic`",
+      "whyNoExistingKey": "No key lists a per-stack runtime vocabulary; idiom.machinery is about recognising delivery machinery in code, not declared environment values."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "why",
+      "text": "Bun decides at run time what a bundler decides at build time, so a full-stack Bun module can routinely run in both places; without an `isomorphic` value authors would be forced to pick a wrong one and every downstream reader would inherit the error.",
+      "reason": "The rationale rests on Bun's run-time execution model versus bundler build-time placement and names the Bun vocabulary token; the core keeps only the generic rationale (wrong declarations are inherited; a both-sides value is required when a module can execute in both environments)."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "bun_green_traceability_detector reports no GREEN-HEADER-001 / BUN-GREEN-HEADER-RUNTIME-001 finding for the file.",
+      "reason": "Detector, validator and finding ids of this rule are realization details; the core refers to the rule's convention check generically."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "text": "Per-stack vocabulary: Vite reads `vite|browser|node`, Python reads `python`; `isomorphic` has no Vite counterpart and is the substantive Bun addition.",
+      "reason": "Cross-stack comparison of other realizations' vocabularies; the neutral core only requires the vocabulary to come from the profile (idiom.runtime_values)."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "text": "Rationale for isomorphic: a bundler stack decides at BUILD time which code reaches the browser, so a file is server or client by where the bundler puts it; Bun decides at RUN time, e.g. a fragment renderer used server-side and again after a client-side swap.",
+      "reason": "Bun-versus-bundler argumentation with a stack-specific worked example; its neutral content is already carried by core.why."
+    },
+    {
+      "item": "activation.facts[2]",
+      "text": "path_glob = <files belonging to a project whose stack is Bun>; stack context must be explicit (repository stack configuration identifying the Bun realization), language (TypeScript/JavaScript) is NOT a proxy since the Vite stack uses the same languages with a different vocabulary; needs an observer that resolves the file's stack from repository configuration.",
+      "reason": "Stack membership names the Bun realization and is retained here in the realization together with its required stack-resolution observer (language is not a proxy). It is not expressed through a profile key: roots.config documents only the path of the file that declares repository roots and profile choices — a location, not a membership predicate — and bun.json supplies no such configuration path, so no configuration path is invented. The core is scoped instead by binding it to the stack's structure profile (core.given, doesNotFire)."
+    },
+    {
+      "item": "activation.facts[3]",
+      "text": "Finding ids GREEN-HEADER-001 (shared core alias, also carried by the Python realization and coder.vite.green-header-runtime — one obligation, three per-stack detectors) and BUN-GREEN-HEADER-RUNTIME-001.",
+      "reason": "Finding ids and cross-realization alias bookkeeping are realization details; the core states the finding kinds generically (missing, invalid vocabulary, mismatch with actual execution)."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given"
+      ],
+      "note": "'Bun-stack project' becomes 'project governed by this convention's structure profile'; the stack scoping itself is realized by binding the core to that profile (see activation.facts[2], bunOnly). 'New or existing' kept."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Already neutral: presence-based (created, edited, or untouched), no stack named."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "profile:idiom.runtime_declaration",
+        "profile:idiom.runtime_values"
+      ],
+      "note": "One obligation kept intact; the `Runtime:` syntax and the `bun`/`browser`/`isomorphic` tokens instantiate from the profile, 'naming where it actually executes' stays in the core."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why",
+        "bunOnly"
+      ],
+      "note": "Neutral rationale in core:why (wrong declaration inherited by every reader; both-sides value needed when a module can execute in both environments); the run-time-vs-build-time Bun argumentation is bunOnly."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]"
+      ],
+      "note": "Already neutral: GREEN phase, acceptance-driven real execution path, anti-guessing clarifier kept verbatim."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "prefer[2]",
+      "as": [
+        "core:prefer[2]"
+      ],
+      "note": "Already neutral ('header' generalized to the declaration header)."
+    },
+    {
+      "item": "prefer[3]",
+      "as": [
+        "core:prefer[3]",
+        "profile:idiom.runtime_values"
+      ],
+      "note": "`isomorphic` generalizes to the vocabulary's both-sides value; the concrete token is the profile value."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "'server and browser' generalized to execution environments; do-not-broaden meaning unchanged."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]",
+        "profile:idiom.runtime_values"
+      ],
+      "note": "`isomorphic` generalizes to the both-sides value."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]"
+      ],
+      "note": "Already neutral ('single-side value' is vocabulary-independent)."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]",
+        "core:verification"
+      ],
+      "note": "Test exclusion is both the rule's only exception and the check's detection scope; matching verification entry added. Which files are test roles is supplied by the realizing profile's role assignment."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ],
+      "note": "Neutralized to 'the rule's convention check reports no finding'; detector and finding ids are bunOnly; 'repair triggers, not activation prerequisites' kept in core."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]"
+      ],
+      "note": "Already neutral and the heart of the obligation: a valid value alone is not sufficient."
+    },
+    {
+      "item": "evidence[2]",
+      "as": [
+        "core:evidence[2]"
+      ],
+      "note": "Already neutral: behavioral acceptance passing in its real runtime is a framework concept."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "profile:idiom.runtime_declaration",
+        "profile:idiom.runtime_values",
+        "core:verification"
+      ],
+      "note": "Defines the runtime-field construct and the allowed values (both become profile keys); the check it describes (presence + vocabulary) is a core verification entry."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Report location for a missing declaration; the URN binding line is a framework concept (urn group), not a stack one."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Test-role exclusion as detection scope; same content as unless[0], merged into the same verification entry."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Per-rule severity and disposition are not profile keys; strict disposition interpreted via the shared policy (fails on every finding, no advisory mode, no ratchet baseline)."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "bunOnly",
+        "profile:idiom.runtime_values"
+      ],
+      "note": "The Vite/Python vocabulary comparison is realization detail (bunOnly); its neutral content — each stack has its own runtime vocabulary — is exactly what idiom.runtime_values supplies."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "as": [
+        "core:why",
+        "bunOnly"
+      ],
+      "note": "Neutral content already in core:why; the bundler-vs-Bun build/run-time rationale and fragment-renderer example are Bun argumentation (bunOnly)."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]"
+      ],
+      "note": "file_kind=implementation: every non-test implementation file, new or existing, regardless of header edits; test roles excluded."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]"
+      ],
+      "note": "Bun fact type `layer` with values [any] becomes the neutral fact type `role` with values [any]: no role restriction, obligation applies across all roles."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "No neutral fact type exists for stack membership in the closed vocabulary, and no profile key fits: roots.config is only the path of the configuration file that declares repository roots and profile choices — a location, not a membership predicate or resolution procedure — and bun.json supplies no such path, so none is invented. Bun membership and its required stack-resolution observer are retained in the realization (bunOnly); the core is scoped by binding it to the stack's structure profile."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[2]",
+        "bunOnly"
+      ],
+      "note": "Neutral finding fact: missing declaration, value outside the vocabulary, or mismatch with actual execution (needs an execution-path observer; findings are repair triggers, not prerequisites); the concrete finding ids are bunOnly."
+    }
+  ],
+  "neutralityNotes": "The obligation itself ('the file says where it runs', and the declaration must match actual execution) is fully neutral. What could not be made neutral: (a) the declaration syntax (`Runtime:` line) and the value vocabulary (`bun`/`browser`/`isomorphic`) are stack data, moved to two proposed idiom keys since the closed vocabulary has no fit; (b) the rationale contrasting run-time with build-time execution is Bun argumentation, kept as bunOnly with a generic rationale in core.why; (c) detector/finding ids and the Vite/Python vocabulary comparison are realization details (bunOnly); (d) stack-membership scoping has no fact type in the closed enum and no fitting profile key — roots.config documents only the path of the file that declares repository roots and profile choices, which is a location rather than a membership predicate, and bun.json supplies no such configuration path, so none is invented — it is therefore retained entirely in the realization: the core is bound to a stack's structure profile, and the Bun-specific membership observer (resolving the file's stack from repository configuration, language not being a proxy) stays bunOnly. Which files count as test roles is supplied by the realizing profile's role assignment — bun.json states only 'test files are excluded'. The URN binding line in the report-location rule is a framework concept (urn group), not a stack one, so it stays in core.verification.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.green-header-runtime.json",
+      "sha256": "0dc45b78f9985d355e7751ba3ba7311c5161b947c211847470a31190981ec505"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

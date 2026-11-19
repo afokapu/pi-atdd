@@ -1,0 +1,356 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.telemetry.vendor-sdk",
+  "legacyId": "coder.bun.telemetry-vendor-sdk",
+  "core": {
+    "title": "Keep telemetry vendor SDK imports out of core layers",
+    "given": "A source file assigned to a core layer role — any layer role other than integration (domain, application, presentation, composition root) — and not inside the adapter location.",
+    "when": "it imports — as a value or only as a type — a package on the profile's telemetry vendor SDK list.",
+    "then": "The file MUST NOT import a telemetry vendor SDK.",
+    "prefer": [
+      "Depend on the port; adapt at the edge: core takes a neutral telemetry port as a parameter and emits through it — no vendor SDK.",
+      "Put the vendor SDK in an adapter at the outer ring — the integration layer or the adapter location; the SDK lives there and only there."
+    ],
+    "avoid": [
+      "Type-only vendor imports in core layer roles: the coupling is real even when erased.",
+      "Relabelling or moving a file just to escape the check instead of splitting port and adapter."
+    ],
+    "unless": [
+      "Integration layer or adapter location: exempt by design, the adapter belongs there.",
+      "Files with no role assignment (unlayered entrypoints such as the composition root wiring or scripts): outside this rule — they wire adapters, they do not become one.",
+      "Inert until adoption, like every rule in this family."
+    ],
+    "why": "Core depends only on a neutral telemetry port; once a domain module imports an exporter, every module behind it inherits the vendor and exporter-neutrality is gone.",
+    "evidence": [
+      "The telemetry vendor-import check reports no finding for files in core layer roles outside the integration layer and the adapter location.",
+      "Review: no value or type-only vendor SDK import exists in domain, application, presentation or composition-root files outside the adapter location.",
+      "Core telemetry emission goes through a neutral telemetry port dependency; the vendor SDK appears only in an integration-layer or adapter-location adapter."
+    ],
+    "verification": [
+      "Scope: source files assigned to a layer role; a vendor SDK import is allowed only when the role is integration or the file sits inside the adapter location.",
+      "Files with no role assignment (unlayered entrypoints, scripts) are not checked.",
+      "Type-only imports count as violations.",
+      "The check examines each in-scope file's current imports — pre-existing imports, newly added imports, and files newly moved into a core layer — not only added lines; an import-level observer is required.",
+      "Rule is inert until the repository adopts it (family-wide adoption gate).",
+      "Strict disposition: the checker fails on every finding; there is no advisory mode and no ratchet baseline (severity 2).",
+      "The vendor SDK specifiers and the adapter location are stack data supplied by the profile; the stack's checker owns their exact matching."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "role",
+          "values": [
+            "domain",
+            "application",
+            "presentation",
+            "composition_root"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "file contains an import (value or type-only) of a package on the profile's telemetry vendor SDK list"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "A domain-role file imports a vendor SDK to emit a span directly.",
+        "An application-role file imports a vendor SDK only as a type (type-only still counts).",
+        "A presentation-role file imports a product-analytics vendor SDK to track an event.",
+        "A file that already imports a vendor SDK is moved from the integration layer into a core layer role."
+      ],
+      "doesNotFire": [
+        "An integration-layer file imports a vendor SDK to implement the telemetry port adapter.",
+        "A file inside the adapter location imports a vendor SDK.",
+        "An unlayered composition root or script imports a vendor SDK to wire adapters.",
+        "A domain file imports only the neutral telemetry port type.",
+        "The repository has not adopted this rule family (rule is inert)."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roles.layers",
+      "meaning": "The stack's layer roles and their local names; the rule's scope is every layer role except integration (the core layers).",
+      "bunValue": "domain, application, presentation, integration, assembly"
+    },
+    {
+      "key": "roles.assignment",
+      "meaning": "How a file is assigned to a layer role, and that a file with no role is out of scope (not checked, not a violation).",
+      "bunValue": "the path's layer segment; unlayered files (no layer segment, e.g. composition root, scripts) are not checked"
+    },
+    {
+      "key": "roles.composition_root.name",
+      "meaning": "The stack's local name for the composition-root layer, which is in scope like the other core layers.",
+      "bunValue": "assembly"
+    },
+    {
+      "key": "idiom.telemetry_vendor_sdks",
+      "meaning": "The telemetry vendor SDK import specifiers (exporters, agents, product-analytics packages; bare and scoped names) whose import — value or type-only — is forbidden in core layer roles.",
+      "bunValue": "@opentelemetry/*, @sentry/*, @datadog/*, dd-trace, newrelic, segment (bare or @segment/*), mixpanel (bare or @mixpanel/*), amplitude (bare or @amplitude/*), @posthog/*, @statsig/*, @braze/*, @heap/*, @rudderstack/*"
+    },
+    {
+      "key": "layout.adapter_dir",
+      "meaning": "The directory where adapters that wire external SDKs to neutral ports live; files there are exempt from the core-layer import prohibition, like integration-layer files.",
+      "bunValue": "**/infrastructure/**"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "idiom.telemetry_vendor_sdks",
+      "group": "idiom",
+      "meaning": "Import specifiers of telemetry vendor SDKs (exporters, agents, product-analytics packages; bare and scoped names) that core layer roles must not import.",
+      "bunValue": "@opentelemetry/*, @sentry/*, @datadog/*, dd-trace, newrelic, segment (bare or @segment/*), mixpanel (bare or @mixpanel/*), amplitude (bare or @amplitude/*), @posthog/*, @statsig/*, @braze/*, @heap/*, @rudderstack/*",
+      "whyNoExistingKey": "idiom.forbidden_runtime_imports covers runtime, framework and transport specifiers, not telemetry exporter/agent packages; no other key carries a category-specific forbidden-package list."
+    },
+    {
+      "key": "layout.adapter_dir",
+      "group": "layout",
+      "meaning": "Directory where adapters that wire external SDKs to neutral ports live; files there are exempt from core-layer import prohibitions, like integration-layer files.",
+      "bunValue": "**/infrastructure/**",
+      "whyNoExistingKey": "The closed role params have no adapter/infrastructure role, so roles.<role>.path cannot express it, and no layout key records the adapter directory."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "prefer[0]",
+      "text": "e.g. in domain/: `export function acceptResponse(response, telemetry: TelemetryPort) { telemetry.emit(...); }`",
+      "reason": "Language-level code sample with a concrete path and the project's local port name (TelemetryPort); the core keeps the role-level guidance and bun.json remains the reference example."
+    },
+    {
+      "item": "prefer[1]",
+      "text": "e.g. infrastructure/otel-adapter.ts: `import { metrics } from \"@opentelemetry/api\";`",
+      "reason": "Concrete adapter file path and import syntax; the neutral core points at the integration layer / adapter location without code."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "The bun_telemetry_code validator reports no finding for layered files outside integration/ and infrastructure/.",
+      "reason": "Names this rule's validator id and the stack's concrete layer/adapter paths; the core states the evidence generically."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "text": "Implemented by validator ref bun_telemetry_code",
+      "reason": "Detector/validator ids of this one rule are realization details; the core's verification describes the check generically (severity and disposition stay in core:verification)."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:roles.layers",
+        "profile:roles.composition_root.name",
+        "profile:layout.adapter_dir"
+      ],
+      "note": "Layer list and the infrastructure/ exclusion are stack data; the core states the role-level condition (any layer role other than integration, outside the adapter location)."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when",
+        "profile:idiom.telemetry_vendor_sdks"
+      ],
+      "note": "The value-or-type-only import condition is neutral; the concrete package matcher list is carried by the proposed profile key."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then"
+      ],
+      "note": "Obligation is already stack-neutral."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Neutral; the project-local port name TelemetryPort is generalized to 'a neutral telemetry port'."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]",
+        "bunOnly"
+      ],
+      "note": "Role-level remediation (depend on a neutral telemetry port) is core; the code sample stays with the realization."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]",
+        "profile:layout.adapter_dir",
+        "bunOnly"
+      ],
+      "note": "Adapter placement at the outer ring is core; the adapter directory comes from the profile; the concrete example is Bun-only."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "'Type-only import' is kept as a cross-stack concept (compile-time-only dependency); already neutral."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Metric-gaming anti-pattern, fully neutral."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]",
+        "profile:layout.adapter_dir"
+      ],
+      "note": "Integration layer is a role; 'infrastructure/' instantiates as the profile's adapter directory."
+    },
+    {
+      "item": "unless[1]",
+      "as": [
+        "core:unless[1]",
+        "profile:roles.assignment"
+      ],
+      "note": "Out-of-scope condition for role-less files; assignment semantics (layer segment; none = out of scope) come from the profile."
+    },
+    {
+      "item": "unless[2]",
+      "as": [
+        "core:unless[2]",
+        "core:verification"
+      ],
+      "note": "Adoption gate; also enforced as verifier scope (see verifier_detail[5])."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ],
+      "note": "Neutral evidence is 'the check reports no finding for core-layer files outside the adapter ring'; the validator id is a realization detail."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]",
+        "profile:roles.composition_root.name"
+      ],
+      "note": "Role list is neutral; 'assembly' is the stack's local name for the composition-root layer."
+    },
+    {
+      "item": "evidence[2]",
+      "as": [
+        "core:evidence[2]",
+        "profile:layout.adapter_dir"
+      ],
+      "note": "Neutralized port and adapter location; 'infrastructure/' instantiates from the profile."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "profile:idiom.telemetry_vendor_sdks",
+        "core:verification"
+      ],
+      "note": "The package matchers are stack data behind the proposed profile key; the core's verification states that the checker matches the profile's specifiers."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "profile:roles.layers",
+        "profile:roles.assignment"
+      ],
+      "note": "Scope statement neutralized to role assignment; layer names and assignment mechanism come from the profile."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification",
+        "profile:layout.adapter_dir"
+      ],
+      "note": "Adapter-location definition; the concrete directory is profile data, the outer-ring concept is core."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Type-only imports count — neutral."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification",
+        "profile:roles.assignment"
+      ],
+      "note": "Unchecked class = files with no role; assignment semantics from the profile."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Adoption gate, neutral."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Severity and disposition go to core verification (strict, fail on every finding); the validator ref is bunOnly."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roles.layers",
+        "profile:roles.composition_root.name",
+        "profile:roles.assignment"
+      ],
+      "note": "Bun's 'layer' fact becomes the core 'role' fact over core layer roles; 'assembly' is the local name of composition_root; the scope boundary (integration and unlayered out) comes from assignment."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "profile:layout.adapter_dir",
+        "core:verification"
+      ],
+      "note": "Stack-specific path-glob condition; neutralized as the adapter-location exclusion in the core given and verification scope."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[1]",
+        "core:verification"
+      ],
+      "note": "Neutral change fact (vendor SDK import from the profile list); the observer semantics (current imports, pre-existing and moved files, not only added lines) are kept in core verification."
+    }
+  ],
+  "neutralityNotes": "The concrete telemetry vendor package list and the adapter directory are stack data with no existing vocabulary key, so two keys are proposed (idiom.telemetry_vendor_sdks, layout.adapter_dir) and also listed in profileRequirements; without owner approval the Bun values remain the reference instantiation. 'Type-only import' is retained as a cross-stack concept (a compile-time-only dependency still couples); the concrete syntax (import type) stays in bun.json. The activation examples' concrete package names and import statements are instantiation only — the core keeps role-level fires/doesNotFire and bun.json remains the worked example. The project-local port name TelemetryPort is generalized to 'a neutral telemetry port'. Severity, strict disposition, the adoption gate and the import-level observer requirement are per-rule verification facts and stay in the core, not the profile.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.telemetry-vendor-sdk.json",
+      "sha256": "700b35c8fb0661e41a44dea92e4260624f778471b339e2a959238d91884dcaa5"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 1,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

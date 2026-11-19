@@ -1,0 +1,438 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.hypermedia.verb-endpoint-is-routed",
+  "legacyId": "coder.htmx.verb-endpoint-is-routed",
+  "core": {
+    "title": "Serve every markup-declared mutating endpoint from the declared journey space",
+    "given": "A repo whose declared journey space (the route registry the boundary surface declares, per profile) resolves, with presentation markup anywhere (changed or not) carrying a declarative mutating-request construct whose target path is statically written",
+    "when": "the journey space resolves; every such endpoint repo-wide is checked, not only edited files",
+    "then": "Ensure every such endpoint is served (routed) by the surface that declares the journey space, or drop the affordance.",
+    "prefer": [
+      "Add a handler in that surface matching the endpoint's method and path that checks authorization (answering with the unauthorized client error on failure) and returns the response the markup expects (e.g. the updated fragment).",
+      "If the journey does not admit the mutation, remove the affordance from markup."
+    ],
+    "avoid": [
+      "Adding a mutating affordance (button/form) to markup ahead of its handler (the common cause).",
+      "Markup minting a state-advancing route the journey never admitted (a parallel, private route space); a confirmation gate, a progress indicator and a passing test do not make it routed.",
+      "Removing/renaming a route in the journey-declaring surface while existing markup still carries a static mutating endpoint for the old path.",
+      "Merely mentioning the endpoint's path text in the journey-declaring surface without a handler that serves that method and path."
+    ],
+    "unless": [
+      "Read-only fetch affordances: fetching a fragment is presentation, not a journey (only the profile's mutating constructs owe a route).",
+      "Statically unresolvable targets: endpoints whose path is built by dynamic composition are skipped, not guessed (unresolvable bindings stay unjudged).",
+      "No journey space resolves: the rule does not apply (no declared route registry, so no journey space to be outside of)."
+    ],
+    "why": "Hypermedia declares its route space in markup; unbound, markup mints state-advancing routes the journey never admitted and affordances post into nothing. Mutations advance state, as journeys do, so they owe a route; reads do not.",
+    "evidence": [
+      "The stack's check for this rule reports no unrouted mutating endpoint anywhere in the repo.",
+      "Every statically written mutating endpoint in the repo's markup (changed or not) is named by the surface that declares the journey space (whole path or distinctive terminal segment).",
+      "The check's result is not applicable only when no journey space resolves."
+    ],
+    "verification": [
+      "Locate the journey space by the registry construct it declares (per profile), never by file name.",
+      "Collect every statically written mutating endpoint in markup repo-wide (changed or not) and flag one the journey space names nowhere.",
+      "Matching is on the whole path or its distinctive terminal segment; do not match on an arbitrary segment — that makes the rule vacuous.",
+      "Skip endpoints whose target path is built by dynamic composition: it cannot be compared to a route by text, and guessing would report on correct code (statically unresolvable bindings stay unjudged).",
+      "Do not report read-only fetch affordances: mutations only, deliberately — requiring every read to be routed by the journey space would fail ordinary hypermedia usage.",
+      "Report not-applicable when no journey space resolves — a repo with no declared journey space has no journey to be outside of.",
+      "Strict disposition, severity 4: a state-changing affordance the server never routes is not suppressible and fails the enforcing run."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "markup kinds (per idiom.markup_kinds)",
+            "the journey-declaring boundary surface's kinds (per roles.boundary.kinds)"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "a declared journey space (the boundary surface carrying the route registry) resolves in the repo"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "a statically written mutating endpoint in markup is named nowhere by the journey space"
+          ],
+          "observability": "observable_now"
+        }
+      ],
+      "fires": [
+        "Markup gains a mutating construct with a static target path that no handler in the journey-declaring surface routes.",
+        "A mutating affordance is added to markup ahead of its handler in the boundary surface.",
+        "A route is removed or renamed in the journey-declaring boundary surface while existing, unchanged markup still carries a static mutating endpoint for the old path.",
+        "A pre-existing static mutating endpoint in untouched markup is named nowhere by the journey space (the invariant is repo-wide, independent of what was edited)."
+      ],
+      "doesNotFire": [
+        "Read-only fetch affordances (fragment fetches / presentation).",
+        "Mutating endpoints whose target path is built by dynamic composition (statically unresolvable bindings).",
+        "Repos where no journey space resolves (no declared route registry, so no journey space).",
+        "Static mutating endpoints whose whole path or distinctive terminal segment the check finds named by the journey space (check behaviour, not proof of routing)."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "idiom.destructive_request",
+      "meaning": "The declarative markup construct that issues a destructive (state-advancing) request; such an endpoint owes a route.",
+      "bunValue": "hx-delete"
+    },
+    {
+      "key": "idiom.mutation_requests",
+      "meaning": "The declarative markup constructs that issue non-destructive mutating requests; such endpoints owe a route exactly like destructive ones.",
+      "bunValue": "hx-post, hx-put, hx-patch"
+    },
+    {
+      "key": "idiom.markup_kinds",
+      "meaning": "The artifact kinds that count as markup in which the declarative request constructs can appear; scope is repo-wide, not limited to edited files.",
+      "bunValue": "html, markup, jsx, tsx, template"
+    },
+    {
+      "key": "roles.boundary.kinds",
+      "meaning": "The artifact kinds of the boundary surface that declares the journey space and serves its routes; in scope of the core's activation file_kind fact alongside the markup kinds.",
+      "bunValue": "server_module (the Station Master module declaring JOURNEY_MAP)"
+    },
+    {
+      "key": "roles.boundary.name",
+      "meaning": "The stack's local name for the boundary surface that declares the journey space.",
+      "bunValue": "Station Master"
+    },
+    {
+      "key": "idiom.journey_registry",
+      "meaning": "The declaration by which the boundary surface constitutes the journey space (the admitted route registry), and by which that surface is located by content rather than by file name.",
+      "bunValue": "a module-level declaration named JOURNEY_MAP; the module carrying it is found by the JOURNEY_MAP it DECLARES, never by filename"
+    },
+    {
+      "key": "idiom.route_handler",
+      "meaning": "What a boundary handler matching an endpoint's method and path looks like inside the journey-declaring surface.",
+      "bunValue": "if (req.method === \"POST\" && path === \"/orders/confirm\") { ... } — a method+path branch in the Station Master returning the fragment"
+    },
+    {
+      "key": "idiom.authorization_check",
+      "meaning": "How a handler serving a mutating endpoint decides authorization, and the client error it answers with on failure.",
+      "bunValue": "checks authorization (401 on failure)"
+    },
+    {
+      "key": "idiom.confirmation_gate",
+      "meaning": "The declarative construct that asks the user to confirm before a request — carrying it does not make an endpoint routed.",
+      "bunValue": "the markup's confirm affordance (avoid[1]: 'confirm, indicator and a passing test do not make it routed')"
+    },
+    {
+      "key": "tooling.languages",
+      "meaning": "The stack's production languages; the Bun realization gates activation on them at repo level (not per file), keeping markup in such a repo eligible.",
+      "bunValue": "javascript, typescript"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "idiom.journey_registry",
+      "group": "idiom",
+      "meaning": "The construct by which the stack's boundary surface declares its admitted journey space (the route registry); the declaring surface is located by this declaration's content, never by file name.",
+      "bunValue": "a module-level declaration named JOURNEY_MAP; the module carrying it (the Station Master) is found by the JOURNEY_MAP it DECLARES, never by filename",
+      "whyNoExistingKey": "idiom.route_handler describes a single handler, and roles.<role> keys say where a role lives or what it is called; no existing key names the declaration that constitutes the journey space or how the declaring surface is located by content."
+    },
+    {
+      "key": "idiom.authorization_check",
+      "group": "idiom",
+      "meaning": "How a handler serving a mutating endpoint decides authorization, and the client error it answers with on failure.",
+      "bunValue": "checks authorization (401 on failure)",
+      "whyNoExistingKey": "idiom.auth_guard is scoped to authentication — how a handler establishes the authenticated principal — and authorization is a different decision; no existing key names the authorization check that gates a mutating endpoint."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "activation.facts[0]",
+      "text": "language: javascript, typescript — Repository/stack-level fact (Bun/htmx repo with a JS/TS server), not a per-file gate: HTML and template markup in such a repo remains eligible.",
+      "reason": "The core activation vocabulary has no language fact; the stack's languages are profile data (tooling.languages), and the Bun/htmx repo framing names the stack."
+    },
+    {
+      "item": "activation.facts[2]",
+      "text": "Supplied by the existing JS validator (htmx_hypermedia_detector, checks/htmx_verb_endpoint_is_routed.mjs), which already resolves the module that declares JOURNEY_MAP by content, never by filename; if no surface resolves it returns NOT_APPLICABLE.",
+      "reason": "Detector and validator ids of this rule's realization; the neutral core keeps the finding (journey space resolves) and describes the check generically."
+    },
+    {
+      "item": "activation.facts[3]",
+      "text": "Supplied by the existing family detector (checks/htmx_verb_endpoint_is_routed.mjs), which collects EVERY statically written hx-post/put/patch/delete endpoint in the repo (changed or not) and flags one the Station Master names nowhere.",
+      "reason": "Detector id and the stack's concrete construct names; the neutral finding and core verification keep the behaviour."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "htmx_hypermedia_detector (checks/htmx_verb_endpoint_is_routed.mjs) reports no unrouted mutating verb endpoint in the repo.",
+      "reason": "Detector id and checker path are realization details; the core's evidence names the check generically."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "text": "that first attempt made the rule vacuous because a Station Master importing from `./src/orders/` made every `/orders/*` endpoint look routed",
+      "reason": "Stack-specific path example illustrating why arbitrary-segment matching is vacuous; the matching policy itself stays in core verification."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "text": "Skip endpoints built by interpolation (e.g. `/orders/${id}/void`) — same as the Vite family leaving an unresolvable trainId unjudged rather than inventing a verdict.",
+      "reason": "Template-literal interpolation syntax and the Vite-family cross-reference are stack-specific; the neutral core keeps 'statically unresolvable, dynamically composed targets are skipped, not guessed'."
+    },
+    {
+      "item": "verifier_detail[8]",
+      "text": "if (req.method === \"POST\" && path === \"/orders/confirm\") { if (!authorize(req)) return Response.json({ code: \"unauthorized\" }, { status: 401 }); return orderRowFragment(\"1\"); }",
+      "reason": "Application-specific example code in the stack's language and API; generalized in core prefer[0] and carried by the idiom.route_handler / idiom.authorization_check profile values."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:idiom.mutation_requests",
+        "profile:idiom.destructive_request",
+        "profile:idiom.journey_registry"
+      ],
+      "note": "hx-post/put/patch/delete become the profile's declarative mutating constructs; the Station Master / JOURNEY_MAP becomes the declared journey space located via the registry."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Already neutral apart from 'Station Master', which becomes the journey space; the repo-wide, not-edited-files-only condition is kept verbatim in substance."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "profile:idiom.journey_registry"
+      ],
+      "note": "Single obligation unchanged: serve the endpoint from the journey-declaring surface or drop the affordance."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "'htmx declares its route space in markup' becomes 'hypermedia declares its route space in markup'; the rest is already stack-neutral."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]",
+        "profile:idiom.route_handler",
+        "profile:idiom.authorization_check"
+      ],
+      "note": "The Bun recommendation is an authorization check, preserved as-is: 'checks authorization' with 401 generalized to the unauthorized client error — not principal establishment. The concrete handler shape and auth check are profile values; the verbatim snippet stays in verifier_detail[8] (bunOnly)."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]"
+      ],
+      "note": "Already stack-neutral."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "'mutating button/form' is generic hypermedia vocabulary, kept at role level."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]",
+        "profile:idiom.confirmation_gate"
+      ],
+      "note": "'confirm, indicator' generalized to a confirmation gate and a progress indicator; the parallel-route-space rationale is kept."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]"
+      ],
+      "note": "'Station Master route' becomes a route in the journey-declaring boundary surface; 'still posts to it' becomes 'still carries a static mutating endpoint for the old path'."
+    },
+    {
+      "item": "avoid[3]",
+      "as": [
+        "core:avoid[3]"
+      ],
+      "note": "Anti-gaming guard kept; 'Station Master' becomes the journey-declaring surface."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]"
+      ],
+      "note": "hx-get is the stack's read construct; the core excludes reads by defining scope over the profile's mutating constructs (destructive_request, mutation_requests)."
+    },
+    {
+      "item": "unless[1]",
+      "as": [
+        "core:unless[1]"
+      ],
+      "note": "'Interpolated paths' becomes 'targets built by dynamic composition'; the skip-not-guess policy and its parenthetical are kept."
+    },
+    {
+      "item": "unless[2]",
+      "as": [
+        "core:unless[2]",
+        "core:verification"
+      ],
+      "note": "NOT_APPLICABLE is the realization's disposition token; neutral 'the rule does not apply' plus the matching verification entry."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ],
+      "note": "Neutral evidence keeps the substance (no unrouted mutating endpoint repo-wide); the detector id and checker path are bunOnly."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]",
+        "core:verification"
+      ],
+      "note": "Neutralized: 'static mutating verb endpoint' -> declarative mutating construct; the whole-path / distinctive-terminal-segment matching policy is mirrored in verification."
+    },
+    {
+      "item": "evidence[2]",
+      "as": [
+        "core:evidence[2]",
+        "core:verification"
+      ],
+      "note": "'NOT_APPLICABLE' becomes 'not applicable'; the only-when-no-journey-space condition is kept."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "profile:idiom.journey_registry"
+      ],
+      "note": "Neutral: locate the journey space by the registry it declares, never by file name; the concrete registry construct is a profile value."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "profile:idiom.mutation_requests",
+        "profile:idiom.destructive_request"
+      ],
+      "note": "Neutral: collect every statically written mutating endpoint repo-wide and flag one the journey space names nowhere; the construct list comes from the profile."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "The matching policy (whole path or distinctive terminal segment, never an arbitrary segment) is neutral and kept; the ./src/orders/ illustration is bunOnly."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "The skip-not-guess policy is neutral and kept; the interpolation example and Vite-family cross-reference are bunOnly."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Reads-only exclusion: 'hx-get' and 'ordinary htmx' become read-only fetch affordances and ordinary hypermedia usage."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Not-applicable condition neutralized; 'consumer with no JOURNEY_MAP' becomes a repo with no declared journey space."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Per-rule strict disposition and severity 4 belong to core verification; 'fails CI' becomes 'fails the enforcing run'."
+    },
+    {
+      "item": "verifier_detail[7]",
+      "as": [
+        "core:given",
+        "profile:idiom.journey_registry"
+      ],
+      "note": "The journey_space term definition is neutralized into the core's given (what the journey space is) and the registry profile key."
+    },
+    {
+      "item": "verifier_detail[8]",
+      "as": [
+        "bunOnly",
+        "profile:idiom.route_handler",
+        "profile:idiom.authorization_check"
+      ],
+      "note": "Verbatim stack snippet has no neutral equivalent; its generalized form is core prefer[0] and its shape is carried by the two idiom profile values (the authorize(req) branch is the authorization check, not principal establishment)."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "profile:tooling.languages",
+        "bunOnly"
+      ],
+      "note": "No neutral activation fact type for language; the languages live in the profile and the repo-level gate phrasing is realization-specific."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:idiom.markup_kinds",
+        "profile:roles.boundary.kinds"
+      ],
+      "note": "The file_kind list splits into the profile's markup kinds (idiom.markup_kinds) and the boundary surface's server_module kind (roles.boundary.kinds); BOTH are core activation scope — markup carrying the constructs plus the journey-declaring surface whose routes they must match — repo-wide, not limited to edited files."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:idiom.journey_registry",
+        "bunOnly"
+      ],
+      "note": "The neutral finding keeps the substance (a journey space resolves); the validator credit naming detector and checker path is bunOnly."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[2]",
+        "bunOnly"
+      ],
+      "note": "The neutral finding keeps the substance (a static mutating endpoint named nowhere); the detector id prefix is bunOnly."
+    }
+  ],
+  "neutralityNotes": "The obligation, all three exceptions, the repo-wide (not-edited-files) scope, the matching policy (whole path or distinctive terminal segment), the skip of statically unresolvable targets, the not-applicable condition, and the strict/severity-4 disposition are stack-neutral and kept in the core. The core activation file_kind scope covers BOTH the markup kinds (idiom.markup_kinds: html, markup, jsx, tsx, template) and the journey-declaring boundary surface's kinds (roles.boundary.kinds: server_module), matching the Bun fact's list, so the server surface whose routes markup must match stays eligible. What could not be neutralized: (1) the activation 'language' fact has no neutral fact type, so it lives as profile data (tooling.languages) plus a bunOnly item; (2) the concrete construct names (hx-post/put/patch/delete, hx-get), the journey-space declaration (JOURNEY_MAP), the surface name (Station Master) and the artifact kinds are profile values, never core text; (3) detector/validator ids, checker paths and the verbatim fix_hint snippet remain bunOnly with the core's verification naming the check generically; (4) no existing vocabulary key names the declaration that constitutes the journey space (idiom.journey_registry proposed) or the authorization check that gates a mutating endpoint (idiom.authorization_check proposed — idiom.auth_guard covers authentication/principal establishment, a different decision). The Bun rule treats destructive and non-destructive mutating constructs uniformly; the core says so once and the profile supplies both key values.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.htmx.verb-endpoint-is-routed.json",
+      "sha256": "dee86c95bb0aa5140e479c9607a0e0ed810a109b59e216af64fb8332300e039f"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

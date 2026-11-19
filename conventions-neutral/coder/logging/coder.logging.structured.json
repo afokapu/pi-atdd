@@ -1,0 +1,283 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.logging.structured",
+  "legacyId": "coder.bun.logging-structured",
+  "core": {
+    "title": "Pass a structured context with every logger call",
+    "given": "Code containing a call on a logger receiver (which receivers count as loggers comes from the profile)",
+    "when": "the call's only argument is a bare string message",
+    "then": "Pass a structured context argument carrying the fields the line would be searched by; never pass only a bare string message.",
+    "prefer": [
+      "Ask what you would filter by at 3am during an incident and put those fields in the structured context."
+    ],
+    "avoid": [
+      "Bare-message log calls — greppable and nothing more, at the one moment it matters.",
+      "Attaching a token or empty context just to satisfy the check; the rule asks only that SOME context is attached and cannot judge whether the right fields were chosen."
+    ],
+    "unless": [
+      "The call already passes the context argument (not flagged).",
+      "The receiver is not a logger (out of scope)."
+    ],
+    "why": "A log line's value is realised at exactly one moment: when someone is searching for it during an incident; a bare string can only be grepped, while a line carrying the identifiers you would filter by can be filtered, grouped and joined to a trace.",
+    "evidence": [
+      "The stack's check for this rule reports no bare-string log finding."
+    ],
+    "verification": [
+      "Flag a call on a logger receiver (the stack's logger receivers, per profile) whose sole argument is a bare string message, in any scanned code file regardless of production or test placement, and whether the call is newly written or pre-existing.",
+      "A call already passing the context argument (shape per profile) is not flagged; calls on receivers that are not loggers are out of scope.",
+      "The check verifies only that SOME context is attached; it cannot judge whether the right fields were chosen.",
+      "Severity 2; disposition strict: the stack's checker fails on every finding of this rule, with no advisory mode and no ratchet baseline."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "code files written in the stack's scanned languages, with no restriction to production versus test code and no restriction to changed lines"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "bare-string log call (a logger call whose sole argument is a string literal)"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "A logger call passes a single bare string message and nothing else, whether newly written or pre-existing.",
+        "A call on one of the stack's logger receivers has a string literal as its sole argument.",
+        "The stack's check for this rule reports a bare-string log finding."
+      ],
+      "doesNotFire": [
+        "A logger call already passes the context argument.",
+        "The call's receiver is not one of the stack's logger receivers (out of scope).",
+        "Code in a language other than the stack's scanned languages (governed by that language's own realization of this rule)."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "idiom.logger_receivers",
+      "meaning": "Which receiver names in this stack count as a logger; this defines the rule's scope.",
+      "bunValue": "logger, log, _logger, _log, LOG"
+    },
+    {
+      "key": "idiom.logging_context_shape",
+      "meaning": "How a logger call carries its structured context (which argument, what shape).",
+      "bunValue": "the second argument carrying the fields a line will be searched by; a JS logger takes an object where a Python one takes `extra=` or kwargs"
+    },
+    {
+      "key": "tooling.scan_languages",
+      "meaning": "The languages whose code files this rule scans, production and test alike; any code file in these languages is covered, with no changed-line restriction. Distinct from tooling.languages, which lists only the languages of production source.",
+      "bunValue": "typescript, javascript"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "idiom.logger_receivers",
+      "group": "idiom",
+      "meaning": "Receiver names that count as a logger in this stack, defining the scope of logging rules.",
+      "bunValue": "logger, log, _logger, _log, LOG",
+      "whyNoExistingKey": "The idiom group covers boundary, auth, validation, import, control-flow and markup constructs, but has no key for logging receivers."
+    },
+    {
+      "key": "idiom.logging_context_shape",
+      "group": "idiom",
+      "meaning": "How a logger call carries its structured context: which argument position and what shape the context takes.",
+      "bunValue": "the second argument carrying the fields a line will be searched by; a JS logger takes an object where a Python one takes `extra=` or kwargs",
+      "whyNoExistingKey": "No existing key describes any logging construct, so the stack's structured-context argument shape has no home."
+    },
+    {
+      "key": "tooling.scan_languages",
+      "group": "tooling",
+      "meaning": "The languages whose code files repository-wide code checks scan, covering production and test code alike.",
+      "bunValue": "typescript, javascript",
+      "whyNoExistingKey": "tooling.languages is documented as languages of production source only, which is a strictly narrower list; no existing key expresses the all-code (production and test) language scope that rules like this one scan."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "evidence[0]",
+      "text": "bun_security_hygiene_detector reports no LOGGING-STRUCTURED-001 finding.",
+      "reason": "Detector and finding ids of this rule are realization details; the core states the same evidence generically."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "text": "a JS logger takes an object where a Python one takes `extra=` or kwargs",
+      "reason": "Cross-stack comparison naming JS and Python; the neutral core takes the context-argument definition into `then` and the concrete shape from the profile instead."
+    },
+    {
+      "item": "activation.facts[0]",
+      "text": "Bun realization; file extension identifies JS/TS code.",
+      "reason": "Names the Bun stack and the file-extension identification mechanism; the neutral fact uses file_kind plus the profile's scan-language list."
+    },
+    {
+      "item": "activation.facts[1]",
+      "text": "Emitted by bun_security_hygiene_detector for any call on a logger receiver (logger/log/_logger/_log/LOG) whose sole argument is a string literal, whether the call is new or pre-existing. Finding id: LOGGING-STRUCTURED-001.",
+      "reason": "The emitting detector and finding id are realization details; the neutral fact names the finding generically."
+    }
+  ],
+  "classification": [
+    {
+      "item": "title",
+      "as": [
+        "core:title"
+      ],
+      "note": "Imperative title carries over, with 'context object' generalized to 'structured context' since the argument shape is stack-specific."
+    },
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:idiom.logger_receivers"
+      ],
+      "note": "The receiver-name list (logger, log, _logger, _log, LOG) is a stack idiom supplied by the profile; the stack's language scoping comes from the activation facts and tooling.scan_languages."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "'Sole argument is a string literal' is neutralized to 'only argument is a bare string message'."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "profile:idiom.logging_context_shape"
+      ],
+      "note": "Single obligation kept; 'context object as the second argument' splits into the neutral obligation plus the stack's context shape from the profile."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Rationale is already neutral; the concrete { orderId, userId } field example stays only in the Bun realization as the reference example."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]"
+      ],
+      "note": "Neutralized; the concrete code example is not repeated in the core."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Neutralized; the concrete bare-string code example is not repeated in the core."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Neutral as-is except 'detector' becomes 'the check'; the coverage limitation is mirrored in core:verification."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]"
+      ],
+      "note": "Exception kept verbatim in neutral terms; also reflected in core:verification."
+    },
+    {
+      "item": "unless[1]",
+      "as": [
+        "core:unless[1]"
+      ],
+      "note": "Exception kept verbatim in neutral terms; also reflected in core:verification."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ],
+      "note": "Neutral evidence ('the stack's check reports no bare-string log finding') plus a bunOnly entry for the named detector and finding id."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "profile:idiom.logger_receivers"
+      ],
+      "note": "Generic flag statement in core:verification (over all scanned code files, per tooling.scan_languages); the concrete receiver names come from the profile."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Both clauses are check scoping, restated neutrally in core:verification."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:then",
+        "profile:idiom.logging_context_shape",
+        "bunOnly"
+      ],
+      "note": "The neutral definition of the context argument lives in `then`; the concrete shape is a profile key; the JS-vs-Python comparison is realization commentary (bunOnly)."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "What the check does not cover, restated neutrally in core:verification."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Per-rule severity and disposition are not profile keys; both go to core:verification."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:tooling.scan_languages",
+        "bunOnly"
+      ],
+      "note": "The language fact becomes a neutral file_kind fact (code files in the stack's scanned languages, production or test, no changed-line restriction); the language values come from tooling.scan_languages, not tooling.languages, whose documented meaning is production source only; the Bun/file-extension note is bunOnly."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]",
+        "bunOnly"
+      ],
+      "note": "Neutral finding fact ('bare-string log call', needs_new_observer); the finding id and emitting detector are bunOnly."
+    }
+  ],
+  "neutralityNotes": "The closed vocabulary has no logging keys, so the two facts the core genuinely needs from a stack — which receivers count as loggers (logger/log/_logger/_log/LOG) and how structured context is passed (second-argument object) — are proposed as idiom.logger_receivers and idiom.logging_context_shape. The language activation fact was neutralized to a file_kind fact whose language values come from a proposed tooling.scan_languages key: tooling.languages is documented as languages of production source only, while this rule scans all code in the stack's languages, including tests, so the all-code scan scope is represented by its own key; the rule's explicit inclusion of test code and pre-existing (not just changed) calls is stated in the neutral fact itself and in core:verification. Detector, validator and finding ids (bun_security_hygiene_detector, LOGGING-STRUCTURED-001) and the JS-vs-Python argument-shape comparison remain bunOnly per the notProfileKeys policy, with the check described generically in core:verification. Per-rule severity (2) and the strict disposition are carried in core:verification, not the profile. The rule's breadth — any in-scope logger call, new or pre-existing, production or test, no changed-line restriction — is preserved so the core is neither weaker nor stronger than the Bun rewrite.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.logging-structured.json",
+      "sha256": "c8cc17c597dd570f470798504e85cfa5d8fe35390b161bcb5b0b5bacdf85253a"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

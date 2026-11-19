@@ -1,0 +1,394 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.architecture.dependency-flow",
+  "legacyId": "coder.bun.design-dependency-flow",
+  "core": {
+    "title": "Import only from your own or a lower layer within a layered subsystem",
+    "given": "a file inside a named layer of a layered subsystem tree (which trees form the subsystem, the layer ladder lowest to highest, and how a file's layer is derived from its path come from the profile)",
+    "when": "any of its imports resolves into the same layered subsystem (the specifier forms that count as resolving into it come from the profile's internal-import idiom)",
+    "then": "each such import MUST target the file's own layer or a lower one; an edge into a higher layer (an upward edge) is forbidden",
+    "prefer": [
+      "Keep imports same-layer or downward, following the subsystem's declared layer order from lowest to highest.",
+      "Reuse an existing artifact from a lower layer when possible.",
+      "Move a genuinely shared piece only to the lowest layer that actually owns it.",
+      "Compose upward rather than importing upward."
+    ],
+    "avoid": [
+      "Reshuffling unrelated files of the subsystem.",
+      "Creating a new layer or generic abstraction for one dependency.",
+      "Hiding an upward dependency behind an aggregator module."
+    ],
+    "unless": [
+      "Imports within the same layer are allowed.",
+      "Files directly under the subsystem root, outside any named layer, are not layered.",
+      "Test files and vendored/build trees are never scanned; a file counts as a test file when it matches any of the profile's undifferentiated test-file name patterns (all test kinds together, not split by test kind).",
+      "No layered subsystem tree in the repository: not judged; there is no system to connect to yet."
+    ],
+    "why": "A hierarchy is only a hierarchy if dependencies flow one way; a lower-layer piece that imports a higher-layer one cannot be reused without dragging it along, and the layers collapse into one tangle.",
+    "evidence": [
+      "The current behavioral or rendering acceptance passes.",
+      "All affected imports of the subsystem follow the declared direction; the stack's dependency-direction check reports no upward edge."
+    ],
+    "verification": [
+      "Resolve each import of a file in a named layer to its target layer within the subsystem, using the profile's internal-import specifier forms (both relative and aliased forms that resolve into the tree count), and flag any edge whose target layer is higher than the source layer; the finding is the evaluation output, not an activation precondition.",
+      "Every import of a scoped file is inspected, whether the import is new or pre-existing.",
+      "Same-layer edges pass; files directly under the subsystem root (no named layer) are not layered; a repository with no subsystem tree is not judged (self-scoping).",
+      "Test files are never scanned: the check skips any file matching the profile's undifferentiated test-file name patterns (one exclusion list covering all test files, not attributed to a particular test kind). Vendored/build trees are never scanned; their exact classification is deferred to the stack's single exclusion list, which that checker owns.",
+      "The profile's declared layer ranking is authoritative; where prose lists the layers as a linear chain of steps, the declared ranking wins (layers tied at one rank count as the same layer).",
+      "Severity 3; disposition strict.",
+      "A realization's file-kind coverage limitation does not narrow the rule's applicability to other files of the layered subsystem."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "file inside a layered subsystem tree"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "role",
+          "values": [
+            "file assigned to a named layer of the subsystem"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "operation",
+          "values": [
+            "file contains an import that resolves into the same layered subsystem"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "A file in one layer of the subsystem imports from a higher layer of the same subsystem, whether the import is new or pre-existing.",
+        "The upward import is written through an aliased specifier as well as through a relative path — both forms count.",
+        "A file in the subsystem's lowest layer(s) imports from any layer above them."
+      ],
+      "doesNotFire": [
+        "The repository has no layered subsystem tree.",
+        "A file imports another file in its own layer.",
+        "A file imports from a lower layer (downward edge).",
+        "The importing file is a test file or lives in a vendored/build tree.",
+        "The file sits directly under the subsystem root, outside any named layer."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "layout.code_trees",
+      "meaning": "The code trees to which this layer rule applies: the trees whose internal directories form the layered subsystem; a repository with none of them is not judged.",
+      "bunValue": "**/design/**, **/design_system/**, **/design-system/** — a directory named design, design_system or design-system is a design root"
+    },
+    {
+      "key": "roles.layers",
+      "meaning": "The ranked layer names inside those trees, in dependency order lowest to highest with their local names; ties may share a rank, and layers tied at one rank count as the same layer.",
+      "bunValue": "tokens or foundations (0), primitives (1), components (2), templates (3)"
+    },
+    {
+      "key": "roles.assignment",
+      "meaning": "How a file inside such a tree is assigned its layer from its path, and that a file with no named layer is out of scope (not layered), not a violation.",
+      "bunValue": "the first directory beneath the design root names the layer; files directly under the root, with no named layer, are not layered"
+    },
+    {
+      "key": "idiom.internal_import",
+      "meaning": "Which import specifier forms resolve a module reference to a target inside a tree of the project graph, so that an import counts as targeting the subsystem.",
+      "bunValue": "a relative path into the design directory, or an aliased specifier whose alias names the design directory"
+    },
+    {
+      "key": "suffix.test_files",
+      "meaning": "The undifferentiated name patterns that mark a file as a test file of any kind, used as a scan exclusion; the patterns are not attributed to a particular test kind.",
+      "bunValue": "*.test.*, *.spec.*"
+    },
+    {
+      "key": "roots.excluded",
+      "meaning": "Vendored and generated trees never scanned; one stack-wide list whose exact classification is owned by the stack's checker, not by this rule.",
+      "bunValue": "vendored/build directories are never scanned (exact list deferred to the stack-wide exclusion list)"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "idiom.internal_import",
+      "group": "idiom",
+      "meaning": "Which import specifier forms resolve a module reference to a target inside a tree of the project graph (e.g. relative specifiers and path aliases bound to a tree), so that an import counts as targeting that tree.",
+      "bunValue": "a relative path into the design directory, or an aliased specifier whose alias names the design directory",
+      "whyNoExistingKey": "idiom.external_import recognises only imports of external packages (outside the project graph); no existing key describes the specifier forms by which an intra-project import resolves to a target file or tree, which this rule needs to resolve imports to layers."
+    },
+    {
+      "key": "suffix.test_files",
+      "group": "suffix",
+      "meaning": "Undifferentiated name patterns that mark a file as a test file of any kind (used e.g. to exclude tests from a scan), without asserting which test kind each pattern identifies.",
+      "bunValue": "*.test.*, *.spec.*",
+      "whyNoExistingKey": "suffix.<file_kind> is per test kind (unit_test, acceptance_test, e2e_test): each value asserts that its patterns identify that specific kind. The Bun rewrite only gives an undifferentiated all-tests exclusion (*.test.*, *.spec.*) and does not say which kind either pattern denotes, so splitting it across per-kind keys would invent a role mapping; roots.excluded covers trees, not file-name patterns."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "verifier_detail[1]",
+      "text": "from an aliased specifier that names the design directory (e.g. `@/design/components/Card`); finding = upward_import",
+      "reason": "The concrete alias example is stack-specific syntax, and the finding id of this rule's detector is a realization detail (notProfileKeys); the general relative/alias resolution idiom itself is carried by the profile's idiom.internal_import."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "text": "The statement ranks tokens and foundations together at level 0 while the fix hint lists tokens -> foundations as consecutive steps; the detector uses the statement's numbering.",
+      "reason": "An internal inconsistency between two Bun-specific layer names; neutrally it reduces to 'the profile's declared ranking is authoritative', kept in core:verification."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "text": "validator `bun_design_system_detector`",
+      "reason": "Detector/validator ids of this one rule are realization details (notProfileKeys); the core describes the check generically. Severity 3 and strict disposition stay in core:verification."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "text": "The Bun detector inspects .tsx/.jsx/.html/.css files.",
+      "reason": "File-kind coverage of the Bun detector is a realization limitation taken from graph.json; the core keeps only the neutral principle that such a limitation does not narrow applicability."
+    },
+    {
+      "item": "evidence[1]",
+      "text": "bun_design_system_detector reports no upward edge",
+      "reason": "Names this rule's Bun validator and finding wording; the core refers to 'the stack's dependency-direction check'."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:layout.code_trees",
+        "profile:roles.layers",
+        "profile:roles.assignment"
+      ],
+      "note": "The subsystem trees (layout.code_trees), the ranked ladder (roles.layers) and the path-based layer assignment with unlayered-file treatment (roles.assignment) are profile data; the core states the shape neutrally."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when",
+        "profile:idiom.internal_import"
+      ],
+      "note": "Neutral: any import resolving into the subsystem; the relative/alias specifier forms that count are the stack's internal-import idiom, carried by the profile."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then"
+      ],
+      "note": "One obligation; the upward-edge examples (tokens->primitives etc.) are instances of the profile ladder and are not repeated."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "'a primitive that imports a component' neutralized to 'a lower-layer piece that imports a higher-layer one'."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]",
+        "profile:roles.layers"
+      ],
+      "note": "The concrete chain is the profile's layer order (roles.layers); the core says 'same-layer or downward, following the declared layer order'."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]"
+      ],
+      "note": "'value or component' generalized to 'artifact from a lower layer'."
+    },
+    {
+      "item": "prefer[2]",
+      "as": [
+        "core:prefer[2]"
+      ],
+      "note": "Already stack-neutral."
+    },
+    {
+      "item": "prefer[3]",
+      "as": [
+        "core:prefer[3]"
+      ],
+      "note": "Already stack-neutral."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "'design-system files' generalized to 'files of the subsystem'."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Already stack-neutral."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]"
+      ],
+      "note": "'barrel' is the stack idiom for an aggregating re-export module; the core says 'aggregator module' with the same force."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]",
+        "core:verification"
+      ],
+      "note": "Same-layer edges allowed; restated as check scope."
+    },
+    {
+      "item": "unless[1]",
+      "as": [
+        "core:unless[1]",
+        "profile:roles.assignment"
+      ],
+      "note": "The 'not layered' rule for files directly under the root is part of the layer-assignment profile value."
+    },
+    {
+      "item": "unless[2]",
+      "as": [
+        "core:unless[2]",
+        "core:verification",
+        "profile:suffix.test_files",
+        "profile:roots.excluded"
+      ],
+      "note": "Bun's undifferentiated test exclusion (*.test.*, *.spec.*) is carried as one list by the proposed suffix.test_files key, without attributing either pattern to a particular test kind; the Bun instantiation excludes exactly *.test.* and *.spec.*. Vendored/build exclusion defers to the stack-wide list, kept as deference in core:verification."
+    },
+    {
+      "item": "unless[3]",
+      "as": [
+        "core:unless[3]",
+        "profile:layout.code_trees"
+      ],
+      "note": "Self-scoping: no subsystem tree (no design root) means not judged."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]"
+      ],
+      "note": "Already stack-neutral ('behavioral or rendering acceptance')."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]",
+        "bunOnly"
+      ],
+      "note": "Direction evidence is core; the validator id is realization detail."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "profile:layout.code_trees",
+        "profile:roles.layers",
+        "profile:roles.assignment"
+      ],
+      "note": "Design-root and layer-naming rules are exactly the profile values (code trees, ranked layers, assignment); the check derives layers from them."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "profile:idiom.internal_import",
+        "bunOnly"
+      ],
+      "note": "Resolve-and-flag procedure is generic verification; the specifier forms that resolve into the tree are the profile idiom; the concrete alias example and the finding id stay Bun-only."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification",
+        "core:unless[0]",
+        "core:unless[1]",
+        "core:unless[2]",
+        "core:unless[3]",
+        "profile:suffix.test_files",
+        "profile:roots.excluded"
+      ],
+      "note": "Restates the check's scope: same-layer pass, unlayered files, test/vendored skip, self-scoping. The test skip uses the undifferentiated test-file patterns (suffix.test_files = *.test.*, *.spec.* under Bun)."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "General principle (declared ranking wins over prose chain, ties are one layer) goes to verification; the tokens/foundations inconsistency is Bun-specific."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Severity 3 and strict disposition are per-rule verification facts; the validator id is Bun-only."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Neutral principle (coverage limitation does not narrow applicability) to verification; the concrete file-kind list is Bun-only."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:layout.code_trees",
+        "profile:suffix.test_files",
+        "profile:roots.excluded"
+      ],
+      "note": "Bun path_glob (design roots) is the layout.code_trees value; its note's test and vendored/build exclusions map to suffix.test_files and roots.excluded. The core fact is the neutral file_kind 'file inside a layered subsystem tree'."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:roles.layers",
+        "profile:roles.assignment"
+      ],
+      "note": "Bun 'layer' fact becomes the neutral role fact 'assigned to a named layer'; layer names/ranks come from roles.layers and the path derivation from roles.assignment."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[2]",
+        "profile:idiom.internal_import"
+      ],
+      "note": "Neutral operation fact with needs_new_observer kept; the relative/alias resolution forms are the profile's internal-import idiom; 'every import of a scoped file, existing or new' is kept in the core's activation and verification."
+    }
+  ],
+  "neutralityNotes": "Round-4 change per audit: the test-file exclusion no longer splits Bun's *.test.* / *.spec.* across suffix.unit_test and suffix.acceptance_test. It now rides on one proposed key, suffix.test_files, holding the undifferentiated test-file name patterns (Bun value: *.test.*, *.spec.*), so the exact exclusion union is preserved without assigning artifact-kind semantics the rewrite does not state. Otherwise unchanged: the subsystem trees ride on layout.code_trees, the ranked ladder on roles.layers (ties share a rank, tied layers count as one layer), and path-based layer assignment plus unlayered-file treatment on roles.assignment; the intra-subsystem import-resolution idiom (relative specifiers and aliases naming the tree) is profile data through the proposed idiom.internal_import key. Kept in the Bun realization: the concrete alias example `@/design/components/Card`, the validator id bun_design_system_detector and finding id upward_import, the tokens/foundations tie-break wording (reduced to 'the profile's declared ranking is authoritative'), and the detector's .tsx/.jsx/.html/.css coverage limitation. Severity 3 and strict disposition stay in core:verification, as does the deference of vendored/build exclusions to the stack's single exclusion list.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.design-dependency-flow.json",
+      "sha256": "4b5212914e6c5ff4b673e3889dd5fba61459a4c590a7f67f3103e632fb06c5c3"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 4,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3 -> pi-claude-cli/claude-opus-5-5",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

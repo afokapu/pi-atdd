@@ -13,6 +13,9 @@ import { neutralityLeaks } from "../src/neutral-lint.ts";
 const ROOT = new URL("..", import.meta.url).pathname;
 const manifest = JSON.parse(readFileSync(join(ROOT, "conventions-sidecar/manifest.json"), "utf8"));
 const records = loadNeutralRecords();
+const partOf: Record<string, any> = {};
+for (const se of Object.values<any>(manifest.splits ?? {})) for (const p of se.parts) partOf[p] = se;
+const splitPartAliases: Record<string, string> = JSON.parse(readFileSync(join(ROOT, "conventions/aliases.json"), "utf8")).splitParts ?? {};
 const goldens = readdirSync(join(ROOT, "tests/golden/bun")).map((f) => f.replace(/\.txt$/, "")).sort();
 
 test("every neutral record has a golden snapshot and every snapshot has a record", () => {
@@ -22,9 +25,15 @@ test("every neutral record has a golden snapshot and every snapshot has a record
 
 test("SN-001: render(stack=bun) equals the frozen v0.2.0-bun-baseline text, per convention", () => {
   for (const r of records) {
-    const e = manifest.entries[r.rule_id];
-    assert.ok(e, r.rule_id + " is a frozen sidecar entry");
-    assert.equal(r.legacyId, e.legacyId ?? r.rule_id, r.rule_id + ": legacy id");
+    const e = manifest.entries[r.rule_id] ?? partOf[r.rule_id];
+    assert.ok(e, r.rule_id + " is a frozen sidecar entry or split part");
+    if (manifest.entries[r.rule_id]) {
+      assert.equal(r.legacyId, e.legacyId ?? r.rule_id, r.rule_id + ": legacy id");
+      assert.equal(r.realizations.bun.part, undefined, r.rule_id + ": single rewrite has no part");
+    } else {
+      assert.equal(splitPartAliases[r.legacyId], r.rule_id, r.rule_id + ": legacy part id resolves to this part");
+      assert.equal(r.realizations.bun.part, r.legacyId, r.rule_id + ": realization is its legacy part");
+    }
     assert.equal(r.realizations.bun.sidecar, "conventions-sidecar/" + e.file, r.rule_id + ": realization file");
     assert.equal(r.realizations.bun.sha256, e.sidecarSha256, r.rule_id + ": realization pinned to the frozen digest");
     const out = renderForStack(r, "bun");

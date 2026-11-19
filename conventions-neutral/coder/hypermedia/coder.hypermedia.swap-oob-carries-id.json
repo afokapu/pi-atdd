@@ -1,0 +1,384 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.hypermedia.swap-oob-carries-id",
+  "legacyId": "coder.htmx.swap-oob-carries-id",
+  "core": {
+    "title": "Give every out-of-band swap element the id it swaps into",
+    "given": "Markup — any artifact kind the profile classifies as markup (idiom.markup_kinds) — contains an element marked with the profile's out-of-band swap construct (idiom.oob_swap_construct): a fragment of a response that updates a region other than the requesting element's target (a badge, a flash region, a count).",
+    "when": "Any such element exists in the repository or is written or edited, including edits touching only its id.",
+    "then": "The element carrying the out-of-band swap construct MUST itself carry the id naming the element it replaces — on its own opening tag, in an accepted id-binding form (idiom.markup_id_binding), never only on a wrapper.",
+    "prefer": [
+      "Give the out-of-band fragment the id of the region it updates (for example a count badge) so the fragment lands in that region.",
+      "Put the id on the out-of-band element itself; the hypermedia client reads the destination from the element carrying the swap construct.",
+      "Smoke-test that the id matches an element existing in the current document."
+    ],
+    "avoid": [
+      "An out-of-band swap element carrying only a class attribute and no id has no destination and is silently dropped.",
+      "Putting the id on a wrapper element.",
+      "Debugging the boundary, its handlers or the response headers for \"returned but the page doesn't update\" before checking the out-of-band id."
+    ],
+    "unless": [
+      "The id is supplied as a dynamic expression binding on the element itself: the binding is present; whether it resolves is a runtime concern.",
+      "In-band swaps: a swap construct whose destination is the requesting element's declared target (a selector, not an id) is out of scope."
+    ],
+    "why": "The hypermedia client matches an out-of-band element to its destination by id; without one it silently discards the fragment — no error, no warning, no swap. The boundary logs a successful response and the markup arrives, so this most frequent hypermedia silent bug sends people debugging code that is not wrong.",
+    "evidence": [
+      "The stack's static markup check reports no out-of-band swap element lacking an id on its own opening tag.",
+      "A reviewer confirms each out-of-band swap element carries an id (in an accepted binding form) on the same element, not a wrapper.",
+      "A smoke test shows the out-of-band fragment actually updates the page (the id resolves to an existing element) — the static check cannot see an id that matches nothing."
+    ],
+    "verification": [
+      "A static markup check locates every occurrence of the profile's out-of-band swap construct, extracts the enclosing opening tag with a quote-aware scan (a '>' inside an attribute value does not end the tag early), and flags the element when that tag carries no id in an accepted binding form.",
+      "Only the opening tag of the element carrying the out-of-band swap construct is inspected; an id on an ancestor or wrapper does not satisfy the rule.",
+      "Dynamically expression-bound ids count as present; resolution is not checked.",
+      "In-band swap occurrences (destination: the requesting element's declared target) are ignored.",
+      "Ids that match no element in the current document are dropped just as silently but are NOT detectable by this static check; they require a smoke test (a separate obligation).",
+      "Scope is repository-wide over the profile's markup kinds and scan roots: every out-of-band swap element present is covered, changed or not, including pre-existing violations.",
+      "Severity 2; disposition strict (per-rule metadata carried by the rule, not by the profile)."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "markup"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "out-of-band swap element without an id on its own element"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "any edit to markup containing an out-of-band swap element (including edits that only add/remove/move its id)"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "A response fragment contains an element marked for an out-of-band swap that carries only a class attribute, no id.",
+        "An out-of-band swap element's id sits on a wrapper element rather than on the element carrying the swap construct.",
+        "An edit removes or moves the id of an existing out-of-band element while the swap construct itself is unchanged.",
+        "A pre-existing out-of-band swap element without an id is present in the repository, even if untouched by the current diff."
+      ],
+      "doesNotFire": [
+        "An element uses an in-band swap whose destination is a declared target (selector-based, not id-based).",
+        "An out-of-band swap element carries a dynamically bound expression id.",
+        "An out-of-band swap element carries a literal id on its own opening tag."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "idiom.markup_kinds",
+      "meaning": "The artifact kinds that count as markup in which the out-of-band swap construct can appear; these define the file scope of the static check.",
+      "bunValue": "tsx, jsx, html, server-rendered template"
+    },
+    {
+      "key": "idiom.oob_swap_construct",
+      "meaning": "The declarative markup construct that marks an element of a response for out-of-band swapping; the client resolves its destination from the element's own id.",
+      "bunValue": "hx-swap-oob (e.g. hx-swap-oob=\"true\")"
+    },
+    {
+      "key": "idiom.markup_id_binding",
+      "meaning": "The forms in which a markup element carries its own id (literal attribute value and/or dynamic expression binding); an expression binding counts as present, its resolution unchecked.",
+      "bunValue": "literal id=\"…\" on the element's own opening tag, or a JSX expression id={…}"
+    },
+    {
+      "key": "idiom.inband_swap_construct",
+      "meaning": "The declarative markup construct whose response swaps into the requesting element's declared target (a selector) rather than an id — the out-of-scope sibling of the out-of-band swap.",
+      "bunValue": "hx-swap — swaps into hx-target, a selector, not an id"
+    },
+    {
+      "key": "roots.scan",
+      "meaning": "Which roots the repository-wide check scans, fixing the rule's scope: every out-of-band element present, changed or not.",
+      "bunValue": "Workspace-wide scan: covers pre-existing violations as well as new ones, independent of what the diff touched."
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "idiom.oob_swap_construct",
+      "group": "idiom",
+      "meaning": "The declarative markup construct that marks an element of a response fragment for out-of-band swapping; the client resolves the destination from the element's own id.",
+      "bunValue": "hx-swap-oob (e.g. hx-swap-oob=\"true\")",
+      "whyNoExistingKey": "The idiom group covers declarative request and gate constructs (destructive_request, mutation_requests, confirmation_gate, prompt_gate, declaration_scope) but no swap construct; markup_kinds says where markup lives, not what marks an out-of-band swap."
+    },
+    {
+      "key": "idiom.markup_id_binding",
+      "group": "idiom",
+      "meaning": "The forms in which a markup element carries its own id — literal attribute value and/or dynamic expression binding — and that an expression binding counts as present with resolution unchecked.",
+      "bunValue": "literal id=\"…\" on the element's own opening tag, or a JSX expression id={…}",
+      "whyNoExistingKey": "No existing key says how an element names its own id; comment_marker covers comments and urn.binding.* covers URN binding, neither fits element id attributes vs expression bindings."
+    },
+    {
+      "key": "idiom.inband_swap_construct",
+      "group": "idiom",
+      "meaning": "The declarative markup construct whose response swaps into the requesting element's declared target (a selector) rather than an id — the out-of-scope sibling of the out-of-band swap.",
+      "bunValue": "hx-swap — swaps into hx-target, a selector, not an id",
+      "whyNoExistingKey": "No existing key names the in-band swap construct; the rule's scope exclusion (unless[1], verifier_detail[3]) can only be applied on a stack if the profile carries its spelling."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "unless[0]",
+      "text": "Id supplied as a JSX expression (id={rowId}): binding present; resolution is a runtime concern.",
+      "reason": "JSX is the Bun stack's expression-binding syntax; the core states the exception for any dynamic expression id, with the accepted forms supplied by idiom.markup_id_binding."
+    },
+    {
+      "item": "unless[1]",
+      "text": "In-band hx-swap: swaps into hx-target, a selector, not an id.",
+      "reason": "hx-swap/hx-target are htmx attribute spellings; the core scopes the exclusion by destination kind, with the stack's spelling supplied by idiom.inband_swap_construct."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "htmx_hypermedia_detector reports no hx-swap-oob element lacking an id on its own opening tag.",
+      "reason": "The detector and finding ids of this rule are realization details; the core's evidence names the generic static markup check."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "Detector: zero-dependency Bun detector (htmx_hypermedia_detector) locates each `hx-swap-oob` occurrence, extracts the enclosing opening tag with a quote-aware scan (a `>` inside an attribute value does not end the tag early), and flags the element when that tag carries no `id=\"…\"` or JSX `id={…}`.",
+      "reason": "The detector implementation and its id are Bun realization details; the neutral scan procedure (quote-aware opening-tag extraction) is carried in core:verification."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "text": "JSX expression ids (id={…}) count as present; resolution is not checked.",
+      "reason": "The JSX spelling is stack-specific; the core states the rule for expression-bound ids generally."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "text": "In-band `hx-swap` occurrences are ignored.",
+      "reason": "The hx-swap spelling is htmx-specific; the core ignores the profile's in-band swap construct."
+    },
+    {
+      "item": "activation.facts[1]",
+      "text": "language: typescript, javascript, html — Bun/htmx stack (atdd.workspace.bun).",
+      "reason": "Pure stack identification; 'language' is not a core activation fact, and file scoping in the core goes through idiom.markup_kinds (a language list, if needed, is tooling.languages profile data)."
+    },
+    {
+      "item": "activation.facts[2]",
+      "text": "finding: htmx_hypermedia_detector: hx-swap-oob element without id",
+      "reason": "The finding id names this rule's Bun detector; the core keeps a generic finding fact and describes the check generically in verification."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given"
+      ],
+      "note": "hx-swap-oob generalized to the profile's out-of-band swap construct; the badge/flash/count motivation kept verbatim."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "'workspace' rendered as repository; scope (exists / written / edited / id-only edits) unchanged."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then"
+      ],
+      "note": "Single obligation kept: the element itself carries the destination id; the literal-id/JSX parenthetical is generalized to the profile's accepted id-binding forms; 'not on a wrapper' placement retained."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "'htmx' becomes the hypermedia client; 'the server logs 200' becomes the boundary logging a successful response."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]"
+      ],
+      "note": "Concrete markup example stays in the Bun reference; the core keeps the role-level form (id of the region it updates)."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]"
+      ],
+      "note": "'htmx reads it from the element carrying the attribute' becomes the client reading the destination from the element carrying the construct."
+    },
+    {
+      "item": "prefer[2]",
+      "as": [
+        "core:prefer[2]"
+      ],
+      "note": "Smoke-test advice is already stack-neutral; kept as-is."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "The class-only example is generalized to 'only a class attribute and no id'; the concrete markup stays in the Bun reference."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Neutral as-is (id on a wrapper)."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]"
+      ],
+      "note": "'server, route' rendered as the boundary and its handlers; the debugging-order advice kept."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]",
+        "bunOnly"
+      ],
+      "note": "Neutral unless: any dynamic expression binding counts, resolution is a runtime concern; the JSX spelling is the Bun instance (bunOnly)."
+    },
+    {
+      "item": "unless[1]",
+      "as": [
+        "core:unless[1]",
+        "bunOnly"
+      ],
+      "note": "Neutral unless scopes by destination kind (declared target selector vs id); hx-swap/hx-target spellings are the Bun instance (bunOnly)."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ],
+      "note": "Detector name replaced by 'the stack's static markup check'; the detector/finding id is a realization detail."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]"
+      ],
+      "note": "Reviewer check kept; id forms generalized to accepted binding forms."
+    },
+    {
+      "item": "evidence[2]",
+      "as": [
+        "core:evidence[2]"
+      ],
+      "note": "Neutral as-is: the smoke test covers what the static check cannot see (unresolved ids)."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "The quote-aware opening-tag scan is stack-neutral and carried in verification; the zero-dependency Bun detector and its id are bunOnly."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Only the carrying element's opening tag counts; an ancestor/wrapper id does not satisfy — neutral as-is."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Expression ids count as present, resolution unchecked — neutral rule in verification; JSX spelling bunOnly."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "In-band occurrences ignored — neutral rule in verification; hx-swap spelling bunOnly."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Unresolved ids need a smoke test and are outside this static check; 'by htmx' dropped. This is the material of the suggested split convention, kept as non-obligatory evidence here."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Severity 2 is per-rule metadata, carried in core verification, not a profile key."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Disposition strict is per-rule metadata, carried in core verification, not a profile key."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:idiom.markup_kinds"
+      ],
+      "note": "tsx/jsx/html/server-rendered template are exactly the profile's markup kinds; the core fact is the neutral 'markup' kind."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "Stack-identification fact (Bun/htmx workspace); the core scopes by markup kinds, and 'language' is not among the core activation facts."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[1]",
+        "bunOnly"
+      ],
+      "note": "The generic finding (out-of-band swap element without an id) is a core fact; the detector-prefixed finding id is bunOnly."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[2]"
+      ],
+      "note": "Optional diff-level early-fire observer (needs_new_observer); kept, including that scope is independent of what the diff touched."
+    }
+  ],
+  "neutralityNotes": "The core speaks abstractly of 'the profile's out-of-band swap construct', 'accepted id-binding forms' and 'the in-band swap construct'; the concrete spellings (hx-swap-oob, id=\"…\" vs JSX id={…}, hx-swap with hx-target) are carried by three proposed idiom keys plus bunOnly entries, since the closed vocabulary has request/gate constructs but no swap or id-binding keys. activation.fires and doesNotFire were neutralized in place the same way (hx-swap-oob → out-of-band swap construct; id={rowId} → a dynamically bound expression id); their htmx wordings remain visible in bun.json, the delivered reference example. Per rule 7, the detector/finding ids (htmx_hypermedia_detector) and the 'language' activation fact are bunOnly, while severity 2 and the strict disposition live in core:verification. The id-must-resolve-to-an-existing-element requirement stays as prefer/evidence/verification material (not a second then); bun.json's splitSuggestion (coder.htmx.swap-oob-id-resolves) is a realization-side proposal and was not promoted into the core.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.htmx.swap-oob-carries-id.json",
+      "sha256": "13f4bf970e66a373b5f05738328c8d8bef1852513f5d76979a0969fd9c430da5"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 1,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

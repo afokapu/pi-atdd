@@ -1,0 +1,330 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.hypermedia.verb-mutation-signals-progress",
+  "legacyId": "coder.htmx.verb-mutation-signals-progress",
+  "core": {
+    "title": "Make every mutating request declared in markup signal that it is in flight",
+    "given": "An element in markup issues a mutating request through one of the stack's declarative request constructs that change server state, so a duplicate is not harmless.",
+    "when": "That element exists in the markup.",
+    "then": "The element issuing the mutation declares an in-flight progress signal: at least one of the stack's progress-signal constructs (either one satisfies; declaring more than one is fine).",
+    "prefer": [
+      "A signal that disables the issuing control for the duration of the request, making a double submit physically impossible, where a duplicate would be expensive.",
+      "A signal that shows a busy region for the duration of the request, so the user can see that something is happening."
+    ],
+    "avoid": [
+      "A mutating element with no signal at all — invisible while in flight.",
+      "A visibility-only signal where duplicates are expensive: it tells the user to wait but does not stop them.",
+      "Treating a server-side idempotency key as an exemption from the rule: a real mitigation, but one the rule cannot see.",
+      "Adding progress signals to elements that issue only idempotent read requests under this rule — a UX preference, out of scope."
+    ],
+    "unless": [
+      "The element issues only an idempotent (read) request — a duplicate is harmless."
+    ],
+    "why": "In-place fragment updates replace content without navigation, so the page looks identical while the request is in flight (full-page navigation used to give a free progress signal); users correctly read 'nothing happened', click again, and a non-idempotent request runs twice (duplicate orders, charges, rows).",
+    "evidence": [
+      "The stack's markup check reports no finding across the in-scope markup.",
+      "Every markup element (opening tag) declaring one of the stack's mutating request constructs also declares at least one of its progress-signal constructs."
+    ],
+    "verification": [
+      "A markup scan finds every element declaring one of the stack's mutating request constructs and flags the element when it declares none of the stack's progress-signal constructs; findings are deduplicated per element (an element carrying several mutating constructs reports once).",
+      "Idempotent read constructs are not scoped: an element declaring at least one progress signal passes; only an element declaring none is a violation.",
+      "The check scans all in-scope markup of the kinds the profile counts as markup — standalone markup files, templates, and markup embedded in source files — not only changed lines, so pre-existing violations and signals removed from still-mutating elements are covered. Which trees are in scope and which are never scanned is the stack's single scan scope and exclusion list, owned by the checker; this rule adds no exclusions of its own.",
+      "Server-driven idempotency (an idempotency key at the endpoint) is a real mitigation but invisible to the check; it does not exempt the element from signalling progress to the user.",
+      "Per-rule enforcement (not a profile fact): severity 3, disposition strict — every finding fails the run; no advisory mode and no ratchet baseline."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "markup"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "a markup element issuing a mutating request declares no progress signal"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "markup containing one of the stack's mutating request constructs is touched, including removal of a progress signal from an element that still issues a mutating request"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "Any markup element, new or pre-existing, declares one of the stack's mutating request constructs and none of its progress-signal constructs.",
+        "An element's request construct changes from an idempotent read construct to a mutating construct, with no progress signal.",
+        "A progress signal is removed from an element that still issues a mutating request.",
+        "A mutating element without a signal lives in markup embedded in a template or in a source file rather than in a standalone markup file."
+      ],
+      "doesNotFire": [
+        "An element issuing only an idempotent read request.",
+        "A mutating element that declares at least one progress signal."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "idiom.destructive_request",
+      "meaning": "The declarative markup construct that issues a destructive (mutating) request; together with idiom.mutation_requests it forms the mutating set this rule scopes.",
+      "bunValue": "hx-delete"
+    },
+    {
+      "key": "idiom.mutation_requests",
+      "meaning": "The declarative markup constructs that issue non-destructive mutating requests; together with idiom.destructive_request they form the mutating set this rule scopes (bun.json treats the four verbs as one set).",
+      "bunValue": "hx-post, hx-put, hx-patch"
+    },
+    {
+      "key": "idiom.progress_signals",
+      "meaning": "The declarative markup constructs that satisfy the obligation by signalling that a request is in flight (a busy-indicator region or disabling the issuing control); any one satisfies, several are fine.",
+      "bunValue": "hx-indicator or hx-disabled-elt (either satisfies; both is fine)"
+    },
+    {
+      "key": "idiom.markup_kinds",
+      "meaning": "Which artifact kinds count as markup in which the mutating request constructs and progress signals are looked for; the rule applies wherever such markup appears, with no file-kind restriction.",
+      "bunValue": "Applies to htmx markup wherever it appears (HTML files, templates, or markup embedded in source files); no file-kind restriction."
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "idiom.progress_signals",
+      "group": "idiom",
+      "meaning": "Declarative markup constructs that signal to the user that a declared request is in flight (e.g. a busy-indicator region, or disabling the issuing control for the duration); declaring any one satisfies, several are fine.",
+      "bunValue": "hx-indicator or hx-disabled-elt (either satisfies; both is fine)",
+      "whyNoExistingKey": "The idiom group covers the request constructs (destructive_request, mutation_requests) and the gates (confirmation_gate, prompt_gate), but has no key for in-flight progress signalling, which is the construct this rule's then-clause requires."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "prefer[0]",
+      "text": "hx-disabled-elt (disables the control in flight, making double-submit impossible) where a duplicate is expensive, e.g. <form hx-post=\"…\" hx-disabled-elt=\"find button\">.",
+      "reason": "Concrete markup example naming the stack's constructs; per rule 4 the core keeps the role-level pattern (a disabling signal) and bun.json itself is the delivered reference example."
+    },
+    {
+      "item": "prefer[1]",
+      "text": "hx-indicator (spinner region in flight) to show something is happening, e.g. <form hx-post=\"…\" hx-indicator=\"#spinner\">.",
+      "reason": "Concrete markup example naming the stack's constructs; the core keeps the role-level pattern (a busy-region signal)."
+    },
+    {
+      "item": "avoid[0]",
+      "text": "<form hx-post=\"…\">…</form> with no signal — invisible in flight.",
+      "reason": "Concrete snippet in the stack's markup dialect; the core keeps the neutral pattern (a mutating element with no signal)."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "htmx_hypermedia_detector reports no finding across the in-scope markup.",
+      "reason": "Detector and finding ids of this rule are realization details (vocabulary notProfileKeys); the core's verification names the check generically."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "Zero-dependency Bun detector: find each mutating verb attribute (hx-post, hx-put, hx-patch, hx-delete), extract the enclosing opening tag, flag the element when it declares neither hx-indicator nor hx-disabled-elt.",
+      "reason": "Names the runtime (Bun), the concrete attributes, and this rule's detector implementation; realization detail. The core describes the same check generically over the profile's construct lists."
+    },
+    {
+      "item": "activation.facts[0]",
+      "text": "language: htmx — Bun/htmx stack workspace (atdd.workspace.bun).",
+      "reason": "The hypermedia dialect name and the workspace id are stack facts with no neutral equivalent; the core triggers on the markup file kind, which idiom.markup_kinds expands."
+    },
+    {
+      "item": "activation.facts[1]",
+      "text": "htmx_hypermedia_detector: element with hx-post|hx-put|hx-patch|hx-delete declaring neither hx-indicator nor hx-disabled-elt",
+      "reason": "The detector id and concrete attribute names are realization details; the core keeps the finding shape generic over the profile's construct lists."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:idiom.destructive_request",
+        "profile:idiom.mutation_requests"
+      ],
+      "note": "The semantic definition (changes server state, duplicate not harmless) is core; the concrete verb list is the union of the two profile keys (hx-delete + hx-post/hx-put/hx-patch = the four verbs bun.json scopes)."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Already stack-neutral; kept verbatim."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "profile:idiom.progress_signals"
+      ],
+      "note": "One obligation, neutral ('declares an in-flight progress signal'); the satisfying constructs come from the proposed key; either-satisfies / both-fine preserved."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "'htmx swaps fragments in place' generalized to in-place fragment updates without naming the framework; duplicate-consequence rationale kept in full."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]",
+        "profile:idiom.progress_signals",
+        "bunOnly"
+      ],
+      "note": "Core prefers a disabling signal where a duplicate is expensive; the concrete construct (hx-disabled-elt) and snippet stay in the reference example."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]",
+        "profile:idiom.progress_signals",
+        "bunOnly"
+      ],
+      "note": "Core prefers a busy-region signal; the concrete construct (hx-indicator) and snippet stay in the reference example."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]",
+        "bunOnly"
+      ],
+      "note": "Neutral pattern: a mutating element with no signal, invisible in flight; the concrete snippet is Bun-only."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]",
+        "profile:idiom.progress_signals"
+      ],
+      "note": "Generalized to 'a visibility-only signal'; the named construct is carried by the profile key."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]",
+        "core:verification"
+      ],
+      "note": "Idempotency-key guidance for the agent and the check's blind spot both stay in the core; mirrored in verification."
+    },
+    {
+      "item": "avoid[3]",
+      "as": [
+        "core:avoid[3]",
+        "core:verification"
+      ],
+      "note": "Out-of-scope statement for read-only elements; verification states that read constructs are not scoped."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]"
+      ],
+      "note": "Kept semantic (idempotent read, duplicate harmless). The concrete read construct (hx-get) need not be identified by the check because only elements declaring mutating constructs are examined, so the exclusion falls out of the scoping."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ],
+      "note": "Neutral form: the stack's markup check reports no finding across the in-scope markup; the detector id is a realization detail."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]"
+      ],
+      "note": "Tag-level check restated over the profile's construct lists; 'opening tag' generalized to markup element."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Generic check description goes to verification; the zero-dependency Bun detector, its attribute names and mechanics are realization details (rule 7)."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Deduplicate findings per element — generic verifier behavior, kept in verification."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Read constructs not scoped; either/both signals pass, only none is a violation — generic restatement."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Server-driven idempotency is invisible to the check and does not exempt — generic limit of the check."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Severity and disposition are per-rule, not profile keys (rule 7); strict disposition (fail on every finding, no advisory mode, no ratchet baseline) kept in verification."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:idiom.markup_kinds",
+        "bunOnly"
+      ],
+      "note": "Neutral fact: file_kind markup, expanded by idiom.markup_kinds with no file-kind restriction; the language value 'htmx' and the workspace note are stack facts."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]",
+        "bunOnly"
+      ],
+      "note": "Finding fact kept generically (mutating element with no signal, needs_new_observer, scans all in-scope markup not only the diff); the detector id is bunOnly."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[2]",
+        "profile:idiom.destructive_request",
+        "profile:idiom.mutation_requests"
+      ],
+      "note": "Change fact neutralized over the profile's mutating request constructs: activation requires touched markup that contains a mutating request construct, which also covers removal of a progress signal from an element that still issues a mutating request. It does not independently activate on progress-signal constructs, exactly matching bun.json's change fact (touched markup containing hx-post|hx-put|hx-patch|hx-delete). Kept as an early-firing observer subordinate to the finding fact."
+    }
+  ],
+  "neutralityNotes": "1) bun.json scopes one mutating set of four verbs; the closed vocabulary expresses it only as the union of idiom.destructive_request (hx-delete) and idiom.mutation_requests (hx-post, hx-put, hx-patch). A single 'mutating requests' key was not proposed because it would near-duplicate idiom.mutation_requests; the union instantiates to exactly bun.json's four verbs. 2) idiom.progress_signals is proposed: no existing key covers in-flight signalling. 3) The idempotent-read exclusion is kept semantic; no read-construct key is needed because the check only examines elements declaring mutating constructs, so reads are never flagged (bun.json's 'hx-get is not scoped' falls out of the scoping). 4) Severity 3 and strict disposition are per-rule and live in core:verification, not the profile. 5) bun.json never states the concrete scan scope ('the in-scope markup'), so the core defers scope and exclusions to the stack's single scan/exclusion list owned by the checker rather than naming trees. 6) The rationale is generalized from 'htmx swaps fragments in place' to in-place fragment updates without navigation; the framework name stays in the Bun realization. 7) The change activation fact fires only on touched markup containing a mutating request construct (per the profile's mutating construct keys); touching a progress-signal construct alone, on an element issuing no mutating request, does not activate — matching bun.json's change fact, whose condition is touched markup containing hx-post|hx-put|hx-patch|hx-delete, with signal removal covered only as removal from an element that still issues a mutating request.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.htmx.verb-mutation-signals-progress.json",
+      "sha256": "788dd019137c03583788ede580e9a3b42e1141ca0a81c807af761b24f65a4639"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

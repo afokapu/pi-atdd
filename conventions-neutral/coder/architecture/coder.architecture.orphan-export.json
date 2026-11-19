@@ -1,0 +1,396 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.architecture.orphan-export",
+  "legacyId": "coder.bun.design-orphan-export",
+  "core": {
+    "title": "Design-system components have a consumer",
+    "given": "A file in a judged component layer of the design system — the first directory beneath a design-system root, with root and judged layers located by the profile — exports a component, as the stack identifies components.",
+    "when": "Such an export exists, or the coder adds, changes, or stops consuming one.",
+    "then": "Each such export MUST have a consumer: another non-barrel file (a higher design-system layer, or code outside the design system) that imports it under that name; otherwise remove the export.",
+    "prefer": [
+      "Export a component only when a real consumer uses it.",
+      "During GREEN: if the current acceptance needs it, wire that actual consumer to it.",
+      "During GREEN: if added speculatively with no required consumer, delete it.",
+      "During GREEN: keep only the smallest export surface the current behavior needs."
+    ],
+    "avoid": [
+      "Dummy consumers or synthetic imports.",
+      "Keeping speculative components \"for later\".",
+      "Exposing unrelated internals from a barrel to make the import graph look connected.",
+      "Counting a barrel re-export as consumption."
+    ],
+    "unless": [
+      "The repository has no design-system root (self-scoping: there is no system to connect to yet).",
+      "Test files (identified by the profile's test-file patterns) and never-scanned vendored/build trees are outside the check.",
+      "Non-component design-system layers (e.g. token/foundation values) and barrels are not judged.",
+      "Only component exports are judged (non-component exports, e.g. helpers or values, are not)."
+    ],
+    "why": "Unused components still have to be maintained, themed, and migrated; a design system grows by adjudication, not by accretion of pieces nobody uses.",
+    "evidence": [
+      "The current behavioral or rendering acceptance passes.",
+      "Every affected export has a genuine consumer."
+    ],
+    "verification": [
+      "Disposition strict, severity 2: every flagged export must gain a genuine consumer or be removed; the finding is not advisory.",
+      "Check: a repository-wide import-graph observer collects component exports from the design system's judged component layers (first-level layers beneath a design-system root; root directory names and judged layer names both come from the profile) and flags each export that no other non-barrel file imports. Whether an export has a consumer is not observable from a single file; it needs this observer (covers pre-existing orphans, edited exports, new exports, and exports whose last consumer was removed).",
+      "The check applies to every qualifying file regardless of file suffix.",
+      "Consumer: a non-barrel file — a higher design-system layer or code outside the design system — that imports the export under that name. Composition inside the design system (a higher layer composing a lower layer's component) is legitimate consumption; a re-export through a barrel is not.",
+      "Self-scoping: a repository whose profile has no design-system root is not judged; a root that contains only non-judged layers (e.g. tokens or foundations) still exists but contributes no judged layers.",
+      "Never scanned: test files, identified by the profile's test-file patterns, and the never-scanned vendored/build trees of the one stack-wide excluded list (the exact classification of that list is the checker's). Their exports are not judged and their imports do not count as consumption. Non-judged design-system layers (e.g. token or foundation layers), barrels, and non-component exports are not judged either."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "file in a judged component layer of the design system (any file suffix)"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "component export with no consumer"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "A component is exported from a design-system component-layer file and no other non-barrel file imports it.",
+        "An export is only re-exported through a barrel and nothing imports it from there.",
+        "An existing component-layer export that no other file imports is edited or encountered.",
+        "Consuming code stops importing an export that no other file imports."
+      ],
+      "doesNotFire": [
+        "The repository has no design-system root (self-scoping).",
+        "The export lives in a non-judged design-system layer (e.g. tokens or foundations).",
+        "The export is not a component (a helper or value export, per the stack's component idiom).",
+        "The file is a test file (per the profile's test-file patterns), a barrel, or lives in a never-scanned (vendored/build) tree.",
+        "A higher design-system layer composes the export (composition inside the design system counts as consumption)."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "layout.design_system_root",
+      "meaning": "Locates the design system's root directories themselves; a repository with no such root is out of scope (self-scoping). The first directory beneath a root names a design-system layer (filtering applied separately via layout.design_system_layers).",
+      "bunValue": "a directory named design, design_system, or design-system"
+    },
+    {
+      "key": "layout.design_system_layers",
+      "meaning": "The first-level layer directories beneath a design-system root that are judged component layers; the remaining first-level layers beneath the root are not judged.",
+      "bunValue": "the first directory beneath the design root names the layer: tokens or foundations (not judged), primitives, components, templates (judged)"
+    },
+    {
+      "key": "suffix.test",
+      "meaning": "The file-name patterns that mark a file as a test file (without distinguishing test kind); matching files are never scanned by this check — their exports are not judged and their imports do not count as consumers.",
+      "bunValue": "*.test.*, *.spec.*"
+    },
+    {
+      "key": "idiom.component_export",
+      "meaning": "How the stack identifies an exported design-system component among a file's exports.",
+      "bunValue": "a capitalized export (only capitalized (component) exports are judged; lowercase exports are non-component helpers or values)"
+    },
+    {
+      "key": "idiom.barrel_module",
+      "meaning": "How the stack identifies a barrel — a module that only re-exports other modules; a barrel re-export is not consumption.",
+      "bunValue": "an index.* file"
+    },
+    {
+      "key": "roots.excluded",
+      "meaning": "The one stack-wide list of vendored/build trees that are never scanned and that this repository-wide check also skips; the exact classification is the checker's.",
+      "bunValue": "vendored/build directories are never scanned"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "layout.design_system_root",
+      "group": "layout",
+      "meaning": "Locates the design system's root directories themselves (directory names or globs matching those directories); a repository with no such root is out of scope. First-level judged-layer filtering is applied separately via layout.design_system_layers.",
+      "bunValue": "a directory named design, design_system, or design-system",
+      "whyNoExistingKey": "roles.<role>.path covers architectural roles and layout.commons_dir covers feature-shared code; neither expresses the shared design system's root directories."
+    },
+    {
+      "key": "layout.design_system_layers",
+      "group": "layout",
+      "meaning": "First-level layer directories beneath a design-system root; which of them are judged component layers and which are not (e.g. token/foundation layers).",
+      "bunValue": "the first directory beneath the design root names the layer: tokens or foundations (not judged), primitives, components, templates (judged)",
+      "whyNoExistingKey": "No existing key describes the internal layering of a shared design system."
+    },
+    {
+      "key": "suffix.test",
+      "group": "suffix",
+      "meaning": "File-name patterns that identify a file as a test file without distinguishing test kind; matching files are never scanned by structural repository-wide checks (not judged, not counted as consumers).",
+      "bunValue": "*.test.*, *.spec.*",
+      "whyNoExistingKey": "suffix.<file_kind> splits tests into unit_test, acceptance_test and e2e_test, but this convention exempts both patterns together as generic test files without binding either pattern to a kind."
+    },
+    {
+      "key": "idiom.component_export",
+      "group": "idiom",
+      "meaning": "How the stack identifies an exported design-system component among a file's exports.",
+      "bunValue": "a capitalized export (lowercase exports are non-component helpers or values)",
+      "whyNoExistingKey": "Existing idiom keys cover request, gate, nesting and import-machinery constructs; none identifies component exports."
+    },
+    {
+      "key": "idiom.barrel_module",
+      "group": "idiom",
+      "meaning": "How the stack identifies a barrel — a module that only re-exports other modules; a barrel re-export is not consumption.",
+      "bunValue": "an index.* file",
+      "whyNoExistingKey": "No existing idiom key covers re-export/aggregation modules."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "activation.facts[1]",
+      "text": "bun_design_system_detector: capitalized export with no consumer",
+      "reason": "The detector/finding id of this one rule is a realization detail; the core states the finding generically and notes that a repo-wide import-graph observer is needed."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "text": "a non-barrel file whose import clause names the export, or imports it as a default under that name",
+      "reason": "Import clauses and default imports are ES-modules binding forms; the core states the neutral form 'imports it under that name', which the Bun realization refines."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "text": "Detector (bun_design_system_detector) collects capitalized exports of primitives/components/templates and flags those no other file imports.",
+      "reason": "Detector id is a realization detail (notProfileKeys); the core's verification describes the same check generically."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "text": "Consumers are counted the way `coder.vite.design-orphan-ui` does",
+      "reason": "Cross-reference to another rule's realization id; the neutral content (composition inside the design system counts as consumption) is carried by the core."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:layout.design_system_root",
+        "profile:layout.design_system_layers",
+        "profile:idiom.component_export"
+      ],
+      "note": "Neutral given keeps only 'a file in a judged component layer of the design system exports a component'; root directory names and judged first-level layer names are separate profile data, and the capitalized-export convention is the component idiom."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Already stack-neutral; kept verbatim."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "profile:idiom.barrel_module",
+        "bunOnly"
+      ],
+      "note": "Obligation kept; 'non-barrel' is defined via the barrel idiom profile key; the ES default-import clause is a bunOnly refinement of 'imports it under that name'."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Design-system rationale is stack-neutral; kept verbatim."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]"
+      ],
+      "note": "GREEN phase and acceptance are ATDD-neutral terms; kept."
+    },
+    {
+      "item": "prefer[2]",
+      "as": [
+        "core:prefer[2]"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "prefer[3]",
+      "as": [
+        "core:prefer[3]"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]",
+        "profile:idiom.barrel_module"
+      ],
+      "note": "Barrel used as a generic word; the concrete barrel pattern (index.*) is profile data."
+    },
+    {
+      "item": "avoid[3]",
+      "as": [
+        "core:avoid[3]",
+        "profile:idiom.barrel_module"
+      ],
+      "note": "Neutralized to 'counting a barrel re-export as consumption'; the index.* pattern is profile data."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]",
+        "profile:layout.design_system_root"
+      ],
+      "note": "Self-scoping kept; whether a design-system root exists is decided by the root-locator profile key."
+    },
+    {
+      "item": "unless[1]",
+      "as": [
+        "core:unless[1]",
+        "core:verification",
+        "profile:suffix.test",
+        "profile:roots.excluded"
+      ],
+      "note": "Scan-scope exclusion. The exact test-file patterns (*.test.*, *.spec.*) live only in the profile (proposed suffix.test key), never in the core; the core's unless and verification bind the exclusion to that key generically. Vendored/build trees resolve to the stack-wide excluded list, whose exact classification the Bun checker owns (deferred in verification)."
+    },
+    {
+      "item": "unless[2]",
+      "as": [
+        "core:unless[2]",
+        "profile:layout.design_system_layers",
+        "profile:idiom.barrel_module"
+      ],
+      "note": "Token/foundation layers are the non-judged complement of the profiled first-level layer list; index.* is the barrel idiom."
+    },
+    {
+      "item": "unless[3]",
+      "as": [
+        "core:unless[3]",
+        "profile:idiom.component_export"
+      ],
+      "note": "'Capitalized' is the stack's component-identification idiom, carried by the profile."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "profile:layout.design_system_root"
+      ],
+      "note": "Self-scoping semantics go to verification; the concrete root directory names (design, design_system, design-system) are root-locator profile data only, with layer filtering left to layout.design_system_layers."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "profile:layout.design_system_layers"
+      ],
+      "note": "Layer-beneath-root scheme kept in verification; the concrete first-level layer names are profile data."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Generic consumer definition goes to verification; the ES import-clause/default-import phrasing is bunOnly."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification",
+        "profile:idiom.component_export",
+        "bunOnly"
+      ],
+      "note": "The check is described generically in verification; 'capitalized' comes from the component idiom key; the detector id is bunOnly."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Intra-system composition counting is neutral and in verification; the coder.vite.design-orphan-ui lineage reference is bunOnly."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Per-rule severity and disposition are rule-level verification facts, not profile keys."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "core:verification",
+        "profile:layout.design_system_root",
+        "profile:layout.design_system_layers"
+      ],
+      "note": "The path globs are the composite of the profiled root-directory names and the profiled judged first-level layer names, so they are not repeated as one key; the note's scope facts (any suffix, existing exports too) go to verification, and the fact itself becomes a neutral file_kind fact."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]",
+        "bunOnly"
+      ],
+      "note": "Finding fact kept neutrally with needs_new_observer; the detector id in the value is bunOnly."
+    }
+  ],
+  "neutralityNotes": "The design system itself is treated as a stack-neutral concept (the shared presentational component library; core obligation coder.design.orphan-export), so the title and why keep the term. Everything concrete about it — root directory names, judged vs. non-judged first-level layer directories, the capitalized-export component convention, barrel naming — is profile data via the proposed keys layout.design_system_root, layout.design_system_layers, idiom.component_export and idiom.barrel_module, because the closed vocabulary has no design-system entries; the Bun path globs are the composite of the root and layer keys and are not stored as a single key. The never-scanned test-file exception is bound to the profile's test-file patterns via the proposed suffix.test key: the exact patterns live only in the profile (bun.json exempts *.test.* and *.spec.* together, without binding either to a test kind, so no existing suffix.<file_kind> key fits) and the core refers to them only as 'the profile's test-file patterns'; vendored/build trees resolve to the one stack-wide roots.excluded list, whose exact classification the Bun checker owns (deference kept in core:verification). The ES-modules default-import clause, the detector id (bun_design_system_detector) and the coder.vite.design-orphan-ui lineage reference have no neutral equivalent and remain bunOnly.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.design-orphan-export.json",
+      "sha256": "c6e5a5f5ee70e9d0561155f1a2120a1c23c0825749dddc2a52c96f0fb557ba5f"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 3,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

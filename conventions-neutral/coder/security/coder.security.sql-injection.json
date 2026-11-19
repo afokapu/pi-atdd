@@ -1,0 +1,335 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.security.sql-injection",
+  "legacyId": "coder.bun.security-sql-injection",
+  "core": {
+    "title": "Parameterise SQL; never interpolate or concatenate it",
+    "given": "Code calls a query sink (a call that executes SQL; which calls count is stack data from the profile)",
+    "when": "SQL text is passed to that sink",
+    "then": "Do not build that SQL by string interpolation or concatenation; parameterise it — pass each value as a bound parameter through the stack's parameterising form, never spliced into the SQL text.",
+    "prefer": [
+      "Write the SQL as a static statement with placeholders and bind each value as a parameter.",
+      "Where the stack provides a form that binds every substitution as a parameter by construction, build the whole statement with it."
+    ],
+    "avoid": [
+      "Splicing a value into the SQL text by interpolation before the sink sees it.",
+      "Concatenating a SQL string with a value.",
+      "Mistaking a plain interpolated string for the stack's parameterising form; the two can look almost identical."
+    ],
+    "unless": [
+      "SQL passed through a form that parameterises each substitution by construction is parameterised and is never flagged.",
+      "An interpolation-assembled statement containing no SQL keyword is not SQL and is skipped; this keyword skip scopes only the interpolation check — the concatenation check has no such exemption and applies independently.",
+      "Static SQL with no interpolation is not injectable."
+    ],
+    "why": "A parameterising form binds each value as a parameter; interpolation or concatenation produces a finished SQL string before the sink sees it, so the values become part of the SQL.",
+    "evidence": [
+      "The stack's SQL-injection check reports no finding on the touched files (a finding is verification evidence, not a precondition for applying the rule).",
+      "Reviewer confirms every query-sink call touched passes either static SQL with no interpolation or concatenation, placeholders with bound parameters, or a form that parameterises each substitution by construction."
+    ],
+    "verification": [
+      "The check has two independent branches and flags a query-sink call when either fires: SQL text assembled by interpolation (a value spliced into the statement text), or a SQL string concatenated with another value. The concrete syntactic shapes are recognised by the realization in the stack's syntax.",
+      "The check skips: SQL passed through a form that parameterises each substitution by construction; interpolation-assembled statements containing no SQL keyword; and static SQL with no interpolation or concatenation. The keyword skip belongs to the interpolation branch only — it never suppresses the concatenation branch, which applies independently of it.",
+      "A form that parameterises each substitution is safe by construction yet can be visually almost identical to the unsafe plain form; the check flags only the unsafe form. This distinction is load-bearing.",
+      "Severity 4; disposition strict (declared by the rule, not the profile).",
+      "The change signal (SQL text passed to a query sink) is a scope signal, not an exclusive gate: it applies to any such call — new, edited, or existing being worked on. A realization gates conjunctively on stack membership (profile data), the languages of its in-scope files (profile data), and this change signal."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "change",
+          "values": [
+            "sql_text_passed_to_query_sink"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "A query sink receives SQL text assembled by interpolating a value into a statement with a SQL keyword.",
+        "A query sink receives SQL text built by concatenating a SQL string with a value.",
+        "SQL text assembled by interpolation or concatenation is passed to the stack's parameterising mechanism as a plain string instead of through its binding form.",
+        "Any of these shapes appears in a test file (any test role) or in an existing query-sink call being touched, not only in newly written code."
+      ],
+      "doesNotFire": [
+        "SQL is passed through the stack's binding form that parameterises each substitution by construction.",
+        "An interpolation-assembled statement containing no SQL keyword (not SQL); the keyword test never suppresses the concatenation branch, which applies independently.",
+        "Static SQL with no interpolation.",
+        "A query sink called with a placeholder statement plus bound parameter values.",
+        "The same call shape in a project that does not belong to this stack; this realization does not scope it."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "tooling.stack_signals",
+      "meaning": "How a repository (or the package containing the changed file) is recognised as belonging to this stack, so the rule can be scoped to it.",
+      "bunValue": "bun.lock, bun.lockb, bunfig.toml at the project root; or a file importing bun:sqlite / using Bun.sql"
+    },
+    {
+      "key": "tooling.in_scope_languages",
+      "meaning": "The languages of every in-scope file of the realization's checks — production source and test files alike — serving as the language gate, combined conjunctively with stack membership and the change signal.",
+      "bunValue": "typescript, javascript (applies to source and test files alike; no file-kind restriction)"
+    },
+    {
+      "key": "idiom.sql_query_sinks",
+      "meaning": "The calls that execute SQL in this stack (query sinks): the database APIs and client methods that run SQL text, needed to scope the rule and to detect the change signal.",
+      "bunValue": "bun:sqlite query / run / exec / prepare, Bun.sql, and postgres/mysql client methods (term query_sink: a call that executes SQL)"
+    },
+    {
+      "key": "idiom.sql_parameterisation",
+      "meaning": "The stack's safe forms for passing values with SQL — placeholder statements with bound parameters, and any form that parameterises every substitution by construction — including the warning that the safe form can be visually almost identical to the unsafe plain form.",
+      "bunValue": "placeholders with bound parameters, e.g. db.query(\"SELECT * FROM orders WHERE id = ?\").get(id); a tagged sql`` template (Bun.sql) which BINDS each substitution — safe by construction and visually almost identical to the untagged form that is not"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "tooling.stack_signals",
+      "group": "tooling",
+      "meaning": "How a repository (or package) is recognised as belonging to this stack: file markers and API-usage markers a stack observer can detect.",
+      "bunValue": "bun.lock, bun.lockb, bunfig.toml at the project root; or a file importing bun:sqlite / using Bun.sql",
+      "whyNoExistingKey": "tooling.lockfile.native and tooling.workspace_declaration each cover a single marker (lockfiles / package-manager declaration); stack membership here also rests on a runtime config file and runtime SQL API usage, and no existing key expresses 'how a repo is recognised as this stack'."
+    },
+    {
+      "key": "tooling.in_scope_languages",
+      "group": "tooling",
+      "meaning": "The languages of every file a stack's convention checks treat as in scope — production source and test files alike — serving as the realization's language gate.",
+      "bunValue": "typescript, javascript (applies to source and test files alike; no file-kind restriction)",
+      "whyNoExistingKey": "tooling.languages documents only the languages of production source; this rule's language gate applies to source and test files alike, and no existing key expresses the languages of all in-scope files."
+    },
+    {
+      "key": "idiom.sql_query_sinks",
+      "group": "idiom",
+      "meaning": "The calls that execute SQL in this stack (query sinks): the database APIs and client methods that run SQL text.",
+      "bunValue": "bun:sqlite query / run / exec / prepare, Bun.sql, and postgres/mysql client methods (a call that executes SQL)",
+      "whyNoExistingKey": "The idiom group covers boundary, auth, validation, markup and nesting idioms but has no data-access key; nothing names the calls that execute SQL, which both the rule's scope and its change observer need."
+    },
+    {
+      "key": "idiom.sql_parameterisation",
+      "group": "idiom",
+      "meaning": "The stack's safe forms for passing values with SQL: placeholder statements with bound parameters, and any form that parameterises every substitution by construction (noting when it is visually almost identical to the unsafe plain form).",
+      "bunValue": "placeholders with bound parameters, e.g. db.query(\"SELECT * FROM orders WHERE id = ?\").get(id); a tagged sql`` template (Bun.sql) which binds each substitution — safe by construction and visually almost identical to the untagged form that is not",
+      "whyNoExistingKey": "No existing idiom key describes SQL parameter binding; the core's then/prefer/unless must name the safe alternative concretely per stack, and no other key fits."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "activation.facts[0]",
+      "text": "path_glob values bun.lock, bun.lockb, bunfig.toml; a stack observer (needs_new_observer) detecting a Bun lockfile or bunfig.toml at the project root, or a file importing bun:sqlite / using Bun.sql.",
+      "reason": "How stack membership is detected is per-stack realization machinery; the neutral core needs only 'this project belongs to the stack' as profile data (proposed tooling.stack_signals), and the observer itself is realization-side."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "bun_security_hygiene_detector reports no SECURITY-SQL-INJECTION-001 finding on the touched files.",
+      "reason": "Detector and finding ids of this one rule are realization details; the core names the check generically."
+    },
+    {
+      "item": "unless[1]",
+      "text": "Template literals with no SQL keyword are not SQL and are skipped — the exception's syntactic carrier in Bun is the (untagged) template literal; the detector's keyword test applies only to the template-literal branch, never to the quoted-string concatenation branch.",
+      "reason": "The exception's applicability is syntactic: Bun exempts only the interpolation shape (template literals), and its concatenation branch has no such exemption. The neutral core keeps the exception scoped to interpolation-assembled statements and states that the concatenation check applies independently; naming the template-literal shape itself is this stack's syntax."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "text": "Flag a query-sink call whose first argument is a template literal containing both a SQL keyword and a ${} interpolation, or a quoted SQL string followed by +.",
+      "reason": "The concrete syntactic shapes (first-argument template literal, ${} interpolation, + concatenation, and the keyword test sitting only in the template-literal branch) are this stack's syntax as encoded in its detector; the neutral core states the check as two independent branches — interpolated SQL (keyword-gated) and concatenated SQL — with the keyword skip scoped to the interpolation branch."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "text": "Term tagged_template: sql`…` — a template invoking a function that PARAMETERISES each substitution; safe by construction and visually almost identical to the untagged form that is not; the detector therefore flags only the untagged shape.",
+      "reason": "The named Bun construct (the tagged sql template) has no neutral name; the neutral distinction (binding by construction vs plain string building) lives in core verification, and the construct itself is carried as profile data (idiom.sql_parameterisation)."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:idiom.sql_query_sinks"
+      ],
+      "note": "The neutral clause 'a call that executes SQL' is kept in core:given; the concrete sink enumeration (bun:sqlite query/run/exec/prepare, Bun.sql, postgres/mysql client methods) is stack data via the proposed key."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Already stack-neutral; kept verbatim."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "profile:idiom.sql_parameterisation"
+      ],
+      "note": "The prohibition (no interpolation, no concatenation) is neutral; the named safe forms (tagged sql`` template, placeholders with bound parameters) are the stack's parameterising forms, supplied by the profile. One obligation, unchanged in strength."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "The rationale is already stack-neutral; 'a tagged template' is generalized to 'a parameterising form'."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]",
+        "profile:idiom.sql_parameterisation"
+      ],
+      "note": "Neutral guidance: static statement with placeholders, values bound as parameters. The concrete code line stays in the Bun reference example."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]",
+        "profile:idiom.sql_parameterisation"
+      ],
+      "note": "Neutral guidance: use the form that binds every substitution by construction. The concrete tagged sql`` example stays in the Bun reference."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Neutralized to 'splicing a value into the SQL text by interpolation'; the concrete untagged template example stays in the Bun reference."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Neutral as written: concatenating a SQL string with a value."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]",
+        "profile:idiom.sql_parameterisation"
+      ],
+      "note": "Neutralized to mistaking a plain interpolated string for the stack's parameterising form; the tagged-vs-untagged template instance is the Bun case, carried by the profile key."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]",
+        "profile:idiom.sql_parameterisation"
+      ],
+      "note": "Exception preserved verbatim in strength: a form that parameterises each substitution by construction is never flagged; 'tagged templates (sql`...`)' is the Bun instance of that form."
+    },
+    {
+      "item": "unless[1]",
+      "as": [
+        "core:unless[1]",
+        "bunOnly"
+      ],
+      "note": "The exception is kept with its syntactic applicability: the neutral core exempts only interpolation-assembled statements containing no SQL keyword and states explicitly that the concatenation check has no such exemption and applies independently — matching Bun, where only template literals get the keyword skip. The Bun shape (template literal) is retained in the realization (bunOnly)."
+    },
+    {
+      "item": "unless[2]",
+      "as": [
+        "core:unless[2]"
+      ],
+      "note": "Already stack-neutral; kept."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ],
+      "note": "Neutral shape ('the check reports no finding; a finding is verification evidence, not a precondition') goes to core; the detector name and finding id are realization details (bunOnly)."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]",
+        "profile:idiom.sql_parameterisation"
+      ],
+      "note": "Neutralized: 'tagged sql`` template' becomes 'a form that parameterises each substitution by construction'; the reviewer-confirmation obligation is unchanged, including 'static SQL with no interpolation or concatenation' as Bun itself words it."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:given",
+        "profile:idiom.sql_query_sinks"
+      ],
+      "note": "The term definition 'a call that executes SQL' is neutral (restated in core:given); the sink list is stack data via the proposed key."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "The generic two-branch flag condition (interpolated SQL, keyword-gated; concatenated SQL, independent) is in core:verification; the concrete syntactic shapes (first-argument template literal, ${}, +) are this realization's detector logic (bunOnly). The keyword gate stays on the interpolation branch only, so the concatenation branch is not weakened."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "The load-bearing safe-by-construction vs plain-string distinction (and 'flags only the unsafe form') is neutral and in core:verification; it also underpins core:why, core:avoid[2] and core:unless[0]. The named tagged_template term is bunOnly."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "The skip list mirrors unless[0..2] and is restated generically in core:verification, with the keyword skip scoped to the interpolation branch and the concatenation branch preserved independently."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Per-rule severity 4 and strict disposition stay with the rule (core:verification), not the profile."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "bunOnly",
+        "profile:tooling.stack_signals"
+      ],
+      "note": "The stack-membership gate has no closed neutral activation-fact kind; its signals are stack data (proposed tooling.stack_signals) and the observer machinery is bunOnly. Instantiation restores the gate."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "profile:tooling.in_scope_languages"
+      ],
+      "note": "The language gate covers source and test files alike (no file-kind restriction in the source), so tooling.languages — documented as languages of production source only — does not fit; the gate is carried by the proposed key tooling.in_scope_languages instead. The closed neutral fact vocabulary has no language fact, so the core carries none — instantiation with the profile restores it (conjunctive with stack membership and the change signal)."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[0]",
+        "core:verification",
+        "profile:idiom.sql_query_sinks"
+      ],
+      "note": "Neutralized to the change fact sql_text_passed_to_query_sink; recognizing the sinks needs the profile sink list; the 'scope signal, not an exclusive gate / any such call' note is kept in core:verification."
+    }
+  ],
+  "neutralityNotes": "The obligation itself (never build SQL by interpolation or concatenation; bind values as parameters) is fully neutral. What could not be neutralized: (1) the load-bearing tagged-vs-untagged template distinction is the Bun instance of a neutral distinction (a form that binds every substitution by construction vs plain string building); the neutral distinction is kept in core (verification, why, avoid[2], unless[0]) while the named construct is profile data (proposed idiom.sql_parameterisation) and the detector's syntactic shapes are bunOnly. (2) The no-keyword skip is syntactic in Bun — it exempts only template literals, and the quoted-string concatenation branch has no such exemption; the neutral core therefore scopes the skip to interpolation-assembled statements and states in unless[1], verification[1] and doesNotFire that the concatenation branch applies independently of it, with the template-literal shape itself retained in the realization (bunOnly unless[1]). (3) Stack-membership and language gates have no closed neutral activation-fact kind (the fact vocabulary offers role/operation/change/phase/finding/file_kind/task_term/task_has_acceptance), so they are carried as profile data (proposed tooling.stack_signals; proposed tooling.in_scope_languages — the latter because tooling.languages documents production-source languages only, while the Bun gate covers source and test files alike) plus a bunOnly entry for the Bun observer; the core keeps only the change fact and states the conjunctive gating in verification. (4) Detector, validator and finding ids, and the concrete first-argument/`${}`/`+` flag shapes, remain bunOnly per the notProfileKeys rule; severity 4 and strict disposition stay in core:verification. Instantiating the core with the Bun profile values and the bunOnly items reproduces bun.json's scope and obligation exactly — no exception dropped (the keyword skip keeps its template-literal-only reach), no condition added.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.security-sql-injection.json",
+      "sha256": "cd7283b7cfa449ca62a502391346c6a803733d35b07d82162cde49d7d7d1dba1"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

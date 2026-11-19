@@ -1,0 +1,397 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.station-master.journey-routing",
+  "legacyId": "coder.bun.station-master-journey-routing",
+  "core": {
+    "title": "Make every exposed journey reachable from the composition root through the journey runner",
+    "given": "a journey document (a plan artifact, layout.plan_item) declares entrypoint.exposed=true and a composition root exists (roles.composition_root)",
+    "when": "the repository is in that state (standing invariant; pre-existing violations count, edits are not required)",
+    "then": "every declared entrypoint action of that journey MUST be reachable from the composition root via a route-table entry (idiom.action_route_map) that binds the action to that same journey document, by its journey identifier and its canonical journey document path (layout.plan_item).",
+    "prefer": [
+      "Dispatch journey routes through the journey runner (idiom.journey_runner) — the composition root MUST reference it — so dispatch runs composition root -> journey runner -> the runners below it.",
+      "Keep journey routes additive to the existing route forms in the route table: the direct train route (urn.train) and the grouping route."
+    ],
+    "avoid": [
+      "Restating continuation edges in the route table; it only establishes external reachability, and the journey document is authoritative for continuation topology.",
+      "Weakening existing direct-train or grouping mappings.",
+      "Binding a route entry to a journey identifier or document other than the declaring one, or bypassing the journey runner."
+    ],
+    "unless": [
+      "entrypoint.exposed=false: internal journeys are intentionally not reachable from the composition root.",
+      "No composition root exists yet (planning phase), as for exposed grouping artifacts."
+    ],
+    "why": "An exposed journey is executable only if the public entry reaches it through the journey runner (idiom.journey_runner); this closes the public entry direction of the journey topology.",
+    "evidence": [
+      "The check reads the journey documents (layout.plan_item), selects exposed ones, and reports no unmapped action: each declared action is bound to the same journey identifier and document path in the composition root's route table.",
+      "The composition root references the journey runner (idiom.journey_runner).",
+      "Journey route values do not restate continuation edges, and existing direct-train and grouping mappings are not weakened."
+    ],
+    "verification": [
+      "Scope: the check scans the journey document tree (layout.plan_item), selects documents whose entrypoint is declared exposed, and skips documents declared internal.",
+      "For each declared entrypoint action of an exposed journey, the check requires a route-table entry (idiom.action_route_map) in the composition root whose value binds the declaring document's journey identifier and its canonical journey document path (layout.plan_item).",
+      "The check requires the composition root to reference the journey runner (idiom.journey_runner) whenever an exposed journey exists, independent of whether any journey entries exist in the route table.",
+      "The route table admits three additive route forms (direct train, grouping, journey; idiom.action_route_map, urn.train); only the journey form is covered by this check.",
+      "The check emits no finding when the repository has no composition root yet (planning phase).",
+      "Severity 4; disposition strict: the rule fails on every finding.",
+      "Standing invariant: the check inspects whole-repository state, not only the current change; pre-existing violations are findings, and the change facts are discovery hints only, not enforcement prerequisites.",
+      "Term journey_reachability: the declaration-to-composition-root binding that makes an exposed journey executable.",
+      "Term journey_mapping: a composition-root route-table value binding a journey identifier and the canonical journey document path."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "journey document (plan artifact declaring an entrypoint)"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "role",
+          "values": [
+            "composition_root"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "journey document entrypoint exposure or entrypoint actions edited",
+            "composition-root journey route entries or journey-runner reference edited"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "exposed journey action unmapped or mis-mapped in the composition root's route table",
+            "composition root does not reference the journey runner while an exposed journey exists"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "An exposed journey (entrypoint.exposed=true) has a declared entrypoint action with no route-table entry in the composition root, whether or not the current task edited it.",
+        "A route-table entry for an exposed journey action binds a different journey identifier or document path than the declaring journey document.",
+        "An exposed journey exists and the composition root does not reference the journey runner, even if the route table has no journey entries yet.",
+        "A change touches only direct-train or grouping mappings while an exposed journey action is already unmapped."
+      ],
+      "doesNotFire": [
+        "The journey document declares entrypoint.exposed=false (internal journey).",
+        "The repository is in the planning phase and has no composition root yet."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roles.composition_root.path",
+      "meaning": "Where the composition root lives; its presence is the condition under which the reachability obligation applies.",
+      "bunValue": "**/server.ts"
+    },
+    {
+      "key": "roles.composition_root.name",
+      "meaning": "The stack's local name for the composition root, used throughout the Bun texts.",
+      "bunValue": "Station Master"
+    },
+    {
+      "key": "layout.plan_item",
+      "meaning": "Where journey documents (plan artifacts declaring an entrypoint) live, and the canonical path a journey route entry must point to; the check's discovery scope is derived from this pattern.",
+      "bunValue": "plan/_journeys/<id>.yaml; journey documents discovered at plan/_journeys/**/*.yaml"
+    },
+    {
+      "key": "idiom.action_route_map",
+      "meaning": "The composition-root construct that maps each entrypoint action to a route, with its additive route forms; the journey form binds { journeyId, path }.",
+      "bunValue": "JOURNEY_MAP in server.ts; additive forms: \"train:<subject>:<slug>\", { interlockingId, path }, { journeyId, path }"
+    },
+    {
+      "key": "idiom.journey_runner",
+      "meaning": "The construct through which the composition root dispatches a journey route, and which it must reference.",
+      "bunValue": "JourneyRunner; Station Master -> JourneyRunner(journeyPath) -> InterlockingRunner -> TrainRunner"
+    },
+    {
+      "key": "urn.train",
+      "meaning": "The URN shape of the direct train route form that journey routes must stay additive to.",
+      "bunValue": "train:<subject>:<slug>"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "idiom.action_route_map",
+      "group": "idiom",
+      "meaning": "The composition-root construct that maps each entrypoint action to a route (direct train, grouping, or journey form).",
+      "bunValue": "JOURNEY_MAP in server.ts; additive forms: \"train:<subject>:<slug>\", { interlockingId, path }, { journeyId, path }",
+      "whyNoExistingKey": "idiom.route_handler describes a boundary handler, not the composition root's action-to-route table; no existing key names the route table or its entry forms."
+    },
+    {
+      "key": "idiom.journey_runner",
+      "group": "idiom",
+      "meaning": "The construct through which the composition root dispatches a journey route, and which the composition root must reference.",
+      "bunValue": "JourneyRunner; Station Master -> JourneyRunner(journeyPath) -> InterlockingRunner -> TrainRunner",
+      "whyNoExistingKey": "idiom.machinery covers delivery machinery (server, transport, runtime), not the domain dispatch runner for journeys; no existing key names the journey runner."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "activation.facts[2]",
+      "text": "language: [\"typescript\", \"bun\"]; note: \"Bun realization only.\"",
+      "reason": "Language/runtime scoping is realization-only; the neutral core activates on artifact roles and plan artifacts, never on a language or runtime."
+    },
+    {
+      "item": "activation.facts[4]",
+      "text": "finding: \"coder.bun.station-master-journey-routing\"",
+      "reason": "The validator/finding id of this one rule is a realization detail; the core's verification names the check generically and the core finding fact uses a role-level description."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:layout.plan_item",
+        "profile:roles.composition_root.path",
+        "profile:roles.composition_root.name"
+      ],
+      "note": "Journey document location (layout.plan_item; journeys are plan artifacts) and composition root (path and local name) come from the profile; entrypoint.exposed is plan-artifact data."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when",
+        "core:verification"
+      ],
+      "note": "Already neutral; the standing-invariant semantics (pre-existing violations count) is also stated as verifier scope."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "profile:idiom.action_route_map",
+        "profile:layout.plan_item"
+      ],
+      "note": "JOURNEY_MAP entry { journeyId, path } becomes a route-table entry binding the declaring document's identifier and canonical plan-artifact path."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why",
+        "profile:idiom.journey_runner"
+      ],
+      "note": "Neutral except the runner name, supplied by the profile."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]",
+        "profile:idiom.journey_runner"
+      ],
+      "note": "Preserves the source's second MUST (composition root references the journey runner); the concrete chain lives in idiom.journey_runner."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]",
+        "profile:idiom.action_route_map",
+        "profile:urn.train"
+      ],
+      "note": "The two existing route forms; the train URN shape and the table's entry forms come from the profile."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]",
+        "profile:idiom.action_route_map"
+      ],
+      "note": "Route table named via profile; the authority principle is neutral."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "\"direct-interlocking\" neutralized to \"grouping\"; concrete forms carried by idiom.action_route_map."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]",
+        "profile:idiom.journey_runner"
+      ],
+      "note": "Mis-binding and runner bypass, both neutral."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]"
+      ],
+      "note": "Exception kept verbatim in substance; entrypoint.exposed is plan-artifact data."
+    },
+    {
+      "item": "unless[1]",
+      "as": [
+        "core:unless[1]",
+        "profile:roles.composition_root.path"
+      ],
+      "note": "PLAN stage becomes \"planning phase\"; absence of the composition root defines the exception."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "core:verification",
+        "profile:layout.plan_item"
+      ],
+      "note": "Scan glob plan/_journeys/**/*.yaml is the discovery scope of layout.plan_item; the check itself is described generically in verification."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]",
+        "profile:idiom.journey_runner"
+      ],
+      "note": "server.ts -> composition root; JourneyRunner -> idiom.journey_runner."
+    },
+    {
+      "item": "evidence[2]",
+      "as": [
+        "core:evidence[2]",
+        "profile:idiom.action_route_map"
+      ],
+      "note": "\"JOURNEY_MAP journey values\" -> journey route values in the route table."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "profile:layout.plan_item"
+      ],
+      "note": "Scan/select/skip procedure, neutralized via the plan-artifact location key (journey documents are plan artifacts)."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "profile:idiom.action_route_map",
+        "profile:layout.plan_item"
+      ],
+      "note": "Per-action mapping requirement restated as generic check scope; the canonical path is the plan_item pattern."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification",
+        "profile:idiom.journey_runner"
+      ],
+      "note": "Journey-runner reference requirement, independent of existing mappings."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification",
+        "profile:idiom.action_route_map",
+        "profile:urn.train"
+      ],
+      "note": "The three additive route forms and the scope note that only the journey form is checked."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "No-finding condition when no composition root exists."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Per-rule severity and disposition are not profile keys; they stay in core verification."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Term journey_reachability is already stack-neutral."
+    },
+    {
+      "item": "verifier_detail[7]",
+      "as": [
+        "core:verification",
+        "profile:idiom.action_route_map",
+        "profile:layout.plan_item"
+      ],
+      "note": "Term journey_mapping neutralized: composition-root route-table value binding a journey identifier and the canonical plan-artifact path."
+    },
+    {
+      "item": "verifier_detail[8]",
+      "as": [
+        "core:verification",
+        "core:when"
+      ],
+      "note": "Whole-repo check, pre-existing violations are findings; mirrors the standing-invariant when."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:layout.plan_item"
+      ],
+      "note": "path_glob becomes a file_kind fact on journey documents; the glob is the discovery scope of the plan_item pattern."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:roles.composition_root.path"
+      ],
+      "note": "path_glob **/server.ts becomes a role fact on the composition root; the path is the profile value."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "Language fact scopes the rule to the Bun realization; the core needs no language fact (languages would live in tooling.languages)."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[2]",
+        "core:verification"
+      ],
+      "note": "Change fact kept as discovery hint; its non-enforcement caveat is restated in verification (standing invariant)."
+    },
+    {
+      "item": "activation.facts[4]",
+      "as": [
+        "core:activation.facts[3]",
+        "bunOnly"
+      ],
+      "note": "Core finding fact is role-level; the concrete validator finding id is realization-only."
+    }
+  ],
+  "neutralityNotes": "The journey document's own schema (entrypoint.exposed, journey_id, declared entrypoint actions) is treated as stack-neutral plan-artifact data, not stack mechanism, so those field names appear in the core verbatim; if another stack's journey documents declare exposure differently, a profile key for the exposure declaration would be needed. The journey document's location and canonical path are carried by layout.plan_item (a journey document is a plan artifact), whose Bun value is the journey tree plan/_journeys/<id>.yaml with discovery scope plan/_journeys/**/*.yaml. The stack names Station Master, server.ts, JOURNEY_MAP and JourneyRunner are realized through profile keys (roles.composition_root.name/path and the proposed idiom.action_route_map / idiom.journey_runner). \"Interlocking\" has no vocabulary key, so the core says \"grouping\"; the concrete grouping route form { interlockingId, path } and the runner chain JourneyRunner -> InterlockingRunner -> TrainRunner are carried inside idiom.action_route_map and idiom.journey_runner bunValues. Severity and disposition stay in core verification; the validator and finding ids are bunOnly.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.station-master-journey-routing.json",
+      "sha256": "712e0da4a7a245e771aedd7a0291222df04a19b9fe839130e6610645a3637b9a"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

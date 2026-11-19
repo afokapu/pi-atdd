@@ -1,0 +1,482 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.duplication.intra-layer",
+  "legacyId": "coder.bun.duplication-intra-layer",
+  "core": {
+    "title": "Own each duplicated fragment once within its layer",
+    "given": "two non-test production-source files of the same architectural layer share a run of 7 or more non-trivial lines that match after normalization (comments stripped; identifiers, strings and numbers folded, so renames don't hide it)",
+    "when": "the repository-wide duplication scan reports the pair, whether the duplicate is newly introduced or pre-existing",
+    "then": "Resolve it semantically: own one shared concept once within that layer, or make the real differences of two distinct responsibilities explicit.",
+    "prefer": [
+      "Before extracting, check both share a responsibility and change reason, find the smallest stable shared behavior, and confirm it belongs in that layer.",
+      "For one concept, extract a focused function/module within the layer.",
+      "Name shared behavior by its domain or responsibility.",
+      "For different responsibilities, keep them independent and express real differences directly."
+    ],
+    "avoid": [
+      "Renaming identifiers, changing literals, reordering harmless statements or other cosmetic edits to defeat normalization.",
+      "Cross-layer abstractions made just because layers hold similar-shaped code.",
+      "Highly parameterized generic helpers that obscure callers' intent.",
+      "Forcing distinct responsibilities into one abstraction to remove the finding.",
+      "A refactor that removes this finding but introduces new violations of the stack's conventions."
+    ],
+    "unless": [
+      "Test artifacts, declaration-only files and re-export barrel files are excluded from the scan: the identifying patterns come from the stack's profile, and the exclusion itself is this rule's scan policy.",
+      "Files with no determinable layer are not judged."
+    ],
+    "why": "A duplicate fingerprint is only a sensor that two sites MAY share one responsibility or change reason, so diagnose before extracting. The intra-layer limit is deliberate: twice in one layer is the shape that genuinely wants extracting; across layers it is usually two obligations, and merging couples layers that should move independently.",
+    "evidence": [
+      "The duplication finding for the pair is gone after the change.",
+      "The duplicate was removed because ownership became clearer or because genuine semantic differences are now explicit — not via renames, literal changes or reordering.",
+      "Dependency direction and layer boundaries remain valid (no cross-layer abstraction introduced).",
+      "Any extracted abstraction has one coherent reason to change.",
+      "Existing behavior and tests remain green.",
+      "The refactor introduces no new violations of the stack's conventions (the stack's convention run after the change reports no new findings)."
+    ],
+    "verification": [
+      "Threshold: a run of 7 or more non-trivial normalized lines appearing in two different production-source files of the SAME architectural layer is a finding; comparison happens only within a layer.",
+      "Normalization per line: strip comments, fold string literals, numbers and non-keyword identifiers to placeholders, so renaming a variable cannot hide a duplicate and the fingerprint tracks STRUCTURE rather than text.",
+      "Trivial lines (bare braces, closing punctuation) are dropped and not counted toward the 7; every sliding window of 7 lines is fingerprinted and compared only within a layer.",
+      "Import and re-export declarations are not counted: two files importing the same names from one shared module match because the logic was shared, which is the fix this rule asks for.",
+      "Purely declarative shape-member signatures (fields of a type/interface-style body, including members of nested shapes) are not counted: unrelated records with the same number of same-typed fields match once identifiers are folded, and neither coupling them nor a cosmetic edit is a fix.",
+      "Executable statements, object literals, class fields, enum bodies and method bodies still count.",
+      "Scope: a repository-wide cross-file scan over every qualifying same-layer pair, whether newly introduced or pre-existing (strict, no baseline); it is not gated on which files the current diff touched. The scan excludes the file kinds identified positively by the stack's profile as test kinds, declaration-only files and re-export barrels (the exclusion itself is this rule's scan policy, not the profile's); files with undeterminable layer are not judged — with no established layer there is no intra-layer comparison, and unclassified paths are never compared with each other.",
+      "Enforcement: severity 2; disposition strict — every reported finding fails, including pre-existing ones; there is no advisory mode and no ratchet baseline. The check only reports structural duplication; the semantic diagnosis (one concept vs two responsibilities) is the agent's obligation, not the checker's."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "production source"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "role",
+          "values": [
+            "any classified layer"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "intra-layer structural duplication"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "A run of 7+ non-trivial normalized lines in one domain-layer file also appears in another domain-layer file, even if variables were renamed and literals differ.",
+        "Two application-layer handlers share a run of 7+ non-trivial normalized executable lines differing only in identifiers and string literals.",
+        "A qualifying same-layer duplicate already existed before the current task and is untouched by the diff; the repository-wide scan still reports it."
+      ],
+      "doesNotFire": [
+        "The same shape appears once in the domain layer and once in the presentation layer.",
+        "The match is in test artifacts, declaration-only files, or re-export barrel files.",
+        "The only matching lines are import/re-export declarations, bare braces/closing punctuation, or property/field signatures of declarative shape (type/interface-style) bodies.",
+        "One or both files cannot be assigned to a layer.",
+        "The duplicated run is shorter than 7 non-trivial normalized lines."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "suffix.source",
+      "meaning": "Which file kinds count as production source and are the files the duplication scan compares.",
+      "bunValue": "**/*.ts, **/*.tsx"
+    },
+    {
+      "key": "suffix.unit_test",
+      "meaning": "The positive patterns that identify test artifacts; the core's scan policy excludes files matching these patterns from the duplication scan (the exclusion polarity belongs to the core, not to this data).",
+      "bunValue": "**/*.test.*, **/*.spec.*, **/__tests__/**"
+    },
+    {
+      "key": "suffix.declaration_file",
+      "meaning": "The positive patterns that identify the stack's declaration-only files (ambient/declaration type files with no executable code); the core's scan policy excludes files matching these patterns from the duplication scan.",
+      "bunValue": "**/*.d.ts"
+    },
+    {
+      "key": "suffix.barrel",
+      "meaning": "The positive patterns that identify the stack's re-export barrel files; the core's scan policy excludes files matching these patterns from the duplication scan.",
+      "bunValue": "**/index.ts"
+    },
+    {
+      "key": "roles.assignment",
+      "meaning": "How a file is assigned to an architectural layer, and that a file with no assignable layer is out of scope (never compared with another).",
+      "bunValue": "any classified layer — Both files must resolve to the SAME architectural layer; unclassified paths are never judged."
+    },
+    {
+      "key": "tooling.languages",
+      "meaning": "The language(s) of the production source that the scan covers.",
+      "bunValue": "typescript"
+    },
+    {
+      "key": "roots.scan",
+      "meaning": "The scope the repository-wide duplication scan covers.",
+      "bunValue": "the whole tree (cross-file fingerprint scan over the whole tree)"
+    },
+    {
+      "key": "enforcement.runner",
+      "meaning": "The tool whose post-change run must report no new findings.",
+      "bunValue": "atdd-bun"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "suffix.declaration_file",
+      "group": "suffix",
+      "meaning": "Name patterns that identify the stack's declaration-only files (ambient/declaration type files with no executable code), so a rule can state its own policy over this file kind.",
+      "bunValue": "**/*.d.ts",
+      "whyNoExistingKey": "The suffix group's file_kind params (source, unit_test, acceptance_test, e2e_test, markup, plan_artifact, config) include no declaration-file kind, and no other group identifies this artifact kind; this rule's scan excludes it by rule policy, so other stack profiles need a key to supply the equivalent patterns."
+    },
+    {
+      "key": "suffix.barrel",
+      "group": "suffix",
+      "meaning": "Name patterns that identify the stack's barrel files (re-export-only entry files), so a rule can state its own policy over this file kind.",
+      "bunValue": "**/index.ts",
+      "whyNoExistingKey": "The suffix group's file_kind params include no barrel/re-export kind, and no other group identifies this artifact kind; this rule's scan excludes barrels by rule policy, so other stack profiles need a key to supply the equivalent patterns."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "when",
+      "text": "(DUPLICATION-TS-001)",
+      "reason": "Finding id of this rule's Bun realization; the core names the repository-wide duplication scan generically."
+    },
+    {
+      "item": "avoid[4]",
+      "text": "introduces new ATDD Bun violations",
+      "reason": "Names the Bun ruleset; the neutral core says 'new violations of the stack's conventions'."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "The DUPLICATION-TS-001 finding",
+      "reason": "The finding alias is a realization detail; the core speaks of the duplication finding for the pair."
+    },
+    {
+      "item": "evidence[5]",
+      "text": "no new ATDD Bun violations (the atdd-bun run after the change reports no new findings)",
+      "reason": "Ruleset and runner names; the core defers to the stack's convention runner (enforcement.runner)."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "text": "(sha256-prefix fingerprint)",
+      "reason": "The concrete hash construction belongs to the Bun detector; the core only requires structural fingerprinting of each sliding window."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "text": "Property signatures inside a `type X = {` or `interface X {` body (optional `readonly`, a name, optional `?`, `:` a type, ending `;` or `,`), including members of nested object types",
+      "reason": "TypeScript type-system grammar with no neutral equivalent; the core keeps the neutral exclusion of declarative shape-member signatures."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "text": "the negated-glob encoding of the exclusion set (!**/*.test.*, !**/*.spec.*, !**/*.d.ts, !**/index.ts, !**/__tests__/**)",
+      "reason": "The `!` prefix is the Bun checker's encoding of the scan's exclusion; the excluded kinds themselves are identified positively by the profile keys suffix.unit_test, suffix.declaration_file and suffix.barrel, and the exclusion is the core's own scan policy."
+    },
+    {
+      "item": "verifier_detail[7]",
+      "text": "Detector: bun_ts_metrics_detector (validator); core alias DUPLICATION-TS-001",
+      "reason": "Detector and finding ids are realization details; the core states severity and the strict disposition generically."
+    },
+    {
+      "item": "activation.facts[1]",
+      "text": "the negated-glob encoding (! prefix) of the scan's exclusion set",
+      "reason": "The compared and excluded file kinds are carried positively by suffix.source, suffix.unit_test, suffix.declaration_file and suffix.barrel; only the `!` negation syntax is the Bun checker's encoding, which the core restates as its own scan policy."
+    },
+    {
+      "item": "activation.facts[3]",
+      "text": "DUPLICATION-TS-001; requires the bun_ts_metrics_detector cross-file fingerprint scan",
+      "reason": "Finding and detector ids; the core describes the needed cross-file structural scan generically."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:suffix.source",
+        "profile:suffix.unit_test"
+      ],
+      "note": "'two non-test TypeScript files' becomes 'two non-test production-source files': the source kinds come from suffix.source, and 'non-test' means files not matching the positive test-kind patterns of suffix.unit_test — the exclusion polarity is the core's, the patterns only identify the kind. The normalization parenthetical is kept."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when",
+        "bunOnly"
+      ],
+      "note": "'whole-tree duplication scan ... new or pre-existing' is neutral; the DUPLICATION-TS-001 alias is bunOnly."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then"
+      ],
+      "note": "Already role-level; kept verbatim."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Already stack-neutral; kept verbatim."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]"
+      ],
+      "note": "Neutral as written."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]"
+      ],
+      "note": "Neutral as written."
+    },
+    {
+      "item": "prefer[2]",
+      "as": [
+        "core:prefer[2]"
+      ],
+      "note": "Neutral as written."
+    },
+    {
+      "item": "prefer[3]",
+      "as": [
+        "core:prefer[3]"
+      ],
+      "note": "Neutral as written."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Neutral as written."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Neutral as written."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]"
+      ],
+      "note": "Neutral as written."
+    },
+    {
+      "item": "avoid[3]",
+      "as": [
+        "core:avoid[3]"
+      ],
+      "note": "Neutral as written."
+    },
+    {
+      "item": "avoid[4]",
+      "as": [
+        "core:avoid[4]",
+        "bunOnly"
+      ],
+      "note": "The obligation is kept ('do not trade this finding for new convention violations'); the ATDD Bun ruleset name is bunOnly."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]",
+        "profile:suffix.unit_test",
+        "profile:suffix.declaration_file",
+        "profile:suffix.barrel",
+        "bunOnly"
+      ],
+      "note": "The three excluded file kinds (tests/specs/__tests__, declaration-only files, re-export barrels) are identified positively by the profile keys suffix.unit_test, suffix.declaration_file and suffix.barrel; the exclusion itself is the core's scan policy (polarity in the core, per the vocabulary's meaning of suffix keys); the `!` negated-glob encoding is the Bun checker's and stays bunOnly."
+    },
+    {
+      "item": "unless[1]",
+      "as": [
+        "core:unless[1]",
+        "core:activation.facts[1]",
+        "profile:roles.assignment"
+      ],
+      "note": "Neutral condition; the layer-assignment mechanism comes from the profile."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ],
+      "note": "Neutralized to 'the duplication finding'; the alias is bunOnly."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]"
+      ],
+      "note": "Neutral as written."
+    },
+    {
+      "item": "evidence[2]",
+      "as": [
+        "core:evidence[2]"
+      ],
+      "note": "Neutral as written."
+    },
+    {
+      "item": "evidence[3]",
+      "as": [
+        "core:evidence[3]"
+      ],
+      "note": "Neutral as written."
+    },
+    {
+      "item": "evidence[4]",
+      "as": [
+        "core:evidence[4]"
+      ],
+      "note": "Neutral as written (phase-loop policy)."
+    },
+    {
+      "item": "evidence[5]",
+      "as": [
+        "core:evidence[5]",
+        "profile:enforcement.runner",
+        "bunOnly"
+      ],
+      "note": "Neutralized to the stack's convention run; the runner is a profile key, the ATDD Bun/atdd-bun names are bunOnly."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "profile:suffix.source"
+      ],
+      "note": "The 7-line same-layer threshold is the rule's own, kept neutral; 'TypeScript files' comes from the profile's source kinds."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Normalization mechanism is neutral; the concrete folding tokens ('S', 0, ID) are one encoding of 'fold to placeholders'."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Trivial-line dropping and the sliding 7-line window compared within a layer are neutral; the sha256-prefix fingerprint construction is bunOnly."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Import/re-export exclusion and its rationale are stack-neutral."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "The exclusion of declarative shape-member signatures is kept neutrally; the TypeScript type/interface grammar is bunOnly."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "What still counts (executable statements, object literals, class fields, enum bodies, method bodies) is neutral."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "as": [
+        "core:verification",
+        "profile:suffix.unit_test",
+        "profile:suffix.declaration_file",
+        "profile:suffix.barrel",
+        "bunOnly"
+      ],
+      "note": "Tests/specs/__tests__, declaration-only files (.d.ts) and barrels (index.ts) are excluded by the core's scan policy as the files positively identified by suffix.unit_test, suffix.declaration_file and suffix.barrel (round 3: these two new keys carry the Bun values **/*.d.ts and **/index.ts instead of leaving them stranded in bunOnly); only the negated-glob encoding is bunOnly; the unclassified-never-compared rule is neutral verification."
+    },
+    {
+      "item": "verifier_detail[7]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Severity and strict disposition (per rule 7) go to core:verification; detector name and finding alias are bunOnly."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:tooling.languages"
+      ],
+      "note": "'language: typescript' becomes the stack's production-source scope; the language value lives in tooling.languages."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:suffix.source",
+        "profile:suffix.unit_test",
+        "profile:suffix.declaration_file",
+        "profile:suffix.barrel",
+        "bunOnly"
+      ],
+      "note": "The source patterns map to suffix.source; the test patterns **/*.test.*, **/*.spec.*, **/__tests__/** are the positive test-kind identification carried by suffix.unit_test; **/*.d.ts and **/index.ts are the positive identification of declaration-only files and barrels carried by the new keys suffix.declaration_file and suffix.barrel (round 3); the exclusion itself is the core's scan policy; only the `!` negation encoding is bunOnly."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:roles.assignment"
+      ],
+      "note": "Same-layer requirement; assignment of files to layers comes from the profile."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[2]",
+        "core:verification",
+        "profile:roots.scan",
+        "bunOnly"
+      ],
+      "note": "The cross-file whole-tree scan, strict no-baseline scope and not-diff-gated semantics are neutral; the finding and detector ids are bunOnly; the scan scope is a profile key."
+    }
+  ],
+  "neutralityNotes": "The obligation, threshold (a run of 7 or more non-trivial normalized lines in two same-layer source files), strict no-baseline disposition and all prefer/avoid/evidence guidance are stack-neutral and kept in the core. Polarity note (audit round 2): the Bun sidecar encodes the scan's exclusion set as negated globs inside its activation fact; per the closed vocabulary the profile carries the POSITIVE patterns for each excluded kind, and the exclusion itself is stated by the core's scan policy (unless[0] and the scope verification entry). Round 3: the declaration-file and barrel patterns are no longer stranded in bunOnly — the newly proposed keys suffix.declaration_file (**/*.d.ts) and suffix.barrel (**/index.ts) carry them as profile data (alongside suffix.unit_test: **/*.test.*, **/*.spec.*, **/__tests__/**), while only the `!` negated-glob encoding remains bunOnly; roots.excluded is deliberately NOT used, since it denotes stack-wide vendored/generated trees, not this rule-specific scan exclusion. What could not be made neutral: the concrete normalization table tokens ('S', 0, ID) and the sha256-prefix fingerprint (detector mechanics, generalized to 'fold to placeholders' and 'structural fingerprint'); the TypeScript type/interface grammar for excluded property signatures (generalized to declarative shape-member signatures); and the detector/finding ids (bun_ts_metrics_detector, DUPLICATION-TS-001) plus the ATDD Bun ruleset framing (bunOnly per the notProfileKeys list; the core defers to the stack's convention runner via enforcement.runner).",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.duplication-intra-layer.json",
+      "sha256": "8fbacf080995acd2afe959367d75af839481dd2d88fe909f5b9e73d4cbd1ac08"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 3,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

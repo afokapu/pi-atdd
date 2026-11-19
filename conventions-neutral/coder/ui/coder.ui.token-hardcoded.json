@@ -1,0 +1,469 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.ui.token-hardcoded",
+  "legacyId": "coder.bun.design-token-hardcoded",
+  "core": {
+    "title": "Take spacing, radii, and durations from foundations tokens in UI files",
+    "given": "The repository has a design root (the design-system tree; where it lives and how its layers are named comes from the profile) and you edit a UI file — any file that carries style declarations — anywhere outside its token-definition (foundations) layer",
+    "when": "the file's style declarations set margin, padding, gap, inset, top/right/bottom/left, border-radius, or transition/animation — in any notation the stack's UI files use for style declarations (stylesheet syntax, style objects, inline or embedded styles in markup, markup authored inside source literals; per profile)",
+    "then": "Take those lengths greater than 1px and non-zero durations from the design system's foundations tokens, referenced the way this stack references token values (per profile); never hardcode them.",
+    "prefer": [
+      "Use the existing foundations scale for spacing, inset, radius, and duration.",
+      "During GREEN: reuse the nearest existing semantic or scale token.",
+      "During GREEN: add a foundation value only when the design genuinely needs a distinct one.",
+      "During GREEN: change only the style declaration the acceptance needs."
+    ],
+    "avoid": [
+      "One-off tokens that merely rename a hardcoded literal.",
+      "Bypassing the scale for speed.",
+      "Normalizing unrelated styling."
+    ],
+    "unless": [
+      "Value is 0 or 1px (hairlines are not design decisions).",
+      "A token definition itself (a declaration that defines a new token value), wherever it lives.",
+      "The file is in the design root's token-definition (foundations) layer.",
+      "Width, height, or font size.",
+      "A test file of any kind (unit, acceptance, or end-to-end), or a vendored/build (never-scanned) tree.",
+      "No design root in the repository: no system to connect to yet."
+    ],
+    "why": "Spacing and motion are an interface's rhythm; each hardcoded length is a new step on a scale nobody chose, eroding it one component at a time.",
+    "evidence": [
+      "The stack's design-token check reports no hardcoded spacing/inset/radius length > 1px or non-zero duration in affected UI files.",
+      "Prove: the current visual or behavioral acceptance passes, and affected UI values come from the declared foundations (token references to values defined once in foundations)."
+    ],
+    "verification": [
+      "Properties judged: margin, padding, gap, inset, top, right, bottom, left, border-radius (lengths > 1px); transition, animation (non-zero durations). Judged over the UI file's declarations — all declarations, not only changed ones.",
+      "Judged in every notation the stack's UI files use for style declarations (per profile): where such a notation treats a bare number as a length, it is judged as a length under the same > 1px threshold; markup authored inside host-language string or template literals is judged as markup (inline style attributes and style-block text); only authored literal text is judged — code, comments, regex literals, and interpolated spans are never read as declarations (a value spanning an interpolation is judged on its literal chunks alone).",
+      "Self-scoping: only repositories that have a design root (per profile) are judged; a repository with no design root is not judged — there is no system to connect to yet. The design root's token-definition layer defines these values and is itself not scanned.",
+      "A UI file is any file that carries style declarations, in any format, anywhere in the repository; there is no exhaustive format allowlist. A realization's detector may currently cover only some file kinds — that is implementation coverage, not a limit on applicability.",
+      "Exclusions: test files of every kind — the union of the profile's unit-test, acceptance-test, and end-to-end test patterns — and never-scanned vendored/build trees (the stack's single exclusion list; the exact classification is owned by the stack's checker) are never scanned; 0 and 1px are allowed; token definitions are not flagged; widths, heights, and font sizes are out of scope.",
+      "Severity 2; disposition strict."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "role",
+          "values": [
+            "repository has a design root (the design-system tree; per profile) — a repository-level prerequisite, not a selector on the judged file: the judged UI file may live anywhere in that repository, inside or outside the design root"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "UI file: any file that carries style declarations, anywhere in the repository; no exhaustive format allowlist"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "role",
+          "values": [
+            "any part of the design system except its token-definition (foundations) layer — including primitives, components, and templates — plus all UI files outside the design root"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "design-token check reports a hardcoded spacing/inset/radius length or non-zero duration in a UI file's declarations (all declarations, not only changed ones)"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "A design-system component hardcodes a spacing length (for example a padding value) instead of referencing the foundations scale.",
+        "A UI file outside the design root sets a spacing property to a bare number in a style object, where the stack treats bare numbers as lengths.",
+        "A design-system primitive hardcodes a motion duration in a transition or animation.",
+        "A source file renders markup from string or template literals containing hardcoded inline styles or style blocks."
+      ],
+      "doesNotFire": [
+        "The repository has no design root.",
+        "The file lives in the design root's token-definition (foundations) layer.",
+        "A token definition itself, wherever it lives.",
+        "A value of 0 or 1px (a hairline).",
+        "A width, height, or font-size declaration.",
+        "A unit, acceptance, or end-to-end test file, or a vendored/build (never-scanned) tree.",
+        "Code, a comment, or a regex literal in a host-language source file (only authored markup literal text is judged)."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "layout.design_root",
+      "meaning": "Where the stack's design-system root lives; the rule self-scopes on its existence (no design root in the repository means not judged), and its first directory level names the design-system layers.",
+      "bunValue": "a directory named `design`, `design_system`, or `design-system` (repository contains **/design/**, **/design_system/** or **/design-system/**); the first directory beneath it names the layer"
+    },
+    {
+      "key": "layout.design_tokens_layer",
+      "meaning": "The layer(s) beneath the design root that define the token values; files there are out of scope (that layer defines the values rather than consuming them).",
+      "bunValue": "`tokens` or `foundations` (first directory beneath the design root; other layers: `primitives`, `components`, `templates`)"
+    },
+    {
+      "key": "idiom.style_notations",
+      "meaning": "The notations in which this stack's UI files express the style declarations that are judged, including where a bare number counts as a length and how markup embedded in source literals is judged.",
+      "bunValue": "CSS declarations; JSX style objects (a bare number for the judged properties counts as a length, subject to the same > 1px threshold); in .ts/.mts files, inline style=\"…\" attributes and <style> text in HTML authored in string, template, and tagged-template literals — only literal text is judged (code, comments, and regex literals are never read as declarations; a value spanning a ${…} interpolation is judged on its literal chunks alone)"
+    },
+    {
+      "key": "idiom.token_reference",
+      "meaning": "How a UI file references a foundations-defined token value instead of hardcoding it, and what defining such a token looks like (definitions are judged as definitions, never flagged).",
+      "bunValue": "referenced as `var(--…)`: a spacing, radius, or motion value defined once in foundations and referenced as `var(--…)`; a custom property definition such as `--space-3: 12px` defines a token wherever it lives and is not flagged"
+    },
+    {
+      "key": "suffix.unit_test",
+      "meaning": "Name patterns that mark a unit-test file. Together with the acceptance-test and e2e-test patterns, their union is the complete test-file exclusion of this rule. ATDD-Bun names every test kind with the same patterns, so the Bun value of each test-kind key is the same list and the union reproduces bun.json's single test-file exclusion exactly.",
+      "bunValue": "*.test.*, *.spec.*"
+    },
+    {
+      "key": "suffix.acceptance_test",
+      "meaning": "Name patterns that mark an acceptance-test file; part of the union of all test kinds this rule excludes (Bun names every test kind with the same patterns).",
+      "bunValue": "*.test.*, *.spec.*"
+    },
+    {
+      "key": "suffix.e2e_test",
+      "meaning": "Name patterns that mark an end-to-end test file; part of the union of all test kinds this rule excludes (Bun names every test kind with the same patterns).",
+      "bunValue": "*.test.*, *.spec.*"
+    },
+    {
+      "key": "roots.excluded",
+      "meaning": "The stack's single never-scanned list (vendored and generated trees); the exact classification is owned by the stack's checker, not by this rule.",
+      "bunValue": "vendored/build directories"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "layout.design_root",
+      "group": "layout",
+      "meaning": "Where the stack's design-system root lives; a design-token rule self-scopes on its existence, and its first directory level names the design-system layers.",
+      "bunValue": "a directory named `design`, `design_system`, or `design-system` (repository contains **/design/**, **/design_system/** or **/design-system/**); the first directory beneath it names the layer",
+      "whyNoExistingKey": "roots.* name the repository's scan roots (source/test/plan) and layout.* describe wagon/feature/test placement; none identifies a design-system tree whose existence self-scopes design rules."
+    },
+    {
+      "key": "layout.design_tokens_layer",
+      "group": "layout",
+      "meaning": "The layer(s) beneath the design root that define token values and are themselves out of scope for token-usage rules.",
+      "bunValue": "`tokens` or `foundations` (first directory beneath the design root; other layers: `primitives`, `components`, `templates`)",
+      "whyNoExistingKey": "No key names the layers inside a design root or which layer defines tokens; roles.* are architectural code roles, not the design system's internal layering."
+    },
+    {
+      "key": "idiom.style_notations",
+      "group": "idiom",
+      "meaning": "The notations in which this stack's UI files express style declarations that a style check judges, including where a bare number counts as a length and how markup embedded in source literals is judged.",
+      "bunValue": "CSS declarations; JSX style objects (a bare number for the judged properties counts as a length, subject to the same > 1px threshold); in .ts/.mts files, inline style=\"…\" attributes and <style> text in HTML authored in string, template, and tagged-template literals — only literal text is judged (code, comments, and regex literals are never read as declarations; a value spanning a ${…} interpolation is judged on its literal chunks alone)",
+      "whyNoExistingKey": "idiom.markup_kinds lists markup artifacts for request/gate constructs; no idiom key describes the notations that carry style declarations, the bare-number-as-length rule, or how embedded markup is judged."
+    },
+    {
+      "key": "idiom.token_reference",
+      "group": "idiom",
+      "meaning": "How a UI file references a foundations-defined token value instead of hardcoding it, and what defining such a token looks like.",
+      "bunValue": "referenced as `var(--…)`: a spacing, radius, or motion value defined once in foundations and referenced as `var(--…)`; a custom property definition such as `--space-3: 12px` defines a token wherever it lives and is not flagged",
+      "whyNoExistingKey": "No idiom key describes how a value references a design token or what a token definition looks like; existing idiom keys cover requests, gates, imports, and nesting."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "evidence[0]",
+      "text": "bun_design_system_detector reports no hardcoded spacing/inset/radius length > 1px or non-zero duration in affected UI files.",
+      "reason": "Names this rule's validator id; detector and validator ids of a single rule are realization details (notProfileKeys). The core's evidence names the check generically."
+    },
+    {
+      "item": "activation.facts[3]",
+      "text": "finding: bun_design_system_detector: hardcoded spacing/inset/radius length or duration",
+      "reason": "Finding id of this rule's Bun validator is a realization detail; the core keeps a neutral finding fact."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "text": "Current detector coverage (per graph edge) is .tsx, .jsx, .html, .css, .ts, .mts; this is implementation coverage, not a limit on applicability.",
+      "reason": "A file-suffix list of one Bun detector's current coverage; the normative scope (UI files in any format) is stack-neutral and stays in core:verification."
+    },
+    {
+      "item": "activation.facts[1]",
+      "text": "Implementation coverage (not normative applicability): the graph edge reason currently lists .tsx, .jsx, .html, .css, .ts, .mts as detector-supported kinds.",
+      "reason": "The detector's current file-kind coverage is a Bun implementation detail; the normative UI-file definition is neutral in the core, and the test-file / never-scanned exclusions are carried by profile keys."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:layout.design_root",
+        "profile:layout.design_tokens_layer"
+      ],
+      "note": "Neutral: repository has a design root and the edited file is a UI file outside its token-definition layer; design-root directory names and layer names come from the profile."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when",
+        "profile:idiom.style_notations"
+      ],
+      "note": "Property list kept as the web-neutral vocabulary of styling; the concrete notations (CSS, JSX style objects, HTML in .ts/.mts literals) come from the profile."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "profile:idiom.token_reference"
+      ],
+      "note": "One obligation: lengths > 1px and non-zero durations come from foundations tokens, never hardcoded; the token-reference syntax (var(--…)) comes from the profile."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Stack-neutral rationale; the concrete '13px' illustration generalized to 'each hardcoded length'."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]"
+      ],
+      "note": "GREEN is ATDD phase vocabulary, method-neutral; kept."
+    },
+    {
+      "item": "prefer[2]",
+      "as": [
+        "core:prefer[2]"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "prefer[3]",
+      "as": [
+        "core:prefer[3]"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]"
+      ],
+      "note": "0/1px hairline exception is design-level, stack-neutral; kept verbatim."
+    },
+    {
+      "item": "unless[1]",
+      "as": [
+        "core:unless[1]",
+        "profile:idiom.token_reference"
+      ],
+      "note": "Neutralized to 'a token definition itself, wherever it lives'; the --space-3: 12px custom-property form is the Bun token-definition syntax, carried by the profile key."
+    },
+    {
+      "item": "unless[2]",
+      "as": [
+        "core:unless[2]",
+        "profile:layout.design_tokens_layer"
+      ],
+      "note": "Layer exclusion; the layer names (tokens/foundations) come from the profile."
+    },
+    {
+      "item": "unless[3]",
+      "as": [
+        "core:unless[3]"
+      ],
+      "note": "Width/height/font-size exclusion is design-level and stack-neutral."
+    },
+    {
+      "item": "unless[4]",
+      "as": [
+        "core:unless[4]",
+        "profile:suffix.unit_test",
+        "profile:suffix.acceptance_test",
+        "profile:suffix.e2e_test",
+        "profile:roots.excluded"
+      ],
+      "note": "Neutral: test files of every kind and never-scanned trees are out of scope. The exclusion is the union of the profile's per-kind test patterns (unit, acceptance, e2e — Bun uses the same patterns for all kinds, so the union reproduces bun.json's single exclusion), and vendored/build trees come from the stack-wide exclusion list (exact classification owned by the checker)."
+    },
+    {
+      "item": "unless[5]",
+      "as": [
+        "core:unless[5]",
+        "profile:layout.design_root"
+      ],
+      "note": "Self-scoping on design-root existence; the design-root shape comes from the profile."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ],
+      "note": "Detector id is a realization detail; the core's evidence names the design-token check generically."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]",
+        "profile:idiom.token_reference"
+      ],
+      "note": "Neutral except the var(--…) reference form, which comes from the profile."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Judged properties and thresholds are the web-neutral vocabulary of styling; kept in verification."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "profile:idiom.style_notations"
+      ],
+      "note": "Neutral kernel (a bare number that denotes a length is judged as a length under the same threshold) in verification; the JSX style-object form is profile data."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification",
+        "profile:idiom.style_notations"
+      ],
+      "note": "Neutral kernel (markup authored inside source literals is judged as markup) in verification; the .ts/.mts literal forms are profile data."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification",
+        "profile:idiom.style_notations"
+      ],
+      "note": "Neutral kernel (only authored literal text is judged) in verification; the ${…} interpolation and regex-literal specifics are profile data."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification",
+        "profile:layout.design_root",
+        "profile:layout.design_tokens_layer"
+      ],
+      "note": "Self-scoping design-root definition in verification; directory names and layer names come from the profile."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "as": [
+        "core:verification",
+        "profile:idiom.token_reference"
+      ],
+      "note": "The concept (defined once in foundations, referenced) is neutral and in verification; the var(--…) form is profile data."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "as": [
+        "core:verification",
+        "profile:layout.design_root",
+        "profile:layout.design_tokens_layer",
+        "bunOnly"
+      ],
+      "note": "Neutral scope statement in verification (UI files in any format, tokens layer not scanned); the detector's current file-kind coverage list is bunOnly."
+    },
+    {
+      "item": "verifier_detail[7]",
+      "as": [
+        "core:verification",
+        "profile:suffix.unit_test",
+        "profile:suffix.acceptance_test",
+        "profile:suffix.e2e_test",
+        "profile:roots.excluded"
+      ],
+      "note": "Exclusion scope in verification: test files of every kind — the union of the profile's per-kind test patterns (unit, acceptance, e2e) — and never-scanned trees per the stack-wide list; 0/1px, token definitions, and widths/heights/font sizes restated neutrally. Bun's single pattern list populates all three test-kind keys, preserving the Bun exclusion."
+    },
+    {
+      "item": "verifier_detail[8]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Severity and disposition are per-rule verification facts, not profile keys (notProfileKeys)."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:layout.design_root"
+      ],
+      "note": "Repository-level prerequisite kept as the closest available fact type; the design-root globs come from the profile."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:idiom.style_notations",
+        "profile:suffix.unit_test",
+        "profile:suffix.acceptance_test",
+        "profile:suffix.e2e_test",
+        "profile:roots.excluded",
+        "bunOnly"
+      ],
+      "note": "Neutral UI-file fact in core; the .ts/.mts HTML-literal special case is profile data, the test-file exclusion (all kinds: unit, acceptance, e2e) is carried by the three suffix keys plus the stack-wide exclusion list, and the detector coverage list is bunOnly."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[2]",
+        "profile:layout.design_tokens_layer"
+      ],
+      "note": "Layer exclusion kept as the closest available fact type; layer names come from the profile."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[3]",
+        "bunOnly"
+      ],
+      "note": "Neutral finding fact in core; the validator finding id is bunOnly."
+    }
+  ],
+  "neutralityNotes": "CSS property names (margin, gap, border-radius, transition…), px/ms units, and style-object/inline-style concepts are treated as the stack-neutral vocabulary of web UI styling, shared by every web stack; only the concrete notations (JSX style objects, HTML in .ts/.mts string/template/tagged-template literals) and the token-reference syntax (var(--…)) are stack-specific, and they are carried by the proposed profile keys idiom.style_notations and idiom.token_reference. The design root and its layers (design/design_system/design-system; tokens|foundations, primitives, components, templates) have no vocabulary key and are proposed as layout.design_root and layout.design_tokens_layer. The core's test-file exclusion is the union of suffix.unit_test, suffix.acceptance_test, and suffix.e2e_test (each key keeps its own role: unit-test, acceptance-test, and e2e-test patterns); ATDD-Bun names all test kinds alike (*.test.*, *.spec.*), so under the Bun profile the union reproduces bun.json's single test-file exclusion exactly, while stacks with distinct patterns keep each kind excluded. The closed activation-fact vocabulary has no repository-structure or design-layer fact type, so the design-root prerequisite (facts[0]) and the layer exclusion (facts[2]) are encoded under the closest available type, 'role'. 'During GREEN' and the acceptance vocabulary are ATDD method terms, kept as neutral. Per notProfileKeys, this rule's detector/validator ids and its detector's current file-kind coverage (.tsx, .jsx, .html, .css, .ts, .mts) remain bunOnly, and severity 2 / strict disposition live in core:verification.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.design-token-hardcoded.json",
+      "sha256": "10f5154d4706b577a994c75dda32117bb84445cbadfa7e1ab393283ccc6e97ef"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}
