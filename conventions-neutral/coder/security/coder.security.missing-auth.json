@@ -1,0 +1,330 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.security.missing-auth",
+  "legacyId": "coder.bun.security-missing-auth",
+  "core": {
+    "title": "Authorise inside every state-changing boundary handler",
+    "given": "A boundary handler (route / handler / endpoint, in the stack's route-handler idiom) for POST, PUT, PATCH or DELETE in non-test production source.",
+    "when": "The handler exists in the inspected source (any in-scope mutating handler, changed or not).",
+    "then": "The handler body MUST itself perform a recognisable authorisation guard (in the stack's guard idiom) before any write.",
+    "prefer": [
+      "Invoke the authorisation guard first in the handler and let it reject (throw or return early) before any write, e.g. the boundary establishes the authenticated principal as its first step, then performs the mutation.",
+      "If the handler delegates to a wrapper that authorises internally, invoke it by a recognised guard name, or add the wrapper / project guard name to the rule's recognised set."
+    ],
+    "avoid": [
+      "Relying on auth performed in a sibling route or another handler — it protects nothing for this handler.",
+      "Suppressing the rule because the project uses its own guard helper instead of adding that helper's name to the recognised set.",
+      "Adding auth requirements to GET/HEAD reads to satisfy the rule (out of scope; creates noise on the most common route in the codebase)."
+    ],
+    "unless": [
+      "GET and HEAD handlers are out of scope (reads).",
+      "Test files are excluded."
+    ],
+    "why": "A mutating handler with no auth call is the shape that leaks writes; public GETs are normal in a hypermedia-driven app (they are how page fragments load), so requiring auth on reads would be noise on the most common route — only mutating methods are checked, deliberately.",
+    "evidence": [
+      "The rule's missing-authorisation check reports no finding for any mutating handler in the inspected non-test source.",
+      "Reviewer sees the guard inside each mutating handler's own body, before any write."
+    ],
+    "verification": [
+      "The check locates each mutating boundary handler (a POST/PUT/PATCH/DELETE route entry, or a mutating-method branch of a generic handler, per the stack's route-handler idiom), delimits THAT handler's own body, and reports the handler when no recognisable authorisation guard appears inside it.",
+      "mutating_route: a POST, PUT, PATCH or DELETE handler; GET (and HEAD) out of scope. Test files are excluded from the check.",
+      "authorisation_step: a recognisable guard inside the handler body. The recognised set is broad on purpose — the rule asks whether the author considered auth at this handler at all, not which helper they used; it does not enforce one blessed helper.",
+      "Project-specific guards or authorising wrappers are supported by adding their names to the recognised set.",
+      "Detection follows the stack's route-handler and guard idioms: where routes are plain entries/branches and authorisation is an ordinary call, detection is call-based (inside the handler body), not signature-based.",
+      "Severity 4; disposition strict."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "role",
+          "values": [
+            "boundary"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "source"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "operation",
+          "values": [
+            "mutating_route_handler_present"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "missing_auth_finding"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "A boundary declares a POST/PUT/PATCH/DELETE route entry (new or pre-existing) whose handler body contains no recognised authorisation guard.",
+        "A generic boundary handler has a mutating-method branch with no guard inside that branch's body.",
+        "A mutating handler relies on an auth guard invoked in a sibling route or elsewhere, not in its own body."
+      ],
+      "doesNotFire": [
+        "GET or HEAD handlers (public reads, e.g. fragment loads).",
+        "Test files.",
+        "A mutating handler whose body invokes a recognised guard (or a project guard whose name has been added to the recognised set)."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "tooling.languages",
+      "meaning": "Languages of production source in which boundary handlers are inspected.",
+      "bunValue": "typescript, javascript"
+    },
+    {
+      "key": "roles.boundary.kinds",
+      "meaning": "The concrete artifact kinds that play the boundary role and may hold mutating handlers.",
+      "bunValue": "http-route, server-entry"
+    },
+    {
+      "key": "idiom.route_handler",
+      "meaning": "What a boundary handler looks like, including how a mutating route entry or mutating-method branch is expressed, so its own body can be delimited.",
+      "bunValue": "Routes are entries in the `routes` object of `Bun.serve` or branches of a `fetch` handler (e.g. a `req.method === \"POST\"` branch)."
+    },
+    {
+      "key": "idiom.auth_guard",
+      "meaning": "How a handler establishes the authenticated principal, i.e. what a recognisable authorisation guard looks like and how it is detected.",
+      "bunValue": "Authorisation is an ordinary call (e.g. `const user = await requireUser(req);`), so detection is call-based, not signature-based; Bun has neither decorators nor a DI container."
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "prefer[0]",
+      "text": "POST: async (req) => {\n    const user = await requireUser(req);   // authorise before any write\n    ...\n  }",
+      "reason": "Concrete TypeScript/Bun code example; bun.json is delivered as the reference example, so the core keeps only the role-level form."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "bun_security_hygiene_detector reports no SECURITY-MISSING-AUTH-001 finding",
+      "reason": "Detector and finding ids of this rule are realization details; the core names the check generically."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "brace-matches ITS handler body",
+      "reason": "Brace matching is the Bun detector's mechanism for delimiting a handler body in TS/JS syntax; the core states only that the handler's own body is delimited."
+    },
+    {
+      "item": "activation.facts[4]",
+      "text": "SECURITY-MISSING-AUTH-001 emitted by bun_security_hygiene_detector",
+      "reason": "Finding and detector ids of this rule belong to the realization; the core activation uses a generic missing-auth finding value."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:idiom.route_handler"
+      ],
+      "note": "Bun route shapes (`Bun.serve` routes entry / `fetch` method branch) move to idiom.route_handler; core says boundary handler."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Already stack-neutral."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "profile:idiom.auth_guard"
+      ],
+      "note": "'call a guard' generalised to 'perform a guard in the stack's guard idiom'; for Bun the idiom is an ordinary call."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "'hypermedia/htmx' neutralised to 'hypermedia-driven app'."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]",
+        "profile:idiom.auth_guard",
+        "bunOnly"
+      ],
+      "note": "Role-level guidance in core; code example bunOnly."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]"
+      ],
+      "note": "Neutral; 'call' phrased as 'invoke'."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Neutral."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Neutral."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]"
+      ],
+      "note": "Neutral."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]"
+      ],
+      "note": "Neutral."
+    },
+    {
+      "item": "unless[1]",
+      "as": [
+        "core:unless[1]"
+      ],
+      "note": "Neutral; test file identification is the profile's file-kind data."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ],
+      "note": "Detector/finding ids bunOnly; core names the check generically."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]"
+      ],
+      "note": "'guard call' phrased as 'guard'."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "profile:idiom.route_handler",
+        "bunOnly"
+      ],
+      "note": "Generic check scope in core; `req.method === \"POST\"` shape via idiom.route_handler; brace matching bunOnly."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Scope definition (mutating_route) and exclusions."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "authorisation_step definition and broad recognised set."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Recognised-set extension."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification",
+        "profile:idiom.route_handler",
+        "profile:idiom.auth_guard"
+      ],
+      "note": "Route shapes and call-based guard idiom are profile data; core verification keeps that detection follows the idiom (call-based for plain-call stacks)."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Per-rule severity and disposition."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "profile:tooling.languages"
+      ],
+      "note": "'language' is not a core fact; languages come from the profile."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roles.boundary.kinds"
+      ],
+      "note": "Layer http-route/server-entry becomes role=boundary; kinds via roles.boundary.kinds."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[1]"
+      ],
+      "note": "file_kind source; test files excluded."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[2]",
+        "profile:idiom.route_handler"
+      ],
+      "note": "Observer detects mutating handlers in the stack's route-handler idiom."
+    },
+    {
+      "item": "activation.facts[4]",
+      "as": [
+        "core:activation.facts[3]",
+        "bunOnly"
+      ],
+      "note": "Generic finding value in core; SECURITY-MISSING-AUTH-001 / detector id bunOnly."
+    }
+  ],
+  "neutralityNotes": "HTTP method names (POST, PUT, PATCH, DELETE, GET, HEAD) are kept in the core: they are protocol-level, not stack-specific. SECURITY-MISSING-AUTH-001 is described by the source as a shared core alias across realizations, but per the vocabulary's notProfileKeys it is treated as a realization finding id (bunOnly) and the core activation uses the generic value 'missing_auth_finding'. The core obligation requires the guard 'inside the handler body', matching Bun's call-based idiom; stacks whose guard idiom is signature/annotation-based (e.g. the python sibling's dependency in the handler signature) realize 'body' via idiom.auth_guard. bun.json does not state test-file suffixes, so test exclusion relies on the profile's file-kind data without a bunValue here.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.security-missing-auth.json",
+      "sha256": "d75bd874f6adee489ac3f29c6b5ea739d1ce87a4eb2fed0be4aa41d2cf0a93a7"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 1,
+    "vocabularyVersion": 1,
+    "verdict": "PASS",
+    "rounds": 1,
+    "usefulness": 5,
+    "deriver": "pi-claude-cli/claude-opus-5-5",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 4,
+      "agreeWithAuditor": true
+    }
+  }
+}

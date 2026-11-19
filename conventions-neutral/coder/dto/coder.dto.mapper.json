@@ -1,0 +1,358 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.dto.mapper",
+  "legacyId": "coder.bun.dto-mapper",
+  "core": {
+    "title": "Keep DTO mappers in the integration role",
+    "given": "A source file assigned to a layer role other than integration declares a DTO mapper (a function translating between a DTO and a domain entity, recognised by the profile's DTO-mapper name patterns), whether the declaration is pre-existing or newly written",
+    "when": "code is written or the project is verified (all in-scope files are scanned, not only changed ones)",
+    "then": "Place the DTO mapper in the integration role, where both the DTO and domain shapes are legitimately visible.",
+    "prefer": [
+      "Keep DTO-to-domain and domain-to-DTO translation in the integration role.",
+      "During GREEN: reuse an existing mapper for the same boundary when one exists.",
+      "During GREEN: add only the field mapping the current acceptance requires.",
+      "During GREEN: create a new mapper only for a genuinely new boundary translation."
+    ],
+    "avoid": [
+      "Placing translation in the presentation or domain role as a shortcut.",
+      "Moving domain behavior into the mapper.",
+      "Migrating unrelated mappings while fixing this one."
+    ],
+    "unless": [
+      "Test files and the stack's excluded vendored/build trees are never scanned.",
+      "An import of an external package, which resolves outside the project graph, is not layer-checked.",
+      "A file that the profile's role assignment places in no layer role is outside this rule rather than in violation of it."
+    ],
+    "why": "Mapping is translation across a boundary, which is what the integration role is for. A mapper in the domain drags the wire format inward; one in presentation duplicates itself once a second caller appears.",
+    "evidence": [
+      "The current behavioral acceptance passes.",
+      "The mapper lives in the integration role and preserves the intended boundary (no declaration matching the DTO-mapper name patterns outside the integration role)."
+    ],
+    "verification": [
+      "A repository-wide check flags every function matching the profile's DTO-mapper name patterns that is declared in a file assigned to any layer role other than integration; existing declarations are included, not only diff additions.",
+      "Term dto_mapper: a function translating between a DTO and a domain entity, matched by the profile's DTO-mapper name patterns. Term translation_layer: the integration role, where a boundary crossing legitimately sees both sides.",
+      "Scope: test files and the stack's excluded vendored/build trees are never scanned; the stack's checker owns the exact classification of which files count as test files. Imports of external packages are not layer-checked; files with no layer role are out of scope, not violations.",
+      "The check does not judge whether the mapper contains domain behavior or whether unrelated mappings were migrated.",
+      "Severity 3; disposition strict (every finding fails verification)."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "role",
+          "values": [
+            "domain",
+            "application",
+            "presentation",
+            "any non-integration layer role"
+          ],
+          "observability": "observable_now",
+          "note": "Role comes from the profile's role assignment; files with no layer role are out of scope."
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "DTO-mapper declaration outside the integration role"
+          ],
+          "observability": "needs_new_observer",
+          "note": "Needs a syntax-level scan of all in-scope files (not only the diff) detecting any declared function matching the DTO-mapper name patterns outside integration — existing, added, moved or changed declarations alike. The stack's checker provides this at verify time."
+        },
+        {
+          "fact": "task_term",
+          "values": [
+            "DTO",
+            "mapper",
+            "mapping",
+            "serialize",
+            "wire format"
+          ],
+          "observability": "observable_now",
+          "note": "Advisory hint only: raises attention when writing code; never a prerequisite for activation. The rule fires on the declaration finding whether or not the task mentions these terms."
+        }
+      ],
+      "fires": [
+        "A DTO-mapper function is added in a domain-role file.",
+        "A presentation-role file declares its own mapper converting a domain entity to a DTO.",
+        "An already-existing, unchanged mapper declaration sits in a non-integration layer role when the project is verified.",
+        "A DTO mapper is moved out of the integration role into another layer role."
+      ],
+      "doesNotFire": [
+        "The mapper is declared in an integration-role file.",
+        "The mapper is declared in a test file or in an excluded vendored/build tree.",
+        "The file is assigned to no layer role.",
+        "Only an import of an external package (outside the project graph) is involved."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "idiom.dto_mapper_naming",
+      "meaning": "Name patterns that identify a function mapping between a DTO and a domain entity.",
+      "bunValue": "to*DTO, from*DTO, map*DTO*"
+    },
+    {
+      "key": "roles.integration.path",
+      "meaning": "Where integration-role files live; the only role in which DTO mappers may be declared.",
+      "bunValue": "integration (the integration layer segment)"
+    },
+    {
+      "key": "roles.assignment",
+      "meaning": "How a file is assigned to a layer role, and that a file with no role is out of scope rather than in violation.",
+      "bunValue": "Layer comes from the path's layer segment; files with no layer segment are out of scope."
+    },
+    {
+      "key": "roots.excluded",
+      "meaning": "Vendored and generated/build trees that are never scanned.",
+      "bunValue": "vendored/build directories"
+    },
+    {
+      "key": "idiom.external_import",
+      "meaning": "How an import of an external package (outside the project graph, not layer-checked) is recognised.",
+      "bunValue": "Bare npm specifiers resolve outside the project graph and are not layer-checked."
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "activation.facts[0]",
+      "text": "language: typescript, bun — Bun realization of the core DTO-mapper obligation.",
+      "reason": "Selects the Bun realization of this core; realization selection is not a core fact and not profile data."
+    },
+    {
+      "item": "activation.facts[2]",
+      "text": "finding id dto_mapper_declared_outside_integration; AST scan provided by bun_clean_architecture_detector at verify time.",
+      "reason": "Finding and detector ids of this rule are realization details; the core names the check generically."
+    },
+    {
+      "item": "given",
+      "text": "A Bun project file",
+      "reason": "Names the stack; the core says 'a source file'."
+    },
+    {
+      "item": "unless[1]",
+      "text": "Bare npm specifiers",
+      "reason": "npm specifier syntax is Bun/JS-specific; the core refers to external-package imports via idiom.external_import."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:idiom.dto_mapper_naming",
+        "profile:roles.assignment",
+        "bunOnly"
+      ],
+      "note": "Name patterns go to the profile; 'Bun project file' becomes 'source file'."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "profile:roles.integration.path"
+      ],
+      "note": "Integration layer expressed as the integration role."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]",
+        "profile:roles.integration.path"
+      ],
+      "note": ""
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]"
+      ],
+      "note": "Neutral."
+    },
+    {
+      "item": "prefer[2]",
+      "as": [
+        "core:prefer[2]"
+      ],
+      "note": "Neutral."
+    },
+    {
+      "item": "prefer[3]",
+      "as": [
+        "core:prefer[3]"
+      ],
+      "note": "Neutral."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Layers expressed as roles."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Neutral."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]"
+      ],
+      "note": "Neutral."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]",
+        "profile:roots.excluded",
+        "core:verification"
+      ],
+      "note": "Excluded trees come from the profile; test-file classification is owned by the stack's checker, stated in core verification."
+    },
+    {
+      "item": "unless[1]",
+      "as": [
+        "core:unless[1]",
+        "profile:idiom.external_import",
+        "bunOnly"
+      ],
+      "note": "Bare npm specifier is the Bun idiom for an external import."
+    },
+    {
+      "item": "unless[2]",
+      "as": [
+        "core:unless[2]",
+        "profile:roles.assignment"
+      ],
+      "note": "Layer segment is the Bun role-assignment mechanism."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]"
+      ],
+      "note": "Neutral."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]",
+        "profile:idiom.dto_mapper_naming",
+        "profile:roles.integration.path"
+      ],
+      "note": "Concrete name patterns come from the profile."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "profile:roles.assignment",
+        "profile:roles.integration.path"
+      ],
+      "note": "Generic description of the repository-wide check."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "profile:idiom.dto_mapper_naming"
+      ],
+      "note": "dto_mapper term; patterns from the profile."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification",
+        "profile:roles.integration.path"
+      ],
+      "note": "translation_layer term."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification",
+        "profile:roots.excluded",
+        "profile:idiom.external_import",
+        "profile:roles.assignment"
+      ],
+      "note": "Scope exclusions of the check; test-file classification stays checker-owned in core verification."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Per-rule severity and strict disposition."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "Language fact selects the Bun realization; not a core fact."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roles.assignment"
+      ],
+      "note": "Bun 'layer' fact becomes the core 'role' fact; values are role-level examples, not a profile list."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[1]",
+        "bunOnly"
+      ],
+      "note": "Finding described generically; finding id and detector name are Bun-only."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[2]"
+      ],
+      "note": "Task terms are neutral; advisory status kept."
+    }
+  ],
+  "neutralityNotes": "The obligation is fully neutral given the profile. The Bun exception about bare npm specifiers concerns imports rather than mapper declarations; it is kept faithfully as a generic external-import scope exclusion. bun.json names no concrete test-file suffix or pattern, so no suffix.* key is required; the test-file exclusion stays in the core and the stack's checker owns the exact classification (core verification). The Bun 'language' activation fact only selects the Bun realization and is bunOnly. No dependency-ordered layer inventory is needed: the rule only needs role assignment and the integration role's location.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.dto-mapper.json",
+      "sha256": "11c7a8ba8f6256c6a4b2f61e2d4330ec02391646b29c910753e39f0736ef4042"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 1,
+    "vocabularyVersion": 1,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "pi-claude-cli/claude-opus-5-5",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

@@ -1,0 +1,393 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.commons.domain-no-framework-import",
+  "legacyId": "coder.bun.commons-domain-no-framework-import",
+  "core": {
+    "title": "Domain modules import no runtime machinery",
+    "given": "A non-test module in the domain role, outside the stack's excluded (vendored/generated) trees",
+    "when": "it imports a specifier or references a global (newly added or already present)",
+    "then": "It MUST NOT import any of the stack's forbidden runtime, framework or transport specifiers nor reference any of the stack's runtime globals that count as machinery.",
+    "prefer": [
+      "Keep domain code as data-in / data-out logic.",
+      "Move runtime, server, transport or framework machinery to an outer layer and pass the needed value inward.",
+      "During GREEN: adapt at the nearest existing integration or presentation boundary, passing the smallest value or domain-facing collaborator the behavior needs; add a new boundary only when no existing one can express the current behavior correctly."
+    ],
+    "avoid": [
+      "Wrapping a framework or runtime API in a domain-named helper and keeping the coupling.",
+      "Redesigning adjacent layers.",
+      "Importing runtime machinery into the domain just to satisfy the acceptance quickly."
+    ],
+    "unless": [
+      "Test files (of every kind) and the stack's excluded (vendored/generated) trees are never scanned.",
+      "A file that is assigned to no layer role is outside this rule, not in violation of it."
+    ],
+    "why": "The domain expresses rules, not machinery; what counts as machinery (server, transport, runtime primitives) depends on the stack, but the obligation does not. The domain must be runnable with no delivery machinery started (e.g. no server); a reference to a runtime machinery global in a domain module means it is not.",
+    "evidence": [
+      "The stack's domain-purity check reports no forbidden runtime/framework import specifier and no runtime machinery global use in any domain module.",
+      "The current behavioral acceptance passes.",
+      "The domain remains executable without runtime machinery (runnable with no server or other delivery machinery started)."
+    ],
+    "verification": [
+      "The check flags, in every in-scope domain module, each import specifier in the stack's forbidden runtime/framework list and each use of a runtime machinery global.",
+      "runtime_machinery = the stack's forbidden runtime, framework and transport import specifiers plus its machinery globals; the obligation is identical across stacks and only the list of machinery changes with the stack.",
+      "server_free_domain = the practical test: the domain must be runnable with no server (delivery machinery) started.",
+      "Do not scan test files (all test files, whatever their test kind; which files count as test files is classified by the stack's checker) or the stack's excluded (vendored/generated) trees.",
+      "Imports of external packages (outside the project graph) are not layer-direction-checked; the forbidden runtime/framework specifiers are still matched by this rule's list even when they are external packages.",
+      "A file assigned to no layer role is out of scope, not a violation.",
+      "Severity 3; disposition strict."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "role",
+          "values": [
+            "domain"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "source"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "import_present:forbidden_runtime_import",
+            "runtime_global_referenced"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "domain-runtime-machinery-import"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "A non-test domain module imports a runtime or platform specifier from the stack's forbidden list (newly added or already present).",
+        "A domain module imports an HTTP/server or UI framework that the stack lists as forbidden machinery.",
+        "A domain module references a runtime global that the stack counts as machinery."
+      ],
+      "doesNotFire": [
+        "A test file in the domain role imports the test runner's module.",
+        "Files in the stack's excluded (vendored/generated) trees.",
+        "A file assigned to no layer role.",
+        "An integration or presentation module importing runtime, platform or framework machinery."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roles.domain.path",
+      "meaning": "Where domain-role files live.",
+      "bunValue": "**/domain/**"
+    },
+    {
+      "key": "roles.assignment",
+      "meaning": "How a file is assigned to a layer role, and that a file with no role is out of scope.",
+      "bunValue": "File path carries a `domain/` layer segment; a file carrying no layer segment is out of scope, not a violation."
+    },
+    {
+      "key": "idiom.forbidden_runtime_imports",
+      "meaning": "The runtime, framework and transport import specifiers the domain must not import.",
+      "bunValue": "bun:*, node:*, htmx, express, fastify, koa"
+    },
+    {
+      "key": "idiom.runtime_globals",
+      "meaning": "Runtime globals whose use in the domain counts as machinery.",
+      "bunValue": "Bun. (e.g. Bun.env, Bun.file)"
+    },
+    {
+      "key": "idiom.machinery",
+      "meaning": "What counts as delivery machinery in the stack.",
+      "bunValue": "for a full-stack Bun app the machinery is the server and transport primitives"
+    },
+    {
+      "key": "idiom.external_import",
+      "meaning": "How an import of an external package (exempt from layer-direction checks) is recognised.",
+      "bunValue": "Bare npm specifiers resolve outside the project graph and are not layer-checked"
+    },
+    {
+      "key": "roots.excluded",
+      "meaning": "Vendored and generated trees that are never scanned.",
+      "bunValue": "vendored/build directories"
+    },
+    {
+      "key": "tooling.test_runner",
+      "meaning": "The test runner whose module a domain test file may import without firing the rule.",
+      "bunValue": "bun:test"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "then",
+      "text": "`bun:*`, `node:*`, `htmx`, `express`, `fastify`, `koa`; the `Bun.` global",
+      "reason": "Concrete Bun specifiers and global; supplied through idiom.forbidden_runtime_imports and idiom.runtime_globals."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "bun_clean_architecture_detector",
+      "reason": "Detector id of this rule's Bun realization."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "text": "this stack's equivalent of the UI frameworks the Vite sibling forbids (react/preact/@tanstack/gsap)",
+      "reason": "Cross-reference to another stack's realization; meaningful only in the Bun/Vite realization pair."
+    },
+    {
+      "item": "activation.facts[2]",
+      "text": "Observer currently established by bun_clean_architecture_detector findings.",
+      "reason": "Detector id of the Bun realization."
+    },
+    {
+      "item": "activation.facts[3]",
+      "text": "bun_clean_architecture_detector:domain-framework-import",
+      "reason": "Detector/finding id of the Bun realization; core names the finding generically."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:activation.facts[0]",
+        "core:activation.facts[1]",
+        "core:verification",
+        "profile:roles.domain.path",
+        "profile:roots.excluded"
+      ],
+      "note": "Non-test, non-excluded domain module; test-file exclusion kept in core verification."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:activation.facts[2]"
+      ],
+      "note": "Import or global reference, new or existing; core when is identical."
+    },
+    {
+      "item": "then",
+      "as": [
+        "profile:idiom.forbidden_runtime_imports",
+        "profile:idiom.runtime_globals",
+        "bunOnly"
+      ],
+      "note": "Single obligation kept in core then; concrete list from the profile."
+    },
+    {
+      "item": "why",
+      "as": [
+        "profile:idiom.machinery",
+        "profile:idiom.runtime_globals"
+      ],
+      "note": "Core why generalises 'server and transport primitives' and `Bun.` via the profile."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]",
+        "profile:idiom.machinery"
+      ],
+      "note": "'Bun, Node, htmx, server' generalised to runtime/server/transport/framework machinery."
+    },
+    {
+      "item": "prefer[2]",
+      "as": [
+        "core:prefer[2]"
+      ],
+      "note": "Already role-level."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Neutral."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Neutral."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]"
+      ],
+      "note": "Neutral."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]",
+        "core:verification",
+        "profile:roots.excluded"
+      ],
+      "note": "All-test-files exclusion preserved in core; excluded trees from the profile."
+    },
+    {
+      "item": "unless[1]",
+      "as": [
+        "core:unless[1]",
+        "profile:roles.assignment"
+      ],
+      "note": "No-layer exclusion preserved."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ],
+      "note": "Detector named generically in core; id is bunOnly."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]"
+      ],
+      "note": "Neutral."
+    },
+    {
+      "item": "evidence[2]",
+      "as": [
+        "core:evidence[2]",
+        "profile:idiom.machinery"
+      ],
+      "note": "Neutral."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "profile:idiom.forbidden_runtime_imports",
+        "profile:idiom.runtime_globals"
+      ],
+      "note": "Check scope."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "profile:idiom.forbidden_runtime_imports",
+        "profile:idiom.runtime_globals",
+        "bunOnly"
+      ],
+      "note": "runtime_machinery term; Vite cross-reference is bunOnly."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification",
+        "profile:idiom.machinery"
+      ],
+      "note": "server_free_domain term."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification",
+        "profile:roots.excluded"
+      ],
+      "note": "General scan exclusion: all test files (checker-classified) plus the stack's excluded trees; nothing Bun-specific."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification",
+        "profile:idiom.external_import"
+      ],
+      "note": "External-package exemption from layer-direction checks only; forbidden list still matched."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "as": [
+        "core:verification",
+        "profile:roles.assignment"
+      ],
+      "note": "No-layer files out of scope."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Per-rule severity/disposition."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roles.assignment"
+      ],
+      "note": "Bun fact 'layer: domain' becomes role: domain."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[0]",
+        "core:activation.facts[1]",
+        "core:verification",
+        "profile:roles.domain.path",
+        "profile:roots.excluded"
+      ],
+      "note": "Path glob from the profile; test-file exclusion via file_kind source and core verification; excluded trees via roots.excluded."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[2]",
+        "profile:idiom.forbidden_runtime_imports",
+        "profile:idiom.runtime_globals",
+        "bunOnly"
+      ],
+      "note": "Concrete specifier values from the profile; detector reference bunOnly."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[3]",
+        "bunOnly"
+      ],
+      "note": "Finding named generically in core; Bun finding id is bunOnly."
+    }
+  ],
+  "neutralityNotes": "Core is fully neutral. The Bun machinery list (bun:*, node:*, htmx, express, fastify, koa, Bun.) is supplied via idiom.forbidden_runtime_imports and idiom.runtime_globals. The Vite-sibling cross-reference and the detector/finding ids remain bunOnly. The all-test-files exclusion is a general exclusion kept in core unless/verification; bun.json gives no filename pattern, so no suffix.* key is used and test classification is left to the stack's checker. 'vendored/build directories' is quoted as-is for roots.excluded.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.commons-domain-no-framework-import.json",
+      "sha256": "c00fd44563f7ab3663e67b80cca73daf2b91ee5e331dd4dc342b42d465876eaf"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 1,
+    "vocabularyVersion": 1,
+    "verdict": "PASS",
+    "rounds": 3,
+    "usefulness": 5,
+    "deriver": "pi-claude-cli/claude-opus-5-5",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

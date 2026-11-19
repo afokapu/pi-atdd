@@ -1,0 +1,15 @@
+Title: Keep Bun's lockfile as the only lockfile
+Given: A declared Bun workspace (package manager chosen as Bun, independent of which lockfiles exist) with scan roots outside excluded trees
+When: the tree holds a foreign lockfile (`package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`/`.yml`), committed or not, or the current change adds or changes a dependency
+Then: Keep Bun's lockfile as the single dependency-resolution source: remove npm, Yarn and pnpm lockfiles; none may sit alongside `bun.lock`/`bun.lockb`.
+Prefer:
+- During GREEN: if the current change adds a dependency, install it with Bun.
+- During GREEN: remove only foreign lockfiles; regenerate `bun.lock` only when dependency state actually changed; keep package-manager behavior otherwise untouched.
+Avoid:
+- Keeping a second lockfile as a temporary convenience, including during a migration window.
+- Switching package managers.
+- Updating unrelated dependencies.
+- Suppressing the finding for a monorepo package deliberately not on Bun; it stays reported until it moves to Bun or out of the scanned tree.
+Unless:
+- A vendored or fixture lockfile inside an excluded tree (`node_modules`, `dist`, `build`, `_generated`) is never scanned.
+Why: Two lockfiles mean two resolvers disagree; whichever command a developer or CI runs wins, causing invisible drift and "works on my machine, breaks in CI". Risk peaks while migrating to Bun: the old lockfile is still committed, someone runs `npm install` out of habit, the trees fork, and a deploy fails much later.

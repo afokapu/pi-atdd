@@ -1,0 +1,181 @@
+# Structure-profile key vocabulary (PLT-84).
+#
+# A structure profile is DATA, not rules. It tells a stack-neutral convention core where each role
+# lives, how files and URNs are shaped, which idioms the stack uses and which tools enforce the rules.
+# The vocabulary is CLOSED: a convention core may reference only keys listed here. A missing key is
+# proposed through `proposedKeys` (see profiles/README.md) and enters this file only after the owner
+# approves it. Bump `version` on every change.
+#
+# Key forms:
+#   - plain keys, e.g. `roots.source`;
+#   - parametric keys, e.g. `roles.<role>.path`, whose parameter must come from the group's `params`.
+schema: pi-atdd/profile-vocabulary/v1
+version: 1
+issue: PLT-84
+groups:
+  roles:
+    doc: Which architectural and artifact roles exist in the stack, what the stack calls them, and how a file is assigned to one.
+    params:
+      role: [domain, application, integration, presentation, boundary, composition_root, unit_test, acceptance_test, e2e_test, plan_artifact]
+    keys:
+      roles.layers:
+        type: list
+        doc: The stack's layer roles in dependency order, with their local names.
+        example: "presentation, application, domain, integration"
+      roles.assignment:
+        type: text
+        doc: How a file is assigned to a role, and whether a file with no role is in or out of scope.
+        example: "the path's layer segment; a file with no layer segment is out of scope, not a violation"
+      roles.<role>.name:
+        type: text
+        doc: The stack's local name for the role, when it differs from the role name.
+        example: "composition_root -> assembly"
+      roles.<role>.path:
+        type: glob
+        doc: Where files of the role live (a path segment or a glob relative to the source root).
+        example: "domain -> **/domain/**"
+      roles.<role>.kinds:
+        type: list
+        doc: The concrete artifact kinds that play the role.
+        example: "boundary -> http-route, server-entry; plan_artifact -> wmbt_yaml"
+  roots:
+    doc: Top-level trees of the repository, and the trees that are never scanned.
+    keys:
+      roots.config:
+        type: path
+        doc: The file in which the repository declares its roots and profile choices.
+        example: "atdd-bun.yaml"
+      roots.source:
+        type: path
+        doc: Root of production source.
+        example: "topology.source_root, default src/wagons"
+      roots.test:
+        type: path
+        doc: Root of unit and acceptance tests when they live outside the source tree.
+      roots.e2e:
+        type: path
+        doc: Root of end-to-end tests.
+      roots.plan:
+        type: path
+        doc: Root of plan artifacts.
+        example: "topology.plan_root, default plan"
+      roots.scan:
+        type: text
+        doc: Which roots a repository-wide check scans.
+      roots.excluded:
+        type: list
+        doc: >-
+          Vendored and generated trees that are never scanned. There is ONE list per stack. A rule whose
+          checker owns the exact classification says so in its own verification, not here.
+        example: "node_modules, dist, build, _generated"
+  layout:
+    doc: Directory shapes below the roots (wagon, feature, commons), and where each kind of artifact is placed.
+    keys:
+      layout.wagon_dir:
+        type: pattern
+        doc: Directory of one wagon (a bounded slice of the product).
+      layout.feature_dir:
+        type: pattern
+        doc: Directory of one feature inside a wagon.
+        example: "<source_root>/<wagon>/features/<feature>/"
+      layout.commons_dir:
+        type: pattern
+        doc: Directory of code shared across features.
+      layout.code_trees:
+        type: list
+        doc: The code trees to which layer rules apply.
+        example: "commons and feature code"
+      layout.plan_item:
+        type: pattern
+        doc: Path of one plan artifact (e.g. a WMBT) under the plan root.
+        example: "<plan_root>/<wagon_dir>/<wmbt_id>.yaml"
+      layout.test_location:
+        type: pattern
+        doc: Where a unit or acceptance test for a source file is placed.
+      layout.e2e_location:
+        type: pattern
+        doc: Where an end-to-end test is placed.
+  suffix:
+    doc: File-name suffixes and patterns that identify each file kind.
+    params:
+      file_kind: [source, unit_test, acceptance_test, e2e_test, markup, plan_artifact, config]
+    keys:
+      suffix.<file_kind>:
+        type: list
+        doc: Suffixes or name patterns of the file kind.
+        example: "source -> .ts, .tsx"
+  urn:
+    doc: URN shapes, and the syntax by which a file declares or binds to one.
+    params:
+      artifact: [component, acceptance, smoke_acceptance, train, wmbt, wagon, feature, journey]
+    keys:
+      urn.<artifact>:
+        type: pattern
+        doc: URN shape of the artifact.
+        example: "acceptance -> acc:<domain>:<acceptance-id>"
+      urn.binding.<artifact>:
+        type: pattern
+        doc: The syntax by which a source or test file binds itself to the artifact (header comment, decorator, annotation).
+        example: "acceptance -> // Acceptance: acc:..."
+      urn.declaration:
+        type: pattern
+        doc: How a plan artifact declares its own URN.
+        example: "urn: \"wmbt:<wagon>:<wmbt_id>\""
+  idiom:
+    doc: The stack's concrete construct for a stack-neutral concept that a core refers to.
+    keys:
+      idiom.route_handler: { type: text, doc: "What a boundary handler (route, endpoint) looks like." }
+      idiom.auth_guard: { type: text, doc: "How a handler establishes the authenticated principal." }
+      idiom.error_types: { type: text, doc: "How domain and boundary errors are typed and raised." }
+      idiom.validation_shape: { type: text, doc: "How request input is validated before use." }
+      idiom.external_import: { type: text, doc: "How an import of an external package (outside the project graph) is recognised." }
+      idiom.forbidden_runtime_imports: { type: list, doc: "Runtime, framework and transport import specifiers that inner roles must not import." }
+      idiom.runtime_globals: { type: list, doc: "Runtime globals that count as framework machinery." }
+      idiom.machinery: { type: text, doc: "What counts as delivery machinery (server, transport, runtime) in this stack." }
+      idiom.dto_mapper_naming: { type: list, doc: "Name patterns of functions that map between DTOs and domain entities." }
+      idiom.control_keywords: { type: list, doc: "Control-flow keywords that count toward nesting depth." }
+      idiom.nesting_measure: { type: text, doc: "How nesting depth is measured in the stack's syntax." }
+      idiom.destructive_request: { type: text, doc: "The declarative markup construct that issues a destructive request." }
+      idiom.mutation_requests: { type: list, doc: "Declarative markup constructs that issue non-destructive mutating requests." }
+      idiom.confirmation_gate: { type: text, doc: "The declarative construct that asks the user to confirm before a request." }
+      idiom.prompt_gate: { type: text, doc: "The declarative construct that asks the user for input before a request." }
+      idiom.declaration_scope: { type: text, doc: "Where a gate must be declared relative to the request construct." }
+      idiom.comment_marker: { type: text, doc: "Line-comment syntax of the stack's source files." }
+  enforcement:
+    doc: >-
+      Stack-wide facts about how conventions are enforced. Per-rule severity and disposition are NOT
+      profile keys: they belong to the rule (core verification).
+    keys:
+      enforcement.runner:
+        type: text
+        doc: The command or tool that runs the stack's convention checks.
+        example: "atdd-bun"
+      enforcement.default_disposition:
+        type: text
+        doc: The disposition of a rule that does not declare one.
+      enforcement.suppression_marker:
+        type: pattern
+        doc: Syntax of a time-boxed suppression of one rule.
+        example: "# atdd:suppress(<rule_id>) UNTIL=YYYY-MM-DD"
+      enforcement.report_location:
+        type: pattern
+        doc: How a finding reports its location.
+        example: "<path>:<line>"
+  tooling:
+    doc: Package manager, languages, test runner and helper commands of the stack.
+    keys:
+      tooling.languages: { type: list, doc: "Languages of production source.", example: "typescript, javascript" }
+      tooling.package_manager: { type: text, doc: "The package manager that owns dependencies.", example: "Bun" }
+      tooling.install_command: { type: text, doc: "How a dependency is added." }
+      tooling.manifest: { type: path, doc: "The dependency manifest file.", example: "package.json" }
+      tooling.lockfile.native: { type: list, doc: "Lockfile(s) owned by the package manager.", example: "bun.lock, bun.lockb" }
+      tooling.lockfile.foreign: { type: list, doc: "Lockfiles of other package managers that must not coexist with the native one." }
+      tooling.foreign_install_commands: { type: list, doc: "Install commands of other package managers." }
+      tooling.workspace_declaration: { type: text, doc: "How the workspace declares its package manager." }
+      tooling.test_runner: { type: text, doc: "The stack's test runner." }
+      tooling.urn_resolver: { type: text, doc: "The command that resolves a URN to its artifact." }
+# These stay with the rule, never in a profile.
+notProfileKeys:
+  - "per-rule severity and disposition -> core verification"
+  - "detector, validator and finding ids of a single rule -> the stack realization (bunOnly); core verification names the check generically"
+  - "rule-specific examples and task terms -> core activation (neutral) or the realization"
