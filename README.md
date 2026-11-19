@@ -40,6 +40,18 @@ npm run smoke:install
 
 No consumer `atdd-pi.yaml` or sibling repositories are required. The Pi extension automatically uses its embedded catalog and initial activation selectors in trusted projects.
 
+### ATDD or plain (PLT-93)
+
+Each session runs in `atdd` mode (conventions and edit guards) or `plain` mode (the extension stays loaded but injects and blocks nothing). The mode is resolved in this order:
+
+1. Explicit words in your message: "plain", "plain mode", "no ATDD", "without ATDD" → plain; "use ATDD", "with ATDD" → atdd.
+2. `PI_ATDD_MODE=plain|atdd` (agents and fleets set this).
+3. The repository record `.atdd-pi/mode` (gitignore or commit it, as you prefer).
+4. A repository that declares ATDD (`atdd-pi.yaml` or a `plan/` directory) → atdd, no question.
+5. Otherwise an interactive (TUI) session asks once, "ATDD or plain?", and can remember the answer for the repository. Print, JSON and RPC runs never ask and default to atdd.
+
+`/atdd on`, `/atdd off` and `/atdd status` switch or show the mode within a session; a change is announced in one line. Outside a repository nothing is injected and edits are not refused; an edit target outside the repository is also allowed in both modes, unless it physically resolves back into the repository.
+
 The standalone TypeScript CLI can also query the catalog without Pi:
 
 ```sh
