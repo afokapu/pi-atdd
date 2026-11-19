@@ -1,0 +1,90 @@
+{
+  "schema": "pi-atdd/plt-82/run/v1",
+  "runId": "opus-baseline",
+  "provider": "pi-claude-cli",
+  "model": "claude-opus-5-5",
+  "thinking": "medium",
+  "condition": "baseline",
+  "baseRevision": "4b404362e66414b4a53699f9c0122374cfc435c8",
+  "resultRevision": "fde63185505737f8cc2d4f82ee522809b8d9797b",
+  "changed": [
+    "M\tsrc/app.ts",
+    "A\tsrc/loyalty/application/keyed-lock.ts",
+    "A\tsrc/loyalty/application/ledger.ts",
+    "M\tsrc/loyalty/domain/points.ts",
+    "A\tsrc/loyalty/domain/redemption.ts",
+    "A\tsrc/loyalty/integration/redemption-store.ts",
+    "A\tsrc/orders/application/redeem-points.ts",
+    "M\tsrc/orders/domain/order.ts",
+    "M\tsrc/orders/routes/order-routes.ts",
+    "M\tsrc/pricing/application/quote-service.ts",
+    "M\tsrc/pricing/domain/quote.ts",
+    "A\ttests/orders/redeem-points.acceptance.test.ts"
+  ],
+  "jjStatusBeforeSnapshot": "Working copy changes:\nM src/app.ts\nA src/loyalty/application/keyed-lock.ts\nA src/loyalty/application/ledger.ts\nM src/loyalty/domain/points.ts\nA src/loyalty/domain/redemption.ts\nA src/loyalty/integration/redemption-store.ts\nA src/orders/application/redeem-points.ts\nM src/orders/domain/order.ts\nM src/orders/routes/order-routes.ts\nM src/pricing/application/quote-service.ts\nM src/pricing/domain/quote.ts\nA tests/orders/redeem-points.acceptance.test.ts\nWorking copy  (@) : xllvxrzs 9eddf2c0 (no description set)\nParent commit (@-): tppvsqpq 4b404362 base | base: PLT-82 orders-service (points lots, async loyalty store); no redemption",
+  "run": {
+    "exit": 0,
+    "signal": null,
+    "timedOut": false,
+    "wallMs": 165812,
+    "provider": "pi-claude-cli",
+    "model": "claude-opus-5-5",
+    "thinking": "medium",
+    "promptSha256": "7aa2e96f56821380766be9b742b6e2d7993a100fc89c65772e09e8e5280f154f",
+    "appendSystemPrompt": null,
+    "argv": [
+      "--mode",
+      "json",
+      "--approve",
+      "--no-session",
+      "--no-mcp",
+      "--no-skills",
+      "--no-prompt-templates",
+      "--no-context-files",
+      "--no-themes",
+      "--no-extensions",
+      "-e",
+      "~/.pi/agents/forge/npm/node_modules/@saccolabs/pi-claude-cli/index.ts",
+      "--provider",
+      "pi-claude-cli",
+      "--model",
+      "claude-opus-5-5",
+      "--thinking",
+      "medium",
+      "--",
+      "<prompt>"
+    ]
+  },
+  "metrics": {
+    "turns": 12,
+    "toolExecuted": 11,
+    "toolErrors": 0,
+    "byTool": {
+      "bash": 11
+    },
+    "usage": {
+      "input": 24,
+      "output": 17392,
+      "cacheRead": 214818,
+      "cacheWrite": 32066,
+      "cost": 0.6474276000000001
+    },
+    "stopReasons": [
+      "toolUse",
+      "toolUse",
+      "toolUse",
+      "toolUse",
+      "toolUse",
+      "toolUse",
+      "toolUse",
+      "toolUse",
+      "toolUse",
+      "toolUse",
+      "toolUse",
+      "stop"
+    ],
+    "errorMessages": []
+  },
+  "finalReport": "I've added `POST /orders/:id/redeem`. The full suite passes: the 9 existing tests plus 12 new acceptance tests.\n\n**What I changed**\n- **Spending points** (`src/loyalty/domain/points.ts`): picks which lots to spend from. It skips empty and expired lots, takes the one that expires first, and keeps the original order when two expire at the same time. It refuses if there aren't enough points. One point is worth one cent.\n- **Records** (`src/loyalty/domain/redemption.ts`, `src/loyalty/integration/redemption-store.ts`): for each order, a record of how many points came from which lot. Idempotency keys are stored per customer along with the response they produced.\n- **Concurrency** (`src/loyalty/application/keyed-lock.ts`, `ledger.ts`): one lock per customer, plus the logic to spend points and to give them back. The ledger store has no transactions or compare-and-set, so every read-then-write of a customer's lots runs under that customer's lock. Cancel uses the same lock.\n- **Pricing** (`src/pricing/domain/quote.ts`): a new `quoteWithPoints` applies points after the discount and before tax, capped at the discounted amount. Only the points actually applied are spent.\n- **Orders** (`src/orders/application/redeem-points.ts`): new redeem and cancel use cases. The order now stores `pointsApplied`, and points can only be applied once, to a pending order. Cancel gives points back to their original lots with the original expiry; if a lot has expired by then, those points are lost. `GET /orders/:id/quote` includes points once some have been redeemed.\n- **Routes and wiring**: `order-routes.ts` has the new route, and cancel now goes through the new use case. `createApp` takes an optional `redemptions` store, so its signature is still compatible.\n\n**Response codes:** 200 returns `{ region, subtotalCents, discountCents, pointsApplied, pointsCents, taxCents, totalCents }`. 400 is a bad body. 401 is not signed in. 404 is an order that doesn't exist or belongs to someone else. 409 is an order that isn't pending or already has points on it. 422 is not enough points, or a reused key with a different body.\n\n**How I verified it**\n- `tests/orders/redeem-points.acceptance.test.ts` covers:\n  - spending order across lots, and that expired points can't be used\n  - discount, then points, then tax, with rounding\n  - the amount never going below zero, and excess points staying in their lots\n  - repeating a key, and reusing a key with a different body\n  - three simultaneous requests with the same key\n  - two simultaneous redemptions that together ask for more than the customer has\n  - a redeem and a cancel arriving at the same time\n  - cancel giving points back with the original expiry, and points lost when the lot expires exactly at cancel time\n  - auth, ownership and order-status checks, and body validation\n- I turned the lock off temporarily: the two concurrency tests failed, then passed again once I put it back.\n\n**Decisions you may want to change**\n- **One redemption per order:** a second one with a new key gets 409; I chose that over adding the points together.\n- **Not enough points:** the request gets 422 rather than spending whatever is available.\n- **Idempotency scope:** keys are per customer. Only successful results are saved, so retrying a failed request with the same key runs it again. A successful key still returns its saved result after the order is cancelled.\n- **Response fields:** the quote has both `pointsApplied` and `pointsCents`. The quote for an order without points keeps its old shape, so the response shape varies.\n\n**Limits**\n- **Single process only:** the lock lives in memory, so running several instances would need a database-level guard such as a transaction or compare-and-set.\n- **Partial failures:** if storage fails partway through spending, lots already written are put back on a best-effort basis. Cancel records each lot as it's handled, so a retry doesn't give points back twice. There's no real atomicity, and these failure paths are ",
+  "blindId": "r-3581b3"
+}
