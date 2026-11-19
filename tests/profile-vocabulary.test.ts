@@ -46,5 +46,8 @@ test("the neutrality lint ignores test-kind prose but still catches paths", asyn
   const { neutralityLeaks } = await import("../src/neutral-lint.ts");
   assert.deepEqual(neutralityLeaks({ then: "an e2e/journey test binds a train", verification: ["unit/acceptance tests"] }), []);
   assert.equal(neutralityLeaks({ then: "put it under e2e/checkout" }).length, 1);
+  assert.deepEqual(neutralityLeaks({ then: "plan/test/implementation drift is reported" }), []);
+  assert.equal(neutralityLeaks({ then: "scan tests/e2e/checkout" }).length, 1, "a real path still leaks");
+  assert.equal(neutralityLeaks({ then: "write plan/x.yaml" }).length, 1, "a file under plan still leaks");
   assert.equal(neutralityLeaks({ then: "x", verification: ["scan src/ only"] }).length, 1, "verification is linted");
 });

@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { FLEET, REPO, runPi, usageOf, sha256 } from "./lib.mjs";
 const VOC = await import(join(REPO, "src/profile-vocabulary.ts"));
 const VOCAB = VOC.loadVocabulary();
+const LINT = await import(join(REPO, "src/neutral-lint.ts"));
 
 const args = process.argv.slice(2);
 const opt = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
@@ -20,13 +21,43 @@ const LEDGER = opt("--fallback-ledger", null), FALLBACK_MAX = Number(opt("--fall
 const sem = (n) => { let busy = 0; const q = []; return async (fn) => { while (busy >= n) await new Promise(r => q.push(r)); busy++; try { return await fn(); } finally { busy--; q.shift()?.(); } }; };
 const auditSlot = sem(Number(opt("--audit-cap", 6))), reviewSlot = sem(Number(opt("--review-cap", 4)));
 let QUOTA = null;
-const QUOTA_RE = /quota|rate.?limit|\b429\b|usage limit|limit (reached|exceeded)|insufficient|too many requests|exhausted/i;
-function guard(label, res, usage) {
-  const msg = [usage?.error, usage?.stop === "error" ? "stop=error" : "", res?.stderrTail].filter(Boolean).join(" | ");
-  if (QUOTA_RE.test(msg)) { QUOTA = QUOTA ?? (label + ": " + msg.slice(0, 300)); throw new Error("QUOTA " + QUOTA); }
-  if (usage?.stop === "error" || (usage && usage.turns === 0)) log("WARN " + label + " ended without a normal stop: " + msg.slice(0, 200));
+// Owner rule (2026-11-19): a 429 that pi retries successfully is not a stop. Stop only on quota exhaustion,
+// or when a call still fails on rate limits after backoff. Deriver concurrency is adaptive: start --deriver-start
+// (3), +1 after --clean-stretch (5) consecutive deriver calls without any 429 (max --deriver-max 6), -1 at a 429.
+const EXHAUSTED_RE = /insufficient (balance|quota)|quota (exceeded|exhausted)|usage limit|limit exceeded for (the )?(plan|package|subscription)|out of credits|billing|\b1113\b|resource package/i;
+const RATE_RE = /\b429\b|rate.?limit|too many requests|\b1302\b/i;
+const adaptive = (start, max, stretch) => {
+  let limit = start, busy = 0, clean = 0; const q = [], hist = [];
+  const wake = () => { while (busy < limit && q.length) { busy++; q.shift()(); } };
+  return {
+    get limit() { return limit; }, hist,
+    async run(fn) { await new Promise(r => { q.push(r); wake(); }); try { return await fn(); } finally { busy--; wake(); } },
+    report(saw429) {
+      if (saw429) { clean = 0; if (limit > 1) { limit--; hist.push({ at: new Date().toISOString(), limit, why: "429" }); log("ADAPT deriver concurrency -> " + limit + " (429)"); } }
+      else if (++clean >= stretch && limit < max) { clean = 0; limit++; hist.push({ at: new Date().toISOString(), limit, why: "clean" }); log("ADAPT deriver concurrency -> " + limit + " (clean stretch)"); wake(); }
+    },
+  };
+};
+const derivSlot = adaptive(Number(opt("--deriver-start", 3)), Number(opt("--deriver-max", 6)), Number(opt("--clean-stretch", 5)));
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const count429 = (path) => { try { return (readFileSync(path, "utf8").match(/Rate limit reached|\b429:/g) ?? []).length; } catch { return 0; } };
+async function pi(label, o, { adaptiveSlot = null, attempts = 3 } = {}) {
+  for (let a = 1; a <= attempts; a++) {
+    if (QUOTA) throw new Error("QUOTA stop in effect");
+    const out = a === 1 ? o.out : o.out.replace(/\.jsonl$/, "-retry" + a + ".jsonl");
+    const res = await runPi({ ...o, out }); const u = usageOf(out);
+    const msg = [u?.error, res?.stderrTail].filter(Boolean).join(" | ");
+    const n429 = count429(out); if (n429) u.retried429 = n429;
+    if (adaptiveSlot) adaptiveSlot.report(n429 > 0);
+    if (EXHAUSTED_RE.test(msg)) { QUOTA = label + ": " + msg.slice(0, 300); throw new Error("QUOTA " + QUOTA); }
+    const failed = u.stop === "error" || u.turns === 0;
+    if (!failed) { if (out !== o.out) copyFileSync(out, o.out); return { ...u, attempts: a }; }
+    if (RATE_RE.test(msg) && a < attempts) { const wait = 60_000 * a; log("BACKOFF " + label + " attempt " + a + " still rate-limited; waiting " + wait / 1000 + "s"); await sleep(wait); continue; }
+    if (RATE_RE.test(msg)) { QUOTA = label + ": rate-limited after " + attempts + " attempts with backoff: " + msg.slice(0, 200); throw new Error("QUOTA " + QUOTA); }
+    log("WARN " + label + " ended without a normal stop: " + msg.slice(0, 200));
+    return { ...u, attempts: a };
+  }
 }
-async function pi(label, o) { if (QUOTA) throw new Error("QUOTA stop in effect"); const res = await runPi(o); const u = usageOf(o.out); guard(label, res, u); return u; }
 const ids = readFileSync(args[0], "utf8").split(/\s+/).filter(Boolean);
 const OUT = opt("--out", join(FLEET, "runs-stage1")); mkdirSync(OUT, { recursive: true });
 const SIDECAR = join(REPO, "conventions-sidecar");
@@ -48,7 +79,8 @@ export function neutralCheck(dir) {
   for (const f of ["prefer", "avoid", "unless", "evidence"]) if (!Array.isArray(c[f])) errors.push("core." + f + " must be an array");
   if (errors.length) return { ok: false, errors, warnings };
   const coreText = [c.title, c.given, c.when, c.then, ...c.prefer, ...c.avoid, ...c.unless, c.why, ...c.evidence, ...(c.activation?.fires ?? []), ...(c.activation?.doesNotFire ?? [])];
-  for (const t of coreText) { const m = String(t).match(LEAK); if (m) errors.push("neutrality leak '" + m[0] + "' in: " + String(t).slice(0, 120)); }
+  // Same lint as the repo test (src/neutral-lint.ts): also scans core.verification; artifact-kind prose allowed.
+  for (const l of LINT.neutralityLeaks(c)) errors.push("neutrality leak " + l);
   for (const f of c.activation?.facts ?? []) { if (!ROLE_FACTS.includes(f.fact)) errors.push("core activation fact must be role-level, got " + f.fact); for (const v of f.values ?? []) { const m = String(v).match(LEAK); if (m) errors.push("neutrality leak in activation value: " + v); } }
   if (!(c.activation?.facts?.length && c.activation?.fires?.length && c.activation?.doesNotFire?.length)) errors.push("core activation facts/fires/doesNotFire required");
   const items = ["given", "when", "then", "why", ...["prefer", "avoid", "unless", "evidence", "verifier_detail"].flatMap(f => (b[f] ?? []).map((_, i) => f + "[" + i + "]")), ...(b.activation?.facts ?? []).map((_, i) => "activation.facts[" + i + "]")];
@@ -105,7 +137,8 @@ async function one(id) {
     if (existsSync(join(dir, "neutral.json"))) renameSync(join(dir, "neutral.json"), join(dir, "neutral-prev.json"));
     rmSync(join(dir, "neutral-audit.json"), { force: true });
     const prompt = readFileSync(join(FLEET, "NEUTRALIZER.md"), "utf8") + (feedback ? "\n\nREVISION ROUND " + r + ": previous output is neutral-prev.json; fix every item in feedback.json and write a complete new neutral.json." : "");
-    const ua = await pi(id + " deriver r" + r, { cwd: dir, provider: deriver.provider, model: deriver.model, thinking: "medium", tools: "read,write,ls", prompt, out: join(dir, "neutral-r" + r + ".jsonl") });
+    const dcall = () => pi(id + " deriver r" + r, { cwd: dir, provider: deriver.provider, model: deriver.model, thinking: "medium", tools: "read,write,ls", prompt, out: join(dir, "neutral-r" + r + ".jsonl") }, deriver === DERIVER ? { adaptiveSlot: derivSlot } : {});
+    const ua = deriver === DERIVER ? await derivSlot.run(dcall) : await dcall();
     const ck = neutralCheck(dir); writeFileSync(join(dir, "neutral-check.json"), JSON.stringify(ck, null, 2));
     if (existsSync(join(dir, "neutral.json"))) copyFileSync(join(dir, "neutral.json"), join(dir, "neutral-r" + r + ".json"));
     let audit = null, uv = null;
@@ -156,6 +189,7 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
   log("neutral start: " + ids.length + " deriver=" + DERIVER.id + " concurrency=" + conc + (FALLBACK ? " fallback=" + FALLBACK.id + " max " + FALLBACK_MAX : ""));
   const q = [...ids]; let busy = 0;
   await new Promise(fin => { const pump = () => { while (busy < conc && q.length && !QUOTA) { busy++; one(q.shift()).catch(e => log("ERROR " + e.message)).finally(() => { busy--; pump(); }); } if ((!q.length || QUOTA) && !busy) fin(); }; pump(); });
+  log("deriver concurrency history: " + JSON.stringify(derivSlot.hist));
   if (QUOTA) { log("STOPPED on quota error: " + QUOTA + "; not started: " + q.length); process.exit(3); }
   log("neutral done");
 }

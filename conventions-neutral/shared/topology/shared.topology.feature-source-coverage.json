@@ -1,0 +1,292 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "shared.topology.feature-source-coverage",
+  "legacyId": "atdd-bun.topology.feature-source-coverage",
+  "core": {
+    "title": "Every feature that owns behaviour to deliver has source beneath its feature directory",
+    "given": "A feature in the plan owns one or more plan artifacts that specify behaviour to deliver.",
+    "when": "The topology gate checks that feature's directory in the source tree.",
+    "then": "At least one source component exists beneath the feature's directory for every feature that owns plan behaviour.",
+    "prefer": [
+      "Implement the feature beneath its own feature directory.",
+      "If another feature actually delivers the behaviour, reassign the plan artifacts to that feature in the plan."
+    ],
+    "avoid": [
+      "Leaving a feature that owns behaviour to deliver with no implementation (a gap the plan already names).",
+      "Satisfying the check with source placed only in vendored or generated trees; those are never scanned."
+    ],
+    "unless": [],
+    "why": "A feature with behaviour to deliver and no implementation is a gap the plan already names.",
+    "evidence": [
+      "The topology coverage check reports no feature that owns plan behaviour without a source component beneath its feature directory.",
+      "The rule's failing fixture (a feature owning plan behaviour with no source component) is rejected by the stack's guard."
+    ],
+    "verification": [
+      "For each feature that owns at least one behaviour-specifying plan artifact, require at least one source component beneath the feature's directory.",
+      "Vendored and generated trees are never scanned; the exact trees are the stack's single never-scanned list from the profile, and source found only there does not satisfy the check.",
+      "Resolve the topology roots from the repository's declared configuration; the rule hard-codes no path.",
+      "Disposition strict, severity 3; a violation fails the gate."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "any file beneath the plan root",
+            "any file beneath a feature directory (any wagon's feature tree)"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "behaviour-specifying plan artifact added to or moved between features",
+            "feature source removed or relocated"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "a feature owns behaviour-specifying plan artifacts but has no source component"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "A feature in the plan owns one or more behaviour-specifying plan artifacts and its feature directory holds no source component.",
+        "A change deletes or moves the last source component out of a feature directory whose feature still owns plan behaviour.",
+        "The only source beneath a feature that owns plan behaviour sits in vendored or generated trees (the stack's never-scanned list)."
+      ],
+      "doesNotFire": [
+        "A feature that owns no plan behaviour has no source directory.",
+        "A feature that owns plan behaviour has at least one source component beneath its feature directory.",
+        "Changes confined to vendored or generated trees (never scanned)."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roles.plan_artifact.kinds",
+      "meaning": "The concrete plan-artifact kind that specifies behaviour to deliver, by which a feature's plan ownership is recognised.",
+      "bunValue": "WMBTs (behaviour to deliver)"
+    },
+    {
+      "key": "roots.plan",
+      "meaning": "Root of plan artifacts, where features' ownership of behaviour is read.",
+      "bunValue": "topology key `plan_root`, default `plan`"
+    },
+    {
+      "key": "roots.source",
+      "meaning": "Root of production source beneath which feature directories live.",
+      "bunValue": "topology key `source_root`, default `src/wagons`"
+    },
+    {
+      "key": "roots.test",
+      "meaning": "Root of unit and acceptance tests outside the source tree; declared in the same topology configuration this rule resolves its roots from, though this coverage check itself does not use it.",
+      "bunValue": "topology key `test_root`, default `tests/wagons`"
+    },
+    {
+      "key": "roots.e2e",
+      "meaning": "Root of end-to-end tests; declared in the same topology configuration this rule resolves its roots from, though this coverage check itself does not use it.",
+      "bunValue": "topology key `e2e_root`, default `e2e`"
+    },
+    {
+      "key": "layout.feature_dir",
+      "meaning": "Directory of one feature inside its wagon: the tree the coverage check scans for a source component.",
+      "bunValue": "<source_root>/<wagon>/features/<feature>/"
+    },
+    {
+      "key": "roots.excluded",
+      "meaning": "The stack's single never-scanned vendored and generated list; source found only there does not satisfy the check.",
+      "bunValue": "node_modules, dist, build, _generated"
+    },
+    {
+      "key": "roots.config",
+      "meaning": "The file in which the repository declares its topology roots.",
+      "bunValue": "atdd-bun.yaml"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "verifier_detail[0]",
+      "text": "Resolve roots from `atdd-bun.yaml` `topology:` keys `plan_root`, `source_root`, `test_root`, `e2e_root` (defaults `plan`, `src/wagons`, `tests/wagons`, `e2e`).",
+      "reason": "The configuration syntax is stack-specific: the config file name (`atdd-bun.yaml`), the `topology:` key spellings and their defaults have no neutral equivalent. The root values themselves are profile data (roots.plan, roots.source, roots.test, roots.e2e); only the file and key spellings stay with the stack."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "The atdd_topology validator reports no feature that owns WMBTs without a source component beneath `<source_root>/<wagon>/features/<feature>/`.",
+      "reason": "`atdd_topology` is this rule's validator id, a realization detail; the core names the check generically and takes the feature directory from the profile."
+    },
+    {
+      "item": "activation.facts[2]",
+      "text": "atdd_topology: feature owns WMBTs but has no source component",
+      "reason": "The finding string names this rule's validator id and the stack's artifact term; the core words the finding without ids."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:roles.plan_artifact.kinds"
+      ],
+      "note": "'WMBTs (behaviour to deliver)' is the stack's plan-artifact kind; the core speaks of plan artifacts that specify behaviour to deliver."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when",
+        "profile:layout.feature_dir"
+      ],
+      "note": "The concrete feature-directory pattern comes from the profile; the core names the gate checking the feature's directory."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "profile:layout.feature_dir",
+        "profile:roles.plan_artifact.kinds"
+      ],
+      "note": "Single obligation, kept whole; the scanned path and the owning-artifact kind come from the profile."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Already stack-neutral."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]"
+      ],
+      "note": "Role-level guidance, neutral as-is."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]"
+      ],
+      "note": "'the WMBTs' generalized to the plan artifacts; the reassignment stays a plan edit."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Neutral as-is."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]",
+        "profile:roots.excluded"
+      ],
+      "note": "The concrete tree names are the stack's single never-scanned list; the core keeps the neutral 'vendored or generated trees'."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ],
+      "note": "Neutral evidence names the check generically; the validator id `atdd_topology` and the concrete path are Bun-only."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]"
+      ],
+      "note": "The failing-fixture evidence is stack-neutral once 'WMBT-owning' is generalized."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "profile:roots.config",
+        "profile:roots.plan",
+        "profile:roots.source",
+        "profile:roots.test",
+        "profile:roots.e2e",
+        "bunOnly"
+      ],
+      "note": "Core: the topology roots are resolved from the repository's declared configuration. All four root values (plan, source, test, e2e) are structure-profile data even though this check uses only the plan and source roots; the concrete configuration syntax (file `atdd-bun.yaml`, `topology:` key names, defaults) is Bun-only."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "profile:layout.feature_dir",
+        "profile:roles.plan_artifact.kinds"
+      ],
+      "note": "The check itself is neutral: >=1 source component per feature owning >=1 behaviour-specifying plan artifact."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification",
+        "profile:roots.excluded"
+      ],
+      "note": "Never-scan exclusion is expressed against the stack's single excluded list, not a rule-private one."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Per-rule disposition and severity belong to the rule's verification, never to the profile."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roots.plan",
+        "profile:roots.source",
+        "profile:layout.feature_dir"
+      ],
+      "note": "The Bun path_glob fact covers every file beneath the plan root (<plan_root>/**) and every file beneath any feature directory of any wagon (<source_root>/*/features/*/**). The core keeps that full scope with the neutral file_kind fact ('any file beneath the plan root', 'any file beneath a feature directory'); the profile's plan root and feature-directory pattern reconstruct the concrete globs when instantiated."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]"
+      ],
+      "note": "Change fact; 'WMBT' generalized to behaviour-specifying plan artifact."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[2]",
+        "bunOnly"
+      ],
+      "note": "Finding reworded without the validator id; the original finding string (with `atdd_topology`) is Bun-only."
+    }
+  ],
+  "neutralityNotes": "'WMBT' is the stack's plan-artifact kind for behaviour to deliver; the core always says 'plan artifact that specifies behaviour to deliver' and takes the concrete kind from roles.plan_artifact.kinds. The Bun activation fact type path_glob has no neutral counterpart in the closed fact vocabulary (role|operation|change|phase|finding|file_kind|task_term|task_has_acceptance), so it is re-typed as file_kind with values that keep the full scope: every file beneath the plan root and every file beneath a feature directory, restored to the exact globs by roots.plan and layout.feature_dir when the Bun profile is applied. The never-scanned tree names are the stack-wide roots.excluded list, so the core defers the exact classification to that single list. The validator id (`atdd_topology`), the config file (`atdd-bun.yaml`) and its `topology:` key spellings stay in the Bun realization; the root values themselves, including the test and e2e roots this coverage check does not use, are profile data (roots.plan, roots.source, roots.test, roots.e2e).",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/atdd-bun.topology.feature-source-coverage.json",
+      "sha256": "ef67d4573154cc1447f90fce483ed0dae6d3b5890458e15308ccd5248b05f4f8"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

@@ -9,8 +9,13 @@ export function coreTexts(core: any): string[] {
     ...(core.activation?.facts ?? []).flatMap((f: any) => f.values ?? [])].filter((x) => x !== undefined).map(String);
 }
 
-/** Prose alternations that look like a path to LEAK but name test kinds ("an e2e/journey test"). */
-export const PROSE_ALTERNATIONS = /\b(e2e\/journey|journey\/e2e|unit\/acceptance|acceptance\/e2e)\b/gi;
+/**
+ * Prose alternations of artifact kinds ("an e2e/journey test", "plan/test/implementation drift") look like paths to
+ * LEAK. A run of 2+ slash-separated words that are ALL artifact-kind words, not followed by "/" or a file suffix,
+ * is treated as prose. A real path such as "tests/e2e/checkout" or "plan/x.yaml" still leaks.
+ */
+const KIND = "plan|plans|test|tests|e2e|unit|acceptance|journey|implementation|code|source|spec|specs|docs|integration|smoke";
+export const PROSE_ALTERNATIONS = new RegExp("\\b(?:" + KIND + ")(?:\\/(?:" + KIND + "))+\\b(?![\\/.\\w])", "gi");
 
 export function neutralityLeaks(core: unknown): string[] {
   return coreTexts(core).flatMap((t) => {
