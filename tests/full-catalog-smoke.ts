@@ -1,30 +1,34 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { bundledSources, digestSource, loadCatalog, resolveContext, type SourceSpec, type Selector } from "../src/catalog.ts";
+import { bundledSources, digestSource, loadCatalog, resolveContext, type Selector } from "../src/catalog.ts";
 
-const bun = resolve(process.argv[2] || ".cache-sources/atdd-bun");
-const flow = resolve(process.argv[3] || ".cache-sources/atdd-flow");
-const sources: SourceSpec[] = [
-  { id: "ATDD-Bun", path: bun, kind: "bun", revision: "5945d97e18310e7c862c08e73985400935d21346", sha256: digestSource(bun, "bun") },
-  { id: "ATDD-Flow", path: flow, kind: "flow", revision: "2a66019a5ecf2b7a9f999ebfa04d04c9f548f19a", sha256: digestSource(flow, "flow") },
-];
+// PLT-98: every bundled source is pinned by id, kind, revision (where upstream) and digest,
+// in vendor/catalog.lock.json, not by a count. Rule and edge totals change whenever a
+// convention lands, so they are reported, not asserted. Since PLT-87 the bundled Bun/Flow
+// snapshots are profile-first and no longer byte-identical to upstream; upstream checkouts
+// are reported for information only.
+const upstream = {
+  bun: resolve(process.argv[2] || ".cache-sources/atdd-bun"),
+  flow: resolve(process.argv[3] || ".cache-sources/atdd-flow"),
+};
+const lock = JSON.parse(readFileSync(resolve("vendor/catalog.lock.json"), "utf8")) as {
+  sources: Array<{ id: string; kind: string; revision?: string; sha256: string }>;
+};
 const bundled = bundledSources();
-assert.equal(bundled.length, 2);
-assert.equal(bundled[0]!.sha256, sources[0]!.sha256, "Bun bundle must be byte-identical to pinned upstream");
-assert.equal(bundled[1]!.sha256, sources[1]!.sha256, "Flow bundle must be byte-identical to pinned upstream");
-assert.equal(digestSource(bundled[0]!.path, "bun"), sources[0]!.sha256);
-assert.equal(digestSource(bundled[1]!.path, "flow"), sources[1]!.sha256);
-const catalog = loadCatalog(sources, process.cwd());
-const offline = loadCatalog(bundled, process.cwd());
-assert.equal(offline.rules.size, catalog.rules.size);
-assert.deepEqual(offline.edges.map(e => [e.source, e.type, e.target]),
-  catalog.edges.map(e => [e.source, e.type, e.target]));
-assert.equal(catalog.rules.size, 358, "Pinned Bun catalog has 356 rules and Flow has 2");
-assert.equal(catalog.edges.length, 508, "Pinned Bun graph has 508 authored relationships");
+assert.deepEqual(
+  bundled.map(s => [s.id, s.kind, s.revision ?? null, s.sha256]),
+  lock.sources.map(s => [s.id, s.kind, s.revision ?? null, s.sha256]),
+  "bundledSources() must match the pinned set in vendor/catalog.lock.json",
+);
+assert.deepEqual(bundled.map(s => s.id), ["ATDD-Bun", "ATDD-Flow", "pi-atdd"]);
+for (const source of bundled) {
+  assert.equal(digestSource(source.path, source.kind), source.sha256, source.id + " bundle must match its pinned digest");
+}
+const catalog = loadCatalog(bundled, process.cwd());
 for (const id of [
-  "coder.phase.discipline", "reviewer.reconciliation.behavioral",
-  "reviewer.inspectability.owner", "coach.collaboration.accountable-delegation",
-  "coach.workflow.lifecycle",
+  "reviewer.reconciliation.behavioral", "reviewer.inspectability.owner",
+  "coach.workflow.lifecycle", "shared.convention.propose",
 ]) assert.ok(catalog.rules.has(id), "missing canonical rule " + id);
 const selectors: Selector[] = [
   { id: "review", terms: ["behavioral review"], rules: ["reviewer.reconciliation.behavioral"] },
@@ -33,7 +37,13 @@ const selectors: Selector[] = [
 const ctx = resolveContext(catalog, selectors, "coordinator integration branch", [], "task");
 assert.ok(ctx.matchingIds.includes("coach.workflow.lifecycle"));
 console.log(JSON.stringify({
-  status: "ok", bunRevision: sources[0]!.revision, flowRevision: sources[1]!.revision,
+  status: "ok",
+  bundled: bundled.map(s => ({ id: s.id, revision: s.revision ?? null, sha256: s.sha256 })),
+  upstreamDigestInfo: {
+    "ATDD-Bun": digestSource(upstream.bun, "bun"),
+    "ATDD-Flow": digestSource(upstream.flow, "flow"),
+    note: "informational: bundles are profile-first since PLT-87 and not byte-identical to upstream",
+  },
   conventions: catalog.rules.size, relationships: catalog.edges.length,
   unresolvedExternalReferences: catalog.unresolvedEdges.map(e => e.source + " -> " + e.target),
   provenance: catalog.provenance,

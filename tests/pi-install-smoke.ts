@@ -16,7 +16,8 @@ const root = mkdtempSync(join(tmpdir(), "pi-atdd-installed-package-"));
 const home = join(root, "home"), project = join(root, "project");
 mkdirSync(home);
 mkdirSync(project);
-const env = { ...process.env, HOME: home, PI_TELEMETRY: "0", PI_SKIP_VERSION_CHECK: "1" };
+// PLT-98: also isolate the Pi agent dir, so a caller's profile (PI_CODING_AGENT_DIR) cannot leak in.
+const env = { ...process.env, HOME: home, PI_CODING_AGENT_DIR: join(root, "agent"), PI_TELEMETRY: "0", PI_SKIP_VERSION_CHECK: "1" };
 const installed = spawnSync(cli, ["install", repo], {
   cwd: project, env, encoding: "utf8", timeout: 40_000, maxBuffer: 1_000_000, shell: false,
 });
