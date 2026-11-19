@@ -1,0 +1,72 @@
+{
+  "schema": "pi-atdd/convention-proposal/v0",
+  "scope": "core",
+  "status": "proposed-unaudited",
+  "kind": "rule",
+  "realizations": {},
+  "rule_id": "coder.data.bounded-reads",
+  "title": "Read only the records an operation needs",
+  "covers": [
+    "efficiency (full-history scans)"
+  ],
+  "activation": {
+    "facts": [
+      {
+        "fact": "layer",
+        "values": [
+          "application",
+          "integration"
+        ],
+        "observability": "observable_now",
+        "note": "Role (PLT-84), mapped to paths by the structure profile."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "history",
+          "ledger",
+          "log",
+          "all records",
+          "growing",
+          "archive"
+        ],
+        "observability": "llm_judged",
+        "note": "The task reads from a collection that grows over time."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "load_all_then_filter_added"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Diff loads a whole collection and filters or sorts it in memory on a request path."
+      }
+    ],
+    "fires": [
+      "A request loads every record of an owner, including expired or consumed ones, to use a few.",
+      "A write path rewrites records it did not change."
+    ],
+    "doesNotFire": [
+      "Batch or reporting jobs that must visit everything.",
+      "Collections bounded by design (configuration)."
+    ]
+  },
+  "given": "A request-path operation uses a subset of a collection that grows with history",
+  "when": "the agent writes the read or write of that collection",
+  "then": "Fetch and write only the records the operation needs, through a store-level query or index, so cost does not grow with history.",
+  "prefer": [
+    "Add a narrow store method (by owner and state, ordered, limited) in the integration role.",
+    "Write back only changed records.",
+    "A test or counter on a large history showing the number of records touched stays proportional to the records used."
+  ],
+  "avoid": [
+    "Load-all-then-filter in the application role.",
+    "Adding a cache to hide an unbounded read."
+  ],
+  "unless": [],
+  "why": "Full scans pass every functional test and degrade with each customer's history, until the request path times out.",
+  "evidence": [
+    "Store calls and records touched per request do not grow with unrelated history.",
+    "The behavioural acceptance passes."
+  ]
+}

@@ -1,0 +1,76 @@
+{
+  "schema": "pi-atdd/convention-proposal/v0",
+  "scope": "core",
+  "status": "proposed-unaudited",
+  "kind": "rule",
+  "realizations": {},
+  "rule_id": "coder.concurrency.atomic-check-and-act",
+  "title": "Make check-then-act on shared state atomic",
+  "covers": [
+    "T-RACE",
+    "T-PENDING (recheck inside the critical section)"
+  ],
+  "activation": {
+    "facts": [
+      {
+        "fact": "layer",
+        "values": [
+          "application",
+          "integration"
+        ],
+        "observability": "observable_now",
+        "note": "Role (PLT-84), mapped to paths by the structure profile."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "concurrent",
+          "simultaneous",
+          "double spend",
+          "balance",
+          "stock",
+          "quota",
+          "reservation",
+          "asynchronous store"
+        ],
+        "observability": "llm_judged",
+        "note": "The task debits or reserves a shared resource."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "read_then_write_across_pause"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Diff reads shared state, then writes based on it, with an asynchronous call or other pause in between."
+      }
+    ],
+    "fires": [
+      "A use case reads a balance, waits on an asynchronous store call, then writes a reduced balance.",
+      "A status check happens before a lock or transaction that performs the change."
+    ],
+    "doesNotFire": [
+      "State owned by a single request.",
+      "A store operation that already performs the conditional update atomically and is used as such."
+    ]
+  },
+  "given": "An operation reads shared state and then changes it based on what it read",
+  "when": "another request for the same aggregate can run between the read and the write",
+  "then": "Make the read, the decision and the write one atomic unit per aggregate, and re-check every precondition inside that unit.",
+  "prefer": [
+    "A conditional write or transaction in the store when it offers one; otherwise serialise per aggregate key, for example with a keyed lock in the application role.",
+    "Keep the critical section to the decision and the write; compute pure inputs outside it.",
+    "A test that starts the conflicting operations simultaneously and checks the invariant afterwards."
+  ],
+  "avoid": [
+    "A global lock across all aggregates when a per-key one suffices.",
+    "Checking preconditions (state, ownership, availability) outside the unit and trusting them inside."
+  ],
+  "unless": [],
+  "why": "Any pause between read and write (an asynchronous call, I/O, a yield) lets two requests act on the same snapshot; tests run sequentially never see it.",
+  "evidence": [
+    "A concurrent test shows the invariant holds (nothing spent twice, no negative balance).",
+    "Preconditions are evaluated inside the atomic unit.",
+    "The behavioural acceptance passes."
+  ]
+}

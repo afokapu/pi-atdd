@@ -1,0 +1,72 @@
+{
+  "schema": "pi-atdd/convention-proposal/v0",
+  "scope": "core",
+  "status": "proposed-unaudited",
+  "kind": "rule",
+  "realizations": {},
+  "rule_id": "coder.mutation.idempotent-replay",
+  "title": "Replay a repeated idempotency key with the stored outcome",
+  "covers": [
+    "T-IDEM (same key, same request)"
+  ],
+  "activation": {
+    "facts": [
+      {
+        "fact": "layer",
+        "values": [
+          "application",
+          "boundary"
+        ],
+        "observability": "observable_now",
+        "note": "Role (PLT-84), mapped to paths by the structure profile."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "idempotency key",
+          "idempotent",
+          "retry",
+          "same key",
+          "exactly once",
+          "at most once"
+        ],
+        "observability": "llm_judged",
+        "note": "The task asks for repeat-safe mutations."
+      },
+      {
+        "fact": "operation",
+        "values": [
+          "mutating_request_handled"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Observer: a mutating boundary handler or use case is added or changed."
+      }
+    ],
+    "fires": [
+      "A mutating endpoint accepts a client-supplied key and must not apply the effect twice."
+    ],
+    "doesNotFire": [
+      "Read-only queries.",
+      "Mutations the requirement does not ask to be repeat-safe."
+    ]
+  },
+  "given": "A mutating operation that accepts a client-supplied idempotency key",
+  "when": "the same key arrives again with the same request",
+  "then": "Return the outcome stored for that key without executing the effect again and without recomputing the outcome from current state or configuration.",
+  "prefer": [
+    "Persist the key, a request fingerprint and the full outcome in the same atomic step as the effect.",
+    "Look up the key before any effect, inside the same serialisation as the effect.",
+    "Scope keys to the caller so one caller cannot read another caller's stored outcome."
+  ],
+  "avoid": [
+    "Re-running the computation on replay, which drifts when configuration or state changes.",
+    "Recording the key in a separate step after the effect, leaving a window for double execution."
+  ],
+  "unless": [],
+  "why": "Clients retry after timeouts; a replay that re-executes or recomputes either double-applies the effect or returns a different answer for the same request.",
+  "evidence": [
+    "A test repeats the request and observes an identical response and no additional effect.",
+    "A test changes relevant configuration between the two calls and still gets the stored outcome.",
+    "The behavioural acceptance passes."
+  ]
+}

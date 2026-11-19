@@ -1,0 +1,64 @@
+{
+  "schema": "pi-atdd/convention-proposal/v0",
+  "scope": "core",
+  "status": "proposed-unaudited",
+  "kind": "rule",
+  "realizations": {},
+  "rule_id": "coder.mutation.fallible-before-irreversible",
+  "title": "Finish fallible steps before the irreversible effect",
+  "covers": [
+    "commit consistency (debit without record)"
+  ],
+  "activation": {
+    "facts": [
+      {
+        "fact": "layer",
+        "values": [
+          "application"
+        ],
+        "observability": "observable_now",
+        "note": "Role (PLT-84), mapped to paths by the structure profile."
+      },
+      {
+        "fact": "operation",
+        "values": [
+          "mutating_request_handled"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Observer: a use case performs a side effect and other work in the same request."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "side_effect_followed_by_fallible_call"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Diff places a call that can fail (configuration lookup, pricing, validation, I/O) after a write."
+      }
+    ],
+    "fires": [
+      "A use case debits a balance and only then looks up configuration that can throw.",
+      "A record of the effect is written in a second step that can fail."
+    ],
+    "doesNotFire": [
+      "Operations whose single write is the last step."
+    ]
+  },
+  "given": "A use case performs an effect that cannot be undone silently and also runs steps that can fail",
+  "when": "the agent sequences those steps",
+  "then": "Run every step that can fail before the effect, or record a compensation that runs when a later step fails.",
+  "prefer": [
+    "Compute the full outcome, validate and load configuration first, then perform the effect and its record together.",
+    "If that sequence is impossible, make the compensation explicit and test it."
+  ],
+  "avoid": [
+    "Effect first, then lookups that may throw.",
+    "Writing the effect and its record in separate, independently failing steps."
+  ],
+  "unless": [],
+  "why": "A failure after the effect leaves state changed with no record or response, which is the hardest inconsistency to detect and repair.",
+  "evidence": [
+    "A test forces a later step to fail and observes no effect, or a completed compensation.",
+    "The behavioural acceptance passes."
+  ]
+}
