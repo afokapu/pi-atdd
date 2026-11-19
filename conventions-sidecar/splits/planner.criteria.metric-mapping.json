@@ -1,0 +1,1028 @@
+{
+  "schema": "pi-atdd/convention-sidecar-split/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.criteria.metric-mapping.convention.yaml",
+    "sha256": "45f7d818011787b21c2027c41cc2eac8daf660f6a2274129eaed672ce90ccbbd"
+  },
+  "source_rule_id": "planner.criteria.metric-mapping",
+  "rationale": "The source bundles three obligations with different activations and evidence. (1) A WMBT on a MAPPED dimension+direction must carry an executable bar naming the table's metric_id: subject is a WMBT, checked by the SMOKE validator over the whole corpus (including unchanged WMBTs), advisory. (2) A WMBT on a deliberately UNMAPPED pair (effort/frequency upward) must state its own metric instead of inheriting a default: same reader, but a different Given, no validator selection, no threshold requirement and no prescribed location for the metric. (3) The dimension->metric table itself must stay total over wmbt.schema.json's 24 dimension x direction pairs, keyed at the schema's spelling, synonyms resolved alike, every no-default pair marked `unmapped` with a reason: subject is the table/schema, not a WMBT, pinned by a different test. The previous single rewrite failed because one THEN could not carry the WMBT bar and the table-maintenance branch together (activation TOO_NARROW) and weakened 'executable bar' to field presence. Parts 1 and 2 jointly cover every pair a WMBT can carry (S006: mapped OR explicitly unmapped), so they require each other; both follow part 3, whose totality guarantees nothing falls through between them. Round 2: part 2 no longer mandates that the own metric sit in an acceptance (S061 only requires the WMBT to state it).",
+  "parts": [
+    {
+      "rule_id": "planner.criteria.metric-mapping.wmbt-executable-bar",
+      "kind": "rule",
+      "title": "Give each mapped-pair WMBT an executable bar on its table metric",
+      "activation": {
+        "facts": [
+          {
+            "fact": "file_kind",
+            "values": [
+              "wmbt"
+            ],
+            "observability": "observable_now",
+            "note": "validation.subject_kind = wmbt"
+          },
+          {
+            "fact": "path_glob",
+            "values": [
+              "plan/**"
+            ],
+            "observability": "observable_now",
+            "note": "selector: WMBT files under plan/"
+          },
+          {
+            "fact": "operation",
+            "values": [
+              "create",
+              "edit",
+              "smoke_corpus_inspection"
+            ],
+            "observability": "observable_now",
+            "note": "authoring/editing a WMBT or its acceptances, AND the SMOKE corpus check over existing, unchanged WMBTs"
+          },
+          {
+            "fact": "finding",
+            "values": [
+              "mapped dimension+direction pair",
+              "missing, non-matching or non-executable bar"
+            ],
+            "observability": "needs_new_observer",
+            "note": "resolve dimension/direction (synonyms included) against the table and inspect acceptances[].signal; computed by test_metric_mapping_corpus_drift"
+          },
+          {
+            "fact": "phase",
+            "values": [
+              "SMOKE"
+            ],
+            "observability": "needs_new_observer",
+            "note": "validation.phase = SMOKE"
+          }
+        ],
+        "fires": [
+          "A planner creates a WMBT with time/minimize (mapped to metric:latency_p50), before or after acceptances exist",
+          "A planner edits a likelihood/increase WMBT whose bar names metric:success_ratio — the bar must survive the edit",
+          "The SMOKE corpus check finds an unchanged quantity/maximize WMBT with no signal.metric/threshold — reported (advisory)",
+          "A mapped-pair WMBT's signal.metric names a different metric, or its threshold cannot be evaluated — the bar must be repaired"
+        ],
+        "doesNotFire": [
+          "A WMBT on effort or frequency with maximize/increase (unmapped) — see .unmapped-pair-own-metric",
+          "Editing only the dimension->metric table or the schema enums — see .table-totality",
+          "Wagons, docs or code with no WMBT dimension/direction"
+        ]
+      },
+      "given": "A WMBT under plan/ has a dimension+direction that the dimension->metric table maps to a metric_id.",
+      "when": "You create or edit that WMBT or its acceptances, or the SMOKE corpus check inspects it (unchanged WMBTs included).",
+      "then": "An acceptance states an executable bar: signal.metric equal to the table's metric_id for that pair, plus a signal.threshold that can be evaluated.",
+      "prefer": [
+        "Table, down (minimize|decrease) / up (maximize|increase), all metric:-prefixed: time latency_p50/latency_increase; effort user_steps/unmapped; likelihood error_ratio/success_ratio; frequency occurrence_rate/unmapped; quantity scrap_rate/throughput; financial value cost_per_unit/net_margin.",
+        "Use the schema's exact dimension/direction spelling; minimize=decrease and maximize=increase resolve to the same metric_id.",
+        "Copy the metric_id verbatim, metric: prefix included."
+      ],
+      "avoid": [
+        "A mapped-pair WMBT with no bar, a metric other than the table's, a threshold that cannot be evaluated, or a bar dropped on edit.",
+        "Reading 'advisory' as permission never to add the bar — the debt is paid deliberately, in phases."
+      ],
+      "unless": [],
+      "why": "A dimension+direction is testable only once it names a metric and an evaluable threshold; of 368 mapped WMBTs, none did.",
+      "evidence": [
+        "Validator test_metric_mapping_corpus_drift::test_mapped_wmbts_without_an_executable_bar_are_reported lists mapped WMBTs lacking a bar, with failure evidence wmbt_urn, dimension, direction, metric_id, cause.",
+        "Reviewer traverses wmbt file -> acceptances[] -> signal.metric / signal.threshold and confirms signal.metric equals the table's metric_id and the threshold is a bar passes() can evaluate (not just a present field)."
+      ],
+      "verifier_detail": [
+        "Dimension->direction->metric_id table: time: minimize/decrease -> metric:latency_p50, maximize/increase -> metric:latency_increase; effort: minimize/decrease -> metric:user_steps, maximize/increase -> unmapped; likelihood: minimize/decrease -> metric:error_ratio, maximize/increase -> metric:success_ratio; frequency: minimize/decrease -> metric:occurrence_rate, maximize/increase -> unmapped; quantity: minimize/decrease -> metric:scrap_rate, maximize/increase -> metric:throughput; financial value: minimize/decrease -> metric:cost_per_unit, maximize/increase -> metric:net_margin. Example from the statement: time/minimize -> metric:latency_p50.",
+        "Direction synonyms: the direction enum carries two spellings of each intent; downward = [minimize, decrease] ('less of this is better'); upward = [maximize, increase] ('more of this is better'). A dimension resolves both spellings of one intent to the same metric_id. Before #1959 it did not, and 102 of 472 authored WMBTs mapped to nothing because they wrote `minimize` where the table had `decrease`.",
+        "Validation: family presence; template required_field_presence; variant planner_criteria_metric_mapping_corpus; phase SMOKE; enforcement advisory; subject_kind wmbt; selector: WMBT files under plan/ whose dimension+direction this node maps to a metric_id; traversal: wmbt file -> acceptances[] -> signal.metric / signal.threshold; invariant: a WMBT the mapping covers states an executable bar naming the metric_id the mapping assigns it; failure_evidence: wmbt_urn, dimension, direction, metric_id, cause.",
+        "Why advisory (severity 2): all 368 mapped WMBTs would fail on day one, and the remedy is not yet affordable because no error_ratio, success_ratio or occurrence_rate module exists for runners/metric_runner.py to resolve; the validator reports a count and lets the debt be paid deliberately (issue Decision #2: phase it, never fail 368 at once).",
+        "Before #1925 a threshold reaching passes() was stringified and every comparison swallowed, so binding this node would have enforced a bar that was never evaluated; that constraint is gone.",
+        "Corpus baseline (source note): over 472 WMBTs, 368 carry a dimension+direction this table maps and NOT ONE states an executable bar; the single bar in the corpus (govern_lifecycle/D010) is quantity/minimize, which the source note says this table does not map."
+      ],
+      "audit": [
+        "schema_version 1.1.0; source kind: family; status: active; metadata severity 2, disposition advisory.",
+        "implementation: validator test_metric_mapping_corpus_drift::test_mapped_wmbts_without_an_executable_bar_are_reported.",
+        "source: legacy_path src/atdd/planner/conventions/criteria.convention.yaml, legacy_section metrics, legacy_sha db262e7f5fb06226, extraction_mode high_fidelity.",
+        "parity: source_fragments_preserved true, examples_preserved false, implementation_preserved false, fix_hint_preserved false, reviewed_at 2026-06-16.",
+        "#1958: the node declared a dimension->metric contract and bound nothing — no implementation, no validation, and `metric_id` in no schema and no validator, the same shape as #1548.",
+        "Term ids/labels: dimension_metric ('Dimension metrics'), direction_synonyms ('Direction synonyms')."
+      ],
+      "additions": [
+        {
+          "field": "kind",
+          "text": "kind 'rule' (source declares 'family'; kept in audit).",
+          "justification": "Output schema requires one obligation per part."
+        },
+        {
+          "field": "then",
+          "text": "'An acceptance' — one acceptance carrying the bar satisfies the rule; it does not require every acceptance to name the metric.",
+          "justification": "Source invariant says 'a WMBT ... states an executable bar' (singular), located via traversal acceptances[] -> signal; clarifies a reviewer-flagged ambiguity without adding an obligation."
+        },
+        {
+          "field": "then/evidence",
+          "text": "'Executable' rendered as a threshold that passes() can evaluate.",
+          "justification": "Source S078 (executable bar) read with S011 (thresholds now reach passes() and are compared); fixes audit finding that presence alone weakened S078."
+        },
+        {
+          "field": "when",
+          "text": "Activation includes the SMOKE corpus inspection of existing, unchanged mapped WMBTs.",
+          "justification": "Source selector S076 selects all mapped WMBTs under plan/, not only edited ones (audit fix)."
+        }
+      ]
+    },
+    {
+      "rule_id": "planner.criteria.metric-mapping.unmapped-pair-own-metric",
+      "kind": "rule",
+      "title": "State an own metric on a WMBT whose pair is deliberately unmapped",
+      "activation": {
+        "facts": [
+          {
+            "fact": "file_kind",
+            "values": [
+              "wmbt"
+            ],
+            "observability": "observable_now",
+            "note": "subject is a WMBT"
+          },
+          {
+            "fact": "path_glob",
+            "values": [
+              "plan/**"
+            ],
+            "observability": "observable_now",
+            "note": "WMBTs live under plan/"
+          },
+          {
+            "fact": "operation",
+            "values": [
+              "create",
+              "edit"
+            ],
+            "observability": "observable_now",
+            "note": "authoring/editing the WMBT; the SMOKE validator does not select unmapped pairs"
+          },
+          {
+            "fact": "finding",
+            "values": [
+              "unmapped dimension+direction pair"
+            ],
+            "observability": "needs_new_observer",
+            "note": "dimension in {effort, frequency} and direction in {maximize, increase}"
+          }
+        ],
+        "fires": [
+          "A planner authors a WMBT with effort/maximize (e.g. wmbt:implement-code:E001)",
+          "A planner edits a WMBT with frequency/increase (synonym of frequency/maximize)"
+        ],
+        "doesNotFire": [
+          "A WMBT on any mapped pair — see .wmbt-executable-bar",
+          "effort or frequency with minimize/decrease (mapped to user_steps / occurrence_rate)",
+          "Editing only the table or schema enums — see .table-totality"
+        ]
+      },
+      "given": "A WMBT under plan/ has effort or frequency with direction maximize or increase — a pair the table marks `unmapped`.",
+      "when": "You create or edit that WMBT.",
+      "then": "The WMBT states its own metric instead of inheriting a table default.",
+      "prefer": [
+        "Treat the WMBT as legal: an unmapped pair is a deliberate omission, not an error.",
+        "Remember the synonyms: effort/increase and frequency/increase are unmapped exactly like their maximize forms."
+      ],
+      "avoid": [
+        "Inheriting a default — including the dimension's downward metric (metric:user_steps, metric:occurrence_rate) reused for the upward intent."
+      ],
+      "unless": [],
+      "why": "No upward metric was ever chosen for effort or frequency; their only defaults are downward, so there is nothing valid to inherit.",
+      "evidence": [
+        "Reviewer confirms the WMBT states its own metric and does not rely on a table default; this rule prescribes neither where the metric is stated nor a threshold.",
+        "Not selected by test_metric_mapping_corpus_drift: its selector covers only WMBTs whose pair maps to a metric_id."
+      ],
+      "verifier_detail": [
+        "Unmapped pairs = those carrying the `unmapped` sentinel in dimension_metric, each with the reason it has no default. effort/maximize: no upward default — metric:user_steps counts steps and the criteria vocabulary optimises for fewer; no metric was ever chosen for wanting more effort. effort/increase: no upward default; same as effort/maximize, its synonym. frequency/maximize: no upward default — metric:occurrence_rate is paired with the downward intent, the rate of an occurrence you want less of; no metric was chosen for an occurrence you want more of. frequency/increase: no upward default; same as frequency/maximize, its synonym.",
+        "Every unmapped dimension names a downward metric only; the table's other dimensions pair each intent with a DIFFERENT metric (error_ratio vs success_ratio, scrap_rate vs throughput, cost_per_unit vs net_margin), so an upward default cannot be the downward metric reused — it would have to be a metric never chosen.",
+        "A WMBT on one of these pairs is legal and must state its own metric rather than inherit a default.",
+        "The `unmapped` sentinel plus a stated reason lets a reader tell a deliberate omission from a missing row.",
+        "Corpus carriers: effort/maximize by wmbt:implement-code:E001; frequency/maximize by wmbt:integrate-end-to-end:M001."
+      ],
+      "audit": [
+        "Source kind: family; status: active; metadata severity 2, disposition advisory (source-level).",
+        "Term id/label: unmapped_pairs ('Deliberately unmapped pairs').",
+        "Unmapped pairs carried in corpus: effort/maximize by wmbt:implement-code:E001; frequency/maximize by wmbt:integrate-end-to-end:M001."
+      ],
+      "additions": [
+        {
+          "field": "kind",
+          "text": "kind 'rule' (source declares 'family').",
+          "justification": "Output schema requires one obligation per part."
+        },
+        {
+          "field": "avoid[0]",
+          "text": "Applies S060 (an upward default cannot be the downward metric reused) to the WMBT author: the own metric is not the downward default.",
+          "justification": "Direct consequence of S060 + S061 'rather than inherit a default'; no new obligation beyond those."
+        }
+      ]
+    },
+    {
+      "rule_id": "planner.criteria.metric-mapping.table-totality",
+      "kind": "rule",
+      "title": "Keep the dimension->metric table total over the schema's enums",
+      "activation": {
+        "facts": [
+          {
+            "fact": "file_kind",
+            "values": [
+              "convention",
+              "schema"
+            ],
+            "observability": "observable_now",
+            "note": "the dimension_metric/unmapped_pairs terms of this convention, or wmbt.schema.json"
+          },
+          {
+            "fact": "operation",
+            "values": [
+              "edit"
+            ],
+            "observability": "observable_now",
+            "note": "editing the table or the dimension/direction enums"
+          },
+          {
+            "fact": "finding",
+            "values": [
+              "dimension or direction enum/table row changed"
+            ],
+            "observability": "needs_new_observer",
+            "note": "diff touches dimension_metric, unmapped_pairs, or wmbt.schema.json dimension/direction"
+          }
+        ],
+        "fires": [
+          "A planner adds a dimension to wmbt.schema.json — the table needs four new rows",
+          "A planner changes effort/maximize from `unmapped` to a metric, or adds a new `unmapped` pair",
+          "A planner renames a direction spelling in the schema"
+        ],
+        "doesNotFire": [
+          "Authoring or editing a WMBT without touching the table or schema enums — see .wmbt-executable-bar / .unmapped-pair-own-metric"
+        ]
+      },
+      "given": "The dimension->metric table (term dimension_metric) or wmbt.schema.json's dimension/direction enums.",
+      "when": "You edit either.",
+      "then": "The table keeps exactly one row per dimension x direction pair (24 today), at the schema's spelling, each naming a metric_id or `unmapped` with its reason under unmapped_pairs.",
+      "prefer": [
+        "Give both spellings of one intent (minimize/decrease, maximize/increase) the same metric_id.",
+        "Key rows at the schema's exact spelling — the schema owns both vocabularies.",
+        "Write each unmapped reason so a reader can tell a deliberate omission from a missing row."
+      ],
+      "avoid": [
+        "A missing or misspelled row that lets a pair fall through silently.",
+        "Mapping one spelling of an intent but not its synonym.",
+        "Reusing a downward metric as an upward default — mark the pair `unmapped` instead."
+      ],
+      "unless": [],
+      "why": "Nothing may fall through the table silently; 102 of 472 WMBTs once mapped to nothing because the table spelled `decrease` where they wrote `minimize`.",
+      "evidence": [
+        "test_metric_mapping_matches_the_wmbt_enums (#1959) pins the table as total over wmbt.schema.json's dimension x direction enums.",
+        "Reviewer checks 6 dimensions x 4 directions = 24 rows, equal metric_ids for synonym spellings, and a reason under unmapped_pairs for each `unmapped` pair."
+      ],
+      "verifier_detail": [
+        "Shape: dimension -> direction -> metric_id.",
+        "Keyed on wmbt.schema.json's `dimension` and `direction` enums and TOTAL over their product (6 x 4 = 24 pairs): every legal pair a WMBT can carry has a row. A pair with no default metric carries the `unmapped` sentinel and states its reason under `unmapped_pairs`, so a reader can tell a deliberate omission from a missing row. The schema owns both vocabularies — key the table at its exact spelling. Statement: each dimension+direction maps to a default metric_id or is explicitly declared unmapped; the table is total over the enums; nothing falls through it silently.",
+        "Current table: time: minimize/decrease -> metric:latency_p50, maximize/increase -> metric:latency_increase; effort: minimize/decrease -> metric:user_steps, maximize/increase -> unmapped; likelihood: minimize/decrease -> metric:error_ratio, maximize/increase -> metric:success_ratio; frequency: minimize/decrease -> metric:occurrence_rate, maximize/increase -> unmapped; quantity: minimize/decrease -> metric:scrap_rate, maximize/increase -> metric:throughput; financial value: minimize/decrease -> metric:cost_per_unit, maximize/increase -> metric:net_margin.",
+        "Direction synonyms: the direction enum carries two spellings of each intent; downward = [minimize, decrease] ('less of this is better'); upward = [maximize, increase] ('more of this is better'). A dimension resolves both spellings of one intent to the same metric_id — before #1959 it did not, and 102 of the 472 authored WMBTs mapped to nothing because they wrote `minimize` where the table had written `decrease`.",
+        "unmapped_pairs: the pairs carrying the `unmapped` sentinel, with the reason each has no default. Every dimension there names a downward metric only; the other dimensions pair each intent with a DIFFERENT metric (error_ratio vs success_ratio, scrap_rate vs throughput, cost_per_unit vs net_margin), so an upward default cannot be the downward metric reused — it would have to be a metric never chosen. Current reasons: effort/maximize — metric:user_steps counts steps and the vocabulary optimises for fewer; no metric chosen for wanting more effort. effort/increase — same as effort/maximize (synonym). frequency/maximize — metric:occurrence_rate is the downward intent; no metric chosen for an occurrence you want more of. frequency/increase — same as frequency/maximize (synonym)."
+      ],
+      "audit": [
+        "Source kind: family; status: active; metadata severity 2, disposition advisory (source-level).",
+        "Term ids/labels: dimension_metric ('Dimension metrics'), direction_synonyms ('Direction synonyms'), unmapped_pairs ('Deliberately unmapped pairs').",
+        "Table totality pinned by test_metric_mapping_matches_the_wmbt_enums (#1959)."
+      ],
+      "additions": [
+        {
+          "field": "kind",
+          "text": "kind 'rule' (source declares 'family').",
+          "justification": "Output schema requires one obligation per part."
+        },
+        {
+          "field": "activation",
+          "text": "Activation on edits to the table or the schema's dimension/direction enums, as proposed by the previous author's splitSuggestion.",
+          "justification": "Source totality/spelling obligations (S007, S020-S022) have the table as subject, not a WMBT; audit required an operative activation for them."
+        },
+        {
+          "field": "then",
+          "text": "'(24 today)' — the count follows the schema product if the enums change.",
+          "justification": "S020 states totality over the product and gives 6 x 4 = 24 as the current value."
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "source": "planner.criteria.metric-mapping.wmbt-executable-bar",
+      "target": "planner.criteria.metric-mapping.unmapped-pair-own-metric",
+      "type": "requires",
+      "reason": "S006: every pair is either mapped or explicitly unmapped; a WMBT author must get both branches so a misclassified pair (e.g. synonym spelling) is not missed."
+    },
+    {
+      "source": "planner.criteria.metric-mapping.unmapped-pair-own-metric",
+      "target": "planner.criteria.metric-mapping.wmbt-executable-bar",
+      "type": "requires",
+      "reason": "Same joint coverage from the other side: an author who believes the pair is unmapped must see the mapped-pair bar obligation."
+    },
+    {
+      "source": "planner.criteria.metric-mapping.wmbt-executable-bar",
+      "target": "planner.criteria.metric-mapping.table-totality",
+      "type": "follows",
+      "reason": "The metric a WMBT bar must name is resolved from the table; the table's totality comes first."
+    },
+    {
+      "source": "planner.criteria.metric-mapping.unmapped-pair-own-metric",
+      "target": "planner.criteria.metric-mapping.table-totality",
+      "type": "follows",
+      "reason": "Which pairs are unmapped (and why) is defined by the table's sentinel and unmapped_pairs reasons."
+    }
+  ],
+  "edgeRemap": [
+    {
+      "original": {
+        "source_ref": "planner.criteria.metric-mapping",
+        "target_ref": "planner.criteria.shape",
+        "type": "enables"
+      },
+      "remappedTo": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar",
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric"
+      ],
+      "reason": "A measurable expected_outcome resolves via the map: the table metric for mapped pairs, the WMBT's own metric for unmapped pairs. Table maintenance does not directly shape criteria."
+    },
+    {
+      "original": {
+        "source_ref": "planner.criteria.metric-mapping",
+        "target_ref": "planner.wmbt.dimension-selection",
+        "type": "requires"
+      },
+      "remappedTo": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar",
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric"
+      ],
+      "reason": "Metric selection depends on the WMBT's chosen dimension + direction; both WMBT-facing parts start from it. The table part is keyed on the schema enums, not on a WMBT's selection."
+    }
+  ],
+  "aliasOf": {
+    "planner.criteria.metric-mapping": [
+      "planner.criteria.metric-mapping.wmbt-executable-bar",
+      "planner.criteria.metric-mapping.unmapped-pair-own-metric",
+      "planner.criteria.metric-mapping.table-totality"
+    ]
+  },
+  "sharedNodes": [],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:audit[0]"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "structure"
+      ],
+      "note": "Source id becomes the alias in aliasOf and the prefix of every part id."
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:audit[0]",
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric:audit[0]",
+        "planner.criteria.metric-mapping.table-totality:audit[0]"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:audit[0]",
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric:audit[0]",
+        "planner.criteria.metric-mapping.table-totality:audit[0]"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:title",
+        "planner.criteria.metric-mapping.table-totality:title"
+      ],
+      "note": "Name rephrased as imperative titles; the mapping subject is carried by both."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:given",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[0]",
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric:given",
+        "planner.criteria.metric-mapping.table-totality:then",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[1]"
+      ],
+      "note": "Mapped branch -> bar part; 'explicitly declared unmapped' -> unmapped part and table part; example time/minimize kept in verifier_detail."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "planner.criteria.metric-mapping.table-totality:then",
+        "planner.criteria.metric-mapping.table-totality:avoid[0]",
+        "planner.criteria.metric-mapping.table-totality:why",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:audit[4]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:why",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[3]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:avoid[1]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[4]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:evidence[1]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:then"
+      ],
+      "note": "Supports 'evaluable threshold' reading of executable bar."
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:audit[1]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:evidence[0]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:audit[0]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[3]",
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric:audit[0]",
+        "planner.criteria.metric-mapping.table-totality:audit[0]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:audit[0]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:avoid[1]",
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric:audit[0]",
+        "planner.criteria.metric-mapping.table-totality:audit[0]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:audit[2]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:audit[3]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:audit[5]",
+        "planner.criteria.metric-mapping.table-totality:audit[1]",
+        "planner.criteria.metric-mapping.table-totality:given"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:audit[5]",
+        "planner.criteria.metric-mapping.table-totality:audit[1]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[0]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:prefer[0]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "planner.criteria.metric-mapping.table-totality:then",
+        "planner.criteria.metric-mapping.table-totality:evidence[1]",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "planner.criteria.metric-mapping.table-totality:then",
+        "planner.criteria.metric-mapping.table-totality:prefer[2]",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[1]",
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric:verifier_detail[3]",
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric:prefer[0]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "planner.criteria.metric-mapping.table-totality:prefer[1]",
+        "planner.criteria.metric-mapping.table-totality:avoid[0]",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[1]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:prefer[1]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "planner.criteria.metric-mapping.table-totality:evidence[0]",
+        "planner.criteria.metric-mapping.table-totality:audit[2]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:prefer[0]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[0]",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:prefer[0]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[0]",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:prefer[0]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[0]",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:prefer[0]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[0]",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:prefer[0]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[0]",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:prefer[0]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[0]",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric:given",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:prefer[0]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[0]",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric:given",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:prefer[0]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[0]",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:prefer[0]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[0]",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:prefer[0]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[0]",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:prefer[0]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[0]",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:prefer[0]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[0]",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:prefer[0]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[0]",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:prefer[0]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[0]",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric:given",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:prefer[0]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[0]",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric:given",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:prefer[0]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[0]",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:prefer[0]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[0]",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:prefer[0]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[0]",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:prefer[0]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[0]",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:prefer[0]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[0]",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:prefer[0]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[0]",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S045",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:prefer[0]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[0]",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S046",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:prefer[0]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[0]",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S047",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:prefer[0]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[0]",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S048",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:audit[5]",
+        "planner.criteria.metric-mapping.table-totality:audit[1]"
+      ]
+    },
+    {
+      "seg": "S049",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:audit[5]",
+        "planner.criteria.metric-mapping.table-totality:audit[1]"
+      ]
+    },
+    {
+      "seg": "S050",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[1]",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[3]",
+        "planner.criteria.metric-mapping.table-totality:prefer[0]"
+      ]
+    },
+    {
+      "seg": "S051",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:prefer[1]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[1]",
+        "planner.criteria.metric-mapping.table-totality:prefer[0]",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S052",
+      "dest": [
+        "planner.criteria.metric-mapping.table-totality:prefer[0]",
+        "planner.criteria.metric-mapping.table-totality:avoid[1]",
+        "planner.criteria.metric-mapping.table-totality:why",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[3]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:prefer[1]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S053",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:prefer[0]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[1]",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S054",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:prefer[0]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[1]",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S055",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:prefer[0]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[1]",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[3]",
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric:prefer[1]"
+      ]
+    },
+    {
+      "seg": "S056",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:prefer[0]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[1]",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[3]",
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric:prefer[1]"
+      ]
+    },
+    {
+      "seg": "S057",
+      "dest": [
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric:audit[1]",
+        "planner.criteria.metric-mapping.table-totality:audit[1]"
+      ]
+    },
+    {
+      "seg": "S058",
+      "dest": [
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric:audit[1]",
+        "planner.criteria.metric-mapping.table-totality:audit[1]"
+      ]
+    },
+    {
+      "seg": "S059",
+      "dest": [
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric:verifier_detail[0]",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[4]",
+        "planner.criteria.metric-mapping.table-totality:then"
+      ]
+    },
+    {
+      "seg": "S060",
+      "dest": [
+        "planner.criteria.metric-mapping.table-totality:avoid[2]",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[4]",
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric:verifier_detail[1]",
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric:avoid[0]",
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric:why"
+      ]
+    },
+    {
+      "seg": "S061",
+      "dest": [
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric:then",
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric:prefer[0]",
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric:evidence[0]",
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric:verifier_detail[2]"
+      ],
+      "note": "Round 2: THEN requires only that the WMBT state its own metric; no acceptance placement is mandated."
+    },
+    {
+      "seg": "S062",
+      "dest": [
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric:verifier_detail[0]",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S063",
+      "dest": [
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric:verifier_detail[0]",
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric:why",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S064",
+      "dest": [
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric:verifier_detail[4]",
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric:audit[2]"
+      ]
+    },
+    {
+      "seg": "S065",
+      "dest": [
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric:verifier_detail[0]",
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric:prefer[1]",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S066",
+      "dest": [
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric:verifier_detail[0]",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S067",
+      "dest": [
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric:verifier_detail[0]",
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric:why",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S068",
+      "dest": [
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric:verifier_detail[4]",
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric:audit[2]"
+      ]
+    },
+    {
+      "seg": "S069",
+      "dest": [
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric:verifier_detail[0]",
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric:prefer[1]",
+        "planner.criteria.metric-mapping.table-totality:verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S070",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S071",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S072",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S073",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[2]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:activation",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:when"
+      ]
+    },
+    {
+      "seg": "S074",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[2]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:avoid[1]"
+      ]
+    },
+    {
+      "seg": "S075",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[2]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:activation"
+      ]
+    },
+    {
+      "seg": "S076",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[2]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:activation",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:given",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:when",
+        "planner.criteria.metric-mapping.unmapped-pair-own-metric:evidence[1]"
+      ],
+      "note": "Selector covers all mapped WMBTs under plan/, so activation includes SMOKE inspection of unchanged ones."
+    },
+    {
+      "seg": "S077",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[2]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:evidence[1]"
+      ]
+    },
+    {
+      "seg": "S078",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[2]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:then",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:evidence[1]"
+      ],
+      "note": "THEN requires an executable bar with an evaluable threshold, not mere field presence."
+    },
+    {
+      "seg": "S079",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[2]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:evidence[0]"
+      ]
+    },
+    {
+      "seg": "S080",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[2]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:evidence[0]"
+      ]
+    },
+    {
+      "seg": "S081",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[2]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:evidence[0]"
+      ]
+    },
+    {
+      "seg": "S082",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[2]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:evidence[0]"
+      ]
+    },
+    {
+      "seg": "S083",
+      "dest": [
+        "planner.criteria.metric-mapping.wmbt-executable-bar:verifier_detail[2]",
+        "planner.criteria.metric-mapping.wmbt-executable-bar:evidence[0]"
+      ]
+    }
+  ]
+}

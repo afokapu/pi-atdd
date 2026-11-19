@@ -1,0 +1,405 @@
+{
+  "schema": "pi-atdd/convention-sidecar-split/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.plan.confirm-binds-an-issue.convention.yaml",
+    "sha256": "27de0e84fb7181a6768c65c30865fecdf94a3beddc3a47a4d6de226aaf014767"
+  },
+  "source_rule_id": "planner.plan.confirm-binds-an-issue",
+  "rationale": "The source carries two independent obligations with different activation. (1) Bind-before-Ratify: an open plan session (which may start with no issue) must be bound to a local ATDD issue slug before confirm, so the plan is authored as that issue's PLANNED substrate on its registered branch + worktree; this is what the validator and the PlanSession.confirm() guard enforce. (2) Modify loop (term modify_loop): after commit, a validator failure re-opens the session for operator adjustment and re-author; it fires on a different trigger (post-commit validator failure), in a later phase, with different evidence. The previous single rewrite only failed on an invented 'no ratchet baseline' in a shared strict-disposition node; here disposition 'strict' is repeated verbatim in each part's verifier_detail and no shared node is used, so nothing is added to it. Round 2: S003 (kind) is now traced to each part's audit entry 'kind: rule' instead of an invalid ':kind' dest.",
+  "parts": [
+    {
+      "rule_id": "planner.plan.confirm-binds-an-issue.bind-before-ratify",
+      "kind": "rule",
+      "title": "Bind the plan decomposition to a local ATDD issue before Ratify",
+      "activation": {
+        "facts": [
+          {
+            "fact": "operation",
+            "values": [
+              "atdd plan session start",
+              "atdd plan session bind-issue",
+              "atdd plan session confirm",
+              "ratify"
+            ],
+            "observability": "observable_now",
+            "note": "Plan-session start/bind/confirm/ratify are discrete CLI operations."
+          },
+          {
+            "fact": "task_term",
+            "values": [
+              "plan",
+              "decompose",
+              "ratify",
+              "confirm plan",
+              "lock decomposition",
+              "bind issue"
+            ],
+            "observability": "observable_now",
+            "note": "Task text mentions starting, binding, or locking a plan decomposition."
+          },
+          {
+            "fact": "phase",
+            "values": [
+              "PLANNED"
+            ],
+            "observability": "needs_new_observer",
+            "note": "Needs an observer of plan-session state (open vs. locked) and whether issue_ref is set."
+          },
+          {
+            "fact": "finding",
+            "values": [
+              "confirm attempted with no issue_ref bound",
+              "plan substrate authored on a branch with no registered issue/worktree"
+            ],
+            "observability": "needs_new_observer",
+            "note": "Raised by the confirm-binds-issue validator / PlanSession.confirm() guard."
+          }
+        ],
+        "fires": [
+          "Planner starts an atdd plan session with no pre-existing issue or brief (allowed; binding is required only before confirm).",
+          "Planner binds an issue to an open session (bind-issue, or mint from the main job).",
+          "Planner is about to Ratify/confirm a decomposition, bound or not.",
+          "Planner authors plan substrate (wagons, WMBTs, acceptances) after Ratify."
+        ],
+        "doesNotFire": [
+          "Work unrelated to an atdd plan session (e.g. coder GREEN changes on an already-planned issue)."
+        ]
+      },
+      "given": "An atdd plan session has a decomposition. It may have started with no pre-existing issue or brief.",
+      "when": "You Ratify (confirm/lock) the decomposition and author the plan.",
+      "then": "Before confirm, bind the decomposition to a local ATDD issue record (a target issue's manifest/State Store slug, or one minted from the main job), then author the plan as that issue's PLANNED-phase substrate on its registered branch + worktree.",
+      "prefer": [
+        "Start conversationally and decompose before any issue paperwork; no pre-existing issue or brief is needed. Bind any time before confirm.",
+        "`atdd plan session bind-issue --id <sess> --issue <slug>`; list bindable slugs with `atdd coach issues open`, or mint one from the main job.",
+        "Bind by the local manifest/State Store slug; the GitHub number is a synced projection added later."
+      ],
+      "avoid": [
+        "Reading 'no up-front ceremony' as 'no issue at all'. The session removes the ceremony, not the issue.",
+        "Confirming an unbound decomposition, or authoring plan substrate on an untracked branch (no issue + branch + worktree).",
+        "Waiting for, or binding by, a GitHub issue number."
+      ],
+      "unless": [],
+      "why": "The iron rule (issue + branch + worktree per repo modification) must always hold, even with no GitHub, so plan substrate always lands on a tracked branch tied to a local issue.",
+      "evidence": [
+        "Validator test_plan_confirm_binds_issue::test_confirm_binds_an_issue_is_enforced passes.",
+        "PlanSession.confirm() raises until self.issue_ref is set.",
+        "Plan substrate is authored on the bound issue's registered branch + worktree as PLANNED-phase substrate."
+      ],
+      "verifier_detail": [
+        "Binding identity is the LOCAL manifest/State Store record slug (#945/#1168), not a GitHub issue number. GitHub is a downstream extension that syncs the number after install; the slug is GitHub-agnostic and the GitHub number is a synced projection.",
+        "The session must refuse to lock (confirm) a decomposition not bound to an ATDD issue, so plan substrate is never authored on an untracked branch. Guard: PlanSession.confirm() raises until self.issue_ref is set.",
+        "Severity 4. Disposition: strict."
+      ],
+      "audit": [
+        "schema_version: 1.1.0",
+        "kind: rule",
+        "status: active",
+        "implementation: validator, ref test_plan_confirm_binds_issue::test_confirm_binds_an_issue_is_enforced",
+        "introduced_in: 3.128.0",
+        "supersedes: planner.plan.in-session-no-issue. Corrects the earlier in-session-no-issue framing, which wrongly read as 'no issue at all'.",
+        "terms ids: no_upfront_ceremony, bind_or_mint",
+        "References: #945, #1168"
+      ],
+      "additions": [
+        {
+          "field": "activation",
+          "text": "fires/doesNotFire situations, observability notes, and the operation/task_term/phase/finding fact values.",
+          "justification": "Required by the schema; derived from the statement, normative_text, fix_hint and terms no_upfront_ceremony / bind_or_mint."
+        },
+        {
+          "field": "evidence[2]",
+          "text": "Plan substrate is authored on the bound issue's registered branch + worktree as PLANNED-phase substrate.",
+          "justification": "Observable restatement of the statement's required outcome (S005); no new obligation."
+        }
+      ]
+    },
+    {
+      "rule_id": "planner.plan.confirm-binds-an-issue.modify-loop",
+      "kind": "rule",
+      "title": "Re-open the plan session when a post-commit validator fails",
+      "activation": {
+        "facts": [
+          {
+            "fact": "finding",
+            "values": [
+              "post-commit validator failure on authored plan substrate"
+            ],
+            "observability": "needs_new_observer",
+            "note": "Needs an observer linking a post-commit validator failure to the ratified plan session."
+          },
+          {
+            "fact": "task_term",
+            "values": [
+              "validator failed",
+              "re-open plan",
+              "adjust plan",
+              "re-author"
+            ],
+            "observability": "observable_now",
+            "note": "Task text mentions a validator failure after the plan was committed."
+          }
+        ],
+        "fires": [
+          "A validator fails after the plan substrate was committed for a ratified session."
+        ],
+        "doesNotFire": [
+          "Before Ratify/confirm, while the session is still open (covered by the bind-before-ratify part).",
+          "Work unrelated to an atdd plan session."
+        ]
+      },
+      "given": "A plan was ratified and its substrate committed.",
+      "when": "A post-commit validator fails.",
+      "then": "Re-open the plan session, adjust the plan with the operator, and re-author it.",
+      "prefer": [
+        "Make the adjustment together with the operator inside the re-opened session."
+      ],
+      "avoid": [
+        "Leaving the validator failure unresolved instead of re-opening the session for adjustment and re-author."
+      ],
+      "unless": [],
+      "why": "The session's modify loop is how plan defects caught after commit are corrected: through operator adjustment and re-author.",
+      "evidence": [
+        "After a post-commit validator failure, the session is re-opened and the plan is re-authored after operator adjustment."
+      ],
+      "verifier_detail": [
+        "Severity 4. Disposition: strict."
+      ],
+      "audit": [
+        "Split from planner.plan.confirm-binds-an-issue (schema_version 1.1.0, status active, introduced_in 3.128.0).",
+        "kind: rule",
+        "terms id: modify_loop"
+      ],
+      "additions": [
+        {
+          "field": "activation",
+          "text": "fires/doesNotFire situations, observability notes, and fact values.",
+          "justification": "Required by the schema; derived from the modify_loop term (S023)."
+        },
+        {
+          "field": "avoid[0]",
+          "text": "Leaving the validator failure unresolved instead of re-opening the session.",
+          "justification": "Negative form of the modify_loop term; no new obligation."
+        },
+        {
+          "field": "why",
+          "text": "The modify loop is how post-commit plan defects are corrected.",
+          "justification": "The source gives no explicit why for modify_loop; this restates the term's purpose."
+        },
+        {
+          "field": "evidence[0]",
+          "text": "Session re-opened and plan re-authored after a post-commit validator failure.",
+          "justification": "Observable restatement of the modify_loop term; the source names no dedicated validator for it."
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "source": "planner.plan.confirm-binds-an-issue.modify-loop",
+      "target": "planner.plan.confirm-binds-an-issue.bind-before-ratify",
+      "type": "follows",
+      "reason": "The modify loop only occurs after a bound decomposition has been ratified and committed."
+    },
+    {
+      "source": "planner.plan.confirm-binds-an-issue.modify-loop",
+      "target": "planner.plan.confirm-binds-an-issue.bind-before-ratify",
+      "type": "requires",
+      "reason": "Re-confirming and re-authoring a re-opened session is still subject to the binding rule: the re-authored substrate must stay on the bound issue's branch + worktree."
+    }
+  ],
+  "edgeRemap": [
+    {
+      "original": {
+        "source_ref": "planner.plan.confirm-before-author",
+        "target_ref": "planner.plan.confirm-binds-an-issue",
+        "type": "enables"
+      },
+      "remappedTo": [
+        "planner.plan.confirm-binds-an-issue.bind-before-ratify"
+      ],
+      "reason": "The edge concerns the Confirm boundary binding the plan to its tracking issue, which is the bind-before-ratify part."
+    }
+  ],
+  "aliasOf": {
+    "planner.plan.confirm-binds-an-issue": [
+      "planner.plan.confirm-binds-an-issue.bind-before-ratify",
+      "planner.plan.confirm-binds-an-issue.modify-loop"
+    ]
+  },
+  "sharedNodes": [],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit",
+        "planner.plan.confirm-binds-an-issue.bind-before-ratify:audit[0]",
+        "planner.plan.confirm-binds-an-issue.modify-loop:audit[0]"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "structure"
+      ],
+      "note": "Source id; kept as alias of both parts and as the prefix of the part ids."
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit",
+        "planner.plan.confirm-binds-an-issue.bind-before-ratify:audit[1]",
+        "planner.plan.confirm-binds-an-issue.modify-loop:audit[1]"
+      ],
+      "note": "kind 'rule' recorded in each part's audit (and each part's kind field is 'rule')."
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit",
+        "planner.plan.confirm-binds-an-issue.bind-before-ratify:audit[2]",
+        "planner.plan.confirm-binds-an-issue.modify-loop:audit[0]"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "planner.plan.confirm-binds-an-issue.bind-before-ratify:given",
+        "planner.plan.confirm-binds-an-issue.bind-before-ratify:when",
+        "planner.plan.confirm-binds-an-issue.bind-before-ratify:then",
+        "planner.plan.confirm-binds-an-issue.bind-before-ratify:prefer[0]",
+        "planner.plan.confirm-binds-an-issue.bind-before-ratify:evidence[2]"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "planner.plan.confirm-binds-an-issue.bind-before-ratify:prefer[2]",
+        "planner.plan.confirm-binds-an-issue.bind-before-ratify:avoid[2]",
+        "planner.plan.confirm-binds-an-issue.bind-before-ratify:why",
+        "planner.plan.confirm-binds-an-issue.bind-before-ratify:verifier_detail[0]",
+        "planner.plan.confirm-binds-an-issue.bind-before-ratify:audit[7]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "planner.plan.confirm-binds-an-issue.bind-before-ratify:avoid[0]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit",
+        "planner.plan.confirm-binds-an-issue.bind-before-ratify:audit[3]",
+        "planner.plan.confirm-binds-an-issue.bind-before-ratify:evidence[0]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "planner.plan.confirm-binds-an-issue.bind-before-ratify:avoid[1]",
+        "planner.plan.confirm-binds-an-issue.bind-before-ratify:verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "planner.plan.confirm-binds-an-issue.bind-before-ratify:prefer[1]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "planner.plan.confirm-binds-an-issue.bind-before-ratify:evidence[1]",
+        "planner.plan.confirm-binds-an-issue.bind-before-ratify:verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "planner.plan.confirm-binds-an-issue.bind-before-ratify:prefer[2]",
+        "planner.plan.confirm-binds-an-issue.bind-before-ratify:verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "planner.plan.confirm-binds-an-issue.bind-before-ratify:avoid[0]",
+        "planner.plan.confirm-binds-an-issue.bind-before-ratify:audit[5]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "planner.plan.confirm-binds-an-issue.bind-before-ratify:verifier_detail[2]",
+        "planner.plan.confirm-binds-an-issue.modify-loop:verifier_detail[0]"
+      ],
+      "note": "Source-wide severity repeated in each part."
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "planner.plan.confirm-binds-an-issue.bind-before-ratify:verifier_detail[2]",
+        "planner.plan.confirm-binds-an-issue.modify-loop:verifier_detail[0]"
+      ],
+      "note": "'strict' repeated verbatim in each part, with no extra policy text."
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "audit",
+        "planner.plan.confirm-binds-an-issue.bind-before-ratify:audit[4]",
+        "planner.plan.confirm-binds-an-issue.modify-loop:audit[0]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "audit",
+        "planner.plan.confirm-binds-an-issue.bind-before-ratify:audit[5]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "planner.plan.confirm-binds-an-issue.bind-before-ratify:audit[6]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "planner.plan.confirm-binds-an-issue.bind-before-ratify:given",
+        "planner.plan.confirm-binds-an-issue.bind-before-ratify:prefer[0]",
+        "planner.plan.confirm-binds-an-issue.bind-before-ratify:activation"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "planner.plan.confirm-binds-an-issue.bind-before-ratify:audit[6]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "planner.plan.confirm-binds-an-issue.bind-before-ratify:then",
+        "planner.plan.confirm-binds-an-issue.bind-before-ratify:why"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "planner.plan.confirm-binds-an-issue.modify-loop:audit[2]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "planner.plan.confirm-binds-an-issue.modify-loop:given",
+        "planner.plan.confirm-binds-an-issue.modify-loop:when",
+        "planner.plan.confirm-binds-an-issue.modify-loop:then",
+        "planner.plan.confirm-binds-an-issue.modify-loop:activation"
+      ]
+    }
+  ]
+}

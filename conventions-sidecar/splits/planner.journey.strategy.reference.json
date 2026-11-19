@@ -1,0 +1,524 @@
+{
+  "schema": "pi-atdd/convention-sidecar-split/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.journey.strategy.reference.convention.yaml",
+    "sha256": "52e5db6b87e9800f7891208a66bb553c222fb465c95f219ab1918adc3dcc8298"
+  },
+  "source_rule_id": "planner.journey.strategy.reference",
+  "rationale": "The source bundles three obligations with different triggers and evidence. (1) follow-declared: when planning a journey's execution, default to the declared routes and train continuations without added scheduling or speculative transformations (statement, applicability, runtime boundary). (2) preserve-route-space: the plan must keep guards, error/exception routes, artifacts, terminal outcomes, side effects and ordering, not just the nominal path, proven by existing journey and acceptance tests (constraints term plus first half of evidence term). (3) baseline-before-speed-claim: fires only when someone claims a non-reference strategy is faster, and its only evidence is that baseline measurements were gathered first (second half of evidence term). The single rewrite failed on exactly this seam: folding the speed-claim duty into general evidence turned it into a citation requirement, and folding the constraints into why turned an obligation into a guarantee. Splitting gives each obligation its own trigger and evidence. Parts 1 and 2 were jointly mandatory in the source, so part 1 requires part 2. The original mandatory requires edge to planner.journey.execution-strategies is remapped directly onto all three parts, so every part carries the prerequisite on its own. The advisory/enforcement boundary notes are generic and go into a shared context node (id context.pattern-advisory-boundary).",
+  "parts": [
+    {
+      "rule_id": "planner.journey.strategy.reference.follow-declared",
+      "kind": "rule",
+      "title": "Default to reference execution: follow declared routes and continuations",
+      "activation": {
+        "facts": [
+          {
+            "fact": "task_term",
+            "values": [
+              "journey",
+              "interlocking route",
+              "train continuation",
+              "execution strategy",
+              "reference execution"
+            ],
+            "observability": "observable_now",
+            "note": "Journey-specific terms. Generic terms (parallel, batch, scheduling, speculative, performance) only count when they appear with a journey term or a journey file_kind."
+          },
+          {
+            "fact": "file_kind",
+            "values": [
+              "plan",
+              "wagon",
+              "wmbt",
+              "acceptance",
+              "journey"
+            ],
+            "observability": "observable_now",
+            "note": "Planner artifacts that describe how a journey executes."
+          },
+          {
+            "fact": "task_term",
+            "values": [
+              "order-sensitive",
+              "small workload",
+              "reproduce behavior"
+            ],
+            "observability": "llm_judged",
+            "note": "Applicability conditions are semantic judgements about the journey."
+          }
+        ],
+        "fires": [
+          "A plan, wagon, WMBT or acceptance describes how a journey executes its declared routes and train continuations.",
+          "A planner considers adding scheduling, reordering or speculative transformations to a journey.",
+          "A journey is order-sensitive, has a small workload, or must reproduce behavior."
+        ],
+        "doesNotFire": [
+          "The task does not involve journey execution, routes or continuations.",
+          "Parallelism, batching or performance is mentioned with no journey, route or continuation context.",
+          "Pure wording fix that does not describe or change how a journey executes."
+        ]
+      },
+      "given": "A journey declares interlocking routes and train continuations.",
+      "when": "You plan or document how the journey executes.",
+      "then": "Follow the declared routes and train continuations without additional scheduling or speculative transformations.",
+      "prefer": [
+        "Choose reference when ordering matters, the workload is small, behavior must be reproduced, or performance evidence does not justify an alternative.",
+        "Treat reference as the default, not a mandated slow path."
+      ],
+      "avoid": [
+        "Planning reference execution as a new runtime dispatch option.",
+        "Inferring unimplemented orchestration behavior from this pattern."
+      ],
+      "unless": [],
+      "why": "Reference is the default strategy, and it is what the current single-route continuation model supports.",
+      "evidence": [
+        "The plan's execution steps follow the declared routes and train continuations, with no added scheduling or speculative transformation.",
+        "Existing plan and source validators pass."
+      ],
+      "verifier_detail": [
+        "Runtime boundary: supported by the current single-route continuation model.",
+        "See shared:context.pattern-advisory-boundary: guidance, not independent enforcement or a new runtime dispatch option; existing plan and source validators apply; unimplemented orchestration behavior cannot be inferred from a pattern.",
+        "Severity 3, disposition advisory."
+      ],
+      "audit": [
+        "schema_version: 1.0.0",
+        "source kind: pattern; status: active",
+        "source name: Reference execution",
+        "introduced_in: 0.1.0",
+        "severity: 3; disposition: advisory",
+        "Source terms carried: applicability, runtime_boundary"
+      ],
+      "additions": [
+        {
+          "field": "activation",
+          "text": "Activation facts, fires and doesNotFire",
+          "justification": "Schema requires observable activation; the source only gives applicability conditions."
+        },
+        {
+          "field": "given",
+          "text": "Given/When phrasing scoped to planning/documenting journey execution",
+          "justification": "Required structure, derived from the source statement and the planner audience."
+        },
+        {
+          "field": "evidence",
+          "text": "evidence[0]: plan steps follow declared routes with no added scheduling/speculation",
+          "justification": "Observable restatement of the THEN (S006); adds no new duty."
+        }
+      ]
+    },
+    {
+      "rule_id": "planner.journey.strategy.reference.preserve-route-space",
+      "kind": "rule",
+      "title": "Keep the full route space when planning reference execution",
+      "activation": {
+        "facts": [
+          {
+            "fact": "task_term",
+            "values": [
+              "journey",
+              "interlocking route",
+              "train continuation",
+              "guard",
+              "exception route",
+              "terminal outcome",
+              "side effect"
+            ],
+            "observability": "observable_now",
+            "note": "Journey and route-space terms."
+          },
+          {
+            "fact": "file_kind",
+            "values": [
+              "plan",
+              "wagon",
+              "wmbt",
+              "acceptance",
+              "journey"
+            ],
+            "observability": "observable_now",
+            "note": "Planner artifacts that describe a journey's routes."
+          }
+        ],
+        "fires": [
+          "A plan, wagon, WMBT or acceptance describes a journey's routes and continuations under reference execution.",
+          "A plan for a journey covers only the nominal (happy) path."
+        ],
+        "doesNotFire": [
+          "The task does not involve journey routes or continuations.",
+          "Pure wording fix that does not describe or change a journey's routes."
+        ]
+      },
+      "given": "A plan follows a journey's declared routes and continuations.",
+      "when": "You write its plan, wagons, WMBTs or acceptances.",
+      "then": "Preserve guards, error/exception routes, artifacts, terminal outcomes, side effects and ordering, not only the nominal path.",
+      "prefer": [
+        "Use existing journey and acceptance tests to prove behavior."
+      ],
+      "avoid": [
+        "Planning only the nominal path."
+      ],
+      "unless": [],
+      "why": "A nominal path is not the full route space. Following declared routes does not by itself guarantee these properties; the plan has to keep them.",
+      "evidence": [
+        "The plan keeps guards, error/exception routes, artifacts, terminal outcomes, side effects and ordering.",
+        "Existing journey and acceptance tests are used to prove the behavior."
+      ],
+      "verifier_detail": [
+        "See shared:context.pattern-advisory-boundary.",
+        "Severity 3, disposition advisory."
+      ],
+      "audit": [
+        "source kind: pattern; status: active",
+        "severity: 3; disposition: advisory",
+        "Source terms carried: constraints, evidence (first clause)"
+      ],
+      "additions": [
+        {
+          "field": "activation",
+          "text": "Activation facts, fires and doesNotFire",
+          "justification": "Schema requires observable activation."
+        },
+        {
+          "field": "why",
+          "text": "Following declared routes does not by itself guarantee these properties; the plan has to keep them.",
+          "justification": "Clarifies that preservation is an obligation, not an automatic property, as previous-audit/review required. Adds no duty beyond S011."
+        }
+      ]
+    },
+    {
+      "rule_id": "planner.journey.strategy.reference.baseline-before-speed-claim",
+      "kind": "rule",
+      "title": "Gather baseline measurements before claiming an alternative is faster",
+      "activation": {
+        "facts": [
+          {
+            "fact": "task_term",
+            "values": [
+              "journey",
+              "interlocking route",
+              "train continuation",
+              "execution strategy"
+            ],
+            "observability": "observable_now",
+            "note": "Must appear with a speed claim; a speed claim without journey context does not trigger."
+          },
+          {
+            "fact": "file_kind",
+            "values": [
+              "plan",
+              "wagon",
+              "wmbt",
+              "acceptance",
+              "journey"
+            ],
+            "observability": "observable_now",
+            "note": "Planner artifacts where a strategy claim may be made."
+          },
+          {
+            "fact": "change",
+            "values": [
+              "claim that a non-reference journey strategy is faster"
+            ],
+            "observability": "needs_new_observer",
+            "note": "Needs a plan/diff-level observer for speed claims; until then, judged by an LLM."
+          }
+        ],
+        "fires": [
+          "A plan or doc proposes a non-reference strategy for a journey and says it is faster.",
+          "A planner argues for leaving reference execution on performance grounds."
+        ],
+        "doesNotFire": [
+          "The plan keeps reference execution and makes no speed claim.",
+          "A performance claim with no journey, route or continuation context."
+        ]
+      },
+      "given": "A plan considers a non-reference execution strategy for a journey.",
+      "when": "You claim that strategy is faster.",
+      "then": "Gather baseline measurements before you claim another strategy is faster.",
+      "prefer": [],
+      "avoid": [
+        "Claiming another strategy is faster without baseline measurements."
+      ],
+      "unless": [],
+      "why": "Reference is the default, not a mandated slow path; it stays the choice when performance evidence does not justify an alternative.",
+      "evidence": [
+        "Baseline measurements were gathered before the speed claim was made."
+      ],
+      "verifier_detail": [
+        "See shared:context.pattern-advisory-boundary.",
+        "Severity 3, disposition advisory."
+      ],
+      "audit": [
+        "source kind: pattern; status: active",
+        "severity: 3; disposition: advisory",
+        "Source terms carried: evidence (second clause)"
+      ],
+      "additions": [
+        {
+          "field": "activation",
+          "text": "Activation facts, fires and doesNotFire",
+          "justification": "Schema requires observable activation."
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "source": "planner.journey.strategy.reference.follow-declared",
+      "target": "planner.journey.strategy.reference.preserve-route-space",
+      "type": "requires",
+      "reason": "The source made following declared routes and preserving guards, exception routes, artifacts, outcomes, side effects and ordering jointly mandatory; following routes without keeping the full route space does not satisfy it."
+    },
+    {
+      "source": "planner.journey.strategy.reference.preserve-route-space",
+      "target": "planner.journey.strategy.reference.follow-declared",
+      "type": "refines",
+      "reason": "Spells out what following the declared routes must keep. Not a delivery dependency; the external prerequisite is attached to this part directly (see edgeRemap)."
+    },
+    {
+      "source": "planner.journey.strategy.reference.baseline-before-speed-claim",
+      "target": "planner.journey.strategy.reference.follow-declared",
+      "type": "runs_alongside",
+      "reason": "A speed claim is how a plan argues for leaving the reference default; both are active when a strategy is chosen."
+    },
+    {
+      "source": "planner.journey.strategy.reference.follow-declared",
+      "target": "planner.journey.execution-strategies",
+      "type": "requires",
+      "reason": "Remapped original mandatory edge (finish_to_start, important, internal): shared applicability and evidence principles."
+    },
+    {
+      "source": "planner.journey.strategy.reference.preserve-route-space",
+      "target": "planner.journey.execution-strategies",
+      "type": "requires",
+      "reason": "Remapped original mandatory edge (finish_to_start, important, internal): shared applicability and evidence principles, attached directly so this part carries the prerequisite when delivered on its own."
+    },
+    {
+      "source": "planner.journey.strategy.reference.baseline-before-speed-claim",
+      "target": "planner.journey.execution-strategies",
+      "type": "requires",
+      "reason": "Remapped original mandatory edge (finish_to_start, important, internal): shared performance-evidence principle."
+    },
+    {
+      "source": "planner.journey.strategy.reference.follow-declared",
+      "target": "shared:context.pattern-advisory-boundary",
+      "type": "requires",
+      "reason": "Advisory, non-enforcement and no-inference boundary from the source notes."
+    },
+    {
+      "source": "planner.journey.strategy.reference.preserve-route-space",
+      "target": "shared:context.pattern-advisory-boundary",
+      "type": "requires",
+      "reason": "Same source notes apply."
+    },
+    {
+      "source": "planner.journey.strategy.reference.baseline-before-speed-claim",
+      "target": "shared:context.pattern-advisory-boundary",
+      "type": "requires",
+      "reason": "Same source notes apply."
+    }
+  ],
+  "edgeRemap": [
+    {
+      "original": {
+        "source_ref": "planner.journey.strategy.reference",
+        "target_ref": "planner.journey.execution-strategies",
+        "type": "requires",
+        "constraint": "mandatory",
+        "strength": "important",
+        "control": "internal",
+        "foundation": "finish_to_start",
+        "confidence": 1
+      },
+      "remappedTo": [
+        "planner.journey.strategy.reference.follow-declared",
+        "planner.journey.strategy.reference.preserve-route-space",
+        "planner.journey.strategy.reference.baseline-before-speed-claim"
+      ],
+      "reason": "The edge brings in the shared applicability and evidence principles, and it was mandatory for the whole source. Each part keeps it as a direct requires edge with the original attributes (mandatory, important, internal, finish_to_start), so no part can be delivered without the prerequisite. Indirect refines links are not relied on."
+    }
+  ],
+  "aliasOf": {
+    "planner.journey.strategy.reference": [
+      "planner.journey.strategy.reference.follow-declared",
+      "planner.journey.strategy.reference.preserve-route-space",
+      "planner.journey.strategy.reference.baseline-before-speed-claim"
+    ]
+  },
+  "sharedNodes": [
+    {
+      "id": "context.pattern-advisory-boundary",
+      "kind": "context",
+      "text": "Guidance for agents, not independent enforcement or a new runtime dispatch option. Existing plan and source validators apply. Unimplemented orchestration behavior cannot be inferred from a pattern."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ],
+      "note": "schema_version"
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "structure"
+      ],
+      "note": "Source id kept as alias in aliasOf; part ids derive from it."
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ],
+      "note": "source kind pattern; each part rewritten as a rule"
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "audit",
+        "planner.journey.strategy.reference.follow-declared:title"
+      ],
+      "note": "The name 'Reference execution' becomes the title of the default part."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "planner.journey.strategy.reference.follow-declared:then",
+        "planner.journey.strategy.reference.follow-declared:evidence[0]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "planner.journey.strategy.reference.follow-declared:prefer[1]",
+        "planner.journey.strategy.reference.baseline-before-speed-claim:why"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "structure"
+      ],
+      "note": "Term label; its content is carried by S009."
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "planner.journey.strategy.reference.follow-declared:prefer[0]",
+        "planner.journey.strategy.reference.follow-declared:activation",
+        "planner.journey.strategy.reference.baseline-before-speed-claim:why"
+      ],
+      "note": "The final clause (performance evidence does not justify an alternative) also explains why speed claims need baselines."
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "structure"
+      ],
+      "note": "Term label; its content is carried by S011/S012 in preserve-route-space."
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "planner.journey.strategy.reference.preserve-route-space:then",
+        "planner.journey.strategy.reference.preserve-route-space:evidence[0]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "planner.journey.strategy.reference.preserve-route-space:avoid[0]",
+        "planner.journey.strategy.reference.preserve-route-space:why"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "structure"
+      ],
+      "note": "Term label; its content is split across preserve-route-space and baseline-before-speed-claim."
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "planner.journey.strategy.reference.preserve-route-space:prefer[0]",
+        "planner.journey.strategy.reference.preserve-route-space:evidence[1]",
+        "planner.journey.strategy.reference.baseline-before-speed-claim:then",
+        "planner.journey.strategy.reference.baseline-before-speed-claim:avoid[0]",
+        "planner.journey.strategy.reference.baseline-before-speed-claim:evidence[0]"
+      ],
+      "note": "First clause (prove behavior with existing tests) goes to preserve-route-space. Second clause (baseline before speed claim) goes to baseline-before-speed-claim, with no added recording or citation duty."
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "structure",
+        "planner.journey.strategy.reference.follow-declared:verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "planner.journey.strategy.reference.follow-declared:why",
+        "planner.journey.strategy.reference.follow-declared:verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "shared:context.pattern-advisory-boundary",
+        "planner.journey.strategy.reference.follow-declared:avoid[0]",
+        "planner.journey.strategy.reference.follow-declared:verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "shared:context.pattern-advisory-boundary",
+        "planner.journey.strategy.reference.follow-declared:evidence[1]",
+        "planner.journey.strategy.reference.follow-declared:verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "shared:context.pattern-advisory-boundary",
+        "planner.journey.strategy.reference.follow-declared:avoid[1]",
+        "planner.journey.strategy.reference.follow-declared:verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "audit",
+        "planner.journey.strategy.reference.follow-declared:verifier_detail[2]",
+        "planner.journey.strategy.reference.preserve-route-space:verifier_detail[1]",
+        "planner.journey.strategy.reference.baseline-before-speed-claim:verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "audit",
+        "planner.journey.strategy.reference.follow-declared:verifier_detail[2]",
+        "planner.journey.strategy.reference.preserve-route-space:verifier_detail[1]",
+        "planner.journey.strategy.reference.baseline-before-speed-claim:verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

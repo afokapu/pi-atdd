@@ -12,7 +12,8 @@ This directory holds Gherkin-like, decision-ready rewrites of the canonical ATDD
 | | |
 |---|---|
 | Frozen (lossless audit PASS) | **343** of 358 |
-| Excluded (being split, see PLT-81) | 15, listed in `manifest.json → excluded` |
+| Split losslessly into one-obligation parts | **15** sources → **46** parts (`splits/`), split audit PASS, third-party review agrees 15/15 |
+| Canonical conventions covered | **358 / 358** |
 | Shared nodes (policy / context, deduplicated) | 13 |
 | Human review | **none yet**; the review pipeline is AI-only (see below) |
 
@@ -33,6 +34,8 @@ This directory holds Gherkin-like, decision-ready rewrites of the canonical ATDD
 | `additions` | reviewer | Anything not present in the source, declared with a justification. |
 | `trace` | auditor | Every source segment (`S001…`) mapped to its destination. This is the lossless proof. |
 
+`splits/<source rule_id>.json` holds an approved split: its parts, each with the same fields as above, plus `edges`, `edgeRemap`, `aliasOf`, and one `trace` covering all parts.
+
 `evidence/<family>/<rule_id>.json` holds the auditor's per-segment judgement, plus the third-party review where one was sampled.
 
 ## How it was produced (`tools/convention-fleet/`)
@@ -49,7 +52,7 @@ This is an AI-only pipeline, set up by the operator on the owner's delegation. T
 
 ## Known open items
 
-- 15 conventions are excluded and are being split into one-obligation conventions with a lossless split audit (PLT-81).
+- The 15 split sources propose graph changes in `graph-overlay.json`: 78 new edges, 39 remapped edges and the alias for each original id. The canonical `relationships.yaml` is unchanged, and the overlay has not been applied by the reasoner yet.
 - 4 rule-specific items are still inside shared nodes (`shared/*.json → notGeneric`).
 - Most activations need observers that do not exist yet (PLT-83): detector `finding`, diff-level `change`, `phase` and `file_kind`.
 - The runtime renderer does not read this sidecar yet.

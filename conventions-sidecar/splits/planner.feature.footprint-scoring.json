@@ -1,0 +1,1011 @@
+{
+  "schema": "pi-atdd/convention-sidecar-split/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.feature.footprint-scoring.convention.yaml",
+    "sha256": "89cb47d748a3bc3de19c068ea197f1706ae08ff389247791765de7bdc1da1e83"
+  },
+  "source_rule_id": "planner.feature.footprint-scoring",
+  "rationale": "The source holds three obligations with different triggers. (1) Compute footprint points from the component inventory, using the full weight table and the ceiling. (2) Map the points to a size bracket. (3) Act on an oversized bracket: split L/XL, and decompose M if necessary. Each one starts from a different input (inventory, points, bracket), produces different evidence (recomputed arithmetic, bracket lookup, split plan) and belongs to a different phase (scoring vs restructuring). Giving computation its own part puts the full weight table and rubric in planner-facing text. The parts link to each other with requires, so they stay jointly mandatory. Round-2 fixes: (a) 'decompose M if necessary' is now a real conditional duty. An M feature whose decomposition is necessary must be decomposed. When the source's missing criterion leaves necessity undetermined, the verifier reports 'unresolved', not pass. The blanket pass for M is removed. (b) The zero-weight inventory-documentation preference is removed. Zero weights stay only as weight values.",
+  "parts": [
+    {
+      "rule_id": "planner.feature.footprint-scoring.compute-points",
+      "kind": "rule",
+      "title": "Compute a feature's footprint points as the ceiling of summed component weights",
+      "activation": {
+        "facts": [
+          {
+            "fact": "change",
+            "values": [
+              "feature component inventory (stack/layer/type/count) added or edited",
+              "feature footprint points added or edited"
+            ],
+            "observability": "needs_new_observer",
+            "note": "Branch A: a diff-level observer sees the footprint inputs or points change. Either branch A or branch B is sufficient."
+          },
+          {
+            "fact": "task_term",
+            "values": [
+              "footprint",
+              "component weight",
+              "component footprint",
+              "size this feature",
+              "estimate feature size"
+            ],
+            "observability": "llm_judged",
+            "note": "Branch B: an LLM judges that the planner is computing or revising a feature's component-weight footprint, with or without a plan-file edit. Literal terms only raise the prior. Generic size letters and 'split' are not triggers on their own."
+          },
+          {
+            "fact": "file_kind",
+            "values": [
+              "feature plan",
+              "wagon plan listing features with components"
+            ],
+            "observability": "observable_now",
+            "note": "Hint only, not a gate."
+          },
+          {
+            "fact": "phase",
+            "values": [
+              "planning"
+            ],
+            "observability": "needs_new_observer",
+            "note": "Combination: (branch A OR branch B) AND phase=planning."
+          }
+        ],
+        "fires": [
+          "Planner computes footprint points for a feature from its component inventory, including initial sizing from a supplied inventory during a sizing discussion.",
+          "Planner adds, removes or retypes components in a feature's inventory, which changes its footprint."
+        ],
+        "doesNotFire": [
+          "Coder implements an already-sized feature without changing its component inventory.",
+          "Prose or doc edits that do not touch a feature's components or footprint.",
+          "Scoring wagon interconnection complexity (a separate axis, covered by the wagon complexity model)."
+        ]
+      },
+      "given": "A feature's components are known, each with a stack (backend/frontend), a layer, a granular component type from the coder conventions, and a count.",
+      "when": "The planner computes or revises the feature's architectural footprint.",
+      "then": "Footprint points = sum(count × weight[stack][layer][type]), rounded UP (ceiling), using the weights below.",
+      "prefer": [
+        "Weights are listed per stack × layer × component type, verbatim. The same type can weigh differently by stack, e.g. controllers are 1 in backend.presentation and 2 in frontend.presentation.",
+        "backend.presentation: controllers 1, routes 0, serializers 0.5, validators 0.5, middleware 1, guards 1, views 1.",
+        "backend.application: use_cases 2, handlers 1, ports 0, dtos 0, policies 1, workflows 2.",
+        "backend.domain: entities 1, value_objects 0.5, aggregates 2, services 1, specifications 0.5, events 0, exceptions 0.",
+        "backend.integration: repositories 2, clients 1, caches 0.5, engines 3, formatters 1, notifiers 1, queues 2, stores 1, mappers 0.5, schedulers 2, monitors 1.",
+        "frontend.presentation: views 1, components 0.5, containers 1, controllers 2, routes 0, layouts 1, styles 0, animations 0.5, forms 1, hooks 0.5, directives 0.5, filters 0.5.",
+        "frontend.application: use_cases 2, ports 0, policies 1, dtos 0.",
+        "frontend.domain: entities 1, value_objects 0.5, services 1, specifications 0.5, exceptions 0.",
+        "frontend.integration: repositories 2, clients 1, stores 1, serializers 0.5, mappers 0.5, interceptors 1, caches 0.5, synchronizers 2, monitors 1, validators 0.5, workers 2, connectors 1.",
+        "Weights follow the universal 0–3 complexity scale: 0 = pure config/declaration (routes, dtos, events, ports, styles); 0.5 = simple transformation/validation (serializers, mappers, validators, hooks, filters); 1 = single-responsibility business logic (controllers, services, clients, views); 2 = complex orchestration/state/persistence (use_cases, repositories, queues, workflows); 3 = very complex algorithms/integrations (engines with ML/graph/optimization)."
+      ],
+      "avoid": [
+        "Rounding down, rounding to nearest, or leaving fractions (3.5 must become 4).",
+        "Estimating points by feel instead of summing the weights.",
+        "Retyping or omitting weighted components to lower the score."
+      ],
+      "unless": [],
+      "why": "Summing type weights makes a feature's size reproducible from its component inventory.",
+      "evidence": [
+        "Recomputing ceil(sum(count × weight)) from the feature's component inventory gives the stated points.",
+        "Source worked examples (verbatim; the arithmetic and ceiling are authoritative here): '2 controllers(2x1) + 1 repository(1x2) + 1 view(1x1) = 5 -> S' and '3 serializers(1.5) + 2 controllers(2) = 3.5 -> ceil 4 -> S'."
+      ],
+      "verifier_detail": [
+        "Formula: footprint = sum(component.count × weight[component.type]); round UP (ceiling). The footprint is component-based and uses the granular component types from the coder conventions. Zero-weight components contribute 0, so whether they are listed does not affect the score and is not checked.",
+        "Weights table: term_id component_type_weights, label 'Component type weights', defined as backend/frontend × layer × component-type → weight (verbatim). Full values are in prefer[1..8].",
+        "Complexity rubric: term_id complexity_rubric, a universal 0-3 complexity scale. Full values are in prefer[9].",
+        "This part checks only the examples' arithmetic. Their 'S' labels are a bracket-mapping question, handled by planner.feature.footprint-scoring.map-bracket."
+      ],
+      "audit": [
+        "Split part 1/3 of planner.feature.footprint-scoring (source name: 'Component footprint scoring')."
+      ],
+      "additions": [
+        {
+          "field": "activation",
+          "text": "Activation facts, branch semantics and the fires/doesNotFire lists.",
+          "justification": "The source has no activation section. Activation is derived from the rule's scope and from graph edges (wagon complexity is a separate axis)."
+        },
+        {
+          "field": "avoid",
+          "text": "Estimating points by feel instead of summing the weights.",
+          "justification": "This is the negation of the source formula. It adds no new duty."
+        },
+        {
+          "field": "avoid",
+          "text": "Retyping or omitting weighted components to lower the score.",
+          "justification": "Restates that the formula sums the real inventory. Zero-weight components are excluded because they do not change the sum."
+        },
+        {
+          "field": "verifier_detail",
+          "text": "Whether zero-weight components are listed is not checked.",
+          "justification": "Removes the round-1 inventory-documentation requirement. Zero weights are kept only as weight values."
+        },
+        {
+          "field": "why",
+          "text": "Summing type weights makes a feature's size reproducible from its component inventory.",
+          "justification": "The source states no rationale. This one is inferred and declared."
+        }
+      ]
+    },
+    {
+      "rule_id": "planner.feature.footprint-scoring.map-bracket",
+      "kind": "rule",
+      "title": "Map a feature's footprint points to its size bracket",
+      "activation": {
+        "facts": [
+          {
+            "fact": "change",
+            "values": [
+              "feature size bracket added or edited",
+              "feature footprint points added or edited"
+            ],
+            "observability": "needs_new_observer",
+            "note": "Branch A. Either branch is sufficient."
+          },
+          {
+            "fact": "task_term",
+            "values": [
+              "feature size bracket",
+              "footprint",
+              "size this feature"
+            ],
+            "observability": "llm_judged",
+            "note": "Branch B: an LLM judges that the planner is assigning or revising a feature's size bracket from footprint points. Size letters alone are not a trigger."
+          },
+          {
+            "fact": "phase",
+            "values": [
+              "planning"
+            ],
+            "observability": "needs_new_observer",
+            "note": "Combination: (branch A OR branch B) AND phase=planning."
+          }
+        ],
+        "fires": [
+          "Planner assigns or revises a feature's size bracket after computing its footprint points."
+        ],
+        "doesNotFire": [
+          "Task text mentions sizes (S, M) without any feature footprint being computed.",
+          "Sizing wagon complexity (a separate axis)."
+        ]
+      },
+      "given": "A feature's footprint points have been computed, with the ceiling applied.",
+      "when": "The planner assigns or revises the feature's size bracket.",
+      "then": "Map the points to a bracket: XS ≤5, S 6–10, M 11–15, L 16–25, XL ≥26.",
+      "prefer": [
+        "Map the ceiled integer points, not the raw fractional sum."
+      ],
+      "avoid": [
+        "Choosing a bracket by feel, or copying the worked examples' 'S' labels where they disagree with the table."
+      ],
+      "unless": [],
+      "why": "A fixed points-to-bracket table makes sizes comparable across features.",
+      "evidence": [
+        "The stated bracket matches the points according to the bracket table.",
+        "The source examples ('... = 5 -> S'; '... = 3.5 -> ceil 4 -> S') label 5 and 4 points as S, but the table maps them to XS. The table governs (declared interpretation)."
+      ],
+      "verifier_detail": [
+        "Bracket table: term_id footprint_bracket (points -> bracket). XS <=5 points; S 6-10 points; M 11-15 points (decompose if necessary); L 16-25 points (split); XL >=26 points (split).",
+        "Example/table conflict: the verbatim source examples '2 controllers(2x1) + 1 repository(1x2) + 1 view(1x1) = 5 -> S' and '3 serializers(1.5) + 2 controllers(2) = 3.5 -> ceil 4 -> S' label 5 and 4 points as S, while the table maps both to XS. The verifier treats the table as authoritative, does not fail plans that follow it, and flags the conflict to owners. The example labels are kept unchanged."
+      ],
+      "audit": [
+        "Split part 2/3 of planner.feature.footprint-scoring. Open for owners: the example S labels contradict the bracket table."
+      ],
+      "additions": [
+        {
+          "field": "activation",
+          "text": "Activation facts and the fires/doesNotFire lists.",
+          "justification": "The source has no activation section. These are derived from the rule's scope."
+        },
+        {
+          "field": "avoid",
+          "text": "Choosing a bracket by feel, or copying the worked examples' 'S' labels where they disagree with the table.",
+          "justification": "The source is internally inconsistent. This declared interpretation gives a deterministic resolution and does not rewrite the source labels."
+        },
+        {
+          "field": "verifier_detail",
+          "text": "The table is authoritative over the example labels; the conflict is flagged to owners.",
+          "justification": "Resolves the source conflict openly rather than silently."
+        },
+        {
+          "field": "why",
+          "text": "A fixed points-to-bracket table makes sizes comparable across features.",
+          "justification": "The source states no rationale. This one is inferred and declared."
+        }
+      ]
+    },
+    {
+      "rule_id": "planner.feature.footprint-scoring.split-oversized",
+      "kind": "rule",
+      "title": "Split L/XL features; decompose M features when necessary",
+      "activation": {
+        "facts": [
+          {
+            "fact": "task_term",
+            "values": [
+              "footprint bracket M",
+              "footprint bracket L",
+              "footprint bracket XL",
+              "split feature",
+              "decompose feature"
+            ],
+            "observability": "llm_judged",
+            "note": "An LLM judges that a feature's component-weight footprint bracket is M, L or XL. Generic 'split'/'decompose' alone is not a trigger."
+          },
+          {
+            "fact": "change",
+            "values": [
+              "feature size bracket set to M, L or XL"
+            ],
+            "observability": "needs_new_observer",
+            "note": "Alternative trigger. Either fact is sufficient."
+          },
+          {
+            "fact": "phase",
+            "values": [
+              "planning"
+            ],
+            "observability": "needs_new_observer",
+            "note": "Combination: (task_term OR change) AND phase=planning."
+          }
+        ],
+        "fires": [
+          "Planner finalizes a feature whose footprint lands in M, L or XL."
+        ],
+        "doesNotFire": [
+          "Features in XS or S.",
+          "Splitting a feature for reasons unrelated to its footprint, such as ownership or release scheduling."
+        ]
+      },
+      "given": "A feature's footprint bracket is M (11–15), L (16–25) or XL (≥26).",
+      "when": "The planner finalizes the feature's plan after sizing.",
+      "then": "Split every L and XL feature. For an M feature, decompose it when decomposition is necessary.",
+      "prefer": [
+        "For an M feature, actively assess whether decomposition is necessary. The source gives no criterion, so this is a judgment, but it is not a free pass: once necessity is established, decomposing is required."
+      ],
+      "avoid": [
+        "Keeping an L or XL feature unsplit.",
+        "Keeping an M feature whole when its decomposition is necessary.",
+        "Retyping or dropping components to get under the split threshold instead of splitting."
+      ],
+      "unless": [],
+      "why": "Oversized footprints signal features too large to plan and deliver as one unit.",
+      "evidence": [
+        "Features in L or XL are split.",
+        "An M feature whose decomposition is necessary is decomposed."
+      ],
+      "verifier_detail": [
+        "L/XL: FAIL if the feature is not split.",
+        "M: FAIL if decomposition is established as necessary (by the planner's own assessment or by reviewer/owner judgment) and the feature is kept whole. If the missing source criterion leaves necessity undetermined, report UNRESOLVED (needs judgment), not PASS. Do not invent a numeric threshold."
+      ],
+      "audit": [
+        "Split part 3/3 of planner.feature.footprint-scoring. Open for owners: 'decompose if necessary' at M has no authored criterion. Undetermined cases are reported UNRESOLVED."
+      ],
+      "additions": [
+        {
+          "field": "activation",
+          "text": "Activation facts and the fires/doesNotFire lists.",
+          "justification": "The source has no activation section. These are derived from the bracket annotations."
+        },
+        {
+          "field": "prefer",
+          "text": "Actively assess whether M decomposition is necessary.",
+          "justification": "This step is needed to apply the source's conditional 'if necessary'. It adds no threshold and no waiver."
+        },
+        {
+          "field": "avoid",
+          "text": "Retyping or dropping components to get under the split threshold instead of splitting.",
+          "justification": "A metric-gaming anti-pattern implied by the split annotations."
+        },
+        {
+          "field": "verifier_detail",
+          "text": "UNRESOLVED status when M necessity is undetermined.",
+          "justification": "Keeps the conditional duty without inventing a criterion or granting a blanket pass."
+        },
+        {
+          "field": "why",
+          "text": "Oversized footprints signal features too large to plan and deliver as one unit.",
+          "justification": "The source states no rationale. This one is inferred and declared."
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "source": "planner.feature.footprint-scoring.compute-points",
+      "target": "planner.feature.footprint-scoring.map-bracket",
+      "type": "requires",
+      "reason": "The source statement makes the footprint 'mapped to a size bracket' part of the same obligation."
+    },
+    {
+      "source": "planner.feature.footprint-scoring.map-bracket",
+      "target": "planner.feature.footprint-scoring.compute-points",
+      "type": "requires",
+      "reason": "The bracket is defined only on the ceiled weighted sum."
+    },
+    {
+      "source": "planner.feature.footprint-scoring.map-bracket",
+      "target": "planner.feature.footprint-scoring.compute-points",
+      "type": "follows",
+      "reason": "Points are computed before they are mapped."
+    },
+    {
+      "source": "planner.feature.footprint-scoring.map-bracket",
+      "target": "planner.feature.footprint-scoring.split-oversized",
+      "type": "requires",
+      "reason": "The bracket table carries the '(split)' and '(decompose if necessary)' consequences."
+    },
+    {
+      "source": "planner.feature.footprint-scoring.split-oversized",
+      "target": "planner.feature.footprint-scoring.map-bracket",
+      "type": "requires",
+      "reason": "The split decision is keyed on the bracket."
+    },
+    {
+      "source": "planner.feature.footprint-scoring.split-oversized",
+      "target": "planner.feature.footprint-scoring.map-bracket",
+      "type": "follows",
+      "reason": "The split or decompose decision comes after the bracket is assigned."
+    }
+  ],
+  "edgeRemap": [
+    {
+      "original": {
+        "source_ref": "planner.feature.footprint-scoring",
+        "target_ref": "planner.component.type-catalog",
+        "type": "requires"
+      },
+      "remappedTo": [
+        "planner.feature.footprint-scoring.compute-points"
+      ],
+      "reason": "The weights are keyed by catalog component types, and only the computation part looks them up."
+    },
+    {
+      "original": {
+        "source_ref": "planner.feature.footprint-scoring",
+        "target_ref": "planner.feature.estimation",
+        "type": "runs_alongside"
+      },
+      "remappedTo": [
+        "planner.feature.footprint-scoring.compute-points"
+      ],
+      "reason": "Estimation cues feed the component inventory and point computation."
+    },
+    {
+      "original": {
+        "source_ref": "planner.feature.size-max-rule",
+        "target_ref": "planner.feature.footprint-scoring",
+        "type": "requires"
+      },
+      "remappedTo": [
+        "planner.feature.footprint-scoring.map-bracket"
+      ],
+      "reason": "The max rule consumes the footprint size bracket. map-bracket requires compute-points, so the points are delivered transitively."
+    },
+    {
+      "original": {
+        "source_ref": "planner.wagon.complexity-model",
+        "target_ref": "planner.feature.footprint-scoring",
+        "type": "runs_alongside"
+      },
+      "remappedTo": [
+        "planner.feature.footprint-scoring.compute-points"
+      ],
+      "reason": "The footprint's intrinsic-volume measure is the axis orthogonal to wagon complexity."
+    }
+  ],
+  "aliasOf": {
+    "planner.feature.footprint-scoring": [
+      "planner.feature.footprint-scoring.compute-points",
+      "planner.feature.footprint-scoring.map-bracket",
+      "planner.feature.footprint-scoring.split-oversized"
+    ]
+  },
+  "sharedNodes": [],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ],
+      "note": "Schema metadata."
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "structure"
+      ],
+      "note": "Source id kept as an alias of all three parts (aliasOf); part ids are prefixed with it."
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ],
+      "note": "Each part keeps kind=rule."
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ],
+      "note": "Administrative status."
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:title",
+        "planner.feature.footprint-scoring.compute-points:audit[0]"
+      ],
+      "note": "The source name is recorded verbatim in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:then",
+        "planner.feature.footprint-scoring.compute-points:verifier_detail[0]",
+        "planner.feature.footprint-scoring.map-bracket:then"
+      ],
+      "note": "The sum and ceiling go to compute-points; 'mapped to a size bracket' goes to map-bracket."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ],
+      "note": "Legacy provenance."
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:given",
+        "planner.feature.footprint-scoring.compute-points:verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:then",
+        "planner.feature.footprint-scoring.compute-points:avoid[0]",
+        "planner.feature.footprint-scoring.compute-points:verifier_detail[0]",
+        "planner.feature.footprint-scoring.map-bracket:prefer[0]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:evidence[1]",
+        "planner.feature.footprint-scoring.map-bracket:evidence[1]",
+        "planner.feature.footprint-scoring.map-bracket:verifier_detail[1]"
+      ],
+      "note": "The arithmetic is checked in compute-points; the conflicting S label is handled in map-bracket."
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:evidence[1]",
+        "planner.feature.footprint-scoring.compute-points:avoid[0]",
+        "planner.feature.footprint-scoring.map-bracket:evidence[1]",
+        "planner.feature.footprint-scoring.map-bracket:verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "audit"
+      ],
+      "note": "Historical parity metadata."
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[9]",
+        "planner.feature.footprint-scoring.compute-points:verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[9]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[9]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[9]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[9]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[9]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[0]",
+        "planner.feature.footprint-scoring.compute-points:verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[1]",
+        "planner.feature.footprint-scoring.compute-points:prefer[0]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[1]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[1]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[1]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[1]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[1]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[1]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[2]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[2]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[2]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[2]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[2]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[2]"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[3]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[3]"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[3]"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[3]"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[3]"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[3]"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[3]"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[4]"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[4]"
+      ]
+    },
+    {
+      "seg": "S045",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[4]"
+      ]
+    },
+    {
+      "seg": "S046",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[4]"
+      ]
+    },
+    {
+      "seg": "S047",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[4]"
+      ]
+    },
+    {
+      "seg": "S048",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[4]"
+      ]
+    },
+    {
+      "seg": "S049",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[4]"
+      ]
+    },
+    {
+      "seg": "S050",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[4]"
+      ]
+    },
+    {
+      "seg": "S051",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[4]"
+      ]
+    },
+    {
+      "seg": "S052",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[4]"
+      ]
+    },
+    {
+      "seg": "S053",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[4]"
+      ]
+    },
+    {
+      "seg": "S054",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[5]"
+      ]
+    },
+    {
+      "seg": "S055",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[5]"
+      ]
+    },
+    {
+      "seg": "S056",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[5]"
+      ]
+    },
+    {
+      "seg": "S057",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[5]",
+        "planner.feature.footprint-scoring.compute-points:prefer[0]"
+      ]
+    },
+    {
+      "seg": "S058",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[5]"
+      ]
+    },
+    {
+      "seg": "S059",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[5]"
+      ]
+    },
+    {
+      "seg": "S060",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[5]"
+      ]
+    },
+    {
+      "seg": "S061",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[5]"
+      ]
+    },
+    {
+      "seg": "S062",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[5]"
+      ]
+    },
+    {
+      "seg": "S063",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[5]"
+      ]
+    },
+    {
+      "seg": "S064",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[5]"
+      ]
+    },
+    {
+      "seg": "S065",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[5]"
+      ]
+    },
+    {
+      "seg": "S066",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[6]"
+      ]
+    },
+    {
+      "seg": "S067",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[6]"
+      ]
+    },
+    {
+      "seg": "S068",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[6]"
+      ]
+    },
+    {
+      "seg": "S069",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[6]"
+      ]
+    },
+    {
+      "seg": "S070",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[7]"
+      ]
+    },
+    {
+      "seg": "S071",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[7]"
+      ]
+    },
+    {
+      "seg": "S072",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[7]"
+      ]
+    },
+    {
+      "seg": "S073",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[7]"
+      ]
+    },
+    {
+      "seg": "S074",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[7]"
+      ]
+    },
+    {
+      "seg": "S075",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[8]"
+      ]
+    },
+    {
+      "seg": "S076",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[8]"
+      ]
+    },
+    {
+      "seg": "S077",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[8]"
+      ]
+    },
+    {
+      "seg": "S078",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[8]"
+      ]
+    },
+    {
+      "seg": "S079",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[8]"
+      ]
+    },
+    {
+      "seg": "S080",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[8]"
+      ]
+    },
+    {
+      "seg": "S081",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[8]"
+      ]
+    },
+    {
+      "seg": "S082",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[8]"
+      ]
+    },
+    {
+      "seg": "S083",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[8]"
+      ]
+    },
+    {
+      "seg": "S084",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[8]"
+      ]
+    },
+    {
+      "seg": "S085",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[8]"
+      ]
+    },
+    {
+      "seg": "S086",
+      "dest": [
+        "planner.feature.footprint-scoring.compute-points:prefer[8]"
+      ]
+    },
+    {
+      "seg": "S087",
+      "dest": [
+        "planner.feature.footprint-scoring.map-bracket:verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S088",
+      "dest": [
+        "planner.feature.footprint-scoring.map-bracket:verifier_detail[0]",
+        "planner.feature.footprint-scoring.map-bracket:then"
+      ]
+    },
+    {
+      "seg": "S089",
+      "dest": [
+        "planner.feature.footprint-scoring.map-bracket:then",
+        "planner.feature.footprint-scoring.map-bracket:verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S090",
+      "dest": [
+        "planner.feature.footprint-scoring.map-bracket:then",
+        "planner.feature.footprint-scoring.map-bracket:verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S091",
+      "dest": [
+        "planner.feature.footprint-scoring.map-bracket:then",
+        "planner.feature.footprint-scoring.map-bracket:verifier_detail[0]",
+        "planner.feature.footprint-scoring.split-oversized:given",
+        "planner.feature.footprint-scoring.split-oversized:then",
+        "planner.feature.footprint-scoring.split-oversized:prefer[0]",
+        "planner.feature.footprint-scoring.split-oversized:avoid[1]",
+        "planner.feature.footprint-scoring.split-oversized:evidence[1]",
+        "planner.feature.footprint-scoring.split-oversized:verifier_detail[1]"
+      ],
+      "note": "The 11-15 range belongs to map-bracket. 'Decompose if necessary' is a conditional duty in split-oversized: once necessity is established, the feature must be decomposed, and an undetermined case is reported UNRESOLVED, not waived."
+    },
+    {
+      "seg": "S092",
+      "dest": [
+        "planner.feature.footprint-scoring.map-bracket:then",
+        "planner.feature.footprint-scoring.map-bracket:verifier_detail[0]",
+        "planner.feature.footprint-scoring.split-oversized:given",
+        "planner.feature.footprint-scoring.split-oversized:then",
+        "planner.feature.footprint-scoring.split-oversized:avoid[0]",
+        "planner.feature.footprint-scoring.split-oversized:evidence[0]",
+        "planner.feature.footprint-scoring.split-oversized:verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S093",
+      "dest": [
+        "planner.feature.footprint-scoring.map-bracket:then",
+        "planner.feature.footprint-scoring.map-bracket:verifier_detail[0]",
+        "planner.feature.footprint-scoring.split-oversized:given",
+        "planner.feature.footprint-scoring.split-oversized:then",
+        "planner.feature.footprint-scoring.split-oversized:avoid[0]",
+        "planner.feature.footprint-scoring.split-oversized:evidence[0]",
+        "planner.feature.footprint-scoring.split-oversized:verifier_detail[0]"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,602 @@
+{
+  "schema": "pi-atdd/convention-sidecar-split/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/planner.docs/planner.docs.undeclared-change.convention.yaml",
+    "sha256": "b66655649bbf030ab58f29d0c474890b88cf8dbff8440c9b22cb44769d0bbb7e"
+  },
+  "source_rule_id": "planner.docs.undeclared-change",
+  "rationale": "The source carries two independent obligations with different When conditions and different evidence. (1) Coverage: when core supplies a change set, every added, modified or deleted docs/ path outside docs/dist/ must exactly equal a declared artifact `path` or an `archive` artifact `from`. Its evidence is a path-by-path coverage match, and planners act on it at RATIFY. (2) Absent change set: when core supplies NO change set, the check must return COULD_NOT_CHECK and block, and must keep that case distinct from an empty change set, which permits. Its evidence is the result status, not path coverage. Folding the second case into the first made the single THEN and its firing examples mix two predicates, which produced the coverage-alternative distortion that the audit flagged. The two parts are linked with mutual `requires` edges, because the source makes them jointly mandatory: an agent must not satisfy coverage while reading a missing change set as 'nothing undeclared'.",
+  "parts": [
+    {
+      "rule_id": "planner.docs.undeclared-change.cover-docs-paths",
+      "kind": "rule",
+      "title": "Declare every docs/ path the change touches, by exact path",
+      "activation": {
+        "facts": [
+          {
+            "fact": "file_kind",
+            "values": [
+              "documentation_declaration"
+            ],
+            "observability": "needs_new_observer",
+            "note": "Fires only when a documentation declaration is recorded for the work. Needs an observer that lists its artifacts (action, path, archive `from`). If no declaration exists, core check 1 owns the case."
+          },
+          {
+            "fact": "change",
+            "values": [
+              "change_set_supplied",
+              "added",
+              "modified",
+              "deleted"
+            ],
+            "observability": "needs_new_observer",
+            "note": "Needs the change set that core supplies. The capability reads it and does not compute it. The absent case belongs to the sibling part absent-change-set."
+          },
+          {
+            "fact": "path_glob",
+            "values": [
+              "docs/**",
+              "!docs/dist/**"
+            ],
+            "observability": "needs_new_observer",
+            "note": "Applies to paths inside the supplied change set. Generated docs/dist/** is excluded."
+          }
+        ],
+        "fires": [
+          "A declaration is recorded. The change set modifies docs/a.adoc, which is not under docs/dist/. No artifact `path` equals docs/a.adoc, and no `archive` artifact `from` equals it either.",
+          "A declaration is recorded. The change set deletes docs/b.adoc, which is not under docs/dist/. No artifact `path` equals docs/b.adoc, and no `archive` artifact `from` equals it either.",
+          "A declaration is recorded and one artifact declares the prefix docs/guide/. The change set adds docs/guide/a.adoc. No artifact `path` or `archive` `from` exactly equals docs/guide/a.adoc, so the path is undeclared because coverage is exact-path."
+        ],
+        "doesNotFire": [
+          "The only changed paths under docs/ are in docs/dist/**, which is generated build output.",
+          "No documentation declaration is recorded at all. That is core's concern (companion §4, check 1).",
+          "Core supplies an empty change set. Nothing changed, so the result permits.",
+          "Every changed docs/ path outside docs/dist/ exactly equals some artifact `path` or some `archive` artifact `from`.",
+          "All changed paths are outside docs/.",
+          "Core supplies no change set at all. The sibling part absent-change-set handles this case."
+        ]
+      },
+      "given": "A plan's work has a recorded documentation declaration, and core supplies its change set.",
+      "when": "that change set is evaluated.",
+      "then": "Every added, modified or deleted path under docs/ (outside docs/dist/) exactly equals some declared artifact's `path` or some `archive` artifact's `from`.",
+      "prefer": [
+        "Declare exact paths at RATIFY, before the work: `documentation: {impact: change, artifacts: [{action: modify, path: docs/purpose/release.adoc}]}`.",
+        "To remove a document, declare an `archive` artifact whose `from` is the removed path. Removing a document is a documentation change.",
+        "If an unplanned change IS a documentation change, the declaration was wrong at RATIFY. Re-ratify."
+      ],
+      "avoid": [
+        "Widening the declaration to absorb a change that is not a documentation change, such as a typo fix in a rendered artefact or a path you did not mean to touch. Do not touch docs/ instead.",
+        "Relying on a prefix or glob to cover files. Coverage is exact-path only."
+      ],
+      "unless": [
+        "Paths in docs/dist/** never need to be declared. They are generated output: a rendered site changing is a consequence of an authored change, and requiring it would make every declaration carry generated paths.",
+        "No declaration is recorded at all. That case belongs to core, not to this rule."
+      ],
+      "why": "Deciding whether a change SHOULD have been declared is semantic and cannot be done deterministically. Detecting that a declared-docs repo touched docs/ without declaring it can be, and it catches the same drift from the other side. Core checks that declared paths were touched, and this part checks that touched paths were declared. Neither check closes the loop alone.",
+      "evidence": [
+        "Every added, modified or deleted change-set path under docs/ but not under docs/dist/ exactly equals some artifact `path` or some `archive` artifact `from`.",
+        "Deleted docs/ paths are checked too. The declaration form for a removal is an `archive` artifact whose `from` is the deleted path.",
+        "Each undeclared documentation change is reported as a violation (severity 2, strict)."
+      ],
+      "verifier_detail": [
+        "Input change_set: the paths added, modified or deleted under evaluation, handed over by core (companion §5). The capability reads it and never computes it.",
+        "covered: the changed path is string-equal to some artifact `path`, or to the `from` of an `archive` artifact. Prefix and glob matches do not count.",
+        "Scope: paths beneath docs/, excluding docs/dist/**. Deleted paths are in scope.",
+        "If no documentation declaration is recorded, defer to core (companion §4, check 1). This part fires only when a declaration exists and does not cover the diff.",
+        "The rule lives in the docs extension, not in core, because it requires knowing the docs/ tree (spec 2 §4; companion §4, *Deliberately excluded*). Implemented by the validator docs_capability.",
+        "Severity 2, strict disposition (see shared:policy.strict-disposition). Every undeclared documentation change is a violation.",
+        "docs/dist/** is excluded because it is build output. A rendered-site change is a consequence of an authored change, not an authored change."
+      ],
+      "audit": [
+        "Split from planner.docs.undeclared-change: schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0; alias DOCS-DECLARATION-002; implementation {type: validator, ref: docs_capability}; severity 2; disposition strict.",
+        "Placement: the rule lives in the extension and NOT in core, because it requires knowing docs/ (spec 2 §4; companion §4, *Deliberately excluded*).",
+        "Summary label: 'The enforceable inverse.'",
+        "Lineage: #1782 reasoned this correctly, and spec 2 §4 keeps the reasoning: the deterministic inverse is enforceable, and it requires knowing the tree. Core's half (every declared path appears in the change set) asks 'you said you would touch these paths, did you?'. This half asks 'you touched these paths, did you say you would?'. Together they close the loop; neither alone does.",
+        "Declaring a deletion as an `archive` artifact is how spec 2 §2's 'migration preserves history' survives contact with a repository where deleting a file is one keystroke.",
+        "Term sources: change_set (companion §5); covered (exact-path definition)."
+      ],
+      "additions": [
+        {
+          "field": "activation",
+          "text": "Observer-needs mapping for the recorded declaration, the supplied change set and the docs path scope, with concrete fire and no-fire cases that use placeholder paths. Every uncovered-path example tests both coverage alternatives.",
+          "justification": "The schema requires observable activation facts and concrete cases. The cases are derived from the source definitions and exceptions and add no obligation."
+        },
+        {
+          "field": "activation.doesNotFire[5]",
+          "text": "Routes the absent-change-set case to the sibling part.",
+          "justification": "This is a structural consequence of the split. The obligation itself is preserved in absent-change-set."
+        }
+      ]
+    },
+    {
+      "rule_id": "planner.docs.undeclared-change.absent-change-set",
+      "kind": "rule",
+      "title": "An absent change set is COULD_NOT_CHECK (blocks), never 'nothing undeclared'",
+      "activation": {
+        "facts": [
+          {
+            "fact": "file_kind",
+            "values": [
+              "documentation_declaration"
+            ],
+            "observability": "needs_new_observer",
+            "note": "Fires only when a documentation declaration is recorded for the work. With no declaration, core check 1 owns the case."
+          },
+          {
+            "fact": "change",
+            "values": [
+              "change_set_absent",
+              "change_set_empty"
+            ],
+            "observability": "needs_new_observer",
+            "note": "The observer must tell apart a change set that core did not supply at all (absent) from one that core supplied with no paths (empty). This part fires on the absent case even when no changed paths are observable."
+          }
+        ],
+        "fires": [
+          "A declaration is recorded, but core supplies no change set at all. The rule cannot be evaluated, so the capability returns COULD_NOT_CHECK, which blocks."
+        ],
+        "doesNotFire": [
+          "Core supplies an empty change set. That means nothing changed: the result is actionable and permits.",
+          "Core supplies a non-empty change set. The sibling part cover-docs-paths evaluates coverage.",
+          "No documentation declaration is recorded at all. That is core's concern (companion §4, check 1)."
+        ]
+      },
+      "given": "A plan's work has a recorded documentation declaration.",
+      "when": "core supplies no change set at all, as opposed to an empty one.",
+      "then": "The docs check returns COULD_NOT_CHECK, which blocks. It never reports 'nothing undeclared'.",
+      "prefer": [
+        "Read an empty change set as 'nothing changed' (permits), and an absent change set as COULD_NOT_CHECK (blocks)."
+      ],
+      "avoid": [
+        "Treating an absent change set as an empty one, or reporting 'nothing undeclared' when no change set was supplied."
+      ],
+      "unless": [
+        "No declaration is recorded at all. That case belongs to core, not to this rule."
+      ],
+      "why": "An ABSENT change set is not an empty one. Without a change set, the check is in no position to claim that nothing is undeclared. An empty change set is core saying that nothing changed, which is actionable. The two stay distinct for the same reason NOT_APPLICABLE and COULD_NOT_CHECK do (spec 2 §3).",
+      "evidence": [
+        "With an absent change set, the result is COULD_NOT_CHECK and it blocks.",
+        "With an empty change set, the result permits.",
+        "The two results are never conflated."
+      ],
+      "verifier_detail": [
+        "change_set is handed over by core (companion §5). The capability reads it and never computes it, so a missing change set cannot be filled in locally.",
+        "Absent: return COULD_NOT_CHECK, which BLOCKS. Never report 'nothing undeclared', because the check is in no position to make that claim. Empty: nothing changed, which is actionable and permits.",
+        "Keep absent and empty distinct for the same reason NOT_APPLICABLE and COULD_NOT_CHECK must stay distinct (spec 2 §3).",
+        "If no documentation declaration is recorded, defer to core (companion §4, check 1).",
+        "Severity 2, strict disposition (see shared:policy.strict-disposition). Implemented by the validator docs_capability."
+      ],
+      "audit": [
+        "Split from planner.docs.undeclared-change (alias DOCS-DECLARATION-002). Source location: content.exceptions[2]."
+      ],
+      "additions": [
+        {
+          "field": "activation",
+          "text": "Observer-needs mapping for the absent and empty change-set states, with concrete fire and no-fire cases.",
+          "justification": "The schema requires observable activation facts. The cases are taken directly from source exception 2."
+        },
+        {
+          "field": "activation.doesNotFire[1]",
+          "text": "Routes the non-empty supplied change set to the sibling part.",
+          "justification": "This is a structural consequence of the split."
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "source": "planner.docs.undeclared-change.cover-docs-paths",
+      "target": "planner.docs.undeclared-change.absent-change-set",
+      "type": "requires",
+      "reason": "The source makes both jointly mandatory. Coverage evaluation must never read a missing change set as 'nothing undeclared'."
+    },
+    {
+      "source": "planner.docs.undeclared-change.absent-change-set",
+      "target": "planner.docs.undeclared-change.cover-docs-paths",
+      "type": "requires",
+      "reason": "COULD_NOT_CHECK stands in for the coverage check that could not run. The reader needs to know which obligation remains pending once a change set is supplied."
+    }
+  ],
+  "edgeRemap": [
+    {
+      "original": {
+        "source_ref": "planner.docs.undeclared-change",
+        "target_ref": "planner.docs.artifact-path-shape",
+        "type": "runs_alongside"
+      },
+      "remappedTo": [
+        "planner.docs.undeclared-change.cover-docs-paths"
+      ],
+      "reason": "The edge pairs the 'was the docs change declared' half with the declared-path-shape half. That is the coverage obligation. The absent-change-set part is about result status, not declaration content."
+    }
+  ],
+  "aliasOf": {
+    "planner.docs.undeclared-change": [
+      "planner.docs.undeclared-change.cover-docs-paths",
+      "planner.docs.undeclared-change.absent-change-set"
+    ]
+  },
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "strict: the tooling fails on every finding. It has no advisory mode and no ratchet baseline."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "structure"
+      ],
+      "note": "Source id. Kept as an alias (aliasOf) and used as the prefix of both part ids."
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "planner.docs.undeclared-change.cover-docs-paths:title"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "planner.docs.undeclared-change.cover-docs-paths:then",
+        "planner.docs.undeclared-change.cover-docs-paths:activation",
+        "planner.docs.undeclared-change.cover-docs-paths:evidence[0]",
+        "planner.docs.undeclared-change.cover-docs-paths:verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "planner.docs.undeclared-change.cover-docs-paths:evidence[2]",
+        "planner.docs.undeclared-change.cover-docs-paths:verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "planner.docs.undeclared-change.cover-docs-paths:verifier_detail[4]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "planner.docs.undeclared-change.cover-docs-paths:verifier_detail[0]",
+        "planner.docs.undeclared-change.absent-change-set:verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "planner.docs.undeclared-change.cover-docs-paths:verifier_detail[0]",
+        "planner.docs.undeclared-change.cover-docs-paths:then",
+        "planner.docs.undeclared-change.cover-docs-paths:activation",
+        "planner.docs.undeclared-change.absent-change-set:verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "planner.docs.undeclared-change.cover-docs-paths:verifier_detail[0]",
+        "planner.docs.undeclared-change.absent-change-set:verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "planner.docs.undeclared-change.cover-docs-paths:verifier_detail[1]"
+      ],
+      "note": "The term label 'covered' is kept explicitly."
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "planner.docs.undeclared-change.cover-docs-paths:then",
+        "planner.docs.undeclared-change.cover-docs-paths:verifier_detail[1]",
+        "planner.docs.undeclared-change.cover-docs-paths:evidence[0]",
+        "planner.docs.undeclared-change.cover-docs-paths:activation"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "planner.docs.undeclared-change.cover-docs-paths:avoid[1]",
+        "planner.docs.undeclared-change.cover-docs-paths:verifier_detail[1]",
+        "planner.docs.undeclared-change.cover-docs-paths:activation"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "planner.docs.undeclared-change.cover-docs-paths:why"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "audit",
+        "planner.docs.undeclared-change.cover-docs-paths:verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "planner.docs.undeclared-change.cover-docs-paths:why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "planner.docs.undeclared-change.cover-docs-paths:why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "planner.docs.undeclared-change.cover-docs-paths:why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "planner.docs.undeclared-change.cover-docs-paths:why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "planner.docs.undeclared-change.cover-docs-paths:why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "planner.docs.undeclared-change.cover-docs-paths:unless[0]",
+        "planner.docs.undeclared-change.cover-docs-paths:verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "planner.docs.undeclared-change.cover-docs-paths:unless[0]",
+        "planner.docs.undeclared-change.cover-docs-paths:verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "planner.docs.undeclared-change.cover-docs-paths:unless[0]",
+        "planner.docs.undeclared-change.cover-docs-paths:verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "planner.docs.undeclared-change.cover-docs-paths:unless[0]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "planner.docs.undeclared-change.cover-docs-paths:then",
+        "planner.docs.undeclared-change.cover-docs-paths:verifier_detail[2]",
+        "planner.docs.undeclared-change.cover-docs-paths:evidence[1]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "planner.docs.undeclared-change.cover-docs-paths:prefer[1]",
+        "planner.docs.undeclared-change.cover-docs-paths:evidence[1]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "planner.docs.undeclared-change.cover-docs-paths:prefer[1]",
+        "planner.docs.undeclared-change.cover-docs-paths:evidence[1]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "planner.docs.undeclared-change.cover-docs-paths:prefer[0]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "planner.docs.undeclared-change.cover-docs-paths:prefer[0]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "planner.docs.undeclared-change.cover-docs-paths:prefer[0]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "planner.docs.undeclared-change.cover-docs-paths:prefer[0]"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "planner.docs.undeclared-change.cover-docs-paths:prefer[0]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "planner.docs.undeclared-change.cover-docs-paths:prefer[0]"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "planner.docs.undeclared-change.cover-docs-paths:avoid[0]"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "planner.docs.undeclared-change.cover-docs-paths:avoid[0]"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "planner.docs.undeclared-change.cover-docs-paths:prefer[2]"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "planner.docs.undeclared-change.cover-docs-paths:prefer[2]"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "planner.docs.undeclared-change.cover-docs-paths:unless[0]",
+        "planner.docs.undeclared-change.cover-docs-paths:activation"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "planner.docs.undeclared-change.cover-docs-paths:unless[1]",
+        "planner.docs.undeclared-change.cover-docs-paths:verifier_detail[3]",
+        "planner.docs.undeclared-change.absent-change-set:unless[0]",
+        "planner.docs.undeclared-change.absent-change-set:verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "planner.docs.undeclared-change.cover-docs-paths:given",
+        "planner.docs.undeclared-change.cover-docs-paths:verifier_detail[3]",
+        "planner.docs.undeclared-change.cover-docs-paths:activation",
+        "planner.docs.undeclared-change.absent-change-set:given"
+      ],
+      "note": "Every firing example now requires that neither an artifact path nor an archive from equals the changed path."
+    },
+    {
+      "seg": "S045",
+      "dest": [
+        "planner.docs.undeclared-change.absent-change-set:when",
+        "planner.docs.undeclared-change.absent-change-set:why",
+        "planner.docs.undeclared-change.absent-change-set:avoid[0]"
+      ]
+    },
+    {
+      "seg": "S046",
+      "dest": [
+        "planner.docs.undeclared-change.absent-change-set:then",
+        "planner.docs.undeclared-change.absent-change-set:activation",
+        "planner.docs.undeclared-change.absent-change-set:evidence[0]",
+        "planner.docs.undeclared-change.absent-change-set:verifier_detail[1]",
+        "planner.docs.undeclared-change.absent-change-set:why"
+      ]
+    },
+    {
+      "seg": "S047",
+      "dest": [
+        "planner.docs.undeclared-change.absent-change-set:prefer[0]",
+        "planner.docs.undeclared-change.absent-change-set:evidence[1]",
+        "planner.docs.undeclared-change.absent-change-set:verifier_detail[1]",
+        "planner.docs.undeclared-change.cover-docs-paths:activation"
+      ]
+    },
+    {
+      "seg": "S048",
+      "dest": [
+        "planner.docs.undeclared-change.absent-change-set:why",
+        "planner.docs.undeclared-change.absent-change-set:verifier_detail[2]",
+        "planner.docs.undeclared-change.absent-change-set:evidence[2]"
+      ]
+    },
+    {
+      "seg": "S049",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S050",
+      "dest": [
+        "planner.docs.undeclared-change.cover-docs-paths:verifier_detail[5]",
+        "planner.docs.undeclared-change.absent-change-set:verifier_detail[4]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S051",
+      "dest": [
+        "shared:policy.strict-disposition",
+        "planner.docs.undeclared-change.cover-docs-paths:verifier_detail[5]",
+        "planner.docs.undeclared-change.absent-change-set:verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S052",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S053",
+      "dest": [
+        "audit",
+        "planner.docs.undeclared-change.cover-docs-paths:verifier_detail[4]",
+        "planner.docs.undeclared-change.absent-change-set:verifier_detail[4]"
+      ]
+    }
+  ]
+}

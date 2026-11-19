@@ -37,3 +37,15 @@ test("shared nodes referenced by sidecars exist", () => {
     for (const n of c.sharedNodes ?? []) assert.ok(existsSync(join(SIDECAR, "shared", n.id + ".json")), id + " -> " + n.id);
   }
 });
+
+test("every split is pinned, has one obligation per part, and its alias resolves to all parts", () => {
+  const overlay = JSON.parse(readFileSync(join(SIDECAR, "graph-overlay.json"), "utf8"));
+  for (const [id, e] of Object.entries<any>(manifest.splits ?? {})) {
+    assert.equal(sha(join(ROOT, e.sourcePath)), e.sourceSha256, "source changed: " + id);
+    assert.equal(sha(join(SIDECAR, e.file)), e.sidecarSha256, "split edited without re-audit: " + id);
+    const s = JSON.parse(readFileSync(join(SIDECAR, e.file), "utf8"));
+    for (const p of s.parts) assert.ok(typeof p.then === "string" && p.then.trim(), p.rule_id + ": then");
+    assert.deepEqual([...overlay.aliases[id]].sort(), s.parts.map((p: any) => p.rule_id).sort(), id + ": alias");
+  }
+  assert.equal(manifest.counts.coveredSources, 358, "every canonical convention is covered by a frozen rewrite or a split");
+});
