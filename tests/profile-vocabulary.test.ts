@@ -29,6 +29,7 @@ test("parametric keys accept only declared parameter values", () => {
 
 test("a key proposal must sit in a group, follow the grammar and be new", () => {
   assert.deepEqual(proposalProblems("idiom.retry_policy"), []);
+  assert.ok(proposalProblems("idiom.markup_kinds").some((p) => p.includes("already exists")), "approved in vocabulary v2");
   assert.ok(proposalProblems("detector.foo").length > 0);
   assert.ok(proposalProblems("idiom.Auth-Guard").length > 0);
   assert.ok(proposalProblems("idiom.auth_guard").some((p) => p.includes("already exists")));

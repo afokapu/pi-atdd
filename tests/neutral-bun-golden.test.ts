@@ -48,7 +48,8 @@ test("SN-002: every core is neutral and uses only vocabulary (or valid proposed)
     assert.deepEqual(neutralityLeaks(r.core), [], r.rule_id + ": neutrality");
     const proposed = new Set((r.proposedKeys as any[]).map((p) => p.key));
     for (const p of r.profileRequirements) assert.ok(isVocabularyKey(p.key) || proposed.has(p.key), r.rule_id + ": " + p.key);
-    for (const k of proposed) assert.deepEqual(proposalProblems(k), [], r.rule_id + ": proposal " + k);
+    // A proposal is valid while pending, and stays valid once the owner adds it to the vocabulary.
+    for (const k of proposed) if (!isVocabularyKey(k)) assert.deepEqual(proposalProblems(k), [], r.rule_id + ": proposal " + k);
     assert.equal(r.audit.verdict, "PASS", r.rule_id + ": auditor");
   }
 });

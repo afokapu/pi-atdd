@@ -1,8 +1,9 @@
-// PLT-84 stage 1: re-derive the pilot against the closed profile vocabulary, under PLT-87 ids.
-// Copied from plt-80-proposal/fleet/run-neutral.mjs (run-neutral.pilot.mjs); changes: new ids, rule.json,
-// vocabulary.yaml input, vocabulary check, runs-stage1 output.
-// deriver (pi-claude-cli) -> neutrality lint + coverage check -> auditor (openai-codex) -> up to N rounds -> reviewer (kimi).
-// Usage: node run-neutral.mjs <listfile> [--concurrency 5] [--rounds 3]
+// PLT-84: derive the stack-neutral core of each convention against the closed profile vocabulary, under PLT-87 ids.
+// deriver (--deriver, default zai/glm-5.3) -> neutrality lint + coverage + vocabulary check -> auditor (openai-codex)
+// -> up to N rounds -> optional fallback deriver (--fallback, budgeted by --fallback-ledger/--fallback-max) -> reviewer (kimi).
+// Stops dequeuing and fails the run on the first quota / rate-limit error (owner rule: never switch provider silently).
+// Usage: node run-neutral.mjs <listfile> --out <dir> [--deriver p/m] [--concurrency 10] [--rounds 3]
+//          [--audit-cap 6] [--review-cap 4] [--fallback pi-claude-cli/claude-opus-5-5 --fallback-ledger <file> --fallback-max 20]
 import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync, renameSync, rmSync, appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { FLEET, REPO, runPi, usageOf, sha256 } from "./lib.mjs";
@@ -12,11 +13,28 @@ const VOCAB = VOC.loadVocabulary();
 const args = process.argv.slice(2);
 const opt = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
 const conc = Number(opt("--concurrency", 5)), maxRounds = Number(opt("--rounds", 3));
+const split = (pm) => { const i = pm.indexOf("/"); return { provider: pm.slice(0, i), model: pm.slice(i + 1), id: pm }; };
+const DERIVER = split(opt("--deriver", "zai/glm-5.3"));
+const FALLBACK = opt("--fallback", null) ? split(opt("--fallback")) : null;
+const LEDGER = opt("--fallback-ledger", null), FALLBACK_MAX = Number(opt("--fallback-max", 0));
+const sem = (n) => { let busy = 0; const q = []; return async (fn) => { while (busy >= n) await new Promise(r => q.push(r)); busy++; try { return await fn(); } finally { busy--; q.shift()?.(); } }; };
+const auditSlot = sem(Number(opt("--audit-cap", 6))), reviewSlot = sem(Number(opt("--review-cap", 4)));
+let QUOTA = null;
+const QUOTA_RE = /quota|rate.?limit|\b429\b|usage limit|limit (reached|exceeded)|insufficient|too many requests|exhausted/i;
+function guard(label, res, usage) {
+  const msg = [usage?.error, usage?.stop === "error" ? "stop=error" : "", res?.stderrTail].filter(Boolean).join(" | ");
+  if (QUOTA_RE.test(msg)) { QUOTA = QUOTA ?? (label + ": " + msg.slice(0, 300)); throw new Error("QUOTA " + QUOTA); }
+  if (usage?.stop === "error" || (usage && usage.turns === 0)) log("WARN " + label + " ended without a normal stop: " + msg.slice(0, 200));
+}
+async function pi(label, o) { if (QUOTA) throw new Error("QUOTA stop in effect"); const res = await runPi(o); const u = usageOf(o.out); guard(label, res, u); return u; }
 const ids = readFileSync(args[0], "utf8").split(/\s+/).filter(Boolean);
-const OUT = join(FLEET, "runs-stage1");
+const OUT = opt("--out", join(FLEET, "runs-stage1")); mkdirSync(OUT, { recursive: true });
 const SIDECAR = join(REPO, "conventions-sidecar");
 const manifest = JSON.parse(readFileSync(join(SIDECAR, "manifest.json"), "utf8"));
-const log = (m) => { const l = new Date().toISOString() + " " + m; console.log(l); appendFileSync(join(FLEET, "stage1.log"), l + "\n"); };
+// Split parts (PLT-81 splits/, PLT-87 aliases.splitParts): new part id -> { split entry, legacy part id }.
+const partLegacy = Object.fromEntries(Object.entries(JSON.parse(readFileSync(join(REPO, "conventions/aliases.json"), "utf8")).splitParts ?? {}).map(([o, n]) => [n, o]));
+const PARTS = {}; for (const se of Object.values(manifest.splits ?? {})) for (const p of se.parts) PARTS[p] = { se, legacy: partLegacy[p] };
+const log = (m) => { const l = new Date().toISOString() + " " + m; console.log(l); appendFileSync(join(OUT, "fleet.log"), l + "\n"); };
 const J = (p) => JSON.parse(readFileSync(p, "utf8"));
 const LEAK = /\b(bun|bunx|bun:|node:|deno|npm|pnpm|yarn|typescript|javascript|tsx?|jsx?|htmx|playwright|vitest|jest|python|pytest|fastapi|django|express\.js|expressjs|fastify|koa|hono|react|vue|svelte|package\.json|tsconfig|lockfile\s*\(bun)\b|\.(ts|tsx|js|mjs|py|go|java|rb)\b|(^|[\s`(])(src|tests?|e2e|plan|lib)\/|\*\*\/|<(source|test|plan|e2e)_root>/i;
 const ROLE_FACTS = ["role", "operation", "change", "phase", "finding", "file_kind", "task_term", "task_has_acceptance"];
@@ -61,41 +79,59 @@ async function one(id) {
     prior = J(join(dir, "result.json")); if (prior.status === "PASS") { log("SKIP pass " + id); return; }
     renameSync(join(dir, "result.json"), join(dir, "result-r" + prior.rounds.length + ".json"));
   }
-  const e = manifest.entries[id]; if (!e) { log("SKIP not a frozen single rewrite: " + id); return; }
-  copyFileSync(join(SIDECAR, e.file), join(dir, "bun.json"));
-  writeFileSync(join(dir, "rule.json"), JSON.stringify({ rule_id: id, legacyId: e.legacyId ?? id }, null, 2));
+  const part = PARTS[id], e = manifest.entries[id] ?? part?.se;
+  if (!e) { log("SKIP not a frozen rewrite or split part: " + id); return; }
+  let bunSha;
+  if (part) {
+    // The realization is one part of a frozen split; the split file is pinned, the part is extracted verbatim.
+    const splitBytes = readFileSync(join(SIDECAR, e.file));
+    if (sha256(splitBytes) !== e.sidecarSha256) throw new Error("split differs from frozen sidecar: " + id);
+    const p = JSON.parse(splitBytes.toString("utf8")).parts.find(x => x.rule_id === part.legacy);
+    if (!p) throw new Error("part " + part.legacy + " not in " + e.file);
+    writeFileSync(join(dir, "bun.json"), JSON.stringify(p, null, 2) + "\n");
+    bunSha = e.sidecarSha256;
+  } else {
+    copyFileSync(join(SIDECAR, e.file), join(dir, "bun.json"));
+    bunSha = sha256(readFileSync(join(dir, "bun.json")));
+    if (bunSha !== e.sidecarSha256) throw new Error("bun.json differs from frozen sidecar: " + id);
+  }
+  writeFileSync(join(dir, "rule.json"), JSON.stringify({ rule_id: id, legacyId: part ? part.legacy : (e.legacyId ?? id), ...(part ? { splitOf: e.legacyId } : {}) }, null, 2));
   copyFileSync(VOC.VOCABULARY_PATH, join(dir, "vocabulary.yaml"));
   copyFileSync(join(REPO, e.sourcePath), join(dir, "source.convention.yaml"));
-  const bunSha = sha256(readFileSync(join(dir, "bun.json")));
-  if (bunSha !== e.sidecarSha256) throw new Error("bun.json differs from frozen sidecar: " + id);
   const rounds = prior ? [...prior.rounds] : []; let feedback = prior ? { audit: existsSync(join(dir, "neutral-audit.json")) ? J(join(dir, "neutral-audit.json")) : null, note: "item list now also includes verifier_detail[i]; classify them" } : null;
-  const firstRound = rounds.length + 1, lastRound = rounds.length + maxRounds;
+  const firstRound = rounds.length + 1; let lastRound = rounds.length + maxRounds, deriver = DERIVER;
   for (let r = firstRound; r <= lastRound; r++) {
     if (feedback) writeFileSync(join(dir, "feedback.json"), JSON.stringify(feedback, null, 2));
     if (existsSync(join(dir, "neutral.json"))) renameSync(join(dir, "neutral.json"), join(dir, "neutral-prev.json"));
     rmSync(join(dir, "neutral-audit.json"), { force: true });
     const prompt = readFileSync(join(FLEET, "NEUTRALIZER.md"), "utf8") + (feedback ? "\n\nREVISION ROUND " + r + ": previous output is neutral-prev.json; fix every item in feedback.json and write a complete new neutral.json." : "");
-    await runPi({ cwd: dir, provider: "pi-claude-cli", model: "claude-opus-5-5", thinking: "medium", tools: "read,write,ls", prompt, out: join(dir, "neutral-r" + r + ".jsonl") });
-    const ua = usageOf(join(dir, "neutral-r" + r + ".jsonl"));
+    const ua = await pi(id + " deriver r" + r, { cwd: dir, provider: deriver.provider, model: deriver.model, thinking: "medium", tools: "read,write,ls", prompt, out: join(dir, "neutral-r" + r + ".jsonl") });
     const ck = neutralCheck(dir); writeFileSync(join(dir, "neutral-check.json"), JSON.stringify(ck, null, 2));
     if (existsSync(join(dir, "neutral.json"))) copyFileSync(join(dir, "neutral.json"), join(dir, "neutral-r" + r + ".json"));
     let audit = null, uv = null;
     if (ck.ok) {
-      await runPi({ cwd: dir, provider: "openai-codex", model: "gpt-6.1-sol", thinking: "medium", tools: "read,write,ls", prompt: readFileSync(join(FLEET, "NEUTRAL_AUDITOR.md"), "utf8"), out: join(dir, "neutral-audit-r" + r + ".jsonl") });
-      uv = usageOf(join(dir, "neutral-audit-r" + r + ".jsonl"));
+      uv = await auditSlot(() => pi(id + " auditor r" + r, { cwd: dir, provider: "openai-codex", model: "gpt-6.1-sol", thinking: "medium", tools: "read,write,ls", prompt: readFileSync(join(FLEET, "NEUTRAL_AUDITOR.md"), "utf8"), out: join(dir, "neutral-audit-r" + r + ".jsonl") }));
       try { audit = J(join(dir, "neutral-audit.json")); copyFileSync(join(dir, "neutral-audit.json"), join(dir, "neutral-audit-r" + r + ".json")); } catch {}
     }
     const verdict = audit?.verdict ?? (ck.ok ? "AUDIT_UNPARSED" : "CHECK_FAILED");
-    rounds.push({ round: r, deriver: ua, check: { ok: ck.ok, errors: ck.errors.length }, auditor: uv, verdict });
+    rounds.push({ round: r, deriverModel: deriver.id, deriver: ua, check: { ok: ck.ok, errors: ck.errors.length }, auditor: uv, verdict });
     log(id + " round " + r + ": check=" + (ck.ok ? "ok" : "FAIL(" + ck.errors.length + ")") + " audit=" + (audit?.verdict ?? "-") + (audit ? " usefulness=" + audit.usefulness?.score : ""));
     if (verdict === "PASS") break;
     feedback = { mechanicalErrors: ck.errors, audit };
+    if (r === lastRound && deriver === DERIVER && FALLBACK && LEDGER) {
+      const used = existsSync(LEDGER) ? readFileSync(LEDGER, "utf8").split("\n").filter(Boolean).length : 0;
+      if (used < FALLBACK_MAX) {
+        appendFileSync(LEDGER, JSON.stringify({ rule_id: id, at: new Date().toISOString(), after: DERIVER.id + " x" + maxRounds, lastVerdict: verdict }) + "\n");
+        deriver = FALLBACK; lastRound += maxRounds;
+        log("FALLBACK " + id + " -> " + FALLBACK.id + " (" + (used + 1) + "/" + FALLBACK_MAX + ")");
+      } else log("FALLBACK budget exhausted; " + id + " stays " + verdict);
+    }
   }
   // Third-party review of the final core.
   const rp = `You are a third-party reviewer (different provider). Read bun.json (authoritative ATDD-Bun rewrite; its rule_id is the legacy id, rule.json has the current id), neutral.json (derived stack-neutral core) and neutral-audit.json. Do not modify them. Answer: (1) is the core faithful to bun.json (no weaker/stronger obligation)? (2) does the core leak any stack/path? (3) imagine a Python/Django codebase with the same roles: could an agent apply core + the Bun rewrite as a reference example correctly? score 1-5. Write review-neutral.json: {"rule_id":"...","faithful":true,"leaks":[],"pythonTransferScore":1,"risks":["..."],"agreeWithAuditor":true,"summary":"..."}. Reply REVIEWED.`;
-  await runPi({ cwd: dir, provider: "kimi-coding", model: "k3.1-pro", thinking: "medium", tools: "read,write,ls", prompt: rp, out: join(dir, "review-neutral.jsonl") });
+  await reviewSlot(() => pi(id + " reviewer", { cwd: dir, provider: "kimi-coding", model: "k3.1-pro", thinking: "medium", tools: "read,write,ls", prompt: rp, out: join(dir, "review-neutral.jsonl") }));
   let rv = null; try { rv = J(join(dir, "review-neutral.json")); } catch {}
-  writeFileSync(join(dir, "result.json"), JSON.stringify({ rule_id: id, status: rounds.at(-1).verdict, bunSidecarSha256: bunSha, rounds, stats: neutralCheck(dir).stats,
+  writeFileSync(join(dir, "result.json"), JSON.stringify({ rule_id: id, status: rounds.at(-1).verdict, deriver: DERIVER.id, fallbackUsed: rounds.some(x => x.deriverModel !== DERIVER.id), bunSidecarSha256: bunSha, rounds, stats: neutralCheck(dir).stats,
     review: rv && { faithful: rv.faithful, leaks: rv.leaks, pythonTransferScore: rv.pythonTransferScore, agreeWithAuditor: rv.agreeWithAuditor },
     cost: rounds.reduce((s, x) => s + (x.deriver?.cost || 0) + (x.auditor?.cost || 0), 0) + usageOf(join(dir, "review-neutral.jsonl")).cost }, null, 2));
   log(id + " done: " + rounds.at(-1).verdict + " review faithful=" + rv?.faithful + " python=" + rv?.pythonTransferScore);
@@ -117,8 +153,9 @@ export async function recheck(id) {
 }
 if (process.argv.includes("--recheck")) { for (const id of ids) await recheck(id); process.exit(0); }
 if (process.argv[1] === new URL(import.meta.url).pathname) {
-  log("neutral start: " + ids.length);
+  log("neutral start: " + ids.length + " deriver=" + DERIVER.id + " concurrency=" + conc + (FALLBACK ? " fallback=" + FALLBACK.id + " max " + FALLBACK_MAX : ""));
   const q = [...ids]; let busy = 0;
-  await new Promise(fin => { const pump = () => { while (busy < conc && q.length) { busy++; one(q.shift()).catch(e => log("ERROR " + e.message)).finally(() => { busy--; pump(); }); } if (!q.length && !busy) fin(); }; pump(); });
+  await new Promise(fin => { const pump = () => { while (busy < conc && q.length && !QUOTA) { busy++; one(q.shift()).catch(e => log("ERROR " + e.message)).finally(() => { busy--; pump(); }); } if ((!q.length || QUOTA) && !busy) fin(); }; pump(); });
+  if (QUOTA) { log("STOPPED on quota error: " + QUOTA + "; not started: " + q.length); process.exit(3); }
   log("neutral done");
 }

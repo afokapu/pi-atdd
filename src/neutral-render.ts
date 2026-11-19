@@ -1,6 +1,6 @@
 // PLT-84: render a stack-neutral convention record for the active stack.
-// Stage 1 implements only stack=bun: the Bun realization IS the frozen 0.2.0 sidecar (pinned by SHA-256),
-// delivered verbatim. Other stacks (core + profile + Bun reference example) come in stage 2.
+// Stage 1 implements only stack=bun: the Bun realization IS the frozen 0.2.0 sidecar, or one part of a frozen split
+// (the split file pinned by SHA-256), delivered verbatim. Other stacks (core + profile + Bun reference example) come in stage 2.
 import { createHash } from "node:crypto";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -17,7 +17,7 @@ export type NeutralRecord = {
   core: Record<string, unknown>;
   profileRequirements: { key: string; meaning: string; bunValue: string }[];
   proposedKeys: unknown[]; bunOnly: unknown[]; classification: unknown[];
-  realizations: { bun: { sidecar: string; sha256: string } };
+  realizations: { bun: { sidecar: string; sha256: string; part?: string } };
   audit: Record<string, unknown>;
 };
 
@@ -34,7 +34,11 @@ export function loadNeutralRecords(dir = NEUTRAL_DIR): NeutralRecord[] {
 export function bunRealization(rec: NeutralRecord, root = ROOT): Record<string, unknown> {
   const bytes = readFileSync(join(root, rec.realizations.bun.sidecar));
   if (sha(bytes) !== rec.realizations.bun.sha256) throw new Error(rec.rule_id + ": Bun realization differs from its pinned 0.2.0 sidecar");
-  return JSON.parse(bytes.toString("utf8"));
+  const doc = JSON.parse(bytes.toString("utf8"));
+  if (!rec.realizations.bun.part) return doc;
+  const part = doc.parts?.find((p: any) => p.rule_id === rec.realizations.bun.part);
+  if (!part) throw new Error(rec.rule_id + ": part " + rec.realizations.bun.part + " missing from its pinned split");
+  return part;
 }
 
 /** Deterministic agent-facing text of a sidecar rewrite. */
