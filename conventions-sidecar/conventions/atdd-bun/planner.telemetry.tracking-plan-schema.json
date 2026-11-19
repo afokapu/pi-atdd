@@ -1,0 +1,546 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/planner.telemetry/planner.telemetry.tracking-plan-schema.convention.yaml",
+    "sha256": "5453cdf438dc5bdc72bbe5828b089e4090b865112f6a1550bb70e2c7c72a0cdf"
+  },
+  "rule_id": "planner.telemetry.tracking-plan-schema",
+  "kind": "rule",
+  "title": "Make each tracking-plan item's identity mirror its path",
+  "activation": {
+    "facts": [
+      {
+        "fact": "path_glob",
+        "values": [
+          "<resolved telemetry_root>/**/*.json"
+        ],
+        "observability": "observable_now",
+        "note": "The resolved root is topology.telemetry_root in atdd-bun.yaml when set. Otherwise it is the default `telemetry/`. The default root does not activate when a different root is configured. All JSON files under the resolved root are in scope, whether new, changed or unchanged."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "json"
+        ],
+        "observability": "observable_now",
+        "note": "Every .json file under the resolved root is judged as a tracking-plan item."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "telemetry_adopted"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Adoption gate. A new observer must detect that a telemetry root exists or that some acceptance declares telemetry. Without adoption the rule emits nothing."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "telemetry",
+          "tracking plan",
+          "event",
+          "metric",
+          "trace",
+          "log"
+        ],
+        "observability": "observable_now",
+        "note": "Planner tasks that add, change or review observations."
+      }
+    ],
+    "fires": [
+      "A planner adds <root>/<theme>/<artifact>/event.<plane>.json for a new observable outcome",
+      "A tracking-plan file is renamed or moved, and its id or logical_artifact no longer matches the new path",
+      "An existing, unchanged tracking-plan item in an adopted repository has an id that does not match its path",
+      "A metric item file has no measure segment, or an event, trace or log file has one",
+      "The repository configures topology.telemetry_root, and a JSON item under that configured root is checked"
+    ],
+    "doesNotFire": [
+      "The repository has no telemetry root and no acceptance declares telemetry (it has not opted in)",
+      "JSON files outside the resolved telemetry root, including files under `telemetry/` when a different topology.telemetry_root is configured",
+      "Non-JSON files under the telemetry root"
+    ]
+  },
+  "given": "Telemetry is adopted, and a JSON file exists under the telemetry root. The root is `telemetry/` by default. If topology.telemetry_root is set in atdd-bun.yaml, that path replaces the default. The file may be new, changed or unchanged.",
+  "when": "You plan, author, rename or review a tracking-plan item at <root>/<theme>/<artifact>/{event|trace|metric|log}.<plane>[.<measure>].json",
+  "then": "Make the item's declared identity mirror its path: id = telemetry:{kind}:{plane}:{theme}:{artifact}[:{measure}], logical_artifact = telemetry:{theme}:{artifact}, and the file name's kind, plane and measure equal the declared fields.",
+  "prefer": [
+    "Name the file for what it is, then derive id and logical_artifact from the path.",
+    "Keep the file valid against telemetry-plan.schema.json. Declare id, a SemVer version, logical_artifact, kind, plane, owner, purpose, acceptances, properties and required. Optionally add forbidden_properties. Give each property a type, classification and cardinality. Every `required` name must be declared in `properties`. Metric dimensions are optional, but each one present must declare cardinality.",
+    "Give every metric item a measure segment (metric.<plane>.<measure>.json, id ending :{measure}). Never give an event, trace or log item a measure segment."
+  ],
+  "avoid": [
+    "Renaming a file or hand-editing an id so that the path and the identity drift apart",
+    "Declaring the same concrete id in two files",
+    "Putting notes, indexes or generated bundles under the telemetry root",
+    "Treating a logical artifact as an exporter event"
+  ],
+  "unless": [
+    "Telemetry is not adopted: there is no telemetry root and no acceptance telemetry declaration. Adoption means creating the tree or making the first acceptance decision."
+  ],
+  "why": "The telemetry tree is a registry, not a suggestion. The path is the authority for identity, so a renamed file or a hand-edited id cannot drift apart silently.",
+  "evidence": [
+    "Every .json file under the resolved telemetry root validates against telemetry-plan.schema.json.",
+    "For each file, the kind, plane and measure parsed from the file name match the declared fields. The id equals telemetry:{kind}:{plane}:{theme}:{artifact}[:{measure}] and the logical_artifact equals telemetry:{theme}:{artifact}, both derived from the path.",
+    "Every name in `required` appears in `properties`.",
+    "No concrete id is declared by more than one file.",
+    "With no telemetry root and no acceptance telemetry declaration, the validator emits no findings.",
+    "In an adopted repository, an unchanged item that is invalid is still reported. Checks cover all items, not only changed ones.",
+    "Every metric item has a measure segment in its file name and id. No event, trace or log item has one."
+  ],
+  "verifier_detail": [
+    "Telemetry root: `telemetry/` by default, configurable as topology.telemetry_root in atdd-bun.yaml. It is the versioned tracking-plan source of truth.",
+    "Path grammar: <root>/<theme>/<artifact>/{event|trace|metric|log}.<plane>[.<measure>].json. Metric items carry a measure segment. Event, trace and log items never do.",
+    "Local shape is the JSON Schema's job (telemetry-plan.schema.json): required identity fields, URN grammar, SemVer core version, property declarations with classification and cardinality, and metric dimensions that declare cardinality.",
+    "This rule covers the cross-artifact checks that the Schema cannot see. (1) The file name's kind, plane and measure match the declared fields. (2) The id equals telemetry:{kind}:{plane}:{theme}:{artifact}[:{measure}] derived from the path. (3) The logical_artifact equals telemetry:{theme}:{artifact} from the path. (4) The names in `required` are a subset of the `properties` keys. (5) No two files declare the same concrete id.",
+    "Item fields: id, version, logical_artifact, kind, plane, owner, purpose, acceptances, properties, required. Optional: forbidden_properties and, for metrics only, dimensions.",
+    "Concrete item: a telemetry URN with kind and plane, telemetry:{kind}:{plane}:{theme}:{artifact}[:{measure}]. Logical artifact: the stable architectural identity of an observable outcome, telemetry:{theme}:{artifact}. A logical artifact is not an exporter event; the concrete items under it are.",
+    "Every .json file under the root is judged as an item. Non-item JSON has no allow-list.",
+    "Adoption gate: with no telemetry root and no acceptance telemetry declaration anywhere, emit nothing. Upgrading the package must not fail a repository that has not opted in.",
+    "Reference fix example (source fix_hint), the file telemetry/commons/response-invocation-accepted/event.be.json: {\"id\": \"telemetry:event:be:commons:response-invocation-accepted\", \"version\": \"1.0.0\", \"logical_artifact\": \"telemetry:commons:response-invocation-accepted\", \"kind\": \"event\", \"plane\": \"be\", \"owner\": \"commons\", \"purpose\": \"Records that a response invocation passed acceptance so ingress health can be audited.\", \"acceptances\": [\"acc:commons:E001-UNIT-001\"], \"properties\": { \"response_id\": { \"type\": \"string\", \"classification\": \"internal\", \"cardinality\": \"high\" } }, \"required\": [\"response_id\"], \"forbidden_properties\": [\"raw_payload\", \"secret\", \"prompt\"]}",
+    "Scope resolution: scan only the resolved root. When topology.telemetry_root is set, it replaces `telemetry/` and does not add to it. After adoption, scan all JSON files under the root regardless of diff status."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "kind: rule",
+    "status: active",
+    "Original name: Tracking-plan items are versioned, path-mirrored registry entries",
+    "aliases: [\"TELEMETRY-PLAN-SCHEMA-001\"]",
+    "severity: 2; disposition: strict",
+    "introduced_in: 0.7.0",
+    "implementation: {\"type\":\"validator\",\"ref\":\"planner_telemetry_plan\"}"
+  ],
+  "splitSuggestion": [
+    {
+      "id": "planner.telemetry.tracking-plan-shape",
+      "then": "Each tracking-plan item validates against telemetry-plan.schema.json: required fields, URN grammar, SemVer version, properties with classification and cardinality, and metric dimensions with cardinality when present.",
+      "segments": [
+        "S006",
+        "S008",
+        "S019",
+        "S020",
+        "S021"
+      ]
+    },
+    {
+      "id": "planner.telemetry.tracking-plan-required-declared",
+      "then": "Every name in an item's `required` is declared in its `properties`.",
+      "segments": [
+        "S025",
+        "S026"
+      ]
+    },
+    {
+      "id": "planner.telemetry.tracking-plan-unique-id",
+      "then": "No two tracking-plan files declare the same concrete telemetry id.",
+      "segments": [
+        "S006",
+        "S026"
+      ]
+    },
+    {
+      "id": "planner.telemetry.tracking-plan-root-only-items",
+      "then": "Only tracking-plan items live under the telemetry root.",
+      "segments": [
+        "S043",
+        "S044"
+      ]
+    }
+  ],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "strict: atdd-bun fails on every finding; it has no advisory mode and no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "split_suggestion",
+      "text": "`then` keeps the single obligation that identity mirrors the path. Schema validity, required⊆properties, concrete-id uniqueness and root-holds-only-items are independently testable. They are kept here as prefer/avoid/evidence/verifier_detail and are proposed as separate conventions in splitSuggestion.",
+      "justification": "The one-obligation-in-then rule. The source bundles all of them in one REQUIRED statement."
+    },
+    {
+      "field": "activation",
+      "text": "Activation facts, fires and doesNotFire were derived from the statement, the exceptions and the telemetry_root term. Scope is the resolved root, and all items are in scope after adoption.",
+      "justification": "The schema requires explicit activation. No new obligation is added."
+    },
+    {
+      "field": "evidence[5]",
+      "text": "Unchanged invalid items in an adopted repository are still reported.",
+      "justification": "Makes explicit the source's 'every JSON file under the telemetry root' scope. It is not a new obligation."
+    },
+    {
+      "field": "verifier_detail[9]",
+      "text": "Scope resolution: a configured root replaces the default and is not added to it. All files are scanned regardless of diff status.",
+      "justification": "Makes explicit the source's definition of telemetry_root ('default … configurable') and 'every JSON file'."
+    },
+    {
+      "field": "prefer[0]",
+      "text": "Generic <root>/<theme>/<artifact>/<plane> placeholders replace the source example's project names in coder-facing text. The verbatim example is kept in verifier_detail[8].",
+      "justification": "Keeps coder-facing text codebase-neutral without losing the source example."
+    },
+    {
+      "field": "given",
+      "text": "The given states the default root `telemetry/` and the topology.telemetry_root override that replaces it.",
+      "justification": "Reviewer feedback: the planner must know which root to inspect. This restates S016 and adds no obligation."
+    },
+    {
+      "field": "evidence[6]",
+      "text": "Each metric item carries a measure segment, and no event, trace or log item carries one.",
+      "justification": "Restates S011 as a check. It is not a new obligation."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Reworded as the title; the original is kept in audit"
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "when",
+        "then",
+        "prefer[1]",
+        "avoid[1]",
+        "evidence[0]",
+        "evidence[1]",
+        "evidence[3]",
+        "verifier_detail[1]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "structure"
+      ],
+      "note": "Term id heading; S008 carries its definition"
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "structure"
+      ],
+      "note": "Term id heading; S010/S011 carry its definition"
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "then",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "prefer[2]",
+        "evidence[6]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "structure"
+      ],
+      "note": "Term id heading; S013/S014 carry its definition"
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "then",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "avoid[3]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "structure"
+      ],
+      "note": "Term id heading; S016 carries its definition"
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "given",
+        "activation",
+        "verifier_detail[0]",
+        "verifier_detail[9]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "why",
+        "avoid[0]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "verifier_detail[2]",
+        "prefer[1]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "verifier_detail[2]",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "verifier_detail[2]",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "then",
+        "verifier_detail[3]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "then",
+        "verifier_detail[3]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "then",
+        "prefer[1]",
+        "verifier_detail[3]",
+        "evidence[1]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "prefer[1]",
+        "avoid[1]",
+        "evidence[2]",
+        "evidence[3]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "verifier_detail[8]",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "verifier_detail[8]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "verifier_detail[8]",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "verifier_detail[8]",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "verifier_detail[8]",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "verifier_detail[8]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "verifier_detail[8]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "verifier_detail[8]"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "verifier_detail[8]",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "verifier_detail[8]"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "verifier_detail[8]"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "verifier_detail[8]"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "unless[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "unless[0]",
+        "activation",
+        "verifier_detail[7]",
+        "evidence[4]"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "unless[0]"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "avoid[2]",
+        "activation",
+        "verifier_detail[6]",
+        "evidence[5]"
+      ]
+    },
+    {
+      "seg": "S045",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S046",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S047",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S048",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S049",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

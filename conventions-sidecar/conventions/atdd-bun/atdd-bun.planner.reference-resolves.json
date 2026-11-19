@@ -1,0 +1,264 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/atdd-bun.planner/atdd-bun.planner.reference-resolves.convention.yaml",
+    "sha256": "b96927d269692c29c02fee38ecbeb999480791f8dc7486c4072a9ff30183d7d6"
+  },
+  "rule_id": "atdd-bun.planner.reference-resolves",
+  "kind": "rule",
+  "title": "Make every typed plan reference resolve to a declared artifact",
+  "activation": {
+    "facts": [
+      {
+        "fact": "layer",
+        "values": [
+          "plan"
+        ],
+        "observability": "observable_now",
+        "note": "Plan artifacts (wagons, features, WMBTs, trains, interlockings, journeys) are identifiable by path/file kind. This is the applicability prerequisite: the rule is an invariant over every typed reference in the plan."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "plan-artifact"
+        ],
+        "observability": "observable_now",
+        "note": "Applies to all plan artifact files outside vendored/generated trees, whether or not they changed."
+      },
+      {
+        "fact": "operation",
+        "values": [
+          "plan-validation",
+          "plan-inspection",
+          "plan-authoring",
+          "plan-editing"
+        ],
+        "observability": "observable_now",
+        "note": "Full-plan validation/inspection runs over the whole plan regardless of what changed; authoring/editing are additional triggers."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "typed-reference-added-or-changed",
+          "referenced-artifact-removed-or-renamed"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Optional routing hint only, NOT an applicability prerequisite: a diff observer could prioritise added/changed typed references or removal/rename of a declared target. Unchanged unresolved references are still in scope."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "planner_plan_integrity:unresolved-reference"
+        ],
+        "observability": "observable_now",
+        "note": "The planner_plan_integrity validator reports unresolved typed references across the whole plan, including pre-existing ones."
+      }
+    ],
+    "fires": [
+      "A planner writes a feature that references `wagon:<id>` where no wagon with that id is declared in the plan.",
+      "A WMBT or acceptance references `journey:<id>` or `wmbt:<id>` that was renamed or deleted elsewhere in the plan.",
+      "A train or interlocking artifact references a `feature:` or `train:` id that the plan does not declare.",
+      "Full-plan validation finds a pre-existing, unchanged typed reference that names no declared artifact, even though nothing in the current change touched it."
+    ],
+    "doesNotFire": [
+      "A `contract:` reference — resolution is checked by the contract registry rules instead.",
+      "Files under `node_modules`, `dist`, `build` or `_generated` contain typed references — these trees are never scanned.",
+      "Every typed reference in the plan names an artifact the plan declares."
+    ]
+  },
+  "given": "The plan contains typed references (`wagon:`, `feature:`, `wmbt:`, `train:`, `interlocking:`, `journey:`) in its artifacts, changed or not.",
+  "when": "The plan is validated or inspected as a whole, or the planner authors, edits, removes or renames plan artifacts.",
+  "then": "Every such typed reference must name an artifact the plan declares.",
+  "prefer": [
+    "Declare the referenced artifact in the plan when the relationship is real.",
+    "Correct the reference to the actual declared id when it is a typo or stale after a rename.",
+    "When removing or renaming an artifact, update every typed reference that points to it in the same change."
+  ],
+  "avoid": [
+    "Leaving references to nothing — a relationship the plan claims but cannot show.",
+    "Creating empty placeholder artifacts only to make a reference resolve without the relationship being real.",
+    "Treating `contract:` references under this rule; they belong to the contract registry rules."
+  ],
+  "unless": [
+    "The reference lives in a vendored or generated tree (`node_modules`, `dist`, `build`, `_generated`); those are never scanned."
+  ],
+  "why": "A reference to nothing is a relationship the plan claims and cannot show; unresolved references break plan traceability.",
+  "evidence": [
+    "The planner_plan_integrity validator reports no unresolved typed references for the whole plan.",
+    "Reviewer can map each `wagon:`/`feature:`/`wmbt:`/`train:`/`interlocking:`/`journey:` reference to an artifact the plan declares."
+  ],
+  "verifier_detail": [
+    "Realized by validator `planner_plan_integrity` (a package guard, not a canonical planner node).",
+    "Scanned reference prefixes: `wagon:`, `feature:`, `wmbt:`, `train:`, `interlocking:`, `journey:`. `contract:` is excluded (handled by contract registry rules). All typed references in scanned plan artifacts are checked, not only changed ones.",
+    "Excluded directories: `node_modules`, `dist`, `build`, `_generated`.",
+    "Severity 3, disposition strict."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "Aliases: ATDD-BUN-PLANNER-REFERENCE-RESOLVES.",
+    "implementation: {type: validator, ref: planner_plan_integrity}.",
+    "Term package_rule: a rule of this package's own gates (`atdd-bun.*`), realized by a package guard rather than a canonical planner node. It is held to the same per-rule checks as every convention: a convention, strict, a failing fixture, relationship edges.",
+    "Summary: Typed plan references resolve."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Strict disposition: the rule fails on every finding; there is no advisory mode and no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "prefer",
+      "text": "When removing or renaming an artifact, update every typed reference that points to it in the same change.",
+      "justification": "Direct operationalisation of the fix hint for the rename/removal case; adds no new obligation beyond 'references resolve'."
+    },
+    {
+      "field": "avoid",
+      "text": "Creating empty placeholder artifacts only to make a reference resolve without the relationship being real.",
+      "justification": "Metric-gaming anti-pattern required by the schema; follows from the normative text that the plan must be able to show the relationship."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ],
+      "note": "Title."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "then",
+        "evidence[1]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "activation",
+        "avoid[2]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "verifier_detail[0]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "audit"
+      ],
+      "note": "Duplicates title/then."
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "why",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "prefer[0]",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "unless[0]",
+        "activation",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "identity",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "audit",
+        "verifier_detail[0]"
+      ]
+    }
+  ]
+}

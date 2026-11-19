@@ -1,0 +1,368 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.htmx/coder.htmx.swap-oob-carries-id.convention.yaml",
+    "sha256": "ccf5c6ef2535d7291d635a7372d182fcaf5b84ad5deb09ffc2c8de2a8a048943"
+  },
+  "rule_id": "coder.htmx.swap-oob-carries-id",
+  "kind": "rule",
+  "title": "Give every hx-swap-oob element the id it swaps into",
+  "disposition": "strict",
+  "severity": 2,
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "tsx",
+          "jsx",
+          "html",
+          "server-rendered template"
+        ],
+        "observability": "observable_now",
+        "note": "Markup-producing files where htmx attributes can appear."
+      },
+      {
+        "fact": "language",
+        "values": [
+          "typescript",
+          "javascript",
+          "html"
+        ],
+        "observability": "observable_now",
+        "note": "Bun/htmx stack (atdd.workspace.bun)."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "htmx_hypermedia_detector: hx-swap-oob element without id"
+        ],
+        "observability": "observable_now",
+        "note": "Workspace-wide scan: covers pre-existing violations as well as new ones, independent of what the diff touched."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "any edit to markup containing an hx-swap-oob element (including edits that only add/remove/move an id)"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Optional diff-level observer for early firing; not required for scope — the rule applies to every hx-swap-oob element present, changed or not."
+      }
+    ],
+    "fires": [
+      "A response fragment contains an element with hx-swap-oob=\"true\" and only a class attribute, no id.",
+      "An hx-swap-oob element's id sits on a wrapper element rather than on the element carrying hx-swap-oob.",
+      "An edit removes or moves the id of an existing oob element while the hx-swap-oob attribute itself is unchanged.",
+      "A pre-existing hx-swap-oob element without an id is present in the workspace, even if untouched by the current diff."
+    ],
+    "doesNotFire": [
+      "An element uses in-band hx-swap with hx-target (selector-based, not id-based).",
+      "An hx-swap-oob element carries a JSX expression id such as id={rowId}.",
+      "An hx-swap-oob element carries a literal id=\"…\" on its own opening tag."
+    ]
+  },
+  "given": "Markup contains an element marked hx-swap-oob — an out-of-band fragment updating a region other than the requesting element's target (badge, flash region, count).",
+  "when": "Any such element exists in the workspace or is written or edited, including edits touching only its id.",
+  "then": "The element carrying hx-swap-oob MUST itself carry an id (literal id=\"…\" or JSX id={…}) naming the element it replaces.",
+  "prefer": [
+    "<div id=\"cart-count\" hx-swap-oob=\"true\">3</div> — swaps into #cart-count.",
+    "Put the id on the oob element itself; htmx reads it from the element carrying the attribute.",
+    "Smoke-test that the id matches an element existing in the current document."
+  ],
+  "avoid": [
+    "<div class=\"cart-count\" hx-swap-oob=\"true\">3</div> — no destination; dropped.",
+    "Putting the id on a wrapper.",
+    "Debugging server, route or response headers for \"returned but page doesn't update\" before checking the oob id."
+  ],
+  "unless": [
+    "Id supplied as a JSX expression (id={rowId}): binding present; resolution is a runtime concern.",
+    "In-band hx-swap: swaps into hx-target, a selector, not an id."
+  ],
+  "why": "htmx matches oob elements to destinations by id; without one it silently drops them — no error, no warning, no swap. The server logs 200 and markup arrives, so this most frequent htmx silent bug sends people debugging code that is not wrong.",
+  "evidence": [
+    "htmx_hypermedia_detector reports no hx-swap-oob element lacking an id on its own opening tag.",
+    "Reviewer confirms each hx-swap-oob element carries id=\"…\" or id={…} on the same element, not a wrapper.",
+    "A smoke test shows the oob fragment actually updates the page (the id resolves to an existing element) — the static rule cannot see an id that matches nothing."
+  ],
+  "verifier_detail": [
+    "Detector: zero-dependency Bun detector (htmx_hypermedia_detector) locates each `hx-swap-oob` occurrence, extracts the enclosing opening tag with a quote-aware scan (a `>` inside an attribute value does not end the tag early), and flags the element when that tag carries no `id=\"…\"` or JSX `id={…}`.",
+    "Only the opening tag of the element carrying hx-swap-oob is inspected; an id on an ancestor/wrapper does not satisfy the rule.",
+    "JSX expression ids (id={…}) count as present; resolution is not checked.",
+    "In-band `hx-swap` occurrences are ignored.",
+    "Ids that match no element in the current document are dropped just as silently by htmx but are NOT detectable by this rule; they require a smoke test.",
+    "Severity 2.",
+    "Disposition: strict (this rule's metadata.disposition; also restated as `strict` in the source fix_hint)."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "Alias: HTMX-OOB-ID-001.",
+    "Implementation: {type: validator, ref: htmx_hypermedia_detector}.",
+    "Lineage: Bun/htmx-stack realization of the agnostic \"a declarative binding must name its target\" obligation, enforced by the htmx_hypermedia_detector family implementation on atdd.workspace.bun.",
+    "Summary: an \"oob swaps name their destination\" obligation.",
+    "Term out_of_band_swap: `hx-swap-oob` marks an element in a response for swapping somewhere OTHER than the requesting element's target — the mechanism for updating a cart badge, a flash region or a sidebar count from a response whose main target is elsewhere.",
+    "Term silent_discard: htmx's behaviour when no element in the document matches the oob element's id: it drops the fragment and continues. The failure is invisible at every layer — the server logs a 200, the network tab shows the markup arriving, and the page does not change.",
+    "Severity 2; disposition strict (fix_hint also ends with \"`strict`.\")."
+  ],
+  "splitSuggestion": [
+    {
+      "id": "coder.htmx.swap-oob-id-resolves",
+      "then": "Every hx-swap-oob id must match an element that exists in the current document, proven by a smoke test.",
+      "segments": [
+        "S025",
+        "S026"
+      ]
+    }
+  ],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "split_suggestion",
+      "text": "The requirement that the oob id resolve to an existing element (S025–S026) is a separate obligation this static rule cannot verify; it should be its own convention (coder.htmx.swap-oob-id-resolves) verified by a smoke test. Kept here as prefer[2]/evidence[2]/verifier_detail[4].",
+      "justification": "One obligation per 'then'; source explicitly says this rule cannot see unresolved ids."
+    },
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire scenarios and activation facts are authored from the source statement and exceptions; scope is every hx-swap-oob element, not only diff-touched ones.",
+      "justification": "Required structure; derived from source content, adds no new obligation."
+    },
+    {
+      "field": "disposition",
+      "text": "Top-level `disposition` and `severity` fields added to bind identity metadata (strict, 2) to this rule explicitly.",
+      "justification": "Identity destination must carry the disposition/severity from source metadata; values are from the source, not new."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ],
+      "note": "Title rephrased imperatively."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "why"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit",
+        "activation"
+      ],
+      "note": "Lineage to audit; stack/workspace informs activation language fact."
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "given",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "audit",
+        "then"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "why",
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "why",
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "prefer[1]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "prefer[1]",
+        "avoid[1]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "prefer[2]",
+        "evidence[2]",
+        "verifier_detail[4]"
+      ],
+      "note": "Also proposed as split convention."
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "prefer[2]",
+        "evidence[2]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "identity",
+        "verifier_detail[6]",
+        "audit"
+      ],
+      "note": "Bound via top-level disposition: strict."
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "identity",
+        "verifier_detail[5]"
+      ],
+      "note": "Top-level severity: 2."
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "identity",
+        "verifier_detail[6]",
+        "audit"
+      ],
+      "note": "Top-level disposition: strict."
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

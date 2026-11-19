@@ -1,0 +1,294 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/planner.telemetry/planner.telemetry.metric-cardinality.convention.yaml",
+    "sha256": "e61831f207ad4f09be983b300cbedc40f6ad08a4b2483612fc195e2343be93f6"
+  },
+  "rule_id": "planner.telemetry.metric-cardinality",
+  "kind": "rule",
+  "title": "Keep high-cardinality identifiers out of metric labels",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "telemetry tracking-plan metric item"
+        ],
+        "observability": "llm_judged",
+        "note": "Any metric item of a telemetry tracking plan, whatever its file name or location; recognised by the item's signal kind (metric) and its dimensions list, not by a filename pattern. Applies equally to new, edited and existing items."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "metric dimension with missing or high cardinality",
+          "metric dimension naming a property declared cardinality high"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Optional corroboration only: available only when the planner_telemetry_plan validator has actually been run or its output inspected. Absence of a reported finding is not a precondition; the rule applies to the metric item regardless."
+      }
+    ],
+    "fires": [
+      "A metric item lists a dimension declared cardinality high.",
+      "A metric item lists a dimension with no declared cardinality.",
+      "A metric dimension is named after a property (e.g. a request/user/session id) that the item declares cardinality high.",
+      "An existing metric item is reviewed or validated and one of its dimensions violates the above, even though nobody is editing it."
+    ],
+    "doesNotFire": [
+      "An event, log or trace item declares a property with cardinality high, justified by the plan.",
+      "A metric item whose dimensions all declare low or medium cardinality and name no high-cardinality property."
+    ]
+  },
+  "given": "A telemetry tracking plan contains a metric item (new, edited or existing).",
+  "when": "You declare or review the metric's dimensions (labels).",
+  "then": "Every dimension declares a cardinality of low or medium; none is declared high and none names a property the item declares cardinality high.",
+  "prefer": [
+    "Keep the identifier, change the signal: label the metric with bounded dimensions (e.g. an outcome, cardinality low) and carry the identifier as an event, log or trace property declared cardinality high — for example on the sibling event's properties. If the identifier is already carried by such a property, removing it from the metric dimensions is enough.",
+    "Treat any property whose distinct-value volume is unbounded or near-unbounded (request ids, user ids, session tokens) as a high-cardinality identifier and carry it as an event, log or trace property, where cardinality is the point rather than a liability.",
+    "To check a dimension, compare its name with the item's declared properties; if a property of that name is declared cardinality high, the dimension is rejected."
+  ],
+  "avoid": [
+    "Dropping the identifier from the plan entirely instead of carrying it as an event/log/trace property.",
+    "Leaving a metric dimension's cardinality undeclared, or relabelling a high-cardinality id as low/medium to pass the check."
+  ],
+  "unless": [
+    "Event, log and trace properties may declare cardinality high where justified; this rule judges metric dimensions only."
+  ],
+  "why": "Every distinct metric-label value becomes a new time series, so a high-cardinality label is a backend outage with a YAML file attached; the plan is where that mistake is cheapest to catch.",
+  "evidence": [
+    "When the planner_telemetry_plan validator has been run, it reports no finding for the metric item.",
+    "Each entry in the metric item's dimensions list has a name and cardinality in {low, medium}.",
+    "Each high-cardinality identifier removed from metric dimensions is still carried in the plan as an event, log or trace property (declared cardinality high where justified); a sibling event is one acceptable placement, not a requirement."
+  ],
+  "verifier_detail": [
+    "Dimension = an entry of the metric item's dimensions list, with a name and a declared cardinality (low, medium or high).",
+    "High-cardinality identifier = a property whose distinct-value volume is unbounded or near-unbounded (request ids, user ids, session tokens).",
+    "Reject when: dimension cardinality missing; dimension cardinality == high; or dimension name matches a property the item declares cardinality high.",
+    "Scope: all metric items regardless of file name; event, log and trace properties with cardinality high are legal and not judged.",
+    "Source fix example (illustrative): # telemetry/commons/response-invocation-accepted/metric.be.duration.json  \"dimensions\": [{ \"name\": \"outcome\", \"cardinality\": \"low\" }]  # response_id moves to the sibling event's properties, declared cardinality high.",
+    "Severity 3; disposition strict."
+  ],
+  "audit": [
+    "schema_version 1.1.0",
+    "kind: rule",
+    "status: active",
+    "aliases: [TELEMETRY-METRIC-CARDINALITY-001]",
+    "introduced_in: 0.7.0",
+    "implementation: {type: validator, ref: planner_telemetry_plan}",
+    "Source term ids: dimension, high_cardinality_identifier",
+    "Source name: High-cardinality identifiers are forbidden as metric labels"
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "strict: atdd-bun fails on every finding; it has no advisory mode and no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "avoid",
+      "text": "Relabelling a high-cardinality id as low/medium to pass the check; dropping the identifier from the plan entirely.",
+      "justification": "Metric-gaming/anti-pattern framing of the source's 'the identifier still belongs in the plan' and declared-cardinality requirement; required by the authoring instructions."
+    },
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire situations and fact classification.",
+      "justification": "Required structure; derived directly from the statement, normative text and exception."
+    },
+    {
+      "field": "prefer",
+      "text": "prefer[2]: compare a dimension's name with the item's declared properties to find whether it names a high-cardinality property; prefer[0] clause 'if already carried by such a property, removing it from metric dimensions is enough'.",
+      "justification": "Operational restatement of S015 and S016 to address reviewer usability risks; adds no new obligation (the sibling event stays illustrative)."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Becomes title; original name kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "verifier_detail[0]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "unless[0]",
+        "prefer[1]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "then",
+        "verifier_detail[2]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "then",
+        "verifier_detail[2]",
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "prefer[0]",
+        "prefer[1]",
+        "avoid[0]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "verifier_detail[4]",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "verifier_detail[4]",
+        "prefer[0]"
+      ],
+      "note": "Sibling event kept as an illustrative placement only."
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "unless[0]",
+        "activation",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "identity",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "identity",
+        "verifier_detail[5]",
+        "shared:policy.strict-disposition"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "audit",
+        "evidence[0]"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,709 @@
+{
+  "schema": "pi-atdd/convention-sidecar-split/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/planner.docs/planner.docs.adr-registry-derived.convention.yaml",
+    "sha256": "152cfb05c4a0e2053b09c05186d48ef330f4a94c5faddb8fbb322a81341a60a5"
+  },
+  "source_rule_id": "planner.docs.adr-registry-derived",
+  "rationale": "The source holds three independent obligations, and each differs in activation, evidence or observability. (1) Outcome invariant: the registry listing equals the set of declared ADRs in both directions. It holds for the corpus at all times, and docs_capability / `adr-register --check` checks it mechanically (the `finding` fact), whether or not a change is being authored. (2) Procedure: produce registry entries only by regenerating them from ADR files and their :decides: edges, never by hand. A reviewer judges this from the plan or session, because a hand-typed entry and a generated one look the same. (3) Decision atomicity: one architectural decision lives in ONE ADR file (spec 2 §6). A reviewer judges this from the ADR content, and an exact, regenerated registry does not enforce it. The source makes all three jointly mandatory, so requires edges link them. Round 3 replaces the unknown `corpus_state` fact with known facts: `operation` for authoring triggers, plus `finding` (listing part) or `change` (atomicity part) for the review and validation triggers, which fire independently of any authoring operation.",
+  "parts": [
+    {
+      "rule_id": "planner.docs.adr-registry-derived.listing-matches-adrs",
+      "kind": "rule",
+      "title": "The ADR registry lists exactly the declared ADRs, with no missing and no stale entry",
+      "activation": {
+        "facts": [
+          {
+            "fact": "path_glob",
+            "values": [
+              "docs/architecture/decisions/index.adoc",
+              "docs/architecture/decisions/adr-*.adoc"
+            ],
+            "observability": "observable_now",
+            "note": "Paths identify the registry and the ADR files."
+          },
+          {
+            "fact": "operation",
+            "values": [
+              "create",
+              "edit",
+              "rename",
+              "delete"
+            ],
+            "observability": "observable_now",
+            "note": "Typical authoring triggers: an ADR file or the registry is created, edited, renamed or deleted. This fact alone is not required. The finding fact below fires on its own whenever the corpus is validated, audited or reviewed, including existing drift that no current change introduced."
+          },
+          {
+            "fact": "finding",
+            "values": [
+              "registry drift: ADR set (by :adr-id:) != set of ADR references in the registry listing"
+            ],
+            "observability": "needs_new_observer",
+            "note": "Computed by the docs_capability validator / `atdd-bun docs adr-register --check` on any corpus validation. The listing is the adr-register region if one is declared, otherwise the whole file minus its ---- blocks."
+          }
+        ],
+        "fires": [
+          "Corpus validation (for example `atdd-bun docs adr-register --check`, or a docs audit for an unrelated change) finds existing drift that no current change introduced.",
+          "An ADR file exists and its :adr-id: is not in the registry listing (missing entry). This includes the case where index.adoc does not exist or has no listing.",
+          "The listing names an ADR id that no ADR file declares, e.g. after a rename, a removal or an :adr-id: change (stale entry).",
+          "No adr-register markers are declared, and a prose sentence in index.adoc (outside ---- blocks) names an ADR id that no ADR file declares. The sentence counts as a listed reference."
+        ],
+        "doesNotFire": [
+          "The title or introductory paragraph of index.adoc changes and the set of ADR references still matches the ADR set.",
+          "Markers are declared and some text outside the region, including prose, names ADR ids. Only the region is read.",
+          "No region is declared and an ADR skeleton appears inside a ---- listing block.",
+          "The decisions directory holds no ADRs and the registry has no entries.",
+          "An ADR's :decides: target names an undeclared architecture node. planner.docs.graph-target-resolves reports this case.",
+          "The listing equals the ADR set exactly, even though the generator was not re-run. This part raises no drift finding. Provenance is judged separately by .regenerate-never-hand-type."
+        ]
+      },
+      "given": "A docs corpus with a decisions directory holding zero or more ADR files. decisions/index.adoc may or may not exist yet.",
+      "when": "The docs corpus is validated or reviewed, or you plan or author any docs change (typically adding, renaming or removing an ADR, editing its :adr-id: or :decides:, or editing decisions/index.adoc)",
+      "then": "The registry listing in docs/architecture/decisions/index.adoc names exactly the ADRs the corpus declares. Every ADR file is listed and every listed id has an ADR file.",
+      "prefer": [
+        "Put `// BEGIN GENERATED: adr-register` / `// END GENERATED: adr-register` markers where the list belongs, so that only that region is read.",
+        "Run `atdd-bun docs adr-register --check` to confirm there is no drift. It writes nothing."
+      ],
+      "avoid": [
+        "Leaving a stale entry after an ADR is renamed or removed. A list that names something is read as authoritative, so the stale entry survives review.",
+        "Mentioning ADR ids in prose without markers. Outside ---- blocks those mentions count as listed references. Add the markers if prose should be ignored."
+      ],
+      "unless": [
+        "Prose around the entries (a title, an introductory paragraph) is not compared. Only the set of ADR references is.",
+        "A decisions directory with no ADRs needs no entries. An empty registry is correct."
+      ],
+      "why": "The check is bidirectional on purpose. A missing entry is the obvious drift. A stale entry (an ADR listed after its file was renamed or removed) is the one that survives review, because a list that names something is read as authoritative about it.",
+      "evidence": [
+        "`atdd-bun docs adr-register --check` reports no drift.",
+        "The set of ADR references in the registry listing equals the set of ADR files (by :adr-id:) in the decisions directory, in both directions."
+      ],
+      "verifier_detail": [
+        "Violation in both directions: an ADR in the tree but absent from the registry (missing), or an entry in the registry with no ADR in the tree (stale).",
+        "Listing rule 1: if the registry declares a region `// BEGIN GENERATED: adr-register` … `// END GENERATED: adr-register`, only that region is read. These are the markers a generator writes around its own output. A corpus whose generator marks its output has already said where its list begins and ends, and taking it at its word beats any heuristic.",
+        "Listing rule 2: if no region is declared, read the file minus its `----` listing blocks. An ADR skeleton shown in fences illustrates the shape and lists nothing.",
+        "Listing rule 3: a prose mention of an ADR id outside a declared region is NOT excused. A sentence naming an id and a list entry naming one cannot be told apart without guessing at the corpus's formatting. A corpus that wants prose ignored says so with the markers.",
+        "ADR = a document at `docs/architecture/decisions/adr-YYYYMMDD-NNN-<slug>.adoc` declaring `:adr-id:`, `:status:`, `:date:` and `:decides:`.",
+        "Generated region = a machine-maintained span delimited by `// BEGIN GENERATED: <name>` and `// END GENERATED: <name>`, which a generator rewrites in place. If the registry declares one named `adr-register`, that span is the listing the projection is compared against.",
+        "Resolving an ADR's `:decides:` target is out of scope here. planner.docs.graph-target-resolves resolves it like any other edge, and an ADR deciding an architecture node that no document declares is reported there, not here.",
+        "Severity 2.",
+        "If ADRs exist and index.adoc is absent or has no listing, every ADR counts as a missing entry.",
+        "The invariant is unconditional. Drift already present in the corpus is a violation whenever the corpus is checked, whether or not the current change touches ADRs or the registry."
+      ],
+      "audit": [
+        "schema_version 1.1.0",
+        "kind: rule",
+        "status: active",
+        "aliases: DOCS-ADR-001 (via parent alias)",
+        "introduced_in 0.1.0",
+        "implementation: validator, ref docs_capability",
+        "Spec references: spec 2 §5.2, §6."
+      ],
+      "additions": [
+        {
+          "field": "verifier_detail",
+          "text": "If ADRs exist and index.adoc is absent or has no listing, every ADR counts as a missing entry.",
+          "justification": "This follows from 'MUST list exactly the ADRs the corpus declares'. It adds no obligation."
+        },
+        {
+          "field": "verifier_detail",
+          "text": "The invariant is unconditional. Existing drift is a violation whenever the corpus is checked.",
+          "justification": "The auditor required it. The source statement is an unconditional MUST on the corpus with no change gate. It adds no obligation."
+        },
+        {
+          "field": "activation",
+          "text": "doesNotFire: listing equals the ADR set without a generator rerun → no drift finding; provenance is judged by the sibling part.",
+          "justification": "Limits this non-firing case to the mechanical finding, so that the hand-typing ban is not suppressed."
+        }
+      ]
+    },
+    {
+      "rule_id": "planner.docs.adr-registry-derived.regenerate-never-hand-type",
+      "kind": "rule",
+      "title": "Produce ADR registry entries by regenerating from :decides: edges, never by hand",
+      "activation": {
+        "facts": [
+          {
+            "fact": "path_glob",
+            "values": [
+              "docs/architecture/decisions/index.adoc",
+              "docs/architecture/decisions/adr-*.adoc"
+            ],
+            "observability": "observable_now",
+            "note": "Paths identify the registry and the ADR files."
+          },
+          {
+            "fact": "operation",
+            "values": [
+              "create",
+              "edit",
+              "rename",
+              "delete"
+            ],
+            "observability": "observable_now",
+            "note": "A plan or change that touches the registry's ADR entries, or ADR files whose registry entries must then change."
+          },
+          {
+            "fact": "change",
+            "values": [
+              "registry entry typed by hand instead of regenerated"
+            ],
+            "observability": "llm_judged",
+            "note": "A projection diff cannot show provenance. A reviewer or LLM judges it from the plan or session."
+          }
+        ],
+        "fires": [
+          "A plan or WMBT tells someone to type, add or delete an ADR line in decisions/index.adoc by hand.",
+          "An ADR is added, renamed or removed, or its :adr-id: or :decides: is edited, and the plan updates the registry without running the generator.",
+          "A decision's content (rationale, choice) is written into index.adoc instead of an ADR file."
+        ],
+        "doesNotFire": [
+          "Hand-editing the registry's title or introductory prose outside the generated region.",
+          "Hand-inserting the two adr-register markers where the list belongs. The generator then fills the region.",
+          "A plan that regenerates with `atdd-bun docs adr-register` after the ADR change."
+        ]
+      },
+      "given": "A docs corpus whose decisions directory holds ADR files, and a registry decisions/index.adoc that exists or must be created",
+      "when": "You plan or author a change that would alter the registry's ADR entries, including ADR adds, renames or removals and :adr-id: or :decides: edits",
+      "then": "Produce the registry entries by regenerating them from the ADR files and their :decides: edges. Never type them by hand.",
+      "prefer": [
+        "Regenerate rather than edit: run `atdd-bun docs adr-register`, which rewrites the adr-register region.",
+        "Add `// BEGIN GENERATED: adr-register` and `// END GENERATED: adr-register` markers in decisions/index.adoc where the list belongs. The generator writes only between them, one line per ADR keyed by `:adr-id:`, from the same documents the check reads."
+      ],
+      "avoid": [
+        "Typing an entry into `decisions/index.adoc`. If you find yourself doing that, the entry belongs in an ADR file with a `:decides:` attribute instead.",
+        "Writing decision content into the registry. It holds references to the decisions, never the decisions themselves."
+      ],
+      "unless": [],
+      "why": "The registry's job is to make the set of ADRs navigable. The moment a human types an entry into it, the set has two sources of truth. A hand-maintained list of decisions drifts from the decisions, which is precisely the failure class ATDD exists to kill, reproduced inside the documentation system itself. Deriving the registry makes drift impossible rather than detectable. The registry is a projection, never a typed list (spec 2 §5.2, §6).",
+      "evidence": [
+        "The plan or session shows `atdd-bun docs adr-register` run after the ADR change, with no hand-typed registry entries.",
+        "The diff inside the adr-register region matches the generator's output. Edits outside the region are limited to surrounding prose and inserting the markers."
+      ],
+      "verifier_detail": [
+        "Derived registry = `index.adoc` in the decisions directory. Its entries are computed from the set of ADR files and their `:decides:` targets. It contains references to the decisions, never the decisions themselves.",
+        "Generator `atdd-bun docs adr-register` rewrites only the region between `// BEGIN GENERATED: adr-register` and `// END GENERATED: adr-register`, one line per ADR by `:adr-id:`, from the same documents the check reads. `--check` reports drift without writing.",
+        "Provenance is judged by a reviewer or LLM. The mechanical check sees only the resulting drift (see .listing-matches-adrs).",
+        "Severity 2."
+      ],
+      "audit": [
+        "schema_version 1.1.0",
+        "kind: rule",
+        "status: active",
+        "aliases: DOCS-ADR-001 (via parent alias)",
+        "introduced_in 0.1.0",
+        "implementation: validator, ref docs_capability (covers drift only; provenance is judged)",
+        "Spec references: spec 2 §5.2, §6 (the registry is a projection)."
+      ],
+      "additions": [
+        {
+          "field": "verifier_detail",
+          "text": "Provenance is judged by a reviewer or LLM. The mechanical check sees only the resulting drift.",
+          "justification": "States observability honestly. It adds no obligation."
+        },
+        {
+          "field": "activation",
+          "text": "doesNotFire: hand-inserting the adr-register markers; hand-editing prose outside the region.",
+          "justification": "The source fix_hint tells the reader to add the markers, and exception 0 excludes surrounding prose. These are not new waivers."
+        }
+      ]
+    },
+    {
+      "rule_id": "planner.docs.adr-registry-derived.one-decision-per-adr",
+      "kind": "rule",
+      "title": "One architectural decision lives in exactly one ADR file",
+      "activation": {
+        "facts": [
+          {
+            "fact": "path_glob",
+            "values": [
+              "docs/architecture/decisions/adr-*.adoc",
+              "docs/architecture/decisions/index.adoc"
+            ],
+            "observability": "observable_now",
+            "note": "ADR files, plus the registry, where decision content must not live."
+          },
+          {
+            "fact": "operation",
+            "values": [
+              "create",
+              "edit",
+              "rename",
+              "delete"
+            ],
+            "observability": "observable_now",
+            "note": "Typical authoring trigger: an architectural decision is recorded, planned or changed. This fact alone is not required. The change fact below also applies when an existing corpus is reviewed."
+          },
+          {
+            "fact": "change",
+            "values": [
+              "decision content split across ADR files, duplicated in several ADR files, or held outside an ADR file"
+            ],
+            "observability": "llm_judged",
+            "note": "A reviewer or LLM judges this from the ADR content, during authoring or during review of the existing corpus. Registry drift checks cannot see it."
+          }
+        ],
+        "fires": [
+          "A plan records one architectural decision across two or more ADR files (for example, the choice in one and its rationale in another, or the same decision restated in two ADRs).",
+          "A decision's content (choice, rationale) is written into decisions/index.adoc or another non-ADR doc instead of an ADR file with :decides:.",
+          "A docs review finds an existing decision that is split or duplicated across ADR files, even though the registry listing matches the ADR set exactly."
+        ],
+        "doesNotFire": [
+          "Several ADR files that each record a distinct decision, even when their :decides: targets the same architecture node.",
+          "The registry holds one reference per ADR, with no decision content."
+        ]
+      },
+      "given": "A docs corpus that records architectural decisions in docs/architecture/decisions",
+      "when": "You plan, author or review an architectural decision, or review the ADR corpus",
+      "then": "Record each architectural decision in exactly one ADR file that declares :decides:. Do not split or duplicate it across ADR files, and do not put it in the registry.",
+      "prefer": [
+        "Write a new decision as its own `adr-YYYYMMDD-NNN-<slug>.adoc` with `:adr-id:`, `:status:`, `:date:` and `:decides:`, then regenerate the registry."
+      ],
+      "avoid": [
+        "Typing decision content into `decisions/index.adoc`. It belongs in an ADR file with a `:decides:` attribute. The registry holds references to decisions, never the decisions themselves."
+      ],
+      "unless": [],
+      "why": "One decision in ONE ADR file is what makes the registry a navigable set with a single source of truth per decision (spec 2 §6). An exact, regenerated listing still cannot repair a decision scattered across files.",
+      "evidence": [
+        "Each architectural decision in the plan or corpus maps to exactly one ADR file with :decides:, and index.adoc holds only references."
+      ],
+      "verifier_detail": [
+        "Judged by a reviewer or LLM. docs_capability checks registry drift only and cannot detect a decision that is split or duplicated across ADR files.",
+        "ADR = a document at `docs/architecture/decisions/adr-YYYYMMDD-NNN-<slug>.adoc` declaring `:adr-id:`, `:status:`, `:date:` and `:decides:`.",
+        "Severity 2."
+      ],
+      "audit": [
+        "schema_version 1.1.0",
+        "kind: rule",
+        "status: active",
+        "aliases: DOCS-ADR-001 (via parent alias)",
+        "introduced_in 0.1.0",
+        "implementation: validator ref docs_capability does not cover this part; it is judged",
+        "Spec references: spec 2 §6 (one decision per ADR file)."
+      ],
+      "additions": [
+        {
+          "field": "activation",
+          "text": "fires/doesNotFire examples: decisions split or duplicated across ADR files; distinct decisions sharing a :decides: target do not fire.",
+          "justification": "Plain readings of 'One architectural decision lives in ONE ADR file', which the auditor asked to be made enforceable. They add no new waiver."
+        },
+        {
+          "field": "verifier_detail",
+          "text": "Judged by a reviewer or LLM. docs_capability checks registry drift only.",
+          "justification": "States observability honestly. It adds no obligation."
+        },
+        {
+          "field": "prefer",
+          "text": "Write a new decision as its own ADR file, then regenerate the registry.",
+          "justification": "Combines the source ADR term definition with the fix_hint. It adds no obligation."
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "source": "planner.docs.adr-registry-derived.listing-matches-adrs",
+      "target": "planner.docs.adr-registry-derived.regenerate-never-hand-type",
+      "type": "requires",
+      "reason": "The source makes the two jointly mandatory: the registry MUST list exactly the ADRs, derived from :decides: edges. Getting an exact listing by hand-typing still violates the source."
+    },
+    {
+      "source": "planner.docs.adr-registry-derived.regenerate-never-hand-type",
+      "target": "planner.docs.adr-registry-derived.listing-matches-adrs",
+      "type": "requires",
+      "reason": "Regenerating is only satisfied when the resulting listing has no drift, which needs the listing rules and the --check evidence."
+    },
+    {
+      "source": "planner.docs.adr-registry-derived.regenerate-never-hand-type",
+      "target": "planner.docs.adr-registry-derived.one-decision-per-adr",
+      "type": "requires",
+      "reason": "The registry is derived from ADR files. 'If you find yourself typing an entry, it belongs in an ADR file with :decides:' only works if each decision has exactly one ADR."
+    },
+    {
+      "source": "planner.docs.adr-registry-derived.one-decision-per-adr",
+      "target": "planner.docs.adr-registry-derived.regenerate-never-hand-type",
+      "type": "requires",
+      "reason": "Recording a decision in a new or changed ADR changes the registry entries, which must then be regenerated, not typed."
+    },
+    {
+      "source": "planner.docs.adr-registry-derived.listing-matches-adrs",
+      "target": "planner.docs.adr-registry-derived.one-decision-per-adr",
+      "type": "runs_alongside",
+      "reason": "Both apply to the same corpus review. The listing check cannot detect split decisions, so the atomicity part has to be judged next to it. Delivery is already guaranteed through the requires chain via regenerate-never-hand-type."
+    }
+  ],
+  "edgeRemap": [
+    {
+      "original": {
+        "source_ref": "planner.docs.adr-registry-derived",
+        "target_ref": "planner.docs.graph-target-resolves",
+        "type": "requires"
+      },
+      "remappedTo": [
+        "planner.docs.adr-registry-derived.listing-matches-adrs",
+        "planner.docs.adr-registry-derived.regenerate-never-hand-type",
+        "planner.docs.adr-registry-derived.one-decision-per-adr"
+      ],
+      "reason": "All three parts depend on :decides: edges resolving. The listing is a projection of them, regeneration derives from them, and each decision's single ADR declares one. An ADR deciding an undeclared node is reported by the resolver, never by these parts. The original edge attributes are kept."
+    }
+  ],
+  "aliasOf": {
+    "planner.docs.adr-registry-derived": [
+      "planner.docs.adr-registry-derived.listing-matches-adrs",
+      "planner.docs.adr-registry-derived.regenerate-never-hand-type",
+      "planner.docs.adr-registry-derived.one-decision-per-adr"
+    ]
+  },
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Disposition strict: atdd-bun fails on every finding; there is no advisory mode and no ratchet baseline."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "structure"
+      ],
+      "note": "Source id kept as an alias (aliasOf) and as the prefix of the part ids."
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "planner.docs.adr-registry-derived.regenerate-never-hand-type:title",
+        "planner.docs.adr-registry-derived.listing-matches-adrs:title"
+      ],
+      "note": "The name splits into the outcome title and the procedure title."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "planner.docs.adr-registry-derived.listing-matches-adrs:then",
+        "planner.docs.adr-registry-derived.listing-matches-adrs:evidence[1]",
+        "planner.docs.adr-registry-derived.listing-matches-adrs:verifier_detail[9]",
+        "planner.docs.adr-registry-derived.regenerate-never-hand-type:then"
+      ],
+      "note": "'MUST list exactly' is an unconditional corpus invariant and goes to the listing part; 'derived from :decides: edges' goes to the regenerate part."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "planner.docs.adr-registry-derived.listing-matches-adrs:verifier_detail[0]",
+        "planner.docs.adr-registry-derived.listing-matches-adrs:then"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "planner.docs.adr-registry-derived.regenerate-never-hand-type:why",
+        "planner.docs.adr-registry-derived.regenerate-never-hand-type:audit[6]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "planner.docs.adr-registry-derived.listing-matches-adrs:verifier_detail[1]"
+      ],
+      "note": "The heading is carried by the 'Listing rule' labels in verifier_detail[1..3]."
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "planner.docs.adr-registry-derived.listing-matches-adrs:verifier_detail[1]",
+        "planner.docs.adr-registry-derived.listing-matches-adrs:prefer[0]",
+        "planner.docs.adr-registry-derived.listing-matches-adrs:activation"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "planner.docs.adr-registry-derived.listing-matches-adrs:verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "planner.docs.adr-registry-derived.listing-matches-adrs:verifier_detail[2]",
+        "planner.docs.adr-registry-derived.listing-matches-adrs:activation"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "planner.docs.adr-registry-derived.listing-matches-adrs:verifier_detail[3]",
+        "planner.docs.adr-registry-derived.listing-matches-adrs:avoid[1]",
+        "planner.docs.adr-registry-derived.listing-matches-adrs:activation"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "planner.docs.adr-registry-derived.listing-matches-adrs:verifier_detail[4]",
+        "planner.docs.adr-registry-derived.one-decision-per-adr:verifier_detail[1]"
+      ],
+      "note": "Term id kept as the definition label."
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "planner.docs.adr-registry-derived.listing-matches-adrs:verifier_detail[4]",
+        "planner.docs.adr-registry-derived.one-decision-per-adr:verifier_detail[1]",
+        "planner.docs.adr-registry-derived.one-decision-per-adr:prefer[0]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "planner.docs.adr-registry-derived.listing-matches-adrs:verifier_detail[5]"
+      ],
+      "note": "Term id kept as the definition label."
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "planner.docs.adr-registry-derived.listing-matches-adrs:verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "planner.docs.adr-registry-derived.regenerate-never-hand-type:verifier_detail[0]"
+      ],
+      "note": "Term id kept as the definition label."
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "planner.docs.adr-registry-derived.regenerate-never-hand-type:verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "planner.docs.adr-registry-derived.regenerate-never-hand-type:verifier_detail[0]",
+        "planner.docs.adr-registry-derived.regenerate-never-hand-type:avoid[1]",
+        "planner.docs.adr-registry-derived.one-decision-per-adr:then",
+        "planner.docs.adr-registry-derived.one-decision-per-adr:avoid[0]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "planner.docs.adr-registry-derived.regenerate-never-hand-type:why"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "planner.docs.adr-registry-derived.regenerate-never-hand-type:why"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "planner.docs.adr-registry-derived.one-decision-per-adr:then",
+        "planner.docs.adr-registry-derived.one-decision-per-adr:title",
+        "planner.docs.adr-registry-derived.one-decision-per-adr:why",
+        "planner.docs.adr-registry-derived.one-decision-per-adr:audit[6]"
+      ],
+      "note": "Its own enforceable part with its own activation and requires links."
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "planner.docs.adr-registry-derived.regenerate-never-hand-type:why",
+        "planner.docs.adr-registry-derived.one-decision-per-adr:why"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "planner.docs.adr-registry-derived.regenerate-never-hand-type:why",
+        "planner.docs.adr-registry-derived.one-decision-per-adr:why"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "planner.docs.adr-registry-derived.regenerate-never-hand-type:why"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "planner.docs.adr-registry-derived.listing-matches-adrs:why",
+        "planner.docs.adr-registry-derived.listing-matches-adrs:verifier_detail[0]",
+        "planner.docs.adr-registry-derived.listing-matches-adrs:evidence[1]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "planner.docs.adr-registry-derived.listing-matches-adrs:why",
+        "planner.docs.adr-registry-derived.listing-matches-adrs:verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "planner.docs.adr-registry-derived.listing-matches-adrs:why",
+        "planner.docs.adr-registry-derived.listing-matches-adrs:avoid[0]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "planner.docs.adr-registry-derived.listing-matches-adrs:why",
+        "planner.docs.adr-registry-derived.listing-matches-adrs:avoid[0]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "planner.docs.adr-registry-derived.listing-matches-adrs:verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "planner.docs.adr-registry-derived.listing-matches-adrs:verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "planner.docs.adr-registry-derived.listing-matches-adrs:verifier_detail[6]",
+        "planner.docs.adr-registry-derived.listing-matches-adrs:activation"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "planner.docs.adr-registry-derived.regenerate-never-hand-type:prefer[0]",
+        "planner.docs.adr-registry-derived.regenerate-never-hand-type:then"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "planner.docs.adr-registry-derived.regenerate-never-hand-type:prefer[0]",
+        "planner.docs.adr-registry-derived.regenerate-never-hand-type:verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "planner.docs.adr-registry-derived.listing-matches-adrs:prefer[1]",
+        "planner.docs.adr-registry-derived.listing-matches-adrs:evidence[0]",
+        "planner.docs.adr-registry-derived.regenerate-never-hand-type:verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "planner.docs.adr-registry-derived.regenerate-never-hand-type:prefer[1]",
+        "planner.docs.adr-registry-derived.regenerate-never-hand-type:verifier_detail[1]",
+        "planner.docs.adr-registry-derived.regenerate-never-hand-type:evidence[1]"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "planner.docs.adr-registry-derived.regenerate-never-hand-type:prefer[1]",
+        "planner.docs.adr-registry-derived.regenerate-never-hand-type:verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "planner.docs.adr-registry-derived.regenerate-never-hand-type:prefer[1]",
+        "planner.docs.adr-registry-derived.regenerate-never-hand-type:verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "planner.docs.adr-registry-derived.regenerate-never-hand-type:avoid[0]"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "planner.docs.adr-registry-derived.regenerate-never-hand-type:avoid[0]",
+        "planner.docs.adr-registry-derived.one-decision-per-adr:avoid[0]"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "planner.docs.adr-registry-derived.listing-matches-adrs:unless[0]",
+        "planner.docs.adr-registry-derived.regenerate-never-hand-type:activation"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "planner.docs.adr-registry-derived.listing-matches-adrs:unless[0]"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "planner.docs.adr-registry-derived.listing-matches-adrs:unless[1]",
+        "planner.docs.adr-registry-derived.listing-matches-adrs:activation"
+      ]
+    },
+    {
+      "seg": "S045",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S046",
+      "dest": [
+        "planner.docs.adr-registry-derived.listing-matches-adrs:verifier_detail[7]",
+        "planner.docs.adr-registry-derived.regenerate-never-hand-type:verifier_detail[3]",
+        "planner.docs.adr-registry-derived.one-decision-per-adr:verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S047",
+      "dest": [
+        "shared:policy.strict-disposition"
+      ]
+    },
+    {
+      "seg": "S048",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S049",
+      "dest": [
+        "audit"
+      ],
+      "note": "Validator covers listing-matches-adrs; the other two parts are judged, as their audit entries state."
+    }
+  ]
+}

@@ -1,0 +1,384 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.bun/coder.bun.design-dependency-flow.convention.yaml",
+    "sha256": "8c99a0293f6a3e527c8aa99b2d5634695627c6daf8e37398fa25667a0e47dbff"
+  },
+  "rule_id": "coder.bun.design-dependency-flow",
+  "kind": "rule",
+  "title": "Import only from your own or a lower design-system layer",
+  "activation": {
+    "facts": [
+      {
+        "fact": "path_glob",
+        "values": [
+          "**/design/**",
+          "**/design_system/**",
+          "**/design-system/**"
+        ],
+        "observability": "observable_now",
+        "note": "File lies under a design root (directory named design, design_system or design-system); a repository with no design root is never judged. Excludes *.test.*, *.spec.* and vendored/build directories."
+      },
+      {
+        "fact": "layer",
+        "values": [
+          "tokens",
+          "foundations",
+          "primitives",
+          "components",
+          "templates"
+        ],
+        "observability": "observable_now",
+        "note": "Layer is the first directory beneath the design root; derivable from the path. Files directly under the root (no named layer) are not layered."
+      },
+      {
+        "fact": "operation",
+        "values": [
+          "file contains an import that resolves into the design system"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Import resolver mapping relative and aliased specifiers (alias naming the design directory) to a target layer. Applies to every import of a scoped file, existing or new."
+      }
+    ],
+    "fires": [
+      "A file under design/primitives/ imports from design/components/ (whether the import is new or pre-existing).",
+      "A file under design-system/components/ imports from design-system/templates/ via an alias such as `@/design/templates/...`.",
+      "A tokens or foundations file imports from primitives."
+    ],
+    "doesNotFire": [
+      "The repository has no directory named design, design_system or design-system.",
+      "A component imports another component in the same layer.",
+      "A component imports a primitive or a token (downward edge).",
+      "The importing file is a test file (*.test.*, *.spec.*) or lives in a vendored/build directory.",
+      "The file sits directly under the design root, outside any named layer."
+    ]
+  },
+  "given": "a file inside a named layer of a design root (tokens/foundations 0, primitives 1, components 2, templates 3)",
+  "when": "any of its imports resolves (relative path or alias naming the design directory) into the design system",
+  "then": "each such import MUST target the file's own layer or a lower one; upward edges (tokens→primitives, primitives→components, components→templates) are forbidden",
+  "prefer": [
+    "Keep imports same-layer or downward: tokens -> foundations -> primitives -> components -> templates.",
+    "Reuse an existing lower-layer value or component when possible.",
+    "Move a genuinely shared piece only to the lowest layer that actually owns it.",
+    "Compose upward rather than importing upward."
+  ],
+  "avoid": [
+    "Reshuffling unrelated design-system files.",
+    "Creating a new layer or generic abstraction for one dependency.",
+    "Hiding an upward dependency behind a barrel."
+  ],
+  "unless": [
+    "Imports within the same layer are allowed.",
+    "Files directly under the design root, outside any named layer, are not layered.",
+    "Test files (*.test.*, *.spec.*) and vendored/build directories are never scanned.",
+    "No design root: not judged; there is no system to connect to yet."
+  ],
+  "why": "A hierarchy is only a hierarchy if dependencies flow one way; a primitive that imports a component can't be reused without dragging it along, and the layers collapse into one tangle.",
+  "evidence": [
+    "The current behavioral or rendering acceptance passes.",
+    "All affected design-system imports follow the declared direction (bun_design_system_detector reports no upward edge)."
+  ],
+  "verifier_detail": [
+    "Design root = a directory named `design`, `design_system`, or `design-system`; the first directory beneath it names the layer: `tokens` or `foundations` (0), `primitives` (1), `components` (2), `templates` (3).",
+    "Resolve each import of a design-system file to its target layer, from a relative path or from an aliased specifier that names the design directory (e.g. `@/design/components/Card`); flag any edge whose target layer is higher than the source layer (finding = upward_import). The finding is the evaluation output, not an activation precondition.",
+    "Same-layer edges pass; files directly under the design root (no named layer) are not layered; skip `*.test.*`, `*.spec.*` and vendored/build directories; no design root => not judged (self-scoping).",
+    "Note: the statement ranks tokens and foundations together at level 0, while the fix hint lists tokens -> foundations as consecutive steps; the detector uses the statement's numbering.",
+    "Implementation: validator `bun_design_system_detector`; severity 3, disposition strict.",
+    "Detector coverage limitation (from graph.json, not the source rule): the Bun detector inspects .tsx/.jsx/.html/.css files; this does not narrow the rule's applicability to other layered files."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.2.0.",
+    "Bun realization of the core obligation `coder.design.hierarchy-import`, mirroring `coder.vite.design-dependency-flow`.",
+    "metadata.core_obligation: coder.design.hierarchy-import.",
+    "Aliases: BUN-DESIGN-DEPENDENCY-FLOW-001.",
+    "Implementation: {type: validator, ref: bun_design_system_detector}.",
+    "Term ids: design_root, upward_import."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.phase-loop",
+      "kind": "policy",
+      "text": "Fix-hint structure: 'During GREEN:' (rule-specific repair moves), 'Do not broaden:' (do not reshuffle unrelated files), 'Prove:' (the current behavioral or rendering acceptance passes)."
+    },
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Disposition: strict."
+    }
+  ],
+  "additions": [
+    {
+      "field": "verifier_detail[5]",
+      "text": "Detector file-kind coverage .tsx/.jsx/.html/.css",
+      "justification": "Taken from graph.json edge reason, not the source YAML; recorded only as a detector coverage limitation, not as rule applicability."
+    },
+    {
+      "field": "verifier_detail[3]",
+      "text": "Note on tokens/foundations ordering mismatch and use of statement numbering",
+      "justification": "Source is internally inconsistent; the verifier needs a deterministic interpretation. Statement (normative) wins."
+    },
+    {
+      "field": "verifier_detail[1]",
+      "text": "Finding is evaluation output, not activation precondition",
+      "justification": "Clarification in response to audit; no new obligation."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ],
+      "note": "Title rephrased imperatively."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "then",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "activation",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "activation",
+        "given",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "unless[3]",
+        "activation",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "when",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "structure",
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "prefer[3]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "structure",
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "evidence[0]",
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "unless[2]",
+        "activation",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "identity",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "audit",
+        "verifier_detail[4]"
+      ]
+    }
+  ]
+}

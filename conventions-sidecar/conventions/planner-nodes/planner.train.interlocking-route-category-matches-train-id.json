@@ -1,0 +1,278 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.train.interlocking-route-category-matches-train-id.convention.yaml",
+    "sha256": "9936eaead48829e81e5b24916e86944eb7f712209e941b78a859175b7ed6afe3"
+  },
+  "rule_id": "planner.train.interlocking-route-category-matches-train-id",
+  "kind": "rule",
+  "title": "Make each interlocking route's category equal its target train's category field",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "interlocking"
+        ],
+        "observability": "observable_now",
+        "note": "validation.subject_kind is 'interlocking'; every interlocking artifact (and each of its routes) is in scope, whether or not it changed in the current operation."
+      },
+      {
+        "fact": "phase",
+        "values": [
+          "CONFIRM"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Validator runs in CONFIRM and is confirm-blocking; phase is not directly observable from the file system."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "interlocking_route_category_or_target_changed",
+          "train_category_changed"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Non-exclusive authoring trigger only: a diff-level observer could fire early when a route or targeted train's category changes. The CONFIRM check still covers every interlocking route, including unchanged ones."
+      }
+    ],
+    "fires": [
+      "CONFIRM validation of any interlocking: every route is checked, including unchanged routes that already mismatch their target train.",
+      "An interlocking route that declares no category at all.",
+      "An interlocking route whose target train has no `category` field (the agreement cannot hold, so the route fails).",
+      "Planner adds a route, changes its category, or retargets it to a different train.",
+      "Planner changes the `category` field of a train targeted by an interlocking route."
+    ],
+    "doesNotFire": [
+      "A train that no interlocking route targets (no route to compare against).",
+      "Edits to artifacts that are neither interlocking routes nor the `category` field of a train targeted by an interlocking route."
+    ]
+  },
+  "given": "An interlocking and its routes.",
+  "when": "You author or edit an interlocking or a targeted train's category, and whenever CONFIRM validates any interlocking (unchanged routes included).",
+  "then": "Every interlocking route declares a category (nominal/error/alternate/exception) exactly equal to the `category` field of the target train it selects.",
+  "prefer": [
+    "Copy the target train's `category` value into the route.",
+    "When a train's category changes, update every route targeting it in the same change.",
+    "If the target train lacks a `category` field, set it to the intended value first, then match the route."
+  ],
+  "avoid": [
+    "Deriving the category from a digit in the train identity; that legacy digit is retired and no longer parsed.",
+    "Routes with no category or a value outside nominal/error/alternate/exception.",
+    "Treating a target train without a `category` field as an exemption.",
+    "Editing whichever side is easier just to silence the mismatch, without checking which reflects intended behaviour."
+  ],
+  "unless": [],
+  "why": "Since issue #1421, category is a validated field on the train, not an identity digit, so a route's category must agree with the field it resolves to.",
+  "evidence": [
+    "Validator test_sequence_diagram_sanity::test_interlocking_route_category_matches_train_id passes in CONFIRM.",
+    "For every interlocking route, route.category == target train's `category` field."
+  ],
+  "verifier_detail": [
+    "Validation family: coherence; template: resolved_fact_agreement; variant: planner_train_interlocking_route_category_matches_train_id.",
+    "Phase CONFIRM; enforcement confirm-blocking; subject_kind interlocking.",
+    "Term category_field_agreement: route.category must equal the target train's `category` field (nominal/error/alternate/exception); the legacy identity digit is retired and must not be parsed.",
+    "On failure report: interlocking_id, route_id, category, train_id, train_category, train_path.",
+    "Severity 4; disposition strict (as declared in source metadata); enforcement confirm-blocking."
+  ],
+  "audit": [
+    "schema_version: 1.0.0",
+    "source kind: constraint; status: active",
+    "Original name: 'Interlocking route category matches train id' (name predates issue #1421; comparison is now against the train's category field, not its id digit).",
+    "Statement references issue #1421 — category is a validated field, not an identity digit.",
+    "implementation: {type: validator, ref: test_sequence_diagram_sanity::test_interlocking_route_category_matches_train_id}",
+    "Term id: category_field_agreement",
+    "metadata: severity 4, disposition strict"
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "prefer",
+      "text": "Update every route targeting a train in the same change when the train's category changes.",
+      "justification": "Direct operationalisation of the agreement obligation for the planner reader; adds no new obligation beyond equality."
+    },
+    {
+      "field": "prefer",
+      "text": "If the target train lacks a `category` field, set it to the intended value first, then match the route.",
+      "justification": "Recovery guidance for the missing-field case; equality with a non-existent field cannot hold, so this only operationalises the source obligation."
+    },
+    {
+      "field": "avoid",
+      "text": "Treating a target train without a `category` field as an exemption.",
+      "justification": "Guards against reading the rule as conditional; the source obligation is universal over every interlocking route."
+    },
+    {
+      "field": "avoid",
+      "text": "Editing whichever side is easier just to silence the mismatch without checking intended behaviour.",
+      "justification": "Metric-gaming guard required by the authoring template; follows from the agreement being a semantic check."
+    },
+    {
+      "field": "activation.doesNotFire",
+      "text": "Concrete non-firing situations.",
+      "justification": "Required by schema; derived generically from the rule's subject (interlocking routes and their target train's category field)."
+    },
+    {
+      "field": "activation.facts",
+      "text": "change fact as a non-exclusive early authoring trigger.",
+      "justification": "Helps planners comply while authoring; explicitly does not narrow the CONFIRM scope, which covers all interlocking routes."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Title rephrased to reflect category-field comparison; original name kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "then",
+        "why",
+        "audit"
+      ],
+      "note": "Given is unconditional (every interlocking and its routes); issue #1421 reference kept in why and audit."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "verifier_detail[2]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "then",
+        "avoid[0]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "identity",
+        "verifier_detail[4]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "identity",
+        "verifier_detail[4]",
+        "audit"
+      ],
+      "note": "Kept literally as 'strict'; no shared baseline semantics attached."
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[1]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "verifier_detail[1]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "verifier_detail[1]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    }
+  ]
+}

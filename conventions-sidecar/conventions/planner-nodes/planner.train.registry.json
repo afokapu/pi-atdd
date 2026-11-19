@@ -1,0 +1,288 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.train.registry.convention.yaml",
+    "sha256": "23f776d6f7e0b4d136997992512b969dd957de80cd84bd14fba22d02d25d7e97"
+  },
+  "rule_id": "planner.train.registry",
+  "kind": "rule",
+  "title": "Give every train both a registry entry and a spec file",
+  "activation": {
+    "facts": [
+      {
+        "fact": "path_glob",
+        "values": [
+          "plan/_trains.yaml",
+          "plan/_trains/*.yaml"
+        ],
+        "observability": "observable_now",
+        "note": "Any creation, edit, rename or deletion of the train registry or a train spec file is visible from changed paths; existing files are visible for whole-repo validation."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "train registry entry added, renamed, removed, moved or edited",
+          "registry theme-category group added, renamed, removed or reordered",
+          "train spec file added, renamed, deleted or edited",
+          "registry entry without spec file",
+          "spec file without registry entry",
+          "registry entry outside a nominal/error/alternate/exception group"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Requires comparing train_ids in plan/_trains.yaml with files under plan/_trains/, and parsing the registry's theme-category grouping, for both changed and pre-existing trains."
+      },
+      {
+        "fact": "phase",
+        "values": [
+          "planner"
+        ],
+        "observability": "needs_new_observer",
+        "note": "The planner phase gate is where the validator enforces the rule; it does not limit the invariant, which holds for every train at all times."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "train",
+          "add train",
+          "register train",
+          "train registry",
+          "train spec",
+          "theme category"
+        ],
+        "observability": "llm_judged",
+        "note": "Task wording indicating trains are being planned, changed, regrouped or reviewed; path and change facts remain the deterministic triggers."
+      }
+    ],
+    "fires": [
+      "A new train entry is added to plan/_trains.yaml.",
+      "A train_id is renamed in the registry, or an existing train entry's contents are updated.",
+      "A registry entry is moved between theme-category groups, or a group in plan/_trains.yaml is added, renamed, removed or reordered.",
+      "A file under plan/_trains/ is created, renamed, deleted or edited.",
+      "A spec file exists under plan/_trains/ with no corresponding registry entry.",
+      "Validating or reviewing existing trains, including pre-existing registry entries whose spec file is missing or that sit outside a nominal/error/alternate/exception group."
+    ],
+    "doesNotFire": [
+      "Planning work that touches only wagon, feature or acceptance files and leaves plan/_trains.yaml and plan/_trains/ untouched, while every existing train already has a registry entry in a valid theme-category group and a matching spec file.",
+      "Source or test changes that modify no planning artifacts, while the train registry is correctly theme-category-grouped and every registry entry is paired with its spec file."
+    ]
+  },
+  "given": "plan/_trains.yaml is the train registry, grouped by theme category; plan/_trains/ holds one spec file per train.",
+  "when": "You add, change, rename, regroup, remove or validate any train, registry entry or train spec file.",
+  "then": "Ensure every train has both a registry entry in plan/_trains.yaml and a full spec at plan/_trains/{train_id}.yaml, so every registry entry has its spec file.",
+  "prefer": [
+    "Two-file pattern: registry entry (train_id, description, path, wagons summary) plus spec file (full workflow).",
+    "Create the spec file in the same change as the registry entry, named from the train_id.",
+    "Place each registry entry under its theme-category group: nominal, error, alternate or exception."
+  ],
+  "avoid": [
+    "A registry entry without its spec file, including a stale entry left after the spec is renamed or deleted.",
+    "A spec file under plan/_trains/ with no registry entry.",
+    "Spec filenames that do not match the registry train_id."
+  ],
+  "unless": [],
+  "why": "Each train needs both files; validator SPEC-TRAIN-VAL-0003 fails the planner phase gate when a spec file is missing.",
+  "evidence": [
+    "For each train_id in plan/_trains.yaml, plan/_trains/{train_id}.yaml exists, and each train spec file has a registry entry.",
+    "Validator SPEC-TRAIN-VAL-0003 passes; the planner phase gate fails if any spec file is missing.",
+    "Every registry entry sits under one of the theme-category groups nominal, error, alternate, exception."
+  ],
+  "verifier_detail": [
+    "Validator SPEC-TRAIN-VAL-0003: enumerate registry entries in plan/_trains.yaml and fail the planner phase gate for each entry whose plan/_trains/{train_id}.yaml spec file is missing.",
+    "Registry layout is theme-category-grouped: nominal, error, alternate, exception. Until a separate grouping convention (proposed planner.train.registry-grouping) is active, this rule's activation also covers grouping changes and misgrouped entries.",
+    "Registry entry fields: train_id, description, path, wagons summary. Spec file holds the full workflow.",
+    "Term two_file_pattern = registry entry + spec file per train; values registry: plan/_trains.yaml, spec: plan/_trains/{train_id}.yaml.",
+    "Severity 3; disposition strict (as declared in source metadata)."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "kind: rule",
+    "status: active",
+    "implementation: validator, ref conventions/resolution/test_train_validation::test_fault_injection_and_legacy_parity",
+    "source: legacy_path src/atdd/planner/conventions/train.convention.yaml, legacy_section registry, legacy_sha 825602729f11a3a4, extraction_mode high_fidelity",
+    "parity: source_fragments_preserved true, examples_preserved true, implementation_preserved true, fix_hint_preserved false, reviewed_at 2026-06-16",
+    "Original name: Train registry (two-file pattern); term_id two_file_pattern",
+    "metadata.severity: 3; metadata.disposition: strict"
+  ],
+  "splitSuggestion": [
+    {
+      "id": "planner.train.registry-grouping",
+      "then": "Place every train registry entry in plan/_trains.yaml under its theme-category group (nominal, error, alternate, exception).",
+      "segments": [
+        "S009"
+      ]
+    }
+  ],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "split_suggestion",
+      "text": "Theme-category grouping (S009) is an independently violable obligation and should become its own convention planner.train.registry-grouping. Until that convention exists and is active, this rule retains the grouping requirement in prefer[2], evidence[2] and verifier_detail[1], and its activation fires on grouping changes and misgrouped entries; doesNotFire cases require both valid pairing and valid grouping.",
+      "justification": "Rule 2 plus auditor fix: then carries only the pairing obligation, but grouping must not lose activation coverage."
+    },
+    {
+      "field": "prefer",
+      "text": "Create the spec file in the same change as the registry entry, named from the train_id.",
+      "justification": "A concrete way to meet the obligation; restates the timing implied by the gate failing on missing specs."
+    },
+    {
+      "field": "avoid",
+      "text": "A spec file with no registry entry (avoid[1]); spec filenames not matching the registry train_id (avoid[2]).",
+      "justification": "Direct negations of 'each train needs two files' (S006) and the {train_id} filename template (S019)."
+    },
+    {
+      "field": "evidence",
+      "text": "Every registry entry sits under one of the theme-category groups (evidence[2]).",
+      "justification": "Verification counterpart of the retained grouping statement S009."
+    },
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire situations and fact observability notes, including grouping-related triggers.",
+      "justification": "Required by the schema; derived from registry/spec paths, grouping and gate in the source."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Title rewritten imperatively; original name kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "prefer[0]",
+        "avoid[0]",
+        "avoid[1]",
+        "why",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "given",
+        "activation",
+        "prefer[2]",
+        "evidence[2]",
+        "verifier_detail[1]"
+      ],
+      "note": "Grouping obligation retained with activation coverage; also proposed as separate convention planner.train.registry-grouping."
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "evidence[1]",
+        "verifier_detail[0]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "then",
+        "prefer[0]",
+        "verifier_detail[2]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "identity",
+        "verifier_detail[4]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "identity",
+        "verifier_detail[4]",
+        "audit"
+      ],
+      "note": "Kept literally as 'strict'; no generic disposition semantics added."
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[3]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "given",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "then",
+        "verifier_detail[3]",
+        "avoid[2]"
+      ]
+    }
+  ]
+}

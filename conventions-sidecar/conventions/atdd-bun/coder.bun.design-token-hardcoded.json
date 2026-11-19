@@ -1,0 +1,436 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.bun/coder.bun.design-token-hardcoded.convention.yaml",
+    "sha256": "c46afb4a4c8babcce0a4ffcf361c1e0181343b8c76b73311f094380fd4285a22"
+  },
+  "rule_id": "coder.bun.design-token-hardcoded",
+  "kind": "rule",
+  "title": "Take spacing, radii, and durations from foundations tokens in UI files",
+  "activation": {
+    "facts": [
+      {
+        "fact": "path_glob",
+        "values": [
+          "repository contains **/design/**, **/design_system/** or **/design-system/**"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Repository-level prerequisite, not a selector on the judged file: at least one design root must exist anywhere in the repository (self-scoping). Needs a repo-level existence check. The judged UI file may live anywhere in that repository, inside or outside the design root."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "UI file (any format that carries style declarations)"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Normative scope is UI files generally, anywhere in the repository; there is no exhaustive extension allowlist. Special case from the source: in .ts/.mts files only HTML authored in string/template/tagged-template literals is judged. Identifying UI files across formats needs a UI-file classifier. Implementation coverage (not normative applicability): the graph edge reason currently lists .tsx, .jsx, .html, .css, .ts, .mts as detector-supported kinds. Test files (*.test.*, *.spec.*) and vendored/build directories excluded."
+      },
+      {
+        "fact": "layer",
+        "values": [
+          "any except tokens/foundations"
+        ],
+        "observability": "observable_now",
+        "note": "Excludes only files under the design root's tokens/foundations layer (first directory beneath the design root). Includes design-system primitives, components, templates and all UI files outside the design root."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "bun_design_system_detector: hardcoded spacing/inset/radius length or duration"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Validator finding over the UI file's declarations (all declarations, not only changed ones)."
+      }
+    ],
+    "fires": [
+      "A component in the design system declares `padding: 13px`.",
+      "A UI file outside the design root sets `gap` to a bare number such as 8 in a JSX style object.",
+      "A primitive declares `transition: opacity 200ms`.",
+      "A .ts file renders HTML from a template literal containing `style=\"margin: 12px\"` or a `<style>` block with `border-radius: 6px`."
+    ],
+    "doesNotFire": [
+      "The repository has no design root.",
+      "The file lives in the tokens/foundations layer.",
+      "A custom property definition such as `--space-3: 12px`, wherever it lives.",
+      "A value of 0 or 1px (hairline border).",
+      "A width, height, or font-size declaration.",
+      "A test file (*.test.*, *.spec.*) or a vendored/build directory.",
+      "Code, a comment, or a regex literal in a .ts file (not HTML literal text)."
+    ]
+  },
+  "given": "The repository has a design root (`design`, `design_system`, or `design-system` dir; its first subdirectory names the layer) and you edit a UI file anywhere outside its tokens/foundations layer",
+  "when": "the file declares `margin`, `padding`, `gap`, `inset`, `top`/`right`/`bottom`/`left`, `border-radius`, or `transition`/`animation` (CSS, JSX style objects where a bare number is a length, or inline/`<style>` HTML in .ts/.mts literals)",
+  "then": "Take those lengths > 1px and non-zero durations from foundations tokens (`var(--…)`); never hardcode them.",
+  "prefer": [
+    "Use the existing foundations scale for spacing, inset, radius, and duration.",
+    "During GREEN: reuse the nearest existing semantic or scale token.",
+    "During GREEN: add a foundation value only when the design genuinely needs a distinct one.",
+    "During GREEN: change only the style declaration the acceptance needs."
+  ],
+  "avoid": [
+    "One-off tokens that merely rename a hardcoded literal.",
+    "Bypassing the scale for speed.",
+    "Normalizing unrelated styling."
+  ],
+  "unless": [
+    "Value is 0 or 1px (hairlines are not design decisions).",
+    "Custom property definition (`--space-3: 12px`), wherever it lives.",
+    "File is in the tokens/foundations layer.",
+    "Width, height, or font size.",
+    "Test file (`*.test.*`, `*.spec.*`) or vendored/build directory.",
+    "No design root in the repository: no system to connect to yet."
+  ],
+  "why": "Spacing and motion are an interface's rhythm; each hardcoded `13px` is a new step on a scale nobody chose, eroding it one component at a time.",
+  "evidence": [
+    "bun_design_system_detector reports no hardcoded spacing/inset/radius length > 1px or non-zero duration in affected UI files.",
+    "Prove: the current visual or behavioral acceptance passes, and affected UI values come from the declared foundations (`var(--…)` references to tokens defined once in foundations)."
+  ],
+  "verifier_detail": [
+    "Properties judged: margin, padding, gap, inset, top, right, bottom, left, border-radius (lengths > 1px); transition, animation (non-zero durations).",
+    "A bare number in a JSX style object for those properties counts as a length (and is then subject to the same > 1px threshold).",
+    "In .ts/.mts files, judge inline `style=\"…\"` attributes and `<style>` text in HTML authored in string, template, and tagged-template literals.",
+    "Only literal text is judged in .ts/.mts files: code, comments, and regex literals are never read as declarations; a value spanning a `${…}` interpolation is judged on its literal chunks alone.",
+    "design_root: a directory named `design`, `design_system`, or `design-system`. The first directory beneath it names the layer: `tokens` or `foundations`, `primitives`, `components`, `templates`. A repository with no design root is not judged (self-scoping): there is no system to connect to yet.",
+    "visual_token: a spacing, radius, or motion value defined once in foundations and referenced as `var(--…)`.",
+    "Scope: hardcoded lengths and durations in spacing, radius, and motion declarations across UI files (any format), including the design system's own primitives and components; the tokens/foundations layer defines these values and is not scanned. Current detector coverage (per graph edge) is .tsx, .jsx, .html, .css, .ts, .mts; this is implementation coverage, not a limit on applicability.",
+    "Exclusions: test files (*.test.*, *.spec.*) and vendored/build directories never scanned; 0 and 1px allowed; custom property definitions not flagged; widths/heights/font sizes out of scope.",
+    "Severity 2; disposition strict."
+  ],
+  "audit": [
+    "schema_version 1.1.0",
+    "kind: rule; status: active",
+    "Bun realization of `coder.design.token-hardcoded` and of the raw-pixel part of `coder.design.foundations`.",
+    "metadata.core_obligation: coder.design.token-hardcoded",
+    "aliases: BUN-DESIGN-TOKEN-HARDCODED-001",
+    "introduced_in 0.2.0",
+    "implementation: validator, ref bun_design_system_detector",
+    "Source name: UI files take spacing, radii, and durations from foundations"
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Disposition: strict."
+    }
+  ],
+  "additions": [
+    {
+      "field": "verifier_detail[6] / activation.facts note",
+      "text": "Current detector coverage: .tsx, .jsx, .html, .css, .ts, .mts",
+      "justification": "Taken from the graph.json edge reason, not the source; recorded only as implementation coverage, not as a normative restriction of the source's general UI-file scope."
+    },
+    {
+      "field": "activation.fires/doesNotFire",
+      "text": "Concrete fire/no-fire situations",
+      "justification": "Required by the output shape; each is derived directly from the source statement and exceptions, adding no new obligation."
+    },
+    {
+      "field": "given/when (length note)",
+      "text": "Design-root names and exact property list repeated in coder-facing fields",
+      "justification": "Not new content (source S006, S012, S013); duplicated from verifier_detail so a coder can decide applicability. Coder-facing text slightly exceeds ~1,000 characters; losslessness wins over brevity."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Title rephrased imperatively; original name kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "when",
+        "then",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "when",
+        "verifier_detail[1]"
+      ],
+      "note": "The > 1px threshold in then still applies."
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "when",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "given",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "given",
+        "activation",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "given",
+        "activation",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "activation",
+        "unless[5]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "then",
+        "verifier_detail[5]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "given",
+        "activation",
+        "verifier_detail[6]"
+      ],
+      "note": "Activation now covers UI files generally; extension list only documented as detector coverage."
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "prefer[0]"
+      ],
+      "note": "Canonical path heading; its content is prefer[0]."
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "prefer[1]",
+        "prefer[2]",
+        "prefer[3]"
+      ],
+      "note": "'During GREEN' qualifier kept on prefer[1..3]."
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "prefer[3]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "evidence[1]"
+      ],
+      "note": "'Prove:' heading kept as prefix of evidence[1]."
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "unless[4]",
+        "activation",
+        "verifier_detail[7]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[7]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[7]"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "unless[2]",
+        "activation",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "unless[3]",
+        "verifier_detail[7]"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "verifier_detail[3]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "identity",
+        "verifier_detail[8]"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "verifier_detail[8]"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

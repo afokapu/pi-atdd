@@ -1,0 +1,346 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.subject.invariants.convention.yaml",
+    "sha256": "f9728e074515dafb65519843705f21d1cf03632a3bfe628ece7111d7c67699b8"
+  },
+  "rule_id": "planner.subject.invariants",
+  "kind": "rule",
+  "title": "Register a subject before typing any train under it",
+  "activation": {
+    "facts": [
+      {
+        "fact": "path_glob",
+        "values": [
+          "plan/_subjects.yaml",
+          "plan/**"
+        ],
+        "observability": "observable_now",
+        "note": "Any edit to the subject registry, or to plan files that contain typed train:<subject>:<slug> entries."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "subject",
+          "train",
+          "slug",
+          "train:<subject>:<slug>",
+          "_subjects.yaml",
+          "registry"
+        ],
+        "observability": "observable_now",
+        "note": "Planner tasks that create, rename, type or register trains/subjects."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "train:<subject>:<slug> typed (under a new or an existing subject)",
+          "subject registry entry added/renamed/edited",
+          "train subject or slug changed"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Diff-level observer must detect every newly typed or re-identified train and every registry entry change, then check registration, naming and uniqueness against plan/_subjects.yaml."
+      },
+      {
+        "fact": "phase",
+        "values": [
+          "CONFIRM"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Validation runs at CONFIRM over the whole registry and all typed trains and is confirm-blocking, so pre-existing violations also fail."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "subject not registered",
+          "subject not kebab-case",
+          "subject is not a noun-led durable object",
+          "duplicate subject",
+          "duplicate subject+slug"
+        ],
+        "observability": "llm_judged",
+        "note": "Registration, kebab-case and duplicates are mechanically checkable once an observer exists; noun-led durable object vs verb/actor/theme/route/category/owner/program name needs judgement."
+      }
+    ],
+    "fires": [
+      "A plan types train:<subject>:<slug> where <subject> is not in plan/_subjects.yaml",
+      "A plan types a new train under a subject that is already registered (naming and subject+slug uniqueness must still hold)",
+      "A planner adds, renames or edits an entry in plan/_subjects.yaml, independently of any train",
+      "A plan adds a second train with the same subject+slug as an existing typed train",
+      "A registry entry or typed train uses a subject that is not kebab-case, not noun-led, or is a verb, actor, theme, route, category, owner or program name",
+      "CONFIRM runs and the existing registry or typed trains already violate naming, registration or uniqueness"
+    ],
+    "doesNotFire": [
+      "Changes outside plan/ that neither touch plan/_subjects.yaml nor type, rename or reference train:<subject>:<slug> identities, outside the CONFIRM validation run"
+    ]
+  },
+  "given": "A plan contains a typed train train:<subject>:<slug> or a subject entry in plan/_subjects.yaml",
+  "when": "the planner types or re-identifies a train, edits the subject registry, or the plan reaches CONFIRM",
+  "then": "Ensure the <subject> exists in plan/_subjects.yaml before any train:<subject>:<slug> is typed under it.",
+  "prefer": [
+    "Add the subject entry to plan/_subjects.yaml first, then type trains under it",
+    "Choose as subject the durable object the train changes, written as a kebab-case noun-led name (this naming is mandatory, see avoid[1])",
+    "Reuse an existing registered subject when the train changes the same durable object"
+  ],
+  "avoid": [
+    "Typing train:<subject>:<slug> under an unregistered subject",
+    "Any subject (registry entry or typed train) that is not ALL of: kebab-case, noun-led, and the durable object of the train's change. This is mandatory, not a preference; camelCase/snake_case/other non-kebab names fail, and a verb, an actor, a theme, a route, a category, an owner or a program name is never a valid subject",
+    "Duplicate subject entries in the registry (registry entries are unique-by-subject)",
+    "Two typed trains with the same subject+slug (typed trains are unique-by-subject+slug)",
+    "Leaving an existing misnamed or duplicated subject/identity in place because the current edit did not change it; CONFIRM validates the whole registry"
+  ],
+  "unless": [],
+  "why": "A train's identity is its subject plus slug, so the subject must be a registered, durable noun and identities must be unique for every typed train to resolve to exactly one stable subject.",
+  "evidence": [
+    "Validator test_subject_invariants::test_repo_subject_registry_satisfies_invariants passes at CONFIRM",
+    "Every train:<subject>:<slug> in the plan has <subject> present in plan/_subjects.yaml",
+    "Every registry and typed-train subject is kebab-case, noun-led and the durable object of the train's change (not a verb, actor, theme, route, category, owner or program name)",
+    "No duplicate subject in the registry and no duplicate subject+slug among typed trains",
+    "On failure, evidence reports subject, slug and registry_status"
+  ],
+  "verifier_detail": [
+    "Validation family: coherence; template: registry_entries_coherent; variant: planner_subject_invariants; subject_kind: subject",
+    "Phase CONFIRM, enforcement confirm-blocking",
+    "failure_evidence fields: subject, slug, registry_status",
+    "Checks: subject kebab-case and noun-led, the durable object of a train's change (not verb/actor/theme/route/category/owner/program name); subject registered in plan/_subjects.yaml before first train typed under it; registry entries unique-by-subject; typed trains unique-by-subject+slug",
+    "Severity 4, disposition strict"
+  ],
+  "audit": [
+    "schema_version 1.0.0",
+    "source kind: constraint; status: active",
+    "implementation: validator test_subject_invariants::test_repo_subject_registry_satisfies_invariants",
+    "Term ids: durable_noun, registered_before_first_train, unique_identity",
+    "Source name: Subject invariants",
+    "Source statement: A subject is a durable noun object registered in plan/_subjects.yaml before any train is typed under it; subjects are unique-by-subject and typed trains are unique-by-subject+slug.",
+    "Metadata: severity 4, disposition strict",
+    "Graph: planner.train.registry requires planner.subject.invariants (finish_to_start)"
+  ],
+  "splitSuggestion": [
+    {
+      "id": "planner.subject.durable-noun",
+      "then": "Name every subject as a kebab-case, noun-led durable object (not a verb, actor, theme, route, category, owner or program name).",
+      "segments": [
+        "S007",
+        "S008"
+      ]
+    },
+    {
+      "id": "planner.subject.unique-identity",
+      "then": "Keep registry entries unique-by-subject and typed trains unique-by-subject+slug.",
+      "segments": [
+        "S011",
+        "S012"
+      ]
+    }
+  ],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "split_suggestion",
+      "text": "Source statement bundles three invariants (durable-noun naming, registration before first train, unique identity). Only registration-before-typing is kept in then; naming (mandatory prohibition in avoid[1]) and uniqueness (mandatory prohibitions in avoid[2], avoid[3]) remain enforced here via avoid/evidence/verifier_detail until the proposed separate conventions planner.subject.durable-noun and planner.subject.unique-identity exist.",
+      "justification": "Rule 2: one obligation in then; avoid entries keep the other source obligations mandatory."
+    },
+    {
+      "field": "why",
+      "text": "A train's identity is its subject plus slug, so the subject must be a registered, durable noun and identities must be unique for every typed train to resolve to exactly one stable subject.",
+      "justification": "Source has no explicit rationale; this is a planner-facing paraphrase derived from the train:<subject>:<slug> form and the unique_identity term, not a new obligation."
+    },
+    {
+      "field": "prefer",
+      "text": "Reuse an existing registered subject when the train changes the same durable object",
+      "justification": "Direct consequence of unique-by-subject; guides toward compliance without adding a new obligation."
+    },
+    {
+      "field": "avoid",
+      "text": "camelCase/snake_case/other non-kebab names fail (wording in avoid[1])",
+      "justification": "Clarifies that the source's kebab-case requirement is a general prohibition and that the listed excluded types are not the only failures; no new obligation beyond S008."
+    },
+    {
+      "field": "avoid",
+      "text": "Leaving an existing misnamed or duplicated subject/identity in place because the current edit did not change it; CONFIRM validates the whole registry",
+      "justification": "Makes explicit that the source invariants apply to all registry entries and typed trains, not just newly introduced ones (validator checks the repo registry at CONFIRM)."
+    },
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire situations",
+      "justification": "Required by schema; derived from the source terms and validation phase."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "given",
+        "avoid[0]",
+        "avoid[1]",
+        "avoid[2]",
+        "avoid[3]",
+        "prefer[1]",
+        "why",
+        "audit"
+      ],
+      "note": "Durable-noun requirement is mandatory via avoid[1]; prefer[1] only gives the positive phrasing."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "avoid[1]",
+        "prefer[1]",
+        "evidence[2]",
+        "verifier_detail[3]"
+      ],
+      "note": "avoid[1] prohibits every subject that is not kebab-case, noun-led and the durable object of the train's change, including the listed excluded types."
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "then",
+        "prefer[0]",
+        "avoid[0]",
+        "evidence[1]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "avoid[2]",
+        "avoid[3]",
+        "evidence[3]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "audit",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "identity",
+        "verifier_detail[4]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "identity",
+        "verifier_detail[4]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "activation",
+        "when",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "verifier_detail[2]",
+        "evidence[4]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "verifier_detail[2]",
+        "evidence[4]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "verifier_detail[2]",
+        "evidence[4]"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,378 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.htmx/coder.htmx.verb-endpoint-same-origin.convention.yaml",
+    "sha256": "2128d26153e2d1f19c65a1e1665d4f82c78395daedb336d6ef1256e82b74aedb"
+  },
+  "rule_id": "coder.htmx.verb-endpoint-same-origin",
+  "kind": "rule",
+  "title": "Point htmx verb attributes at same-origin paths, never absolute URLs",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          ".html",
+          ".htm",
+          ".ts",
+          ".tsx",
+          ".js",
+          ".jsx",
+          ".mjs"
+        ],
+        "observability": "observable_now",
+        "note": "Detector scan scope: templates and script/component source that can emit htmx markup."
+      },
+      {
+        "fact": "language",
+        "values": [
+          "htmx",
+          "bun"
+        ],
+        "observability": "observable_now",
+        "note": "Bun/htmx-stack workspace (atdd.workspace.bun)."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "htmx_hypermedia_detector: verb attribute value begins http://, https:// or //"
+        ],
+        "observability": "needs_new_observer",
+        "note": "The detector scans the whole template/source set (not only the diff); its findings, including on unchanged existing attributes, must be surfaced to activation."
+      }
+    ],
+    "fires": [
+      "A template or component contains an element with hx-get=\"https://api.example.com/orders\", whether newly added or already present and unchanged.",
+      "A verb attribute (hx-post/hx-put/hx-patch/hx-delete) carries a protocol-relative value such as //host/path.",
+      "A verb attribute points at a staging or third-party host."
+    ],
+    "doesNotFire": [
+      "A verb attribute carries a path-only value (/orders, ./orders, orders).",
+      "Only non-verb htmx attributes are involved (hx-target, hx-swap, hx-trigger).",
+      "Server-side handler code calls a remote upstream from behind a same-origin route."
+    ]
+  },
+  "given": "A scanned template or source file contains an htmx verb attribute (hx-get, hx-post, hx-put, hx-patch, hx-delete — attributes that make an element issue an HTTP request).",
+  "when": "The agent works in that code; every verb attribute present is in scope, including existing unchanged ones.",
+  "then": "Every verb attribute MUST address a same-origin path (root-relative, e.g. /api/orders, resolved against the document's origin) and MUST NOT carry an absolute (http://, https://) or protocol-relative (//host/…) URL.",
+  "prefer": [
+    "Replace the absolute URL with the path: hx-get=\"/api/orders\", not hx-get=\"https://api.example.com/orders\".",
+    "If the upstream is genuinely remote, add a same-origin proxy route on the server (e.g. /api/orders via Bun.serve) whose handler calls upstream, so the origin decision lives in one auditable place.",
+    "Use the same-origin path form for every hypermedia control in the app."
+  ],
+  "avoid": [
+    "Baking a foreign, staging or third-party host into a verb attribute.",
+    "Scattering cross-origin decisions across templates instead of a server proxy route.",
+    "Suppressing an absolute-URL endpoint finding — it is not suppressible."
+  ],
+  "unless": [
+    "Path-only values (/orders, ./orders, orders) are same-origin and never flagged.",
+    "Non-verb htmx attributes (hx-target, hx-swap, hx-trigger) are out of scope: they carry selectors and modifiers, not endpoints."
+  ],
+  "why": "htmx swaps the response markup straight into the live DOM with no parse step, so the endpoint origin is a trust boundary: a foreign origin fails three ways — CORS breaks once it drops permissive headers, it is an untrusted-HTML injection point, and a baked-in staging host reaches production invisible to env vars and config review.",
+  "evidence": [
+    "htmx_hypermedia_detector reports no verb attribute whose value begins http://, https:// or // anywhere in the scanned templates and source (existing and new).",
+    "Any genuinely required cross-origin call is reachable only via a same-origin server route whose handler performs the upstream call."
+  ],
+  "verifier_detail": [
+    "Detector: zero-dependency Bun detector (htmx_hypermedia_detector family on atdd.workspace.bun) scanning .html/.htm templates and .ts/.tsx/.js/.jsx/.mjs source.",
+    "Flag a verb attribute (hx-get, hx-post, hx-put, hx-patch, hx-delete) whose value begins http://, https:// or //.",
+    "Never flag path-only values (/orders, ./orders, orders); ignore non-verb hx-* attributes (hx-target, hx-swap, hx-trigger).",
+    "Disposition strict, severity 2: an absolute-URL endpoint finding is not suppressible."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "Alias: HTMX-ENDPOINT-ORIGIN-001.",
+    "implementation: {type: validator, ref: htmx_hypermedia_detector}.",
+    "Bun/htmx-stack realization of the agnostic \"a client must not hardcode a foreign origin\" obligation; enforced by the htmx_hypermedia_detector family implementation on atdd.workspace.bun.",
+    "Source term ids: verb_attribute, same_origin_path.",
+    "Summary: an \"htmx endpoints are same-origin paths\" obligation.",
+    "Source illustrative staging host: https://staging.example.com."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Strict disposition: findings of a strict rule are not suppressible."
+    }
+  ],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire situations and the finding fact.",
+      "justification": "Required by the target structure; derived directly from the source scope, detector pattern and exceptions."
+    },
+    {
+      "field": "evidence",
+      "text": "Evidence items phrased as verifier checks.",
+      "justification": "Source states the detector pattern but no explicit evidence list; these restate it as compliance checks, no new obligation."
+    },
+    {
+      "field": "note",
+      "text": "Coder-facing text is slightly above ~1,000 characters.",
+      "justification": "Keeping the three failure modes, the proxy-route fix and both authored exceptions in coder fields is needed for lossless placement."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ],
+      "note": "Becomes title."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "why"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ],
+      "note": "Term id; definition carried in given."
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "given"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit"
+      ],
+      "note": "Term id; definition carried in then."
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "audit"
+      ],
+      "note": "Restates the obligation already in then."
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[0]",
+        "verifier_detail[1]",
+        "activation",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "why",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "why",
+        "avoid[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "prefer[1]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "prefer[1]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "prefer[1]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "prefer[0]",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "prefer[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "structure"
+      ],
+      "note": "Sentence fragment 'The', continued in S032."
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "avoid[2]",
+        "verifier_detail[3]",
+        "shared:policy.strict-disposition"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "identity",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "identity",
+        "verifier_detail[3]",
+        "shared:policy.strict-disposition"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

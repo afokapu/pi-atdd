@@ -1,0 +1,403 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.bun/coder.bun.boundaries-http-client.convention.yaml",
+    "sha256": "9f340712ee14d6fc197fc0004f9f2b4e990de0d7328c6355c1fd7088fcb37db1"
+  },
+  "rule_id": "coder.bun.boundaries-http-client",
+  "kind": "rule",
+  "title": "Route outbound HTTP through the centralized client",
+  "activation": {
+    "facts": [
+      {
+        "fact": "layer",
+        "values": [
+          "domain",
+          "application",
+          "presentation"
+        ],
+        "observability": "observable_now",
+        "note": "Derived from the layer segment in the file path. Integration is excluded (the client's own home); files with no layer segment are out of scope."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "source"
+        ],
+        "observability": "observable_now",
+        "note": "Any non-test source file outside vendored/build directories, whether newly written, edited, or untouched-but-in-scope. No diff condition: existing bare calls are in scope too."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "fetch",
+          "axios",
+          "HTTP",
+          "upstream",
+          "remote API",
+          "endpoint"
+        ],
+        "observability": "llm_judged",
+        "note": "Preventive signal: the task involves outbound HTTP from a consumer layer. Fires before any code is written; not a precondition when the layer/file_kind facts already match a file containing a bare call."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "bun_clean_architecture_detector:boundaries-http-client"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Alternative trigger only (not required): a detector finding on any in-scope file, including pre-existing bare calls."
+      }
+    ],
+    "fires": [
+      "An application-layer use case needs data from an upstream service and the agent is about to write the call.",
+      "A presentation-layer server handler already contains `axios(...)` to load data for the fragment it renders.",
+      "A domain module calls `fetch()` to look up a remote value."
+    ],
+    "doesNotFire": [
+      "An integration-layer adapter or the centralized HTTP client itself calls `fetch()`.",
+      "A test file calls `fetch()` against a test server.",
+      "A file in a vendored or build directory contains `fetch(`.",
+      "A file whose path carries no layer segment calls `fetch()`.",
+      "`fetch(` appears only inside a string or comment (masked source)."
+    ]
+  },
+  "given": "A source file in the domain, application or presentation layer performs, or needs to perform, outbound HTTP",
+  "when": "the agent writes, edits or is responsible for that file",
+  "then": "Make outbound HTTP through the project's centralized, contract-driven client (integration-layer client/adapter), never via platform `fetch()` or bare `axios`.",
+  "prefer": [
+    "Use the existing integration-layer HTTP client or adapter.",
+    "Let that boundary own transport concerns: headers, retries, decoding, error translation.",
+    "During GREEN: make only the outbound call and mapping the current acceptance requires.",
+    "During GREEN: reuse an existing client or port before a new abstraction; if no compliant boundary exists, add the smallest integration adapter the behavior requires."
+  ],
+  "avoid": [
+    "Calling `fetch()`/`axios` directly just to make the test pass.",
+    "A generalized HTTP framework for hypothetical endpoints.",
+    "Migrating unrelated HTTP callers beyond the one the current acceptance touches."
+  ],
+  "unless": [
+    "Test files and vendored/build directories (never scanned).",
+    "Files with no layer segment (outside the rule)."
+  ],
+  "why": "The centralized client holds retries, timeouts, auth headers, tracing and error translation; a bare fetch has none and never acquires them because nobody remembers it exists. In htmx apps a bare server-side fetch behind a rendered fragment fails as a blank swap the user sees.",
+  "evidence": [
+    "bun_clean_architecture_detector reports no bare `fetch(`/`axios(` in domain/, application/ or presentation/ files of the affected source (the affected source satisfies this boundary rule).",
+    "The outbound call in the change is made via the integration-layer client/adapter (or a port implemented there).",
+    "The current behavioral acceptance passes."
+  ],
+  "verifier_detail": [
+    "Detector: bun_clean_architecture_detector (validator). Flags a bare `fetch(` or `axios(` call in consumer layers domain/, application/, presentation/, scanning masked source (strings/comments masked out).",
+    "Integration layer is excluded — it is the centralized client's own home.",
+    "Test files and vendored/build directories are never scanned.",
+    "Bare npm specifiers resolve outside the project graph and are not layer-checked.",
+    "A file carrying no layer segment is outside these rules rather than in violation of them.",
+    "Severity 3; disposition strict."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "Bun realization mirroring `coder.vite.boundaries-http-client`; core obligation `coder.boundaries.http-client`.",
+    "Aliases: BUN-BOUNDARIES-HTTP-CLIENT-001.",
+    "Implementation: {type: validator, ref: bun_clean_architecture_detector}.",
+    "Terms: centralized_client = the project's contract-driven HTTP client, where retries, timeouts, auth headers, tracing and error translation live; bare_primitive = a direct `fetch(` or `axios(` in a consumer layer — a call site with none of those, which will not acquire them because nobody remembers it exists.",
+    "Source fix_hint headings: 'Canonical path:', 'During GREEN:', 'Do not broaden:', 'Prove:'."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.phase-loop",
+      "kind": "policy",
+      "text": "During GREEN: make only the change required by the current acceptance; reuse an existing compliant boundary before introducing another abstraction; if none exists, add the smallest one the behavior requires. Prove: the current behavioral acceptance passes and the affected source satisfies the rule."
+    },
+    {
+      "id": "context.repo-topology.layers",
+      "kind": "context",
+      "text": "Layers are identified by a path segment: domain/, application/, presentation/ (consumer layers) and integration/ (home of transport adapters and the centralized HTTP client). A file carrying no layer segment is outside layer rules rather than in violation of them."
+    }
+  ],
+  "additions": [
+    {
+      "field": "activation.fires",
+      "text": "Concrete fires/doesNotFire scenarios and the task_term activation signal",
+      "justification": "Required by the output schema; derived directly from the source's scope, layer list and exceptions; no new obligation."
+    },
+    {
+      "field": "evidence",
+      "text": "The outbound call in the change is made via the integration-layer client/adapter (or a port implemented there).",
+      "justification": "Reviewer-facing restatement of the canonical path (S018) as a check; adds no new obligation."
+    },
+    {
+      "field": "avoid",
+      "text": "Clarifier 'HTTP ... beyond the one the current acceptance touches' on S025's 'do not migrate unrelated callers'.",
+      "justification": "Makes the rule-specific scope of S025 explicit for the coder; narrows rather than adds an obligation."
+    },
+    {
+      "field": "prefer",
+      "text": "Coder-facing text slightly exceeds ~1,000 chars",
+      "justification": "Lossless placement of the GREEN-qualified preferences, rule-specific do-not-broaden items and htmx rationale requires it."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ],
+      "note": "Title rephrased imperatively."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "given",
+        "activation",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit",
+        "why",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "audit",
+        "why"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[1]",
+        "activation",
+        "shared:context.repo-topology.layers"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "why",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "structure",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "prefer[0]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "prefer[2]",
+        "prefer[3]",
+        "shared:policy.phase-loop",
+        "audit"
+      ],
+      "note": "'During GREEN' qualifier kept verbatim on prefer[2] and prefer[3]."
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "prefer[2]",
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "prefer[3]",
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "prefer[3]",
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "structure",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "avoid[2]"
+      ],
+      "note": "Rule-specific: kept only in this rule, not in the shared phase-loop node."
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "structure",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "evidence[2]",
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "evidence[0]",
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[4]",
+        "activation",
+        "shared:context.repo-topology.layers"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "identity",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "identity",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "audit",
+        "verifier_detail[0]"
+      ]
+    }
+  ]
+}

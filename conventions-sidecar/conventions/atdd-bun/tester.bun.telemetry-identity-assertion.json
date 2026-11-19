@@ -1,0 +1,347 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/tester.bun/tester.bun.telemetry-identity-assertion.convention.yaml",
+    "sha256": "25f7cc3dcb21e70a183638be9416802ef081323482a98eba604223fabf389b55"
+  },
+  "rule_id": "tester.bun.telemetry-identity-assertion",
+  "kind": "rule",
+  "title": "Assert the exact telemetry URN in telemetry tests",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "test"
+        ],
+        "observability": "observable_now",
+        "note": "Bun test files (e.g. *.test.ts)."
+      },
+      {
+        "fact": "language",
+        "values": [
+          "typescript",
+          "javascript"
+        ],
+        "observability": "observable_now",
+        "note": "Bun family of rules."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "telemetry test: `// Telemetry:` header present, telemetry: URN segment in path, or colocated with telemetry emitter"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Classifying a test as a telemetry test (header / URN segment / colocation) and extracting claimed URNs requires the bun_telemetry_test validator. Applies regardless of task wording."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "telemetry adoption enabled in repository"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Rule is inert until the repository adopts the telemetry rule family; adoption state must be observed."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "telemetry",
+          "event",
+          "emit",
+          "URN"
+        ],
+        "observability": "observable_now",
+        "note": "NON-GATING discovery hint only; covered telemetry tests activate the rule independently of task wording (e.g. a task that only renames an item)."
+      }
+    ],
+    "fires": [
+      "A test file with a `// Telemetry: telemetry:event:...` header whose code only asserts the emitter was called with any argument.",
+      "A telemetry test whose header URN appears only in the header or another comment, not in an assertion string in code.",
+      "A telemetry test whose header URN appears only as an unused string literal (e.g. a constant never used in any assertion).",
+      "A telemetry test identified only by URN segment or colocation that asserts no concrete telemetry: URN.",
+      "A telemetry test asserting a URN prefix or a captured-anything matcher instead of the full URN.",
+      "A task that renames a telemetry item or edits a test's `// Telemetry:` header without touching assertions, leaving header and asserted URNs out of sync."
+    ],
+    "doesNotFire": [
+      "A non-telemetry test file (no Telemetry header, no URN segment, not colocated with telemetry).",
+      "A repository that has not adopted the telemetry rule family (rule inert).",
+      "A telemetry test whose assertions contain every header URN verbatim as a string literal (whether passed directly or nested in an asserted value).",
+      "Once generated contracts ship, a test asserting the generated contract identifier for the item."
+    ]
+  },
+  "given": "A Bun test is a telemetry test: it claims URNs in `// Telemetry:` headers, or is identified by URN segment or colocation.",
+  "when": "Writing, changing or checking that test, including edits to its header or to a claimed item's identity.",
+  "then": "Every URN claimed in the test's `// Telemetry:` header appears verbatim in the test's code as an assertion string (a string literal that takes part in an assertion, not an unused literal); a headerless telemetry test asserts at least one concrete telemetry: URN. Once generated contracts ship, the item's contract identifier satisfies this the same way.",
+  "prefer": [
+    "Name the item in the assertion itself: expect(emit).toHaveBeenCalledWith(\"telemetry:event:be:example:item-accepted\", { item_id: \"i-1\" });"
+  ],
+  "avoid": [
+    "Asserting the mocked emitter was called with anything.",
+    "Asserting a URN prefix or a captured-anything matcher.",
+    "Relying on the URN in the header or any comment — comments do not assert.",
+    "A quoted URN present in code but never used in an assertion."
+  ],
+  "unless": [
+    "The repository has not adopted this rule family — inert until adoption, like every rule in the family."
+  ],
+  "why": "An any-call assertion proves emission, not that the planned item fired; renames and copy-paste drift hide there. Exact URNs keep assertion and plan from silently diverging.",
+  "evidence": [
+    "For each URN in the test's `// Telemetry:` headers, the same URN occurs verbatim as a quoted string in the comment-masked test source, and that string takes part in an assertion (not an unused literal).",
+    "For a telemetry test with no header (identified by URN segment or colocation), at least one concrete telemetry: URN string is asserted in comment-masked code.",
+    "bun_telemetry_test validator reports no finding for this rule; a reviewer confirms the matching strings are used in assertions."
+  ],
+  "verifier_detail": [
+    "Claimed URNs = URNs listed in the test's `// Telemetry:` header(s).",
+    "Mask comments before searching; header/comment occurrences never satisfy the rule.",
+    "Match must be the concrete URN verbatim inside a string literal (exact_identity): not a prefix, not a captured-anything matcher, not a comment.",
+    "Mechanical check: claimed URN found as a quoted string in comment-masked source. The obligation is that this string is an assertion string (used in an assertion, directly or nested in an asserted value); literal presence is the detector's approximation.",
+    "Telemetry tests identified only by URN segment or colocation must assert at least one concrete `telemetry:` URN string in code.",
+    "When generated contracts ship, a contract identifier for the item satisfies the check the same way as the URN literal (equally acceptable, not preferred).",
+    "Rule is inert until the repository adopts the telemetry family.",
+    "Implementation: validator bun_telemetry_test. Severity 3, disposition strict.",
+    "Applicability is determined by the test file's classification (header / URN segment / colocation), never by task wording."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "kind: rule; status: active",
+    "aliases: TESTER-TELEMETRY-IDENTITY-ASSERTION-001",
+    "introduced_in: 0.7.0",
+    "implementation: {type: validator, ref: bun_telemetry_test}",
+    "term_id: exact_identity",
+    "Original name: Telemetry tests assert the exact item identity",
+    "Original statement (S006): Every concrete telemetry URN a telemetry test claims in its `// Telemetry:` header appears in the test's code as an assertion string; a telemetry test with no header asserts at least one concrete telemetry URN (REQUIRED).",
+    "Inert until adoption is a family-wide property of the Bun telemetry rules.",
+    "Original fix_hint example (S020): expect(emit).toHaveBeenCalledWith(\"telemetry:event:be:commons:response-invocation-accepted\", { response_id: \"r-1\" }); — generalized in prefer[0] to a neutral URN/payload with the same exact-string assertion pattern."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "disposition: strict — atdd-bun fails on every finding; it has no advisory mode and no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "Activation facts, fires/doesNotFire examples derived from the source's statement, terms and exceptions; task_term marked as non-gating hint.",
+      "justification": "Required output structure; no new obligation added."
+    },
+    {
+      "field": "when",
+      "text": "When covers writing, changing or checking any telemetry test, including header and item-identity edits.",
+      "justification": "Restates the source's universal statement (S006: every telemetry test) as an event; no restriction added."
+    },
+    {
+      "field": "prefer",
+      "text": "prefer[0] example URN/payload neutralized from the source's application-specific `telemetry:event:be:commons:response-invocation-accepted` / response_id (S020); original kept in audit.",
+      "justification": "Codebase-neutral guidance; pattern (exact URN string in toHaveBeenCalledWith) unchanged."
+    },
+    {
+      "field": "avoid",
+      "text": "avoid[3]: an unused quoted URN does not satisfy the rule.",
+      "justification": "Makes explicit the S006 requirement that the URN be an assertion string; no positional restriction — literals nested in asserted values count."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "given",
+        "when",
+        "avoid[3]",
+        "evidence[0]",
+        "evidence[1]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "then",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "avoid[1]",
+        "avoid[2]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "why",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "then",
+        "verifier_detail[0]",
+        "verifier_detail[1]",
+        "verifier_detail[3]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "then",
+        "why",
+        "evidence[0]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "then"
+      ],
+      "note": "Article-only sentence fragment continuing in S015."
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "then",
+        "given",
+        "verifier_detail[4]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "then",
+        "verifier_detail[4]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "then",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "then",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "prefer[0]",
+        "audit"
+      ],
+      "note": "Example generalized to a neutral URN/payload; original verbatim in audit."
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "avoid[2]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[6]",
+        "activation",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "identity",
+        "verifier_detail[7]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "verifier_detail[7]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "audit",
+        "verifier_detail[7]"
+      ]
+    }
+  ]
+}

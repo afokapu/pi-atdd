@@ -1,0 +1,502 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.bun/coder.bun.duplication-intra-layer.convention.yaml",
+    "sha256": "c3de56dbe9bef4d199abfceb2cf9b702a54b2683d437305466ca15b009cf3067"
+  },
+  "rule_id": "coder.bun.duplication-intra-layer",
+  "kind": "rule",
+  "title": "Own each duplicated fragment once within its layer",
+  "activation": {
+    "facts": [
+      {
+        "fact": "language",
+        "values": [
+          "typescript"
+        ],
+        "observability": "observable_now",
+        "note": "Only TypeScript source files are compared."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "**/*.ts",
+          "**/*.tsx",
+          "!**/*.test.*",
+          "!**/*.spec.*",
+          "!**/*.d.ts",
+          "!**/index.ts",
+          "!**/__tests__/**"
+        ],
+        "observability": "observable_now",
+        "note": "Tests, specs, .d.ts, index.ts barrels and __tests__ directories are excluded."
+      },
+      {
+        "fact": "layer",
+        "values": [
+          "any classified layer"
+        ],
+        "observability": "observable_now",
+        "note": "Both files must resolve to the SAME architectural layer; unclassified paths are never judged."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "DUPLICATION-TS-001"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Requires the bun_ts_metrics_detector cross-file fingerprint scan over the whole tree. It applies to every qualifying same-layer pair, whether newly introduced or pre-existing (strict, no baseline); it is not gated on which files the current diff touched."
+      }
+    ],
+    "fires": [
+      "A run of 7+ non-trivial normalized lines in one domain-layer file also appears in another domain-layer file, even if variables were renamed and literals differ.",
+      "Two application-layer handlers share a run of 7+ non-trivial normalized executable lines differing only in identifiers and string literals.",
+      "A qualifying same-layer duplicate already existed before the current task and is untouched by the diff; the whole-tree scan still reports it."
+    ],
+    "doesNotFire": [
+      "The same shape appears once in the domain layer and once in the presentation layer.",
+      "The match is in test/spec files, .d.ts files, index.ts barrels or __tests__ directories.",
+      "The only matching lines are import/re-export declarations, bare braces/closing punctuation, or property signatures of type/interface bodies.",
+      "One or both files cannot be assigned to a layer.",
+      "The duplicated run is shorter than 7 non-trivial normalized lines."
+    ]
+  },
+  "given": "two non-test TypeScript files in the same layer share a run of 7+ non-trivial lines that match after normalization (comments stripped; identifiers, strings and numbers folded, so renames don't hide it)",
+  "when": "the whole-tree duplication scan reports the pair (DUPLICATION-TS-001), new or pre-existing",
+  "then": "Resolve it semantically: own one shared concept once within that layer, or make the real differences of two distinct responsibilities explicit.",
+  "prefer": [
+    "Before extracting, check both share a responsibility and change reason, find the smallest stable shared behavior, and confirm it belongs in that layer.",
+    "For one concept, extract a focused function/module within the layer.",
+    "Name shared behavior by its domain or responsibility.",
+    "For different responsibilities, keep them independent and express real differences directly."
+  ],
+  "avoid": [
+    "Renaming identifiers, changing literals, reordering harmless statements or other cosmetic edits to defeat normalization.",
+    "Cross-layer abstractions made just because layers hold similar-shaped code.",
+    "Highly parameterized generic helpers that obscure callers' intent.",
+    "Forcing distinct responsibilities into one abstraction to remove the finding.",
+    "A refactor that removes this finding but introduces new ATDD Bun violations."
+  ],
+  "unless": [
+    "Tests, specs, .d.ts, index.ts barrels and __tests__ dirs are excluded.",
+    "Files with no determinable layer are not judged."
+  ],
+  "why": "A duplicate fingerprint is only a sensor that two sites MAY share one responsibility or change reason, so diagnose before extracting. The intra-layer limit is deliberate: twice in one layer is the shape that genuinely wants extracting; across layers it is usually two obligations, and merging couples layers that should move independently.",
+  "evidence": [
+    "The DUPLICATION-TS-001 finding for the pair is gone after the change.",
+    "The duplicate was removed because ownership became clearer or because genuine semantic differences are now explicit — not via renames, literal changes or reordering.",
+    "Dependency direction and layer boundaries remain valid (no cross-layer abstraction introduced).",
+    "Any extracted abstraction has one coherent reason to change.",
+    "Existing behavior and tests remain green.",
+    "The refactor introduces no new ATDD Bun violations (the atdd-bun run after the change reports no new findings)."
+  ],
+  "verifier_detail": [
+    "Threshold: a run of 7 or more non-trivial normalized lines appearing in two different TypeScript files of the SAME architectural layer is a finding.",
+    "Normalization per line: strip comments, fold string literals to \"S\", numbers to 0, non-keyword identifiers to ID; so renaming a variable cannot hide a duplicate and the fingerprint tracks STRUCTURE rather than text.",
+    "Trivial lines (bare braces, closing punctuation) are dropped and not counted toward the 7; then every sliding window of 7 lines is fingerprinted (sha256-prefix fingerprint) and compared only within a layer.",
+    "Import and re-export declarations are not counted: two files importing the same names from one shared module match because the logic was shared, which is the fix this rule asks for.",
+    "Property signatures inside a `type X = {` or `interface X {` body (optional `readonly`, a name, optional `?`, `:` a type, ending `;` or `,`), including members of nested object types, are not counted: unrelated records with the same number of same-typed fields match once identifiers are folded, and neither coupling them nor a cosmetic edit is a fix.",
+    "Executable statements, object literals, class fields, enum bodies and method bodies still count.",
+    "Excluded files: test, spec, `.d.ts`, `index.ts` barrels, `__tests__` directories. Files with undeterminable layer are not judged, because with no established layer there is no intra-layer comparison; unclassified paths are never compared with each other.",
+    "Detector: bun_ts_metrics_detector (validator); core alias DUPLICATION-TS-001; severity 2; disposition strict (every finding fails, including pre-existing ones)."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "Stack-neutral obligation; NATIVE BUN detector transcribed from the python-pytest sibling `coder.duplication.no-intra-layer-code-typescript`, including the normalization table and the sha256-prefix fingerprint.",
+    "Realized by `bun_ts_metrics_detector` (implementation type validator).",
+    "Aliases: DUPLICATION-TS-001 (core alias).",
+    "Source name: 'No duplicated code fragments within one architectural layer'. Term ids: normalized_fragment, intra_layer.",
+    "Source illustrates the cross-layer case with the same shape in `domain/` and in `presentation/`."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Disposition strict: atdd-bun fails on every finding; there is no advisory mode and no ratchet baseline."
+    },
+    {
+      "id": "policy.phase-loop",
+      "kind": "policy",
+      "text": "Refactors driven by a sensor finding keep existing behavior and tests green."
+    }
+  ],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "Activation facts, fires and doesNotFire examples, including that pre-existing untouched duplicates also activate.",
+      "justification": "Required by the target structure; derived from the statement, the source exceptions and the strict disposition (every finding fails, no baseline) without new obligations."
+    },
+    {
+      "field": "evidence[0]",
+      "text": "The DUPLICATION-TS-001 finding for the pair is gone after the change.",
+      "justification": "Makes explicit the mechanical check implied by the statement and strict disposition."
+    },
+    {
+      "field": "evidence[5]",
+      "text": "(the atdd-bun run after the change reports no new findings)",
+      "justification": "States how S040 is established; no new obligation."
+    },
+    {
+      "field": "avoid[4]",
+      "text": "A refactor that removes this finding but introduces new ATDD Bun violations.",
+      "justification": "Feedback: S040 is rule-specific (Bun ruleset framing) and returned from shared:policy.agent-conduct into this rule's coder fields; content is from S040."
+    },
+    {
+      "field": "verifier_detail[7]",
+      "text": "(every finding fails, including pre-existing ones)",
+      "justification": "Restates the source's strict disposition / no-baseline semantics for the verifier."
+    },
+    {
+      "field": "given",
+      "text": "Short parenthetical definition of normalization in given.",
+      "justification": "Reviewer usability: coder-facing fields used 'normalized' without defining it; content is taken from S010/S014, no new obligation. Coder-facing text slightly exceeds ~1,000 chars to stay lossless and unambiguous."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Reworded into title; original name kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit",
+        "verifier_detail[7]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ],
+      "note": "Term id kept in audit; its meaning lives in verifier_detail[1]."
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[1]",
+        "verifier_detail[2]",
+        "given"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "given",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "why",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[1]",
+        "verifier_detail[2]",
+        "given"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[1]",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "why",
+        "avoid[1]",
+        "activation",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "why"
+      ],
+      "note": "Kept as a hypothesis ('MAY share'), requiring diagnosis before extraction."
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "then",
+        "prefer[3]",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "then",
+        "prefer[0]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "prefer[3]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "avoid[0]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "evidence[4]",
+        "shared:policy.phase-loop"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "evidence[3]"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "avoid[4]",
+        "evidence[5]"
+      ],
+      "note": "Rule-specific Bun-ruleset framing kept in this rule, not in a shared node."
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "unless[0]",
+        "activation",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "verifier_detail[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "verifier_detail[3]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "verifier_detail[4]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S045",
+      "dest": [
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S046",
+      "dest": [
+        "unless[1]",
+        "activation",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S047",
+      "dest": [
+        "audit",
+        "verifier_detail[7]"
+      ]
+    },
+    {
+      "seg": "S048",
+      "dest": [
+        "identity",
+        "verifier_detail[7]"
+      ]
+    },
+    {
+      "seg": "S049",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "verifier_detail[7]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S050",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S051",
+      "dest": [
+        "audit",
+        "verifier_detail[7]"
+      ]
+    }
+  ]
+}

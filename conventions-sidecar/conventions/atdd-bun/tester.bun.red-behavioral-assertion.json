@@ -1,0 +1,564 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/tester.bun/tester.bun.red-behavioral-assertion.convention.yaml",
+    "sha256": "b604c0836eeff46df9a9e53195696c17f7997c6b2732c6c759b5207162a33d97"
+  },
+  "rule_id": "tester.bun.red-behavioral-assertion",
+  "kind": "rule",
+  "title": "RED tests assert behaviour, not existence",
+  "activation": {
+    "facts": [
+      {
+        "fact": "phase",
+        "values": [
+          "RED"
+        ],
+        "observability": "observable_now",
+        "note": "Phase is declared in the test file (governed by tester.bun.test-phase-declared); files with no declared phase are skipped by this rule's detector."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "test"
+        ],
+        "observability": "observable_now",
+        "note": "Bun test files using `bun:test` it()/expect() matchers."
+      },
+      {
+        "fact": "language",
+        "values": [
+          "typescript",
+          "javascript"
+        ],
+        "observability": "observable_now",
+        "note": "Bun-specific realization over `bun:test` matchers. No detector finding and no bound acceptance is a prerequisite: the semantic obligation applies to every RED case; the detector (needs_new_observer: bun_tester_discipline_detector output) is only the machine-checked proxy, see verifier_detail."
+      }
+    ],
+    "fires": [
+      "Detector finding: a RED-phase Bun case whose only assertion is `expect(subject).toBeDefined()`.",
+      "Detector finding: a RED-phase case whose expects are all toBeTruthy/toBeFalsy/toBeNull/toBeUndefined/toBeDefined.",
+      "Detector finding: a RED-phase case body containing no `expect(` at all.",
+      "Semantic applicability: any RED-phase case — existing, new or changed, flagged or not — including cases mixing existence and behavioural assertions, which must still carry a real behavioural witness."
+    ],
+    "doesNotFire": [
+      "Rule not applicable: a test file whose declared phase is GREEN or REFACTOR.",
+      "Rule not applicable here: a test file with no declared phase (that is tester.bun.test-phase-declared's finding).",
+      "Detector non-finding only (semantic rule still applies): a RED case that checks existence and also makes a behavioural assertion."
+    ]
+  },
+  "given": "A Bun test file whose declared Phase is RED",
+  "when": "any it() case exists in it (authored, changed, or checked)",
+  "then": "Every case MUST contain at least one behavioural assertion — on what the code DOES, the one that fails before the implementation exists — not only existence checks (toBeDefined/toBeTruthy/toBeFalsy/toBeNull/toBeUndefined), and never no assertion.",
+  "prefer": [
+    "Build the case from the bound Acceptance / @covers, not the code you expect to write: pick the one behaviour it proves; derive the expected outcome from its Then.",
+    "Honor declared harness/execution context; enter through the narrowest boundary that still proves the behaviour.",
+    "Turn the When into one primary action; create only the Given state it needs.",
+    "Assert the observable consequence named (exact error, status/body, state change, emitted item, other declared outcome) — a witness that turns red if the behaviour is removed, inverted or stubbed: `expect(() => checkout({ items: [] })).toThrow(\"CART_EMPTY\")`, not `expect(checkout).toBeDefined()`."
+  ],
+  "avoid": [
+    "Existence-only assertions such as `toBeDefined()` as the behavioural proof.",
+    "Inventing a convenient assertion from the current implementation.",
+    "Moving inward to an easier seam that stops exercising what the acceptance claims.",
+    "Mocking/substituting the subject or collaboration being proved.",
+    "Asserting incidental implementation details instead of the declared outcome.",
+    "Computing the expected value with the production code, or copying its algorithm into the test.",
+    "Adding an unrelated behavioural assertion merely to clear the detector.",
+    "Broadening one case to prove several unrelated behaviours."
+  ],
+  "unless": [
+    "Declared phase is not RED — only RED-phase files are scanned.",
+    "No declared phase — skipped; that is phase-declared's finding.",
+    "Detector only: a case mixing existence and behavioural assertions is not flagged."
+  ],
+  "why": "RED must build the smallest executable proof of the declared acceptance before implementation; an existence check passes once a stub is exported, leaving the acceptance unproven.",
+  "evidence": [
+    "bun_tester_discipline_detector reports no finding for RED-phase files: every it() contains at least one expect( using a non-existence matcher.",
+    "Run the target case against the current implementation and confirm execution reaches the intended stimulus and behavioural oracle.",
+    "Confirm the behavioural expectation is red because the required behaviour is absent or wrong — not because of syntax, imports, fixture setup, unavailable infrastructure, or an unrelated exception.",
+    "Counterfactual check: if the acceptance behaviour disappeared, was inverted, or was replaced by a stub, would this case definitely turn red?",
+    "Reviewer checks the asserted expected value traces to the acceptance's Then, is not computed by the production subject, and does not assert on a mock replacing the behaviour being proved."
+  ],
+  "verifier_detail": [
+    "Detector: bun_tester_discipline_detector (type validator). For each `it()` in a RED-phase file, brace-match the case body; report it when it contains no `expect(` at all, or when every `expect(` uses an existence matcher.",
+    "Vacuous (existence) matchers: toBeDefined, toBeTruthy, toBeFalsy, toBeNull, toBeUndefined — these pass the moment a stub is exported.",
+    "Behavioural assertion: an assertion on what the code DOES; the one that must fail before the implementation exists.",
+    "The detector is deliberately narrower than the semantic obligation: it fires only when EVERY assertion in the case is vacuous. A case that checks existence and then behaviour is not flagged, because the behavioural assertion is the machine-visible proxy; the convention guidance defines what that assertion is for. A detector non-finding therefore does not exempt the case from the semantic obligation.",
+    "Detector blind spots (semantic, LLM/reviewer-judged): expected values computed by the production subject, assertions on mocks replacing the behaviour being proved, or unrelated assertions added only to satisfy the detector all produce structurally acceptable tests that prove the wrong thing.",
+    "Scope: only RED-phase files are scanned; files with no declared phase are skipped (tester.bun.test-phase-declared reports them). The detector scans every case in such files, not only edited ones.",
+    "Severity 3; disposition strict (see policy.strict-disposition)."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "Alias: BUN-RED-BEHAVIORAL-ASSERTION-001.",
+    "Lineage: Bun realization of the stack-neutral core obligation tester.red.behavioral-assertion-required. Stack-neutral obligation, Bun-specific detector over `bun:test` matchers.",
+    "Implementation: {type: validator, ref: bun_tester_discipline_detector}.",
+    "Term ids: vacuous_assertion, behavioural_assertion."
+  ],
+  "splitSuggestion": [
+    {
+      "id": "tester.red.acceptance-derived-proof-boundary",
+      "then": "A RED case MUST exercise the declared acceptance through the declared harness/execution context and the narrowest boundary that still proves the behaviour, with one primary stimulus from When and only the required Given state.",
+      "segments": [
+        "S018",
+        "S029",
+        "S030",
+        "S031",
+        "S032",
+        "S033",
+        "S034",
+        "S035"
+      ]
+    },
+    {
+      "id": "tester.red.fails-for-the-right-reason",
+      "then": "A RED case MUST be shown to fail at its behavioural oracle because the behaviour is absent or wrong, not due to syntax, imports, fixtures, infrastructure, or unrelated exceptions.",
+      "segments": [
+        "S047",
+        "S048",
+        "S049",
+        "S050",
+        "S051"
+      ]
+    },
+    {
+      "id": "tester.red.independent-oracle",
+      "then": "A RED case's expected value MUST NOT be computed by, or copied from, the production code under test, nor asserted on a mock that replaces the behaviour being proved.",
+      "segments": [
+        "S021",
+        "S041",
+        "S043",
+        "S044"
+      ]
+    }
+  ],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "strict: the extension (atdd-bun) fails on every finding; it has no advisory mode and no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "split_suggestion",
+      "text": "The source bundles several independent semantic obligations (proof boundary/stimulus selection, fails-for-the-right-reason verification, independent oracle) with the machine-checked behavioural-assertion rule; separate conventions proposed in splitSuggestion.",
+      "justification": "Rule 2: one obligation in then; the others are kept as prefer/avoid/evidence here so nothing is lost."
+    },
+    {
+      "field": "evidence",
+      "text": "Reviewer checks the asserted expected value traces to the acceptance's Then, is not computed by the production subject, and does not assert on a mock replacing the behaviour being proved.",
+      "justification": "Restates source avoid items (S021, S028, S041, S043) as a verification step; no new obligation."
+    },
+    {
+      "field": "when",
+      "text": "When phrased as 'any it() case exists in it (authored, changed, or checked)'.",
+      "justification": "Source has no event; the obligation covers every RED case. Edit activity is listed only as a delivery trigger, not a restriction."
+    },
+    {
+      "field": "coder_text_length",
+      "text": "Coder-facing text exceeds ~1,000 characters.",
+      "justification": "Source carries many distinct, rule-specific prefer/avoid items (Claim/Boundary/Stimulus/Witness/Avoid); losslessness wins over brevity."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "given",
+        "when",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "verifier_detail[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ],
+      "note": "term id"
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[1]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[1]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "audit"
+      ],
+      "note": "term id"
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[2]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "why",
+        "prefer[3]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "prefer[0]",
+        "prefer[1]",
+        "prefer[2]",
+        "prefer[3]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "avoid[4]",
+        "prefer[3]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "prefer[3]",
+        "evidence[3]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "verifier_detail[4]",
+        "avoid[3]",
+        "avoid[5]",
+        "avoid[6]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "verifier_detail[3]",
+        "unless[2]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "prefer[0]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "prefer[3]"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "prefer[3]"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "avoid[4]"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "avoid[5]"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "avoid[5]"
+      ]
+    },
+    {
+      "seg": "S045",
+      "dest": [
+        "avoid[6]"
+      ]
+    },
+    {
+      "seg": "S046",
+      "dest": [
+        "avoid[7]"
+      ]
+    },
+    {
+      "seg": "S047",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S048",
+      "dest": [
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S049",
+      "dest": [
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S050",
+      "dest": [
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S051",
+      "dest": [
+        "evidence[3]"
+      ]
+    },
+    {
+      "seg": "S052",
+      "dest": [
+        "prefer[3]",
+        "avoid[0]"
+      ],
+      "note": "source code snippet kept inline"
+    },
+    {
+      "seg": "S053",
+      "dest": [
+        "prefer[3]"
+      ],
+      "note": "source code snippet kept inline"
+    },
+    {
+      "seg": "S054",
+      "dest": [
+        "unless[0]",
+        "activation",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S055",
+      "dest": [
+        "unless[2]",
+        "verifier_detail[3]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S056",
+      "dest": [
+        "unless[1]",
+        "activation",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S057",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S058",
+      "dest": [
+        "identity",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S059",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition"
+      ]
+    },
+    {
+      "seg": "S060",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S061",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

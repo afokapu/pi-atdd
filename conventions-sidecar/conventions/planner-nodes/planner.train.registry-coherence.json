@@ -1,0 +1,458 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.train.registry-coherence.convention.yaml",
+    "sha256": "f819f20339a31b0f5eeb25b2ed599b38a0ba069b18b0029dd79e1203094a9960"
+  },
+  "rule_id": "planner.train.registry-coherence",
+  "kind": "rule",
+  "title": "Keep the train registry and per-train documents mutually coherent",
+  "activation": {
+    "facts": [
+      {
+        "fact": "phase",
+        "values": [
+          "CONFIRM"
+        ],
+        "observability": "needs_new_observer",
+        "note": "The check is a corpus-wide invariant evaluated at CONFIRM (confirm-blocking) regardless of what the plan changed; the harness must report the phase."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "plan/_trains.yaml",
+          "plan/_trains/**"
+        ],
+        "observability": "observable_now",
+        "note": "The registry file and the per-train document directory are the artifacts compared; they are read whole-corpus at CONFIRM, not only when touched by the diff."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "dangling_row",
+          "orphan_document"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Needs a corpus-level detector: every registry row path must resolve to a file anywhere on disk (dangling direction); every non-underscore per-train document under plan/_trains must be named by a row (orphan direction). Pre-existing violations count, independent of the current change."
+      }
+    ],
+    "fires": [
+      "At CONFIRM, any plan/_trains.yaml row names a path that does not resolve to a file, wherever that path points.",
+      "At CONFIRM, a per-train document under plan/_trains (not underscore-prefixed) is named by no registry row.",
+      "A dangling row or orphan document already existed before this plan, and the plan only edits unrelated content: confirmation still checks and reports it.",
+      "A plan adds, renames, moves or removes a train row or document without updating the other side."
+    ],
+    "doesNotFire": [
+      "Orphan direction only: underscore-prefixed sidecars under plan/_trains (_aliases.yaml, the _interlockings subtree) are not enumerated as per-train documents needing a row; a registry row naming a missing sidecar path is still a dangling row.",
+      "A content-only edit to a train document when every row resolves and every document is registered (the corpus is coherent in both directions).",
+      "Coherence inside the _interlockings subtree, which is governed by its own rules."
+    ]
+  },
+  "given": "At CONFIRM, the corpus contains plan/_trains.yaml and per-train documents under plan/_trains, whatever this plan changed.",
+  "when": "The planner confirms a plan.",
+  "then": "Every registry row must name a path that resolves to an existing file, and every non-underscore per-train document under plan/_trains must be named by a row: no dangling rows, no orphans.",
+  "prefer": [
+    "Plan a train's registry row and document as one change, both derived from its train_id.",
+    "Remove a train's row and document together.",
+    "Fix pre-existing dangling rows or orphans before confirming."
+  ],
+  "avoid": [
+    "Writing a row before its document exists (dangling row): consumers resolve through it and some crash.",
+    "Leaving a document no row names (orphan): inert, but residue of document-before-registry ordering.",
+    "Counting underscore sidecars as per-train documents.",
+    "Repointing planner.train.registry's validator ref; the conventions sweep owns it."
+  ],
+  "unless": [
+    "Underscore-prefixed sidecars under plan/_trains (_aliases.yaml, _interlockings/) are not per-train documents, so they need no registry row."
+  ],
+  "why": "Consumers resolve trains through the registry, so a row naming an absent file breaks them; unregistered documents are residue of document-before-registry ordering and must be reportable.",
+  "evidence": [
+    "Validator test_train_registry_coherence::test_every_registry_row_resolves_and_every_document_is_registered passes at CONFIRM.",
+    "Each failure reports train_id, direction (dangling or orphan), registry_value and document_value."
+  ],
+  "verifier_detail": [
+    "Direction 1 (dangling_row): for each entry in plan/_trains.yaml, the named path must resolve to a file on disk; the target location is not restricted to plan/_trains and no sidecar exclusion applies to this direction.",
+    "Direction 2 (orphan_document): each per-train document under plan/_trains must be named by some registry row.",
+    "Registry sidecars: underscore-prefixed names under plan/_trains (_aliases.yaml, _interlockings subtree) are excluded from Direction 2 enumeration only; _interlockings coherence is checked by planner.interlocking.registry-mirrors-document and planner.train.interlocking-home.",
+    "Validation: family=coherence, template=cross_artifact_existence_agreement, variant=planner_train_registry_existence, phase=CONFIRM, enforcement=confirm-blocking, subject_kind=train. Evaluated over the whole corpus, not only diff-touched rows.",
+    "failure_evidence fields: train_id, direction, registry_value, document_value.",
+    "Severity 3, disposition strict (see shared:policy.strict-disposition).",
+    "test_route_space_admission dies on a dangling row with a bare FileNotFoundError rather than reporting it; every consumer walking the registry resolves through rows; this validator reports dangling rows instead.",
+    "Orphans are inert (nothing resolves through them) but must be reportable, otherwise create_train's document-before-registry ordering is unsupported."
+  ],
+  "audit": [
+    "schema_version 1.0.0; kind rule; status active.",
+    "Source name: 'The train registry and the documents it indexes both exist'.",
+    "implementation: validator test_train_registry_coherence::test_every_registry_row_resolves_and_every_document_is_registered.",
+    "introduced_in 1942; core_design_refs afokapu/atdd#1942, afokapu/atdd#1915.",
+    "Dangling rows were the residue create_train left when it wrote the registry before the document (#1942); create_train now uses document-before-registry ordering, which deliberately leaves orphans, so orphans must be reportable or that choice is unsupported.",
+    "Term ids: dangling_row, orphan_document, registry_sidecar.",
+    "Why a NEW node rather than a validator hung on planner.train.registry: that node already claims at disposition strict that \"every registry entry MUST have a corresponding spec file\" (the dangling direction of this rule) but has never been able to enforce it. Its implementation.ref names the Y003 sweep's convention variant conventions/resolution/test_train_validation, which instantiates direct_reference_resolution and checks that a train's participant references resolve to existing wagons; it never reads a path. The reverse-coherence binder (coach/validators/test_rule_validator_binding.py) exempts convention-variant refs from the bind_rule callsite requirement, so the gap drew no complaint.",
+    "Repointing planner.train.registry here was the first attempt and is wrong: the Y003 guard (validators/conventions/tests/test_y003_sweep_coverage_guards.py, SWEPT_RULE_TO_VARIANT) deliberately pins planner.train.registry to a conventions/ variant, so the ref is an architectural decision owned by the sweep, not an oversight to undo from here.",
+    "So the claim is enforced under its own id; closing the gap on planner.train.registry (giving its swept variant a real path-existence check, or folding that node into this one) stays with the conventions-sweep owners."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "strict: fails on every finding, no advisory mode, no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "prefer",
+      "text": "Plan row and document as one change derived from train_id; remove both together; fix pre-existing violations before confirming.",
+      "justification": "Concrete planner moves implied by the bidirectional CONFIRM-blocking invariant and the graph edge to planner.train.naming (paths derive from train_id)."
+    },
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire scenarios, including pre-existing violations and the content-only coherent case.",
+      "justification": "Required by schema; derived from statement, terms, sidecar definition and CONFIRM phase."
+    },
+    {
+      "field": "given",
+      "text": "'whatever this plan changed' / corpus-wide framing.",
+      "justification": "Makes explicit that the source invariant is unconditional at CONFIRM, not tied to a train lifecycle change."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Title rephrased imperatively; original name kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "verifier_detail[0]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "then",
+        "why"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "verifier_detail[0]",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "avoid[0]",
+        "verifier_detail[6]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "audit",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[1]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "avoid[1]",
+        "why",
+        "verifier_detail[7]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "unless[0]",
+        "avoid[2]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "verifier_detail[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "audit",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "identity",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "verifier_detail[3]",
+        "activation",
+        "given",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "evidence[1]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "evidence[1]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "evidence[1]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "evidence[1]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S045",
+      "dest": [
+        "audit",
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S046",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S047",
+      "dest": [
+        "audit",
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S048",
+      "dest": [
+        "audit",
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S049",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S050",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S051",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

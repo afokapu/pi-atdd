@@ -1,0 +1,306 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.train.scope.convention.yaml",
+    "sha256": "58e815a304fb73f57fb01d751494d29e7065ebb0ffa1874b4ad29f3e59b2046b"
+  },
+  "rule_id": "planner.train.scope",
+  "kind": "rule",
+  "title": "Scope each train to one coherent journey",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "train"
+        ],
+        "observability": "observable_now",
+        "note": "Train spec files are identifiable by their kind/location in the plan."
+      },
+      {
+        "fact": "operation",
+        "values": [
+          "create",
+          "modify",
+          "review"
+        ],
+        "observability": "observable_now",
+        "note": "Fires when a train spec is authored, edited, or reviewed (including review of an unchanged existing train)."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "train",
+          "journey",
+          "wagon sequence",
+          "train review"
+        ],
+        "observability": "observable_now",
+        "note": "Planning or review task mentions defining, resizing, or checking a train."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "train wagon count changed",
+          "train outcome/description changed",
+          "wagon flow kind or feedback loop changed",
+          "wagon participants/themes changed"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Needs a diff-level observer comparing the train's wagons, outcome, flow kinds, feedback loops and participant themes before and after; a wagon-internal edit can affect journey coherence through these."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "wagon count outside recommended 3-7",
+          "decomposition_signal present"
+        ],
+        "observability": "llm_judged",
+        "note": "Wagon count is mechanically countable; the one-journey test and whether a decomposition signal really indicates multiple journeys require judgment."
+      }
+    ],
+    "fires": [
+      "Planner authors a new train listing its wagons and outcome.",
+      "Planner adds wagons to an existing train, pushing it to 8 or more.",
+      "Planner or reviewer reviews an existing, unchanged train for scope.",
+      "A train's outcome sentence needs 'and' to describe what it delivers.",
+      "A train has only one wagon.",
+      "A wagon edit introduces an exploratory (gesture) flow into a core-mechanic train, adds an independent feedback loop, or adds participants from another theme."
+    ],
+    "doesNotFire": [
+      "Editing a single wagon's internals (e.g. wording of WMBTs or acceptances) in a way that changes neither train membership, outcome, flow kind, feedback loops, nor participant themes.",
+      "Code changes in implementation layers that do not touch or review train specs."
+    ]
+  },
+  "given": "A plan contains a train and its wagons, being authored, edited, or reviewed (including an unchanged existing train or a wagon change that may alter the train's journey).",
+  "when": "The planner sets or checks the train's outcome and which wagons it contains.",
+  "then": "The train must tell ONE coherent journey: if its outcome cannot be stated in one sentence without 'and', split it.",
+  "prefer": [
+    "Size: 3-7 wagons is the recommended sweet spot; 2 is the allowed minimum.",
+    "At 8-12 wagons, review whether the train holds multiple journeys (split if it does); at 13+, decompose.",
+    "Treat these as decomposition signals to investigate (do they mean multiple journeys?): outcome with multiple 'AND's; both setup AND teardown of a lifecycle; mix of exploratory (gesture) and core-mechanic flows; multiple independent feedback loops; participants from 3+ themes."
+  ],
+  "avoid": [
+    "Trains of 13+ wagons (antipattern), e.g. a 16-wagon 'complete lifecycle' train spanning multiple journeys.",
+    "Single-wagon trains (below the minimum of 2)."
+  ],
+  "unless": [],
+  "why": "A train demonstrates one user journey end to end; bundling journeys hides independent outcomes and makes the train too large to review and accept as one story.",
+  "evidence": [
+    "Reviewer states the train outcome in one sentence without 'and' (one_journey_test).",
+    "Wagon count: 3-7 recommended, 2 minimum, 8-12 flagged for review (multiple journeys?), 13+ decompose, 1 below minimum.",
+    "Reviewer checks the train for decomposition_signal entries; each present signal indicates the train may be multiple journeys."
+  ],
+  "verifier_detail": [
+    "Size bands by wagon count: <2 = below minimum; 2 = minimum allowed; 3-7 = recommended (sweet spot); 8-12 = warning ('multiple journeys?'); 13+ = antipattern (decompose).",
+    "one_journey_test: can the outcome be stated in ONE sentence without 'and'? If not, split.",
+    "decomposition_signal (signals a train is multiple journeys): outcome description contains multiple 'AND' conjunctions; train has both setup AND teardown (match lifecycle); mix of exploratory (gesture) AND core mechanic flows; multiple independent feedback loops; participants from 3+ different themes.",
+    "Calibration examples: good = train:decision:standard (5 wagons, one outcome); bad = train:match:solo-match-complete (16 wagons, multiple journeys)."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "kind: rule; status: active",
+    "source: legacy_path src/atdd/planner/conventions/train.convention.yaml, legacy_section scope, legacy_sha 825602729f11a3a4, extraction_mode high_fidelity",
+    "parity: source_fragments_preserved true, examples_preserved true, implementation_preserved false, fix_hint_preserved false, reviewed_at 2026-06-16",
+    "Original name: 'Train scope and sizing'. Term id: decomposition_signal.",
+    "Source examples (project-specific): good train:decision:standard (5 wagons, one outcome); bad train:match:solo-match-complete (16 wagons, multiple journeys)."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "why",
+      "text": "A train demonstrates one user journey end to end; bundling journeys hides independent outcomes and makes the train too large to review and accept as one story.",
+      "justification": "Source has no explicit rationale; derived from the statement 'a train tells ONE coherent journey' so the planner understands the purpose."
+    },
+    {
+      "field": "avoid",
+      "text": "Single-wagon trains (below the minimum of 2).",
+      "justification": "Restates source 'minimum 2' as an anti-pattern; no new obligation."
+    },
+    {
+      "field": "prefer",
+      "text": "(split if it does) appended to the 8-12 review guidance.",
+      "justification": "Makes explicit the consequence already implied by the source statement 'if you can't state the outcome in one sentence without and, split it'; no new obligation."
+    },
+    {
+      "field": "activation",
+      "text": "Activation covers review of existing/unchanged trains and wagon edits that change flow kind, feedback loops or participant themes.",
+      "justification": "Source states train validity without restricting it to authoring; the decomposition signals can be introduced by wagon-level changes."
+    },
+    {
+      "field": "split_suggestion",
+      "text": "No split proposed: the size bands and decomposition signals are supporting heuristics for the single one-journey obligation in then, not independent obligations.",
+      "justification": "Rule 2 requires stating whether separate conventions are needed."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Title rephrased as imperative; original name kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "prefer[0]",
+        "prefer[1]",
+        "avoid[0]",
+        "avoid[1]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "then",
+        "evidence[0]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "prefer[0]",
+        "evidence[1]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "prefer[0]",
+        "avoid[1]",
+        "evidence[1]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "prefer[1]",
+        "evidence[1]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "prefer[1]",
+        "avoid[0]",
+        "evidence[1]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[3]",
+        "audit"
+      ],
+      "note": "Project-specific id kept for verifier calibration and audit."
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "avoid[0]",
+        "verifier_detail[3]",
+        "audit"
+      ],
+      "note": "Neutralized in avoid; project-specific id kept for verifier calibration and audit."
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "verifier_detail[2]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[2]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[2]",
+        "activation"
+      ]
+    }
+  ]
+}

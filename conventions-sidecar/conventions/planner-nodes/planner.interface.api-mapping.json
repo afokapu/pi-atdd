@@ -1,0 +1,444 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.interface.api-mapping.convention.yaml",
+    "sha256": "2451307eff84c17146d9a00431d6b8423b52a92908ae2f0f0c6eb79118f34c38"
+  },
+  "rule_id": "planner.interface.api-mapping",
+  "kind": "rule",
+  "title": "Map artifact names to REST endpoints via the endpoint pattern",
+  "activation": {
+    "facts": [
+      {
+        "fact": "task_term",
+        "values": [
+          "REST",
+          "API",
+          "endpoint",
+          "HTTP",
+          "external consumer",
+          "artifact name"
+        ],
+        "observability": "observable_now",
+        "note": "Task text mentioning HTTP/REST exposure of wagon artifacts."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "artifact-to-REST endpoint mapping specified or changed"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Needs a diff-level observer that extracts artifact-name -> endpoint/verb pairs from any changed file (plans, acceptances, docs, contracts, code)."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "externally consumed artifact"
+        ],
+        "observability": "llm_judged",
+        "note": "Whether an artifact is exposed for external consumption over HTTP can only be judged from context."
+      }
+    ],
+    "fires": [
+      "An artifact-to-REST mapping is written for `match:result` so external consumers can read it over HTTP.",
+      "An acceptance or contract asserts the HTTP method/path for `session:new` or `session:closed`.",
+      "A category facet artifact (e.g. `ux:foundations.colors`) gets an externally consumed endpoint."
+    ],
+    "doesNotFire": [
+      "An artifact that is only consumed internally and never exposed over HTTP.",
+      "Handler internals change without any artifact-to-endpoint mapping being specified or changed.",
+      "Edits that touch no artifact names or endpoints."
+    ]
+  },
+  "given": "An artifact named `{domain}:{resource}[.{category}]` is exposed to external consumers over a REST API",
+  "when": "its artifact-to-REST endpoint mapping is specified or changed",
+  "then": "Map the artifact name to an endpoint following `/{domain}s/{id}/{resource}[/{category}]`, with category facets adding path segments.",
+  "prefer": [
+    "Pluralize the domain segment (`ux`→`/uxs`, `match`→`/matches`, `session`→`/sessions`, `player`→`/players`).",
+    "Turn each category facet into an extra path segment (`ux:foundations` → `GET /uxs/{id}/foundations`; `ux:foundations.colors` → `GET /uxs/{id}/foundations/colors`; `match:result` → `GET /matches/{id}/result`).",
+    "Follow the source's shorter forms where they apply: `session:new` → `POST /sessions` (collection, no `{id}` or resource segment); `player:identity` → `GET /players/{id}` (no resource segment).",
+    "Select the HTTP verb from the resource keyword (creation→POST, read→GET, mutation→PUT, removal→DELETE): POST new/created/registered/started; GET result/active/config/events/foundations; PUT updated/closed/completed; DELETE terminated/deleted."
+  ],
+  "avoid": [
+    "Hand-crafting paths that drop the plural domain or the category segments, or otherwise diverge from the pattern beyond the source's own `session:new` and `player:identity` forms.",
+    "Choosing a verb that contradicts the resource keyword, e.g. mapping `session:closed` to POST (closed → PUT, not POST)."
+  ],
+  "unless": [],
+  "why": "A deterministic artifact-to-REST mapping lets external consumers address wagon artifacts over HTTP, and choosing the verb from the resource keyword keeps the API surface consistent with the artifact's lifecycle semantics.",
+  "evidence": [
+    "Every externally exposed artifact has an endpoint matching `/{domain}s/{id}/{resource}[/{category}]` (or one of the source's example forms), with category facets as path segments.",
+    "Each declared HTTP verb matches the resource keyword table (POST/GET/PUT/DELETE).",
+    "Source examples hold: `ux:foundations` -> GET /uxs/{id}/foundations; `ux:foundations.colors` -> GET /uxs/{id}/foundations/colors; `match:result` -> GET /matches/{id}/result; `session:new` -> POST /sessions; `player:identity` -> GET /players/{id}."
+  ],
+  "verifier_detail": [
+    "Term endpoint_pattern (label 'REST endpoint pattern'): pattern `/{domain}s/{id}/{resource}[/{category}]`; artifact names map to REST API endpoints for external consumption; category facets add path segments.",
+    "Term verb_mapping (label 'Resource-keyword to HTTP verb table'): the resource keyword selects the HTTP method; creation keywords → POST, read → GET, mutation → PUT, removal → DELETE. POST: [new, created, registered, started]; GET: [result, active, config, events, foundations]; PUT: [updated, closed, completed]; DELETE: [terminated, deleted].",
+    "Positive endpoint examples: `ux:foundations -> GET /uxs/{id}/foundations`; `ux:foundations.colors -> GET /uxs/{id}/foundations/colors`; `match:result -> GET /matches/{id}/result`; `session:new -> POST /sessions`; `player:identity -> GET /players/{id}`.",
+    "Source examples deviate from the literal pattern: `session:new` targets the collection `/sessions` (no `{id}`/resource segment); `player:identity` maps to `/players/{id}` (no resource segment). Do not flag these. The source does not state whether every creation keyword targets the collection; do not generalize beyond the examples. Domain pluralization is English-style (`match`→`matches`).",
+    "Verb examples: positive `session:new -> POST /sessions  # new -> POST`, `match:result -> GET /matches/{id}/result  # result -> GET`; negative `session:closed mapped to POST  # closed -> PUT, not POST`.",
+    "No automated implementation exists (implementation.type: none); compliance is reviewer/LLM-judged."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "kind: rule; status: active",
+    "Original name: 'Interface: Api Mapping'",
+    "implementation: {\"type\":\"none\"}",
+    "source: legacy_path src/atdd/planner/conventions/interface.convention.yaml, legacy_sha sha256:3415a521b5eec18b, extraction_mode high_fidelity, legacy_section api-mapping",
+    "parity: source_fragments_preserved, examples_preserved, implementation_preserved, fix_hint_preserved all true; reviewed_at 2026-06-16",
+    "term ids: endpoint_pattern, verb_mapping"
+  ],
+  "splitSuggestion": [
+    {
+      "id": "planner.interface.api-verb-mapping",
+      "then": "Choose the HTTP verb for an artifact's REST endpoint from its resource keyword (creation→POST: new/created/registered/started; read→GET: result/active/config/events/foundations; mutation→PUT: updated/closed/completed; removal→DELETE: terminated/deleted).",
+      "segments": [
+        "S023",
+        "S024",
+        "S025",
+        "S026",
+        "S027",
+        "S028",
+        "S029",
+        "S030",
+        "S031",
+        "S032",
+        "S033",
+        "S034",
+        "S035",
+        "S036",
+        "S037",
+        "S038",
+        "S039",
+        "S040",
+        "S041",
+        "S042",
+        "S043"
+      ]
+    }
+  ],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "split_suggestion",
+      "text": "HTTP verb selection (verb_mapping, S023–S043) is an independently testable obligation and should become planner.interface.api-verb-mapping; until split it is carried here in prefer[3], avoid[1], verifier_detail[1] and [4], with then limited to path construction.",
+      "justification": "Rule 2 / auditor: one obligation in then."
+    },
+    {
+      "field": "activation",
+      "text": "Activation facts, fires and doesNotFire scenarios.",
+      "justification": "Required by schema; source has no activation section. Kept actor-, phase- and document-neutral to match the source statement."
+    },
+    {
+      "field": "verifier_detail[3]",
+      "text": "Explicit note that `session:new` and `player:identity` examples deviate from the literal pattern and must not be generalized beyond the examples.",
+      "justification": "Makes irregularities already present in source examples explicit so verifiers neither flag them nor over-generalize."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "given",
+        "prefer[3]"
+      ],
+      "note": "Path half in then; verb half in prefer[3] (split suggested)."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "audit",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "then",
+        "given",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "then",
+        "prefer[1]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "then",
+        "evidence[0]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "given",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "then",
+        "prefer[1]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "prefer[1]",
+        "evidence[2]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "prefer[1]",
+        "evidence[2]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "prefer[1]",
+        "evidence[2]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "prefer[2]",
+        "evidence[2]",
+        "verifier_detail[2]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "prefer[2]",
+        "evidence[2]",
+        "verifier_detail[2]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "audit",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "avoid[1]",
+        "verifier_detail[4]"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,271 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/tester.htmx/tester.htmx.responsive-harness.convention.yaml",
+    "sha256": "cec312935ab592c2c7a5c6a94623a02df771a9e2ca2035b721ef1006c4800fdf"
+  },
+  "rule_id": "tester.htmx.responsive-harness",
+  "kind": "rule",
+  "title": "Render a responsive browser spec at every declared viewport width",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "browser_spec"
+        ],
+        "observability": "needs_new_observer",
+        "note": "browser_spec = a `*.e2e.ts` file run by Playwright (both conditions required), or any test file whose header comments carry a journey marker (`// Train:`, `// Journey:`, `// URN: test:train:…`, `// URN: test:journey:…`). Establishing Playwright use and reading header comments needs a content observer (htmx_e2e_detector does this). A unit test merely mentioning a journey URN in a string is not a browser_spec. Necessary but not sufficient: one of the two responsive identifiers below must also hold."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "file basename token `responsive`",
+          "file basename token `resp`"
+        ],
+        "observability": "observable_now",
+        "note": "Matched against tokens of the file's basename only (split on `.`, `-`, `_`), never against directory names or arbitrary substrings. Only counts together with browser_spec. Vendored/generated trees (`node_modules`, `dist`, `build`, `_generated`) are excluded."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "test URN carries RESP code"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Alternative responsive identifier to the filename token: the spec's test URN carries the `RESP` harness code; requires reading the URN from file content (htmx_e2e_detector)."
+      }
+    ],
+    "fires": [
+      "A Playwright-run *.e2e.ts browser spec whose test URN carries the RESP code is added or edited",
+      "A browser spec whose file basename contains a `responsive` or `resp` token is added or edited",
+      "A misnamed test file whose header carries a journey marker and whose test URN carries the RESP code is added or edited"
+    ],
+    "doesNotFire": [
+      "A browser spec with no RESP URN and no responsive/resp token in its file basename",
+      "A browser spec that sits in a directory named `responsive` but whose own basename and URN carry no responsive identifier",
+      "A `*.e2e.ts` file not run by Playwright and without a journey header marker",
+      "A unit test that merely mentions a journey URN inside a string",
+      "A task that mentions mobile or viewport behaviour but touches no responsive browser spec",
+      "Files under node_modules, dist, build or _generated"
+    ]
+  },
+  "given": "A browser spec identified as responsive: its test URN carries the RESP code, or its file basename has a `responsive`/`resp` token.",
+  "when": "You write or change that spec.",
+  "then": "Render the page at every viewport width declared in `atdd-bun.yaml` under `frontend.viewports` (default 375, 768, 1280).",
+  "prefer": [
+    "Iterate the declared widths and set each one: `for (const width of [375, 768, 1280]) { await page.setViewportSize({ width, height: 900 }); ... expect(scrollWidth - clientWidth).toBeLessThanOrEqual(0); }`",
+    "Set widths via `page.setViewportSize({ width })`, a `viewport: { width }` option, or by iterating a list of widths (`for (const w of [...])`, `LIST.forEach`, `LIST.map`)."
+  ],
+  "avoid": [
+    "Picking one element of a widths list (e.g. `WIDTHS[0]`) — that renders only one width.",
+    "Measuring `scrollWidth` without passing it (directly or through a variable measured from it) to an `expect(...)`; the spec MUST do so, so the test fails when the page overflows horizontally (separate obligation, see split suggestion)."
+  ],
+  "unless": [],
+  "why": "A screen that works on a desktop can be unusable on a phone; rendering at each declared width and asserting the document never scrolls sideways is the least that proves it fits.",
+  "evidence": [
+    "htmx_e2e_detector reports no responsive-harness finding for the spec.",
+    "Reviewer sees every width in `frontend.viewports` (or default 375/768/1280) rendered via setViewportSize, a viewport option, or an iterated list.",
+    "Reviewer sees `scrollWidth`, directly or through a variable measured from it, inside an `expect(...)`."
+  ],
+  "verifier_detail": [
+    "Responsive spec identification: a `RESP` test URN, or a `responsive`/`resp` token in the file name.",
+    "browser_spec: a `*.e2e.ts` file run by Playwright, or any test file whose header comments carry a journey marker (`// Train:`, `// Journey:`, `// URN: test:train:…`, `// URN: test:journey:…`), so a misnamed one is still judged. A unit test that merely mentions a journey URN in a string is not one.",
+    "Declared widths come from `atdd-bun.yaml` `frontend.viewports`; default 375, 768, 1280.",
+    "Accepted width-rendering forms: `page.setViewportSize({ width })`, `viewport: { width }` option, iterating a list (`for (const w of [...])`, `LIST.forEach`, `LIST.map`); picking one element of a list renders one width.",
+    "Overflow assertion: the spec MUST pass `scrollWidth` to `expect(...)` directly or through a variable measured from it, so the test fails when the page overflows horizontally.",
+    "Vendored and generated trees (`node_modules`, `dist`, `build`, `_generated`) are never scanned.",
+    "Severity 3.",
+    "Disposition: strict."
+  ],
+  "audit": [
+    "schema_version 1.1.0",
+    "kind: rule; status: active",
+    "Alias: BUN-E2E-RESPONSIVE-HARNESS-001",
+    "introduced_in 0.5.0",
+    "implementation: validator htmx_e2e_detector",
+    "metadata.disposition: strict; severity 3",
+    "Statement note: New in the Bun/htmx browser tester, strict.",
+    "Source name/summary: A RESP spec renders at every declared viewport and asserts no horizontal overflow."
+  ],
+  "splitSuggestion": [
+    {
+      "id": "tester.htmx.responsive-overflow-assertion",
+      "then": "In a browser spec identified as responsive (a `RESP` test URN, or a `responsive`/`resp` token in its file name), pass `scrollWidth`, directly or through a variable measured from it, to an `expect(...)` so the test fails when the page overflows horizontally.",
+      "segments": [
+        "S007",
+        "S009",
+        "S010",
+        "S011",
+        "S014",
+        "S015",
+        "S016",
+        "S018",
+        "S019"
+      ]
+    }
+  ],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "split_suggestion",
+      "text": "`then` keeps only viewport coverage (S006). The scrollWidth overflow assertion (S007) is a second independent obligation; it is preserved verbatim in avoid[1], evidence[2] and verifier_detail[4], and should become its own convention tester.htmx.responsive-overflow-assertion with the same responsive-spec scope.",
+      "justification": "Rule 2: one obligation in `then`; source statement contains two MUSTs."
+    },
+    {
+      "field": "activation.facts",
+      "text": "Filename-token matching is specified as basename tokens (split on `.`, `-`, `_`), not substrings or directory names.",
+      "justification": "Source says 'a `responsive`/`resp` token in its file name'; this makes that observable precisely without broadening scope."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "basis for title; overflow half goes to split suggestion"
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "then",
+        "prefer[1]",
+        "avoid[0]",
+        "activation",
+        "verifier_detail[0]",
+        "verifier_detail[2]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "avoid[1]",
+        "verifier_detail[4]",
+        "evidence[2]"
+      ],
+      "note": "second obligation; split suggested as tester.htmx.responsive-overflow-assertion"
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit",
+        "verifier_detail[7]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "verifier_detail[1]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[1]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[1]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "audit"
+      ],
+      "note": "duplicate of name"
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "verifier_detail[5]",
+        "activation"
+      ],
+      "note": "scan-scope exclusion, not an agent waiver"
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "identity",
+        "verifier_detail[6]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "identity",
+        "verifier_detail[7]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

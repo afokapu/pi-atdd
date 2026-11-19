@@ -1,0 +1,302 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.train.route-space-admission.convention.yaml",
+    "sha256": "5421e6e24a601529f8aca3f2a8b30479ecfaafa1c44d713b2920d8d4e7f4e071"
+  },
+  "rule_id": "planner.train.route-space-admission",
+  "kind": "rule",
+  "title": "Give every train exactly one route or a typed single-route assessment",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "train",
+          "interlocking"
+        ],
+        "observability": "observable_now",
+        "note": "Subject kind is train; route counting reads every registered interlocking's routes."
+      },
+      {
+        "fact": "phase",
+        "values": [
+          "CONFIRM"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Validation runs at CONFIRM over all registered trains regardless of the current diff; phase must be supplied by the harness."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "planner_train_route_space_admission"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Coverage detector (source_has_required_target) finding per train."
+      }
+    ],
+    "fires": [
+      "At CONFIRM, a newly registered train is selected by no registered interlocking route and has no route_space declaration.",
+      "At CONFIRM, a pre-existing registered train has neither route nor typed assessment, even though the current change touched no train or route.",
+      "A train is route-targeted (exactly one route) and also declares route_space.classification single-route.",
+      "A train declares single-route with a free-prose basis instead of a closed-vocabulary basis.",
+      "An interlocking is unregistered or a route removed/retargeted, leaving a train with neither route nor typed assessment.",
+      "A train is selected by routes in two registered interlockings (count 2, so not route-targeted) and declares no typed single-route assessment."
+    ],
+    "doesNotFire": [
+      "A train selected by exactly one route across all registered interlockings and declaring no single-route classification.",
+      "A train that is not route-targeted and declares route_space.classification single-route with a closed-vocabulary basis.",
+      "Phases other than CONFIRM (the check is confirm-blocking; earlier phases are not gated, though the planner should already author compliant trains)."
+    ]
+  },
+  "given": "The plan's registered trains and the routes of all registered interlockings.",
+  "when": "The plan reaches CONFIRM (every registered train is checked, whatever changed).",
+  "then": "Make each registered train exactly one of: route-targeted (selected by exactly one route across all registered interlockings) or typed single-route (route_space.classification single-route with a closed-vocabulary basis) — never both, never neither.",
+  "prefer": [
+    "Route-targeted: exactly one route across all registered interlockings selects the train.",
+    "Typed single-route: classification single-route plus a basis from the closed vocabulary."
+  ],
+  "avoid": [
+    "No route and no classification, assuming that implies direct dispatch — an omission (issue #1554).",
+    "Declaring single-route on a route-targeted train — a contradiction.",
+    "Free prose as the single-route basis.",
+    "Treating a train selected by zero or several routes as route-targeted; only a count of exactly one qualifies."
+  ],
+  "unless": [],
+  "why": "Route-space was optional metadata, so a train with no route analysis looked like one whose analysis concluded single-route; silence read as proof analysis happened. Explicit classification surfaces the omission at planning time.",
+  "evidence": [
+    "Validator test_route_space_admission::test_every_train_is_route_targeted_or_typed_single_route passes at CONFIRM.",
+    "On failure the report carries train_id, train_path, route_ids, classification, basis and admission_status for each offending train."
+  ],
+  "verifier_detail": [
+    "Validation family: coverage; template: source_has_required_target; variant: planner_train_route_space_admission; subject_kind: train.",
+    "Phase CONFIRM, enforcement confirm-blocking; severity 4. Evaluates all registered trains, not only changed ones.",
+    "route_targeted = train selected by exactly one route counted across every registered interlocking; a count of 0 or more than 1 is not route_targeted.",
+    "typed_single_route = route_space.classification == single-route AND basis is a member of the closed vocabulary; free-prose basis does not qualify.",
+    "exactly_one: route_targeted XOR typed_single_route; both => contradiction, neither => omission.",
+    "failure_evidence fields: train_id, train_path, route_ids, classification, basis, admission_status."
+  ],
+  "audit": [
+    "schema_version 1.0.0; source kind: constraint; status: active.",
+    "implementation: validator ref test_route_space_admission::test_every_train_is_route_targeted_or_typed_single_route.",
+    "Source name: 'Route-space admission'. Origin issue #1554.",
+    "Term ids: route_targeted, typed_single_route, exactly_one.",
+    "metadata.disposition: strict; metadata.severity: 4."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Disposition strict: every finding fails the validator; findings are not advisory."
+    }
+  ],
+  "additions": [],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Source name; title rephrased imperatively."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "avoid[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ],
+      "note": "Term id kept for auditors."
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "then",
+        "prefer[0]",
+        "avoid[3]",
+        "verifier_detail[2]"
+      ],
+      "note": "Definition only: count other than one is not route_targeted; no unconditional multi-route ban."
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "then",
+        "prefer[1]",
+        "avoid[2]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "then",
+        "avoid[0]",
+        "avoid[1]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "audit",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "identity",
+        "verifier_detail[1]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "verifier_detail[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "verifier_detail[1]",
+        "activation",
+        "when"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "verifier_detail[0]",
+        "activation",
+        "given"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "evidence[1]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "evidence[1]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "evidence[1]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "evidence[1]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "evidence[1]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "evidence[1]",
+        "verifier_detail[5]"
+      ]
+    }
+  ]
+}

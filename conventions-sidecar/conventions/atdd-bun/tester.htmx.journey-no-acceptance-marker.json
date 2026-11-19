@@ -1,0 +1,267 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/tester.htmx/tester.htmx.journey-no-acceptance-marker.convention.yaml",
+    "sha256": "f0d96af21e057e8ae02bb0d3c3f6e10c136e5b3eb19d94a7d0f034bc0b0a87e0"
+  },
+  "rule_id": "tester.htmx.journey-no-acceptance-marker",
+  "kind": "rule",
+  "title": "Keep Acceptance and WMBT headers out of journey specs",
+  "activation": {
+    "facts": [
+      {
+        "fact": "path_glob",
+        "values": [
+          "**/*.e2e.*",
+          "**/*.e2e.ts"
+        ],
+        "observability": "observable_now",
+        "note": "Browser specs run by Playwright, identified by file name."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "playwright_test",
+          "test_not_bun"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Any non-bun (Playwright) test file can be a browser spec if its header comments carry a journey marker or it is bound to a train/journey. Bun test files are excluded unconditionally, even if they carry journey markers; needs a runner classifier (Playwright vs bun test)."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "header_comment_journey_marker",
+          "header_comment_acceptance_or_wmbt_marker"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Needs a header-comment scanner (htmx_e2e_detector) that reads leading `// Train:`, `// Journey:`, `// URN: test:train:…`, `// URN: test:journey:…`, `// Acceptance:` and `// WMBT:` lines, not string literals."
+      },
+      {
+        "fact": "operation",
+        "values": [
+          "create",
+          "modify"
+        ],
+        "observability": "observable_now",
+        "note": "Fires when a journey spec is written or edited."
+      }
+    ],
+    "fires": [
+      "A `*.e2e.ts` Playwright spec has a `// Acceptance:` header line.",
+      "A Playwright test file not named `*.e2e.*` whose header carries `// Journey:` or `// URN: test:train:…` also carries `// WMBT:`.",
+      "An agent adds `// Acceptance:`/`// WMBT:` lines to an existing journey spec to link it to an acceptance."
+    ],
+    "doesNotFire": [
+      "A bun test file carrying `// Acceptance:` and `// WMBT:` headers, with or without a journey marker — a bun test file is never a journey spec.",
+      "A bun test file whose header carries `// Journey:` (or `// URN: test:journey:…`) together with `// Acceptance:`/`// WMBT:` lines.",
+      "A unit test that merely mentions a journey URN inside a string literal.",
+      "Files under `node_modules`, `dist`, `build` or `_generated`."
+    ]
+  },
+  "given": "A journey spec: a browser spec that is not a bun test file — a `*.e2e.*` file run by Playwright, or a Playwright/test file bound to a train or journey via header comments (`// Train:`, `// Journey:`, `// URN: test:train:…`, `// URN: test:journey:…`). Bun test files are never journey specs.",
+  "when": "the spec is written or edited",
+  "then": "The journey spec MUST NOT carry `// Acceptance:` or `// WMBT:` header lines.",
+  "prefer": [
+    "Move acceptance assertions out of the journey spec into an acceptance test that declares the Acceptance/WMBT pair.",
+    "Or simply drop the `// Acceptance:`/`// WMBT:` lines and keep the spec bound only to its train or journey."
+  ],
+  "avoid": [
+    "Giving one test both a journey identity (train/journey) and an acceptance identity (Acceptance/WMBT).",
+    "Renaming a journey spec away from `*.e2e.*` to escape the check while it keeps a journey marker — misnamed specs are still judged.",
+    "Treating a bun test file as a journey spec."
+  ],
+  "unless": [
+    "Vendored and generated trees (`node_modules`, `dist`, `build`, `_generated`) are never scanned."
+  ],
+  "why": "Journey and acceptance identities are exclusive: a journey test binds to a train or journey, an acceptance test to an Acceptance/WMBT pair. Carrying both makes the test ambiguous about what it proves.",
+  "evidence": [
+    "The htmx_e2e_detector reports no browser spec whose header comments contain `// Acceptance:` or `// WMBT:` lines.",
+    "Either fix is valid: the Acceptance/WMBT lines were dropped from the journey spec, or — if acceptance assertions were moved — they appear in an acceptance test carrying the Acceptance/WMBT pair."
+  ],
+  "verifier_detail": [
+    "browser_spec = a `*.e2e.ts` (`*.e2e.*`) file run by Playwright, or any test file whose header comments carry a journey marker (`// Train:`, `// Journey:`, `// URN: test:train:…`, `// URN: test:journey:…`), so a misnamed one is still judged.",
+    "A unit test that merely mentions a journey URN in a string is not a browser spec — match header comment lines only, not string literals.",
+    "A bun test file is never a journey spec — exclude bun test files unconditionally, even if they carry journey markers.",
+    "Forbidden header lines in a journey spec: `// Acceptance:` and `// WMBT:`.",
+    "Skip `node_modules`, `dist`, `build`, `_generated` trees entirely.",
+    "Validator implementation: htmx_e2e_detector. Severity 3, disposition strict (see policy.strict-disposition)."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "kind: rule; status: active",
+    "Alias: BUN-E2E-JOURNEY-NO-ACCEPTANCE-MARKER-001",
+    "introduced_in: 0.5.0",
+    "Statement: 'Bun/htmx realization of `tester.vite.journey-no-acceptance-marker`, strict.' (metadata.mirrors: tester.vite.journey-no-acceptance-marker).",
+    "metadata: severity 3, disposition strict",
+    "implementation: {type: validator, ref: htmx_e2e_detector}",
+    "Term id: browser_spec",
+    "Source name/summary: 'A journey spec carries no Acceptance or WMBT header.'"
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Disposition: strict (metadata.disposition: strict)."
+    }
+  ],
+  "additions": [
+    {
+      "field": "fires",
+      "text": "Concrete fires/doesNotFire examples, including the anti-pattern of renaming to escape the check and a bun test carrying journey + Acceptance/WMBT markers.",
+      "justification": "Activation examples required by the output schema; derived directly from S006, S009, S010 and S015."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Name rephrased as title."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "then",
+        "activation",
+        "avoid[2]",
+        "verifier_detail[2]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit",
+        "verifier_detail[5]",
+        "shared:policy.strict-disposition"
+      ],
+      "note": "Mirror lineage and 'strict' qualifier kept verbatim in audit; strict also in verifier_detail[5] and shared node."
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "given",
+        "activation",
+        "verifier_detail[0]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[1]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "audit",
+        "identity"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "why",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "prefer[0]",
+        "prefer[1]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "verifier_detail[5]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "verifier_detail[5]",
+        "audit",
+        "shared:policy.strict-disposition"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "audit",
+        "verifier_detail[5]"
+      ]
+    }
+  ]
+}

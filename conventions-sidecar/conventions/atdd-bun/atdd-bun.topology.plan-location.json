@@ -1,0 +1,280 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/atdd-bun.topology/atdd-bun.topology.plan-location.convention.yaml",
+    "sha256": "82149598eb329a0f5db0feb345482a99fef65bef90d3fe34768db66406c30e24"
+  },
+  "rule_id": "atdd-bun.topology.plan-location",
+  "kind": "rule",
+  "title": "Keep wagons, features and WMBTs at their canonical plan paths",
+  "activation": {
+    "facts": [
+      {
+        "fact": "path_glob",
+        "values": [
+          "**/*",
+          "!**/node_modules/**",
+          "!**/dist/**",
+          "!**/build/**",
+          "!**/_generated/**"
+        ],
+        "observability": "observable_now",
+        "note": "Every file outside vendored/generated trees is a discovery candidate regardless of suffix (.yaml, .yml or any other), so declarations with a noncanonical suffix or outside plan_root are still found and handed to the content classifier. plan_root (from the `topology:` settings in atdd-bun.yaml, default `plan`) defines the canonical target, not the discovery scope."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "wagon",
+          "feature",
+          "wmbt"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Needs a classifier that recognises a document as a wagon, feature or WMBT declaration by content, whatever its path or filename suffix, including existing documents that were never moved."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "atdd-bun.topology.plan-location"
+        ],
+        "observability": "needs_new_observer",
+        "note": "The atdd_topology validator emits a finding naming the canonical path; it applies to every declaration, existing or new."
+      }
+    ],
+    "fires": [
+      "An existing wagon declaration sits somewhere other than `<plan_root>/<wagon>/_<wagon>.yaml`.",
+      "A wagon, feature or WMBT declaration is stored with a noncanonical suffix, e.g. `<plan_root>/<wagon>/_<wagon>.yml`.",
+      "A new or relocated wagon declaration is written somewhere other than `<plan_root>/<wagon>/_<wagon>.yaml`.",
+      "A feature declaration is outside its wagon directory, outside plan_root, or nested deeper than `<plan_root>/<wagon>/<feature>.yaml`.",
+      "A WMBT document is at a path other than `<plan_root>/<wagon>/<WMBT>.yaml`.",
+      "The topology validator reports a plan-location finding."
+    ],
+    "doesNotFire": [
+      "Plan-shaped documents inside `node_modules`, `dist`, `build` or `_generated` trees.",
+      "A wagon, feature or WMBT document that already sits at its canonical `.yaml` path.",
+      "Files whose content is not a wagon, feature or WMBT declaration, whatever their suffix.",
+      "Source or test files under source_root/test_root (covered by the source-location and test-location rules)."
+    ]
+  },
+  "given": "A wagon, feature or WMBT declaration exists or is being written anywhere in the repository outside vendored/generated trees, with any filename suffix",
+  "when": "its location is checked or the document is written",
+  "then": "Every such declaration must be at its canonical path: wagon at `<plan_root>/<wagon>/_<wagon>.yaml`, feature at `<plan_root>/<wagon>/<feature>.yaml`, WMBT at `<plan_root>/<wagon>/<WMBT>.yaml`.",
+  "prefer": [
+    "On a finding, move the document to the path the finding names.",
+    "Resolve `<plan_root>` from the `topology:` settings in atdd-bun.yaml (default `plan`) rather than hard-coding a directory."
+  ],
+  "avoid": [
+    "Keeping a second plan layout alongside the canonical one in the same repository.",
+    "Placing plan documents at ad-hoc paths and relying on identity lookup alone to find them."
+  ],
+  "unless": [
+    "Vendored and generated trees (`node_modules`, `dist`, `build`, `_generated`) are never scanned."
+  ],
+  "why": "The plan is navigated by path as much as by identity. A document at a non-canonical path is found by nothing that walks the layout, and two layouts in one repository make every tool guess.",
+  "evidence": [
+    "The atdd_topology validator reports no atdd-bun.topology.plan-location finding.",
+    "Every wagon, feature and WMBT document resolves to its canonical path under the configured plan_root."
+  ],
+  "verifier_detail": [
+    "Canonical paths: wagon `<plan_root>/<wagon>/_<wagon>.yaml`; feature `<plan_root>/<wagon>/<feature>.yaml`; WMBT `<plan_root>/<wagon>/<WMBT>.yaml`. Applies to every declaration, existing or new, wherever found; discovery is by content, not by suffix, so a declaration with a `.yml` or other noncanonical suffix is a finding.",
+    "plan_root is read from the `topology:` key `plan_root` in atdd-bun.yaml, default `plan`.",
+    "Skip vendored and generated trees: `node_modules`, `dist`, `build`, `_generated`.",
+    "Findings must name the canonical target path (fix hint: move the document to the path the finding names).",
+    "Severity 3, disposition strict: this is a package rule and it is strict (source statement: 'Package rule, strict.'); every finding fails."
+  ],
+  "audit": [
+    "schema_version 1.1.0",
+    "kind: rule",
+    "status: active",
+    "alias: ATDD-BUN-TOPOLOGY-PLAN-LOCATION",
+    "introduced_in 0.6.0",
+    "implementation: validator, ref atdd_topology",
+    "Provenance: source statement 'Package rule, strict.' — this rule is a package rule (atdd-bun.*) with strict disposition; realized by a package guard rather than a canonical planner node."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Strict disposition: the rule fails on every finding; there is no advisory mode and no ratchet baseline."
+    },
+    {
+      "id": "context.atdd-bun.package-rule",
+      "kind": "context",
+      "text": "package_rule: a rule of this package's own gates (`atdd-bun.*`), realized by a package guard rather than a canonical planner node. It is held to the same per-rule checks as every convention: a convention, strict, a failing fixture, relationship edges."
+    },
+    {
+      "id": "context.repo-topology.idioms",
+      "kind": "context",
+      "text": "topology_settings: the `topology:` keys `plan_root`, `source_root`, `test_root`, `e2e_root` in `atdd-bun.yaml` (defaults `plan`, `src/wagons`, `tests/wagons`, `e2e`)."
+    }
+  ],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "Activation facts, fires/doesNotFire examples, and the observer note for classifying plan documents by content anywhere in the repository regardless of filename suffix.",
+      "justification": "Required by the output structure; derived from the statement (every declaration must be at its canonical .yaml path), the exception (vendored/generated trees) and graph edges (source-/test-location rules cover other roots)."
+    },
+    {
+      "field": "evidence",
+      "text": "Evidence items stating that the validator reports no finding and paths resolve canonically.",
+      "justification": "Source names the validator but not explicit compliance evidence; these restate the statement as a check."
+    },
+    {
+      "field": "verifier_detail",
+      "text": "Discovery by content rather than suffix, so noncanonical suffixes such as .yml are findings.",
+      "justification": "Needed so the universal obligation is not narrowed by a suffix filter (auditor finding); it restates the canonical .yaml path requirement, adds no new obligation."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ],
+      "note": "Title rendered imperatively."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "then",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "identity",
+        "verifier_detail[4]",
+        "audit"
+      ],
+      "note": "Rule-specific provenance kept in this rule, not in the shared strict-disposition node."
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "shared:context.atdd-bun.package-rule"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "shared:context.atdd-bun.package-rule",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "shared:context.atdd-bun.package-rule"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "shared:context.repo-topology.idioms"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "shared:context.repo-topology.idioms",
+        "verifier_detail[1]",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "identity"
+      ],
+      "note": "Summary duplicates the name/title."
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "why",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "why",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "identity",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "identity",
+        "verifier_detail[4]",
+        "shared:policy.strict-disposition"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

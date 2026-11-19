@@ -1,0 +1,393 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.bun/coder.bun.interlocking-runner-exists.convention.yaml",
+    "sha256": "f7fadc580d2896f7d8341f555e4447480809329f3901209d30c2e54181032f15"
+  },
+  "rule_id": "coder.bun.interlocking-runner-exists",
+  "kind": "rule",
+  "title": "Ship an InterlockingRunner with resolveTrain when JOURNEY_MAP declares interlocking routes (Bun)",
+  "activation": {
+    "facts": [
+      {
+        "fact": "language",
+        "values": [
+          "typescript",
+          "bun"
+        ],
+        "observability": "observable_now",
+        "note": "Bun consumer application stack."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "server.ts",
+          "src/trains/**/*.ts"
+        ],
+        "observability": "observable_now",
+        "note": "Station Master composition root and the train runtime tree; the rule is a standing repository-state check, so it applies whichever file changed."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "journey_map_declares_interlocking_route"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Repository-state observer parsing server.ts JOURNEY_MAP for any {interlockingId, path} route object value (vs a direct trainId string), regardless of when the route was added."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "coder.bun.interlocking-runner-exists"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Detector finding from checks/interlocking_runner_exists.mjs (bun_interlocking_infrastructure family): route object present but no InterlockingRunner class in scanned files, or class lacks resolveTrain."
+      }
+    ],
+    "fires": [
+      "JOURNEY_MAP in server.ts currently contains an {interlockingId, path} route object and no `class InterlockingRunner` exists under src/trains/** — including a pre-existing violation and a change touching only server.ts.",
+      "A JOURNEY_MAP route object exists and an InterlockingRunner class exists under src/trains/** but defines no resolveTrain method.",
+      "A change introduces a new interlocking route object into JOURNEY_MAP.",
+      "A route object is declared and the only InterlockingRunner lives in an excluded tree (_generated/, node_modules/, dist/, build/, .next/): excluded files never count as an eligible runner, so the rule still fires."
+    ],
+    "doesNotFire": [
+      "A pure direct-train consumer: every JOURNEY_MAP value is a trainId string and no InterlockingRunner class exists.",
+      "Scan exclusion: files under _generated/, node_modules/, dist/, build/, .next/ are never scanned and never count as an eligible runner (this does not exempt a declared route lacking an eligible runner).",
+      "Non-Bun stacks (covered by the agnostic core obligation or other stack realizations)."
+    ]
+  },
+  "given": "A Bun consumer's server.ts JOURNEY_MAP declares at least one {interlockingId, path} interlocking route object",
+  "when": "the consumer is changed or checked (any file, whenever the route was added)",
+  "then": "Define a `class InterlockingRunner` under src/trains/** exposing a `resolveTrain(action, inputs, state)` entry point.",
+  "prefer": [
+    "e.g. src/trains/interlocking.ts: `export class InterlockingRunner { constructor(private readonly interlockingYamlPath: string) {} resolveTrain(action: string, inputs: Record<string, unknown>, state?: unknown): InterlockingResolution { ... } }`.",
+    "resolveTrain evaluates guarded routes, resolves exactly one admissible train, then delegates to TrainRunner."
+  ],
+  "avoid": [
+    "Route objects in JOURNEY_MAP with no InterlockingRunner class (no route-control layer at all).",
+    "An InterlockingRunner class without resolveTrain.",
+    "A runner outside src/trains/** or only in generated/vendored trees (never scanned)."
+  ],
+  "unless": [
+    "Pure direct-train consumer: no route object in JOURNEY_MAP and no InterlockingRunner class."
+  ],
+  "why": "An interlocking is executable only as a route-control component; resolveTrain evaluates guarded routes and picks one admissible train before delegation, so without it declared routes cannot run.",
+  "evidence": [
+    "If any JOURNEY_MAP value in server.ts is an {interlockingId, path} route object, a `class InterlockingRunner` exists in a scanned src/trains/**/*.ts file and declares a `resolveTrain` method.",
+    "Detector checks/interlocking_runner_exists.mjs reports no finding for this rule."
+  ],
+  "verifier_detail": [
+    "Zero-dependency JS detector (atdd.workspace.bun), member of the `bun_interlocking_infrastructure` FAMILY detector: checks/interlocking_runner_exists.mjs.",
+    "Detection is a regex-over-source scan of the `src/trains/**/*.ts` selector plus the `server.ts` JOURNEY_MAP; which files are inspected and how class/method are recognized is the per-stack detector's concern.",
+    "Flag when an interlocking route (JOURNEY_MAP route object) is declared but no `InterlockingRunner` class is shipped, or the class lacks a `resolveTrain` method. Evaluated on current repository state, not only on newly added routes.",
+    "JOURNEY_MAP values are either a direct trainId string (direct train) or an `{interlockingId, path}` route object (interlocking route).",
+    "Never scan generated/vendored trees: `_generated/`, `node_modules/`, `dist/`, `build/`, `.next/`. A runner found only there does not satisfy the rule.",
+    "Do not flag a pure direct-train consumer (no route object in JOURNEY_MAP and no InterlockingRunner class).",
+    "Severity 4, disposition strict: a newly introduced interlocking route without InterlockingRunner + resolveTrain is not suppressible and fails CI."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "kind: rule; status: active",
+    "implementation: {type: validator, ref: coder.bun.interlocking-runner-exists}",
+    "Bun-stack realization of the agnostic core obligation `coder.train.interlocking-runner-exists` (core afokapu/atdd#1251, Part of #1246); summary: an agnostic 'the InterlockingRunner runtime exists' obligation rendered for the Bun application.",
+    "Normative text cites core runtime spec afokapu/atdd#1251.",
+    "aliases: BUN-INTERLOCKING-RUNNER-EXISTS-001",
+    "introduced_in: 0.1.0",
+    "core_design_refs: afokapu/atdd#1246, afokapu/atdd#1251",
+    "Original name: InterlockingRunner route-control layer exists with a resolveTrain entry point (Bun)",
+    "Terms: interlocking_runner = a `class InterlockingRunner` under src/trains/ exposing resolveTrain(...), the route-control component that selects one admissible train and delegates execution to TrainRunner; journey_map = the JOURNEY_MAP action->route mapping in server.ts, values a direct trainId string or an {interlockingId, path} route object."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "strict disposition: a finding is not suppressible and fails CI."
+    }
+  ],
+  "additions": [
+    {
+      "field": "activation.doesNotFire",
+      "text": "Non-Bun stacks (covered by the agnostic core obligation or other stack realizations).",
+      "justification": "Scoping implied by the rule being the Bun-stack realization; makes non-firing explicit."
+    },
+    {
+      "field": "evidence",
+      "text": "Detector checks/interlocking_runner_exists.mjs reports no finding for this rule.",
+      "justification": "Turns the referenced detector into a verifiable compliance check."
+    },
+    {
+      "field": "when",
+      "text": "the consumer is changed or checked (any file, whenever the route was added)",
+      "justification": "Source states a standing obligation triggered by route presence with no explicit event; the When makes explicit that it is not gated on which file changed or when the route was added."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Rephrased as title; original kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "when",
+        "then",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[0]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "then",
+        "why"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "why",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "avoid[0]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "identity",
+        "verifier_detail[6]",
+        "shared:policy.strict-disposition"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "verifier_detail[6]",
+        "shared:policy.strict-disposition"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "unless[0]",
+        "activation",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "verifier_detail[4]",
+        "activation",
+        "avoid[2]"
+      ],
+      "note": "Scan exclusion only; excluded files do not count as an eligible runner, so a declared route with only such a runner still fires."
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "identity",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "then",
+        "prefer[1]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "given",
+        "verifier_detail[3]",
+        "audit"
+      ]
+    }
+  ]
+}

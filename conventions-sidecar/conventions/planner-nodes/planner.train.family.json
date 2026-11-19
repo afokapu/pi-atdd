@@ -1,0 +1,273 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.train.family.convention.yaml",
+    "sha256": "db7f08e105c2e4d743a3d12aba8af5bc95c971219f7d7dbdc357d3a61db5ac02"
+  },
+  "rule_id": "planner.train.family",
+  "kind": "rule",
+  "title": "Declare each train's family (behavior or delivery) to match its terminal contract",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "train definition"
+        ],
+        "observability": "observable_now",
+        "note": "Fires whenever a train definition is authored, edited, reviewed or validated, including unchanged existing definitions under review."
+      },
+      {
+        "fact": "operation",
+        "values": [
+          "author",
+          "edit",
+          "review",
+          "validate"
+        ],
+        "observability": "observable_now",
+        "note": "Operation on a train definition; review/validation of an existing unchanged definition activates the rule without any edit."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "train",
+          "family",
+          "behavior train",
+          "delivery train",
+          "terminal contract",
+          "acceptance commit",
+          "train ID",
+          "review trains",
+          "validate trains"
+        ],
+        "observability": "observable_now",
+        "note": "Planning tasks that create, review, validate, reclassify or renumber trains or change their terminal contracts."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "train family field added/changed/removed",
+          "train terminal contract added/changed/removed",
+          "train ID added/changed"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Diff-level observer on train definition fields (family, terminal contract, id), including removals."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "planner.train.family-matches-terminal-contract"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Validator finding when the family assertion is missing or disagrees with the terminal contract; can fire on unchanged definitions."
+      }
+    ],
+    "fires": [
+      "Planner authors a new train definition and must set its family.",
+      "Planner adds, changes or removes a train's terminal contract (e.g. to or away from one returning platform:acceptance:commit-receipt), even without touching family.",
+      "Planner corrects an existing train's family value, or adds a missing family field, without changing the terminal contract.",
+      "Planner reviews or validates existing train definitions that were not edited, and must check each family is present and matches its terminal contract.",
+      "Planner proposes or changes train IDs, including a scheme that encodes behavior/delivery as a digit."
+    ],
+    "doesNotFire": [
+      "Choosing only the variant category (0-3) of a train without touching, reviewing or validating family, terminal contract or train ID.",
+      "Editing wagon or WMBT content that does not change, review or validate any train's terminal contract, family or ID."
+    ]
+  },
+  "given": "A train definition exists or is being written: it is authored, edited (family, terminal contract or train ID added, changed or removed), or reviewed/validated even if unchanged.",
+  "when": "The planner sets, adds or corrects a train's family; adds, changes or removes its terminal contract; proposes or changes a train ID; or reviews/validates existing train definitions.",
+  "then": "Declare family as delivery if and only if the declared terminal contract requires a durable Acceptance Authority commit and terminates in platform:acceptance:commit-receipt; otherwise declare behavior.",
+  "prefer": [
+    "Derive family from the terminal contract (the source of truth); family is its validator-checked assertion, so re-derive it whenever the terminal contract changes.",
+    "behavior: observe, exercise, classify, validate, recommend or report a capability against a system under examination; no authority commit.",
+    "delivery: govern accepted-system state through a durable Acceptance Authority commit."
+  ],
+  "avoid": [
+    "Encoding family in the train ID (never an ID digit).",
+    "Omitting family (mandatory) or treating it as a second source of truth that diverges from the terminal contract.",
+    "Inferring family from the variant category (0-3, planner.train.categories) or vice versa; the axes are orthogonal."
+  ],
+  "unless": [],
+  "why": "Behavior trains only exercise a capability; delivery trains change accepted-system state via an authority commit. Deriving family from the terminal contract keeps this checkable and out of IDs and variant categories.",
+  "evidence": [
+    "Validator planner.train.family-matches-terminal-contract passes: every train's family equals the family derived from its declared terminal contract.",
+    "Every train definition has a family field with value behavior or delivery.",
+    "No train ID encodes the family."
+  ],
+  "verifier_detail": [
+    "Derivation: terminal contract requires an Acceptance Authority commit AND terminates in platform:acceptance:commit-receipt => delivery; otherwise => behavior.",
+    "Allowed values: behavior | delivery. Schema shape: train -> {family, definition}.",
+    "family is mandatory; missing family or mismatch with derived family is a finding (planner.train.family-matches-terminal-contract), checked on all train definitions, not only changed ones.",
+    "family is orthogonal to the variant category (planner.train.categories, values 0-3); do not cross-check them against each other."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "source kind: family",
+    "status: draft",
+    "Source name: Train families; term ids: family (label 'Train families'), family_source_of_truth (label 'Terminal-contract source of truth').",
+    "Rationale reference: family and variant as two orthogonal classification axes (see #1083)."
+  ],
+  "splitSuggestion": [
+    {
+      "id": "planner.train.family-not-in-id",
+      "then": "Never encode a train's family in its train ID.",
+      "segments": [
+        "S007",
+        "S017"
+      ]
+    }
+  ],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "split_suggestion",
+      "text": "The prohibition on encoding family in the train ID is an independent obligation; kept in avoid here, suggested as planner.train.family-not-in-id.",
+      "justification": "Rule 2: one obligation in then."
+    },
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire situations and activation facts, including terminal-contract-only additions/changes/removals, family-only corrections, ID-only changes and review/validation of unchanged definitions.",
+      "justification": "Required by schema; derived from the source's scope (terminal contract as source of truth, mandatory validator-checked family field, no family in IDs)."
+    },
+    {
+      "field": "audit",
+      "text": "Issue reference completed as #1083 (segment S008 truncated at 'see').",
+      "justification": "The full source rationale cites #1083; segment split cut it off."
+    },
+    {
+      "field": "verifier_detail",
+      "text": "Clarified that the validator check applies to all train definitions, not only changed ones; prefer[0] notes re-derivation on terminal-contract change.",
+      "justification": "Follows from the source's mandatory, validator-checked assertion; makes activation scope explicit per auditor feedback."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Name folded into title."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "avoid[2]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "prefer[0]",
+        "avoid[0]",
+        "avoid[1]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "why",
+        "prefer[1]",
+        "prefer[2]",
+        "avoid[2]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ],
+      "note": "Term id."
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit"
+      ],
+      "note": "Term label."
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[1]",
+        "verifier_detail[3]",
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "prefer[1]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "prefer[2]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "audit"
+      ],
+      "note": "Term id."
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "audit",
+        "prefer[0]"
+      ],
+      "note": "Term label."
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "then",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "avoid[0]",
+        "avoid[1]",
+        "evidence[0]",
+        "evidence[1]",
+        "verifier_detail[2]"
+      ]
+    }
+  ]
+}

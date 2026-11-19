@@ -1,0 +1,384 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.bun/coder.bun.telemetry-source-binding.convention.yaml",
+    "sha256": "60a4eaa9c625be88d4aee642ef6f615113e8bafd4652b232eee86fcc1abd610e"
+  },
+  "rule_id": "coder.bun.telemetry-source-binding",
+  "kind": "rule",
+  "title": "Bind emitting source to its tracking-plan item with a resolving Telemetry: header",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "implementation source (non-test)"
+        ],
+        "observability": "observable_now",
+        "note": "Test files are excluded; path/file-kind classification separates tests from implementation."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "telemetry/**"
+        ],
+        "observability": "observable_now",
+        "note": "Adoption alternative 1: a telemetry root exists. Either this OR the acceptance-declaration fact establishes adoption."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "acceptance file with a telemetry declaration"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Adoption alternative 2, independent of the telemetry root: an acceptance telemetry declaration anywhere in the repository. Needs an observer scanning acceptance files for telemetry declarations."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "bun_telemetry_code grammar finding",
+          "bun_telemetry_code resolution finding"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Validator findings over every existing `// Telemetry:` line comment (outside string literals) in non-test source, whether or not the header or the plan changed in this diff."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "non-test source emits telemetry without a header naming the emitted item"
+        ],
+        "observability": "llm_judged",
+        "note": "Declaration part (S013): no mechanical emission observer exists, so whether source emits telemetry and lacks a header for it is judged by reviewer/LLM."
+      }
+    ],
+    "fires": [
+      "A non-test source file in an adopting repository carries a `// Telemetry:` line comment whose value is not a concrete URN of the form telemetry:{kind}:{plane}:{theme}:{artifact}[:{measure}].",
+      "An existing, unchanged `// Telemetry:` header names a grammatical URN that has no tracking-plan item.",
+      "A tracking-plan item is renamed or removed while source headers still reference the old URN.",
+      "Non-test source in an adopting repository emits a telemetry item but has no `// Telemetry:` header naming it.",
+      "The repository has no telemetry root but has an acceptance telemetry declaration, and a source header is non-concrete, unresolved or missing for emitted telemetry."
+    ],
+    "doesNotFire": [
+      "The repository has no telemetry root and no acceptance telemetry declaration anywhere (capability not adopted), whatever profiles run.",
+      "The `// Telemetry:` text appears in, or telemetry is named by, a test file (telemetry tests legitimately name items while asserting them).",
+      "The `Telemetry:` text appears inside a string literal.",
+      "The reference is written as a block comment or markup attribute (not parsed in this realization).",
+      "Non-test source that emits no telemetry and carries no `// Telemetry:` header."
+    ]
+  },
+  "given": "In a telemetry-adopting repository, non-test source emits telemetry or carries a `// Telemetry:` line comment.",
+  "when": "The source is written, edited or checked, or the tracking plan renames/removes an item.",
+  "then": "Each emitted item is declared by name in a `// Telemetry:` header, and every header names a concrete URN `telemetry:{kind}:{plane}:{theme}:{artifact}[:{measure}]` matching a JSON tracking-plan item id under telemetry/<theme>/<artifact>/.",
+  "prefer": [
+    "`//` header above the emitting code, e.g. `// Telemetry: telemetry:event:be:commons:response-invocation-accepted`.",
+    "One header per emitted item.",
+    "Update headers in the same change when the plan renames."
+  ],
+  "avoid": [
+    "Emitting telemetry with no header.",
+    "Non-concrete URNs (missing parts, wildcards, placeholders).",
+    "URNs naming no plan item, incl. stale after rename.",
+    "Block comments, markup attributes, string literals as headers.",
+    "Naming an item the file does not emit just to resolve."
+  ],
+  "unless": [
+    "Not adopted (no telemetry root, no acceptance telemetry declaration anywhere): nothing emitted, whichever profiles run.",
+    "Test files: they legitimately name items while asserting them."
+  ],
+  "why": "The header is the source-to-telemetry traceability edge; like Tested-By, a checkable promise: the URN is well-formed and the registry holds it.",
+  "evidence": [
+    "The bun_telemetry_code validator reports no grammar finding (non-concrete URN) for any source header.",
+    "The bun_telemetry_code validator reports no resolution finding: every header URN matches a JSON registry entry id under telemetry/<theme>/<artifact>/.",
+    "Reviewer confirms that every non-test file that emits telemetry carries a `// Telemetry:` header naming each item it emits (and only items it emits)."
+  ],
+  "verifier_detail": [
+    "Parse only `//` line comments of the form `// Telemetry: <urn>` in non-test source files; ignore occurrences inside string literals (a header inside a string literal is not a header); block comments and markup attributes are not parsed in this realization.",
+    "Report two distinct failures: grammar (value is not a concrete URN telemetry:{kind}:{plane}:{theme}:{artifact}[:{measure}]) and resolution (grammatical but no tracking-plan item with that id).",
+    "tracking_plan_item: a JSON registry entry under telemetry/<theme>/<artifact>/ whose id is the referenced URN.",
+    "Inert until adopted: if there is no telemetry root and no acceptance telemetry declaration anywhere, emit nothing regardless of profiles run.",
+    "Exclude test files from the scan (tests are implementation's mirror, not implementation).",
+    "Severity 2.",
+    "telemetry_reference binds the file to the concrete item it emits; scan all existing headers, not only changed ones.",
+    "Declaration check (implementation source that emits telemetry names it in a header) has no mechanical detector in bun_telemetry_code; it is established by review/LLM judgment of emission."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active.",
+    "Source name: 'Source Telemetry references resolve into the tracking plan'.",
+    "Alias: CODER-TELEMETRY-SOURCE-BINDING-001.",
+    "introduced_in 0.7.0.",
+    "implementation: {type: validator, ref: bun_telemetry_code}.",
+    "Term ids: telemetry_reference, tracking_plan_item.",
+    "Fix-hint example function: `export function acceptResponse(response, telemetry) { ... }` placed under the header.",
+    "S013 ('Implementation source that emits telemetry says so, by name, in a header comment.') is kept operative in this rule's then/avoid[0]; a separate companion may also exist (graph.json edge) but this rewrite does not rely on it."
+  ],
+  "splitSuggestion": [
+    {
+      "id": "coder.bun.telemetry-implementation-binding",
+      "then": "Implementation (non-test) source that emits telemetry declares each emitted item by name in a `// Telemetry:` line-comment header; same adoption gate and test exclusion; judged by review since no emission observer exists.",
+      "segments": [
+        "S013"
+      ]
+    }
+  ],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Disposition strict: atdd-bun fails on every finding; there is no advisory mode and no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "split_suggestion",
+      "text": "The declaration obligation (S013) is kept operative here, combined with resolution into a single binding obligation in `then`; splitSuggestion proposes optionally moving it into a separate convention with LLM-judged activation, since its observability differs from the mechanical grammar/resolution checks.",
+      "justification": "Auditor required S013 to be operative in this rewrite unless a traced companion demonstrably covers it."
+    },
+    {
+      "field": "prefer",
+      "text": "prefer[1]: 'One header per emitted item'.",
+      "justification": "Source binds the file to the item(s) it emits and gives no single-item limit; resolves ambiguity for multi-item files."
+    },
+    {
+      "field": "avoid",
+      "text": "avoid[1] examples (missing parts, wildcards, placeholders) and avoid[4] (naming a non-emitted item to make it resolve).",
+      "justification": "Concretises 'not concrete' and blocks gaming of the resolution check, consistent with S008 'the concrete item it emits'."
+    },
+    {
+      "field": "activation",
+      "text": "Activation facts and fires/doesNotFire situations, incl. plan-rename trigger, unchanged unresolved headers, two independent adoption signals, and the LLM-judged emitting-without-header case.",
+      "justification": "Required by the target structure; derived from the source's terms, normative text, fix hint and exceptions."
+    },
+    {
+      "field": "verifier_detail",
+      "text": "verifier_detail[6]: scan all existing headers, not only changed ones; verifier_detail[7] and evidence[2]: declaration is review-judged.",
+      "justification": "The obligation applies to every reference regardless of edit history; the validator only covers grammar/resolution, so declaration needs a stated verification path."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Rephrased as imperative title; original kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "given"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "then",
+        "given",
+        "prefer[0]",
+        "avoid[4]",
+        "verifier_detail[0]",
+        "verifier_detail[6]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "then",
+        "verifier_detail[2]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "then",
+        "given",
+        "avoid[0]",
+        "prefer[1]",
+        "evidence[2]",
+        "verifier_detail[7]",
+        "activation",
+        "audit"
+      ],
+      "note": "Declaration obligation kept operative in this rule."
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "avoid[1]",
+        "verifier_detail[1]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "avoid[2]",
+        "verifier_detail[1]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "avoid[3]",
+        "verifier_detail[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "avoid[3]",
+        "verifier_detail[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[4]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "unless[1]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "prefer[0]",
+        "prefer[2]",
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "audit"
+      ],
+      "note": "Illustrative function placement under header; header example kept in prefer[0]."
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[3]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "avoid[3]",
+        "verifier_detail[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "identity",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

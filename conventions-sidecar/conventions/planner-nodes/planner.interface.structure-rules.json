@@ -1,0 +1,660 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.interface.structure-rules.convention.yaml",
+    "sha256": "2431e72e178a3c416cbc9384f6b07f2736b48c194216f6acfb085e5e9dabc34b"
+  },
+  "rule_id": "planner.interface.structure-rules",
+  "kind": "rule",
+  "title": "Derive contract layout (FLAT, FACETED, COLLECTION) from the artifact name",
+  "activation": {
+    "facts": [
+      {
+        "fact": "path_glob",
+        "values": [
+          "contracts/**/*.schema.json",
+          "contracts/**/*.json",
+          "contracts/**/catalog.schema.json",
+          "contracts/**/tests/*_schema_test.*"
+        ],
+        "observability": "observable_now",
+        "note": "Contract schema, catalog and schema-test paths are matchable by glob (generic source pattern uses .json, concrete layouts .schema.json)."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "json_schema",
+          "plan",
+          "wagon_manifest",
+          "acceptance",
+          "doc"
+        ],
+        "observability": "observable_now",
+        "note": "Schema files and planner artifacts (plans, wagons, WMBTs, acceptances, docs) that name artifacts or contract paths."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "contract",
+          "schema",
+          "artifact name",
+          "interface",
+          "produce",
+          "consume",
+          "facet",
+          "collection",
+          "layout",
+          "relocate",
+          "move schema",
+          "over-nested"
+        ],
+        "observability": "observable_now",
+        "note": "Task text mentions naming, placing, relocating or correcting a contract artifact/layout."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "artifact_name_added_or_renamed",
+          "contract_schema_file_added_moved_or_renamed",
+          "contract_schema_test_added_or_moved"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Needs a diff-level observer that detects new/renamed artifact names in planner artifacts and added/moved/renamed schema or schema-test files under contracts/."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "artifact_name_to_contract_path_mismatch",
+          "single_resource_over_nested",
+          "dotted_name_layout_unresolved"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Needs a detector mapping logical name to expected physical layout, comparing with the actual tree, and reporting source-ambiguous cases as unresolved."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "planner states or chooses a contract layout",
+          "resource will hold several related schemas"
+        ],
+        "observability": "llm_judged",
+        "note": "Whether the planner is choosing/stating a layout, and whether a resource will hold multiple schemas, needs semantic reading of the plan text."
+      }
+    ],
+    "fires": [
+      "A plan or wagon declares a new artifact {domain}:{resource} and names where its contract schema will live.",
+      "A planner introduces a dot-faceted artifact name {domain}:{resource}.{category} in a produce/consume list.",
+      "A planner specifies a resource that will hold several related schema files under one artifact name.",
+      "A plan proposes contracts/{domain}/{resource}/{resource}.schema.json for a single-schema resource.",
+      "A task relocates, renames or corrects the layout of existing contract schemas or schema tests (e.g. flattening an over-nested resource, converting between FACETED and COLLECTION).",
+      "A doc or acceptance describes the expected contract path for an existing artifact name."
+    ],
+    "doesNotFire": [
+      "Editing fields inside an existing schema without changing the artifact name, its file location or its test location.",
+      "Work that neither names, places, moves nor corrects any contract artifact or schema file.",
+      "Code-layer file placement outside contracts/ (governed by other layout conventions)."
+    ]
+  },
+  "given": "An artifact named {domain}:{resource}[.{category}] (colon = hierarchy, dot = facet; optional category for nested resources) is declared, or its contract schemas/tests are placed, moved or corrected",
+  "when": "the planner chooses or states its contract layout under contracts/",
+  "then": "Determine the layout in order: (1) dot facet → FACETED contracts/{domain}/{resource}/{category}.schema.json; (2) resource holding multiple schema files → COLLECTION contracts/{domain}/{resource}/*.schema.json; (3) otherwise → FLAT contracts/{domain}/{resource}.schema.json.",
+  "prefer": [
+    "FLAT (single schema, single resource): tests contracts/{domain}/tests/{resource}_schema_test.*. Source examples: 'match:dilemma.current -> contracts/dilemma/current.schema.json # singular noun -> flat (NOT dilemma/current/current.schema.json)'; 'mechanic:decision.choice -> contracts/decision/choice.schema.json # single resource -> flat'; 'fragment:pool -> contracts/fragment/pool.schema.json'.",
+    "FACETED (category as dot facet): tests contracts/{domain}/{resource}/tests/{category}_schema_test.*. Source examples: 'ux:foundations.color -> contracts/commons/ux/foundations/color.schema.json # has dot facet -> nested; faceted, alternative to collection'; 'ux:primitives.icon'.",
+    "COLLECTION (one artifact, several related schemas in one directory): tests contracts/{domain}/{resource}/tests/*_schema_test.*; optional catalog.schema.json master index; each schema's metadata: collection: true, resource (same for all), member (identifies the schema). Source examples: 'ux:foundations -> contracts/commons/ux/foundations/*.schema.json # plural noun -> collection'; 'ux:primitives -> contracts/commons/ux/primitives/*.schema.json'.",
+    "Example comments cue noun number (plural → COLLECTION, singular → FLAT); the source gives no precedence over the order in then.",
+    "Unresolved source conflict: the dotted FLAT examples contradict 'dot → FACETED' with no stated criterion. Follow the order by default; if you depart, state the mapping in the plan and flag the ambiguity.",
+    "Source's generic physical pattern is contracts/{domain}/{resource}[/{category}].json, while the concrete layouts use .schema.json; this .json vs .schema.json discrepancy is unresolved—name the extension explicitly in the plan."
+  ],
+  "avoid": [
+    "Over-nesting a single resource: 'fragment:pool -> contracts/fragment/pool/pool.schema.json' instead of contracts/fragment/pool.schema.json.",
+    "Contract paths not derivable from the logical name (layout chosen ad hoc)."
+  ],
+  "unless": [],
+  "why": "A deterministic name→layout mapping lets the path be derived from the logical name, keeps simple resources flat and supports faceted and multi-schema resources without ambiguity; domain-based organization gives clear ownership and REST API mapping.",
+  "evidence": [
+    "Every artifact name resolves to one layout per the determination order: FACETED contracts/{domain}/{resource}/{category}.schema.json, COLLECTION contracts/{domain}/{resource}/*.schema.json, or FLAT contracts/{domain}/{resource}.schema.json. Where a path matches only a source example that conflicts with the order (dotted name mapped FLAT, commons/ prefix, .json vs .schema.json), the outcome is 'unresolved conflict' for reviewer decision—neither auto-pass by example name nor auto-fail—and the plan must state the chosen mapping.",
+    "Schema tests sit in the tests/ directory matching the layout ({resource}_schema_test.*, {category}_schema_test.*, or *_schema_test.*).",
+    "COLLECTION members carry metadata {collection: true, resource: <shared>, member: <specific>}; optional catalog.schema.json acts as master index.",
+    "No single-schema resource is stored as contracts/{domain}/{resource}/{resource}.schema.json."
+  ],
+  "verifier_detail": [
+    "Determination order: (1) a dot (.) in the name indicates FACETED, (2) multiple schema files indicate COLLECTION, (3) otherwise FLAT.",
+    "Logical pattern {domain}:{resource}[.{category}]; physical pattern contracts/{domain}/{resource}[/{category}].json (source writes .json in the generic pattern; concrete layouts use .schema.json — report the discrepancy as unresolved, do not silently normalise). Colon separator denotes hierarchy, dot separator denotes facet; optional category supports nested resources.",
+    "FLAT: artifact {domain}:{resource} → contracts/{domain}/{resource}.schema.json; tests contracts/{domain}/tests/{resource}_schema_test.*.",
+    "FACETED: artifact {domain}:{resource}.{category} → contracts/{domain}/{resource}/{category}.schema.json; tests contracts/{domain}/{resource}/tests/{category}_schema_test.*.",
+    "COLLECTION: artifact {domain}:{resource} → contracts/{domain}/{resource}/*.schema.json; tests contracts/{domain}/{resource}/tests/*_schema_test.*; optional catalog.schema.json master index; member metadata example: {\"domain\": \"ux\", \"resource\": \"foundations\", \"collection\": true, \"member\": \"color\"}; member e.g. 'color', 'spacing'; resource same for all e.g. 'foundations'.",
+    "Source examples (FLAT): 'match:dilemma.current -> contracts/dilemma/current.schema.json # singular noun -> flat (NOT dilemma/current/current.schema.json)'; 'fragment:pool -> contracts/fragment/pool.schema.json # single resource -> flat (NOT fragment/pool/pool.schema.json)'; 'mechanic:decision.choice -> contracts/decision/choice.schema.json # single resource -> flat'. The dotted names here map flat, in unresolved tension with dot→FACETED. Detector outcome for any dotted name mapped FLAT (including these example names) is 'unresolved conflict' requiring reviewer decision and an explicit mapping statement in the plan; matching an example name alone is not a compliance criterion.",
+    "Source examples (FACETED): 'ux:foundations.color -> contracts/commons/ux/foundations/color.schema.json # has dot facet -> nested'; also listed as 'faceted, alternative to collection'; 'ux:primitives.icon'. The commons/ prefix is literal example data with no stated routing rule; detector must not generalise it, and a path whose prefix is not derivable from {domain} is reported as 'unresolved conflict', not auto-accepted.",
+    "Source examples (COLLECTION): 'ux:foundations -> contracts/commons/ux/foundations/*.schema.json # plural noun -> collection (color, spacing, typography)'; 'ux:primitives -> contracts/commons/ux/primitives/*.schema.json # plural noun -> collection (icon, shape, mask)'. Heuristic from example comments: plural noun suggests COLLECTION, singular noun FLAT; no precedence over the determination order is stated.",
+    "Source counter-example: 'fragment:pool -> contracts/fragment/pool/pool.schema.json # over-nested; single resource must be flat'."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "kind: rule; status: active",
+    "Source name: 'Interface: Structure Rules'",
+    "implementation: {type: none}",
+    "source: legacy_path src/atdd/planner/conventions/interface.convention.yaml, legacy_sha sha256:3415a521b5eec18b, extraction_mode high_fidelity, legacy_section structure-rules",
+    "parity: source_fragments_preserved, examples_preserved, implementation_preserved, fix_hint_preserved all true; reviewed_at 2026-06-16",
+    "term ids: structure_determination, flat_pattern, faceted_pattern, collection_pattern, logical_physical_naming",
+    "term labels: 'How structure is determined' (→ then), 'FLAT structure' (→ prefer[0]), 'FACETED structure' (→ prefer[1]), 'COLLECTION structure' (→ prefer[2]), 'Logical and physical naming patterns' (→ given, prefer[5], verifier_detail[1])"
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "Activation facts, fires and doesNotFire scenarios, including relocation/correction of existing layouts, plus an llm_judged fact for layout intent and multi-schema intent.",
+      "justification": "Required by the target schema; derived from the source statement (layout of any artifact), not new obligations."
+    },
+    {
+      "field": "prefer[4]",
+      "text": "Follow the determination order by default; when departing from it for a dotted name, state the chosen mapping explicitly and flag the source ambiguity.",
+      "justification": "The source's dotted FLAT examples conflict with its dot→FACETED rule and give no criterion; defaulting to the stated rule and surfacing departures avoids inventing a resolution."
+    },
+    {
+      "field": "prefer[3]",
+      "text": "States that the source gives no precedence between noun-number cues and the determination order.",
+      "justification": "Noting the absence is factual and avoids inventing a precedence."
+    },
+    {
+      "field": "prefer[5]",
+      "text": "Name the extension explicitly in the plan given the .json vs .schema.json discrepancy.",
+      "justification": "The source's generic physical pattern (.json) conflicts with its concrete layouts (.schema.json); surfacing it to the planner without resolving it."
+    },
+    {
+      "field": "evidence[0]",
+      "text": "'Unresolved conflict' outcome for paths that only match source-conflicting examples (dotted FLAT, commons/ prefix, .json vs .schema.json).",
+      "justification": "Auditor required replacing name-specific compliance exemptions with an explicit unresolved-conflict outcome; preserves source ambiguity without accepting or rejecting by name."
+    },
+    {
+      "field": "verifier_detail[5]",
+      "text": "Dotted names mapped FLAT (including the source example names) produce 'unresolved conflict', not auto-pass.",
+      "justification": "Same as evidence[0]; avoids masking genuine mismatches for example names."
+    },
+    {
+      "field": "verifier_detail[6]",
+      "text": "commons/ prefix is literal example data, not a routing rule; non-derivable prefixes reported as unresolved conflict.",
+      "justification": "Removes unsupported generalisation while keeping the examples."
+    },
+    {
+      "field": "verifier_detail[1]",
+      "text": "Report the .json vs .schema.json discrepancy as unresolved; do not silently normalise.",
+      "justification": "Source inconsistency preserved, not resolved."
+    },
+    {
+      "field": "coder_length",
+      "text": "Coder-facing text exceeds ~1,000 chars.",
+      "justification": "Source examples (dotted FLAT, commons/ux paths), test paths, collection metadata, separator semantics and the two unresolved source conflicts must stay visible to the planner; losslessness wins over brevity."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "given",
+        "when",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "avoid[0]",
+        "verifier_detail[8]",
+        "evidence[3]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "then",
+        "audit"
+      ],
+      "note": "Label meaning is the determination order in then; label text kept in audit."
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "then",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "then",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "then",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "then",
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "then",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "prefer[0]",
+        "audit"
+      ],
+      "note": "Label 'FLAT' heads prefer[0]."
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "then",
+        "prefer[0]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "then",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[2]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "given",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "prefer[0]",
+        "prefer[3]",
+        "prefer[4]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "prefer[0]",
+        "avoid[0]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "prefer[0]",
+        "prefer[4]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "prefer[1]",
+        "audit"
+      ],
+      "note": "Label 'FACETED' heads prefer[1]."
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "then",
+        "prefer[1]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "then",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[3]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "given",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "prefer[1]",
+        "given"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "prefer[2]",
+        "audit"
+      ],
+      "note": "Label 'COLLECTION' heads prefer[2]."
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S045",
+      "dest": [
+        "then",
+        "prefer[2]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S046",
+      "dest": [
+        "prefer[2]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S047",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S048",
+      "dest": [
+        "then",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S049",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[4]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S050",
+      "dest": [
+        "given",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S051",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S052",
+      "dest": [
+        "prefer[2]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S053",
+      "dest": [
+        "prefer[2]",
+        "evidence[2]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S054",
+      "dest": [
+        "prefer[2]",
+        "evidence[2]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S055",
+      "dest": [
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S056",
+      "dest": [
+        "prefer[2]",
+        "prefer[3]",
+        "verifier_detail[7]"
+      ]
+    },
+    {
+      "seg": "S057",
+      "dest": [
+        "prefer[2]",
+        "prefer[3]",
+        "verifier_detail[7]"
+      ]
+    },
+    {
+      "seg": "S058",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S059",
+      "dest": [
+        "given",
+        "prefer[5]",
+        "audit"
+      ],
+      "note": "Label meaning (logical/physical naming patterns) is in given and prefer[5]; label text kept in audit."
+    },
+    {
+      "seg": "S060",
+      "dest": [
+        "given",
+        "prefer[5]",
+        "verifier_detail[1]"
+      ],
+      "note": "Logical pattern in given; generic physical .json pattern and its discrepancy with .schema.json in prefer[5]."
+    },
+    {
+      "seg": "S061",
+      "dest": [
+        "why",
+        "given",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S062",
+      "dest": [
+        "given",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S063",
+      "dest": [
+        "prefer[5]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S064",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S065",
+      "dest": [
+        "given",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S066",
+      "dest": [
+        "given",
+        "verifier_detail[1]"
+      ]
+    }
+  ]
+}

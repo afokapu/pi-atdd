@@ -1,0 +1,270 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/tester.htmx/tester.htmx.responsive-journey-coverage.convention.yaml",
+    "sha256": "2004d0a8975178475d792702e164f335b07407f36e83a09ceadef3fe49037111"
+  },
+  "rule_id": "tester.htmx.responsive-journey-coverage",
+  "kind": "rule",
+  "title": "Give every exposed frontend journey a RESP browser spec",
+  "activation": {
+    "facts": [
+      {
+        "fact": "change",
+        "values": [
+          "journey declared, changed or evaluated in the plan with an exposed entrypoint",
+          "journey entrypoint exposure or surfaces changed",
+          "browser spec or `// Journey:` binding added/removed/renamed"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Primary activation. Needs a semantic plan/journey observer that reads each journey's entrypoint exposure and `surfaces` (wherever the declaration lives, not by filename), plus a spec-binding observer that maps `// Journey:` markers and RESP test URNs across all test files. Fires for plan-only changes and for pre-existing uncovered journeys, not only when specs are edited."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "htmx_e2e_detector: exposed frontend journey without a bound RESP browser spec"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Detector finding from the htmx_e2e_detector validator; it must evaluate all in-scope journeys against all remaining qualifying specs."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "**/*.e2e.ts",
+          "e2e/**"
+        ],
+        "observability": "observable_now",
+        "note": "Non-exhaustive hint only: matching a path is observable, but plan/journey declarations and misnamed marker-bearing test files can have arbitrary names, so globs neither define scope nor exhaustively locate inputs. node_modules, dist, build and _generated are excluded."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "journey",
+          "responsive",
+          "RESP",
+          "e2e",
+          "viewport",
+          "mobile",
+          "desktop"
+        ],
+        "observability": "observable_now",
+        "note": "Hint only: task wording signals journey or responsive work; scope is still decided by entrypoint exposure and surfaces."
+      }
+    ],
+    "fires": [
+      "The plan (even in a plan-only change) declares a journey with an exposed entrypoint and surfaces including frontend, and no test file anywhere carries `// Journey: <id>` with a RESP test URN for it.",
+      "An existing exposed journey that declares no surfaces has no bound RESP browser spec, even though no spec was edited in this change.",
+      "A RESP spec for an exposed frontend journey is deleted or its `// Journey:` binding is removed, and no other qualifying RESP spec remains bound to that journey.",
+      "For an exposed frontend journey, the only bound RESP spec is a misnamed test file (not *.e2e.ts) whose header comments carry a journey marker; it is judged as a browser spec and counts (or fails) as that journey's coverage."
+    ],
+    "doesNotFire": [
+      "An internal journey (entrypoint not exposed).",
+      "An exposed journey whose entrypoint surfaces exclude frontend.",
+      "Files under node_modules, dist, build or _generated.",
+      "A RESP spec is deleted but another qualifying RESP browser spec remains bound to the same journey.",
+      "A test file is recognised as a browser spec but is not bound to any in-scope (exposed, frontend-surfaced) journey; spec classification alone is not this rule's scope."
+    ]
+  },
+  "given": "A journey whose entrypoint is exposed and whose `surfaces` include `frontend` (or declare none) exists in the plan",
+  "when": "the journey set is declared, changed or evaluated (including plan-only changes and already-declared journeys)",
+  "then": "That journey MUST have a journey spec (browser spec) bound to it by `// Journey: <journey id>` carrying a RESP test URN.",
+  "prefer": [
+    "Add `e2e/<journey>.responsive.e2e.ts` bound with `// Journey: <journey id>`.",
+    "Add the RESP spec as soon as the plan declares a new exposed frontend journey."
+  ],
+  "avoid": [
+    "Counting a unit test that merely mentions a journey URN in a string as RESP coverage.",
+    "Assuming a misnamed spec escapes judgement: any test file with a journey marker in its header comments is judged as a browser spec.",
+    "Writing RESP specs for internal journeys or journeys whose surfaces exclude frontend just to raise coverage."
+  ],
+  "unless": [
+    "The journey is internal, or its exposed entrypoint `surfaces` exclude `frontend` — there is no screen to fit, so it is out of scope.",
+    "Vendored and generated trees (`node_modules`, `dist`, `build`, `_generated`) are never scanned."
+  ],
+  "why": "Every screen a user can reach should be proven to fit from mobile to desktop; exposed journeys are exactly those screens, and new ones appear here as soon as the plan declares them.",
+  "evidence": [
+    "For each exposed journey with surfaces including frontend (or none declared), a browser spec exists whose header has `// Journey: <journey id>` and a RESP test URN.",
+    "htmx_e2e_detector reports no uncovered exposed journey."
+  ],
+  "verifier_detail": [
+    "browser_spec = a `*.e2e.ts` file run by Playwright, OR any test file whose header comments carry a journey marker (`// Train:`, `// Journey:`, `// URN: test:train:…`, `// URN: test:journey:…`), so a misnamed one is still judged.",
+    "A unit test that merely mentions a journey URN in a string is not a browser_spec.",
+    "Scope: journeys with exposed entrypoint whose `surfaces` include `frontend` or declare no surfaces; skip internal journeys and those whose surfaces exclude frontend. Evaluate every in-scope journey, not only those touched by the change; a journey is covered if any qualifying bound RESP spec remains.",
+    "Never scan `node_modules`, `dist`, `build`, `_generated`.",
+    "Severity 3; disposition strict."
+  ],
+  "audit": [
+    "schema_version 1.1.0",
+    "kind: rule; status: active",
+    "Aliases: BUN-E2E-RESPONSIVE-JOURNEY-COVERAGE-001",
+    "introduced_in 0.5.0",
+    "New in the Bun/htmx browser tester, strict.",
+    "implementation: validator, ref htmx_e2e_detector",
+    "Summary: Every exposed journey has a RESP browser spec."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "Activation facts, fires/doesNotFire situations and observability notes (including the 'another qualifying spec remains' and 'spec not bound to an in-scope journey' non-firing cases).",
+      "justification": "Required by the target structure; derived from the statement, exceptions and browser_spec term definition."
+    },
+    {
+      "field": "avoid",
+      "text": "Avoid writing RESP specs for out-of-scope journeys just to raise coverage.",
+      "justification": "Metric-gaming guard requested by the author brief; restates the source scope exception, adds no obligation."
+    },
+    {
+      "field": "verifier_detail",
+      "text": "Evaluate every in-scope journey, not only those touched by the change; a journey is covered if any qualifying bound RESP spec remains.",
+      "justification": "Makes explicit the source's unconditional 'Every journey … MUST' quantifier for the verifier; adds no new obligation."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ],
+      "note": "Rendered as title."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "when",
+        "then",
+        "activation",
+        "verifier_detail[2]"
+      ],
+      "note": "Unconditional: applies to every in-scope journey, including plan-only changes and existing journeys."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit",
+        "identity"
+      ],
+      "note": "'strict' is the disposition, recorded in identity and verifier_detail[4]."
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "verifier_detail[0]"
+      ],
+      "note": "Term id browser_spec named in verifier detail."
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "verifier_detail[0]",
+        "avoid[1]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[1]",
+        "avoid[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "audit",
+        "identity"
+      ],
+      "note": "Duplicate of name."
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "why",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[3]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "identity",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "identity",
+        "verifier_detail[4]"
+      ],
+      "note": "Disposition 'strict' kept verbatim; no enforcement mechanics added."
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "audit",
+        "evidence[1]"
+      ]
+    }
+  ]
+}

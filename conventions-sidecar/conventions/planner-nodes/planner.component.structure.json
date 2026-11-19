@@ -1,0 +1,445 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.component.structure.convention.yaml",
+    "sha256": "44c253dfa32415d0f166213e6182c64512b0c1634b68291b44f8fa088a540246"
+  },
+  "rule_id": "planner.component.structure",
+  "kind": "rule",
+  "title": "Emit every generated component with its complete required structure",
+  "activation": {
+    "facts": [
+      {
+        "fact": "phase",
+        "values": [
+          "planning"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Harness/session must report that the planner is the active role; not derivable from paths alone."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "component_generated"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Needs an observer on planner output that detects any component entry being generated/emitted (initial or regenerated), regardless of whether the input carries a feature URN. Must distinguish component emission from unrelated plan edits. No such observer exists yet."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "generate component",
+          "emit components"
+        ],
+        "observability": "llm_judged",
+        "note": "Hint only, never a mandatory gate: task text can suggest component generation, but activation is established by the component_generated observer, not by terms."
+      }
+    ],
+    "fires": [
+      "The planner generates and emits any component entry (initial emission), whether or not the input supplies a feature URN.",
+      "The planner regenerates (re-emits) a component.",
+      "The planner emits a component while the input feature URN is missing — the rule fires and the missing required parent is a violation."
+    ],
+    "doesNotFire": [
+      "Editing implementation code in a component's layer without the planner emitting a component.",
+      "Authoring wagons, WMBTs, acceptances or docs that emit no component.",
+      "Unrelated edits to a plan file that do not generate or emit a component."
+    ]
+  },
+  "given": "The planner is generating components",
+  "when": "it emits any generated component",
+  "then": "Emit it with: URN component:{wagon}.{feature}.{business_capability}.{side}.{layer}; a required parent feature equal to the input feature URN; description 'Handles {business_capability} for {feature} using {layer} patterns'; consumed events taken from feature.ioSeeds.consume filtered by the component's role and produced events from feature.ioSeeds.produce filtered by its capability, at most 3 each; dependencies = the other components in the same feature plus external dependencies.",
+  "prefer": [
+    "Use {side}, not the older {tier}, as the URN segment naming the side of the system."
+  ],
+  "avoid": [
+    "Omitting the parent feature, or exceeding 3 consumed or 3 produced events (e.g. 5 produced events).",
+    "Free-form descriptions, unfiltered copies of all ioSeeds events, or dropping either same-feature components or external dependencies from the dependency list.",
+    "Treating a missing input feature URN as making this rule inapplicable; the parent feature is required, so emitting without it is a violation."
+  ],
+  "unless": [],
+  "why": "Pinning down the full required shape — parent feature, description, bounded events, dependencies — ensures every component the planner emits is complete and consistently structured for downstream phases.",
+  "evidence": [
+    "Each emitted component has a URN matching component:{wagon}.{feature}.{business_capability}.{side}.{layer}.",
+    "Each component has a non-empty parent feature equal to the input feature URN; a component emitted without one (including when the input lacked a feature URN) fails.",
+    "Description matches 'Handles {business_capability} for {feature} using {layer} patterns' with the component's own values.",
+    "consumes has length ≤ 3 and contains only feature.ioSeeds.consume events relevant to the component's role; produces has length ≤ 3 and contains only feature.ioSeeds.produce events matching the component's capability (role/capability filter applied, not an arbitrary subset).",
+    "The dependencies list includes both categories: the other components in the same feature plus the external dependencies.",
+    "Compliant shape: URN, required parent feature, templated description, ≤3 consumes, ≤3 produces, dependencies listed."
+  ],
+  "verifier_detail": [
+    "URN pattern: component:{wagon}.{feature}.{business_capability}.{side}.{layer}; source example: component:resolve-dilemmas:choose-option.option-validator.backend.domain.",
+    "Parent feature: source = feature URN from input; required = true. Check applies to every emitted component; absence of an input feature URN does not exempt the component.",
+    "Description template: 'Handles {business_capability} for {feature} using {layer} patterns'; example: 'Handles validation for choose-option using domain patterns'.",
+    "consumes: source = feature.ioSeeds.consume filtered by component role; maximum = 3; examples: dilemma:presented, user:authenticated.",
+    "produces: source = feature.ioSeeds.produce filtered by component capability; maximum = 3; examples: decision:made, validation:completed.",
+    "dependencies: source = other components in same feature + external dependencies; examples: component:same:feature.other, wagon:external#io.",
+    "Counter-example to flag: a component emitted with no parent feature or with 5 produced events.",
+    "The source does not specify how role/capability map to individual events, a selection order when more than 3 events survive filtering, or where external dependencies are discovered; verifiers should check filtering relevance and caps, not a particular selection."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "kind: rule; status: active",
+    "implementation: {type: none}",
+    "source: legacy_path src/atdd/planner/conventions/component.convention.yaml, legacy_sha sha256:8bfb25fd6c2bdb6e, extraction_mode high_fidelity, legacy_section structure",
+    "parity: source_fragments_preserved, examples_preserved, implementation_preserved, fix_hint_preserved all true; reviewed_at 2026-06-16",
+    "Original name: 'Component: Structure'.",
+    "Term ids/labels: structure_urn (Structure URN pattern), parent_feature (Parent feature), description (Description template), structure_events (Consumed and produced events), structure_dependencies (Dependencies).",
+    "URN pattern history: updated to use {side} instead of {tier} for clarity."
+  ],
+  "splitSuggestion": [
+    {
+      "id": "planner.component.events-bounded",
+      "then": "Derive a component's consumed events from feature.ioSeeds.consume filtered by role and produced events from feature.ioSeeds.produce filtered by capability, capping each at 3.",
+      "segments": [
+        "S030",
+        "S031",
+        "S032",
+        "S033",
+        "S034",
+        "S035",
+        "S036",
+        "S037",
+        "S038",
+        "S039",
+        "S040"
+      ]
+    },
+    {
+      "id": "planner.component.description-template",
+      "then": "Write the component description from the template 'Handles {business_capability} for {feature} using {layer} patterns'.",
+      "segments": [
+        "S025",
+        "S026",
+        "S027",
+        "S028",
+        "S029"
+      ]
+    }
+  ],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "split_suggestion",
+      "text": "The source bundles several checkable sub-obligations (URN shape, parent feature, description template, filtered bounded events, dependencies). Kept as one 'complete structure' obligation in then; event derivation/bounding and description template could become separate conventions (see splitSuggestion).",
+      "justification": "Rule 2: one obligation per convention; declare independent obligations."
+    },
+    {
+      "field": "activation",
+      "text": "Activation facts, fires and doesNotFire situations were authored; the source has no explicit activation. Scoped to every planner generation/emission of a component, independent of whether the input supplies a feature URN.",
+      "justification": "Schema requires observable activation; the source's obligation applies to every generated component."
+    },
+    {
+      "field": "avoid",
+      "text": "avoid[2]: do not treat a missing input feature URN as making the rule inapplicable.",
+      "justification": "Restates the source's 'parent feature ... is required' to prevent misreading; adds no new obligation."
+    },
+    {
+      "field": "verifier_detail",
+      "text": "verifier_detail[7] notes the source's silence on role/capability-to-event mapping, selection when >3 events survive filtering, and discovery of external dependencies.",
+      "justification": "Makes known gaps explicit for verifiers without inventing a selection rule."
+    },
+    {
+      "field": "evidence",
+      "text": "Evidence checks (filtered subset of ioSeeds, parent equals input feature URN, both dependency categories) are phrased as verifiable assertions derived from the source terms.",
+      "justification": "Verifier needs concrete compliance checks; no new obligation beyond the source terms."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "given",
+        "when",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "evidence[5]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "avoid[0]",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "then",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "prefer[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "audit",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "then",
+        "evidence[1]",
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "verifier_detail[1]",
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "then",
+        "evidence[2]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "then",
+        "evidence[3]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "verifier_detail[3]",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "verifier_detail[4]",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "then",
+        "evidence[4]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S045",
+      "dest": [
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S046",
+      "dest": [
+        "verifier_detail[5]"
+      ]
+    }
+  ]
+}

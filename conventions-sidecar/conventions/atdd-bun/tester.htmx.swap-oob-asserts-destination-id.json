@@ -1,0 +1,319 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/tester.htmx/tester.htmx.swap-oob-asserts-destination-id.convention.yaml",
+    "sha256": "65d8ffa62732ec0578d4999234b89f692e9c5e234ecd30e620bee7c44f053caa"
+  },
+  "rule_id": "tester.htmx.swap-oob-asserts-destination-id",
+  "kind": "rule",
+  "title": "Out-of-band swap tests assert the destination id",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "test"
+        ],
+        "observability": "observable_now",
+        "note": "Only test files/test cases are in scope; existing unchanged tests are covered as well as new or edited ones."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "test case body mentions hx-swap-oob"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Needs a per-test-case content scan (htmx_tester_detector) to see that the case body references `hx-swap-oob` in any form (assertion or not)."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "htmx_tester_detector: oob mention without id-reaching assertion"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Detector finding: case mentions hx-swap-oob but has no id-reaching assertion."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "htmx",
+          "hx-swap-oob",
+          "out-of-band swap",
+          "oob"
+        ],
+        "observability": "observable_now",
+        "note": "Non-gating hint only; the rule applies to qualifying test cases regardless of task wording."
+      }
+    ],
+    "fires": [
+      "A test case asserts the response contains `hx-swap-oob` and has no assertion reaching the destination id.",
+      "An existing, unchanged test case only checks that `hx-swap-oob` is present and is scanned by the suite check.",
+      "A test case body mentions `hx-swap-oob` anywhere (e.g. in a fixture string, comment or helper argument, not as an assertion) and contains no id-reaching assertion."
+    ],
+    "doesNotFire": [
+      "A test case that never mentions `hx-swap-oob`.",
+      "A test case mentioning `hx-swap-oob` that also has any id-reaching assertion (`id=` in an expected string, `getElementById`, `querySelector('#…')`, `toHaveAttribute('id'…)`, or another matcher).",
+      "Production handler/template code that emits the oob element (covered by the coder-side rule, not this one)."
+    ]
+  },
+  "given": "A test case whose body mentions `hx-swap-oob`, e.g. asserting an out-of-band swap is present in a response",
+  "when": "the test case is present in the suite (new, changed or existing)",
+  "then": "The same test case MUST also assert the destination `id` the out-of-band element will be matched against.",
+  "prefer": [
+    "Assert the destination, not just the mechanism: `expect(html).toContain(\"hx-swap-oob\"); // the server's half only` then `expect(html).toContain('id=\"cart-count\"'); // the half that must match the page`.",
+    "Any id-reaching assertion works; no specific matcher is required.",
+    "Bind the runtime-artefact assertion back to the declaration it came from: the id the page declares."
+  ],
+  "avoid": [
+    "Half assertions: checking `hx-swap-oob` appears and stopping — proves only the server's half, not the destination a template refactor breaks.",
+    "An id assertion unrelated to the oob element's destination, just to satisfy the detector."
+  ],
+  "unless": [
+    "The test case never mentions `hx-swap-oob` (out of scope)."
+  ],
+  "why": "htmx silently drops an oob element whose id matches nothing in the document (no error, no warning, no swap); the id must be in the response AND the document. The coder rule makes the server emit an id; only this rule makes a test prove it is the id the page will match.",
+  "evidence": [
+    "Every test case whose body mentions `hx-swap-oob` contains at least one id-reaching assertion.",
+    "htmx_tester_detector reports no findings across the test suite.",
+    "Reviewer note: whether the id actually EXISTS in the served document is a runtime fact no static check can see; static compliance only proves the test asserts an id."
+  ],
+  "verifier_detail": [
+    "Detector (validator `htmx_tester_detector`): flag a test case whose body mentions `hx-swap-oob` (any mention, not only assertions) but contains no assertion reaching an id.",
+    "Id-reaching assertions recognised: an `id=` inside an expected string, a `getElementById` call, a `querySelector('#…')`, or a `toHaveAttribute('id'…)`. Any id-reaching assertion satisfies the rule; no specific matcher is required.",
+    "Scope: cases that never mention `hx-swap-oob` are not inspected; all other test cases are, whether or not they changed.",
+    "Limitation: existence of the id in the served document is a runtime fact outside the static check.",
+    "Severity 3; disposition strict."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "Implementation: {type: validator, ref: htmx_tester_detector}.",
+    "Alias: BUN-OOB-TARGET-ASSERTED-001.",
+    "Bun/htmx realization: the tester half of `coder.htmx.swap-oob-carries-id`; same shape as `tester.convex.interlocking-trace-binds-declared-route` — an assertion on a runtime artefact must bind back to the declaration it came from.",
+    "`coder.htmx.swap-oob-carries-id` makes the server EMIT an id; nothing else makes a test prove it is the id the page will actually match. The two rules are one defect seen from source and from suite, and neither alone closes it — which is exactly why the htmx tester surface is a package rather than a stray rule in the Bun one.",
+    "Severity 3; disposition strict (fails on every finding; no advisory mode, no ratchet baseline).",
+    "Glossary: destination_id = the `id` htmx matches an out-of-band element against; must be present in the response AND in the document, or the swap does not happen. half_assertion = a test confirming `hx-swap-oob` appears in the response and stopping there; it proves the server's half and nothing about the destination — the half a template refactor breaks."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Disposition strict: the pack fails on every finding; there is no advisory mode and no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "avoid",
+      "text": "An id assertion unrelated to the oob element's destination, just to satisfy the detector.",
+      "justification": "Metric-gaming guard required by the authoring structure; follows from the source's intent that the asserted id be the one the page will actually match."
+    },
+    {
+      "field": "activation",
+      "text": "doesNotFire: production handler/template code emitting the oob element.",
+      "justification": "Clarifies the boundary with the paired coder rule; derived from the source's split between coder and tester halves."
+    },
+    {
+      "field": "when",
+      "text": "the test case is present in the suite (new, changed or existing)",
+      "justification": "Structural trigger required by the format; deliberately non-narrowing so existing unchanged tests stay covered, as in the source."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "then"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit",
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ],
+      "note": "term id; definition carried in then/why"
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "then",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "avoid[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "avoid[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "avoid[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[0]",
+        "verifier_detail[1]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "unless[0]",
+        "activation",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[1]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "evidence[2]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "identity",
+        "verifier_detail[4]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "audit",
+        "verifier_detail[0]"
+      ]
+    }
+  ]
+}

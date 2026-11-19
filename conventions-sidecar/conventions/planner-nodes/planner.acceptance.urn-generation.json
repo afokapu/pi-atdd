@@ -1,0 +1,277 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.acceptance.urn-generation.convention.yaml",
+    "sha256": "92beb9a6073011a09762dacfd672f454d29c2a3a3038bca7796eac17b89ec533"
+  },
+  "rule_id": "planner.acceptance.urn-generation",
+  "kind": "rule",
+  "title": "Build acceptance URNs as acc:{wagon}:{wmbt_id}-{harness}-{NNN}[-{slug}] via URNBuilder.acceptance",
+  "activation": {
+    "facts": [
+      {
+        "fact": "operation",
+        "values": [
+          "create",
+          "rename"
+        ],
+        "observability": "observable_now",
+        "note": "Planner authors or renames an acceptance entry in a plan/wagon artifact."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "acceptance",
+          "wagon",
+          "wmbt",
+          "plan"
+        ],
+        "observability": "observable_now",
+        "note": "Planning artifacts that declare acceptance ids."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "acceptance",
+          "acc:",
+          "URN",
+          "acceptance id"
+        ],
+        "observability": "observable_now",
+        "note": "Task text mentions acceptances or their URNs."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "acceptance URN added or modified"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Diff-level observer that extracts acc:* strings added/changed and matches them against the acceptance_urn pattern."
+      }
+    ],
+    "fires": [
+      "Planner adds a new acceptance under a WMBT and must assign its URN.",
+      "Planner writes an acceptance URN by hand in a plan or wagon document.",
+      "Planner migrates a legacy acc:{wagon}:{nnn}:{acceptance_id} id to the new format."
+    ],
+    "doesNotFire": [
+      "Editing acceptance body text (given/when/then) without touching its URN.",
+      "Authoring URNs for non-acceptance entities (wagons, WMBTs, contracts).",
+      "Choosing which harness code exists in the vocabulary (governed by planner.acceptance.harness-vocabulary)."
+    ]
+  },
+  "given": "A planning artifact declares an acceptance tied to a WMBT within a wagon and executed by a specific harness.",
+  "when": "The planner assigns or changes that acceptance's URN.",
+  "then": "The URN must be acc:{wagon}:{wmbt_id}-{harness}-{NNN}[-{slug}], produced via URNBuilder.acceptance(wagon_id, wmbt_id, harness_code, seq, slug=None).",
+  "prefer": [
+    "Call URNBuilder.acceptance(wagon_id, wmbt_id, harness_code, seq, slug=None) rather than concatenating strings by hand.",
+    "Use colons only for hierarchy (acc:wagon:wmbt_id) and dashes for the facet cluster (-harness-NNN[-slug]).",
+    "Use a kebab-case wagon, a WMBT id of step code + 3-digit seq (e.g. C004), an UPPERCASE harness code, a per-harness sequence 001-999 (never 000), and an optional kebab-case slug for readability.",
+    "WMBT step letter must be one of D L P C E M Y R K; harness code must be one of UNIT, HTTP, EVENT, WS, E2E, A11Y, VIS, METRIC, JOB, DB, SEC, LOAD, SCRIPT, WIDGET, GOLDEN, BLOC, INTEGRATION, RLS, EDGE, REALTIME, STORAGE, SMOKE. Full pattern: ^acc:[a-z][a-z0-9-]*:[DLPCEMYRK][0-9]{3}-(UNIT|HTTP|EVENT|WS|E2E|A11Y|VIS|METRIC|JOB|DB|SEC|LOAD|SCRIPT|WIDGET|GOLDEN|BLOC|INTEGRATION|RLS|EDGE|REALTIME|STORAGE|SMOKE)-[0-9]{3}(?:-[a-z0-9-]+)?$"
+  ],
+  "avoid": [
+    "The legacy format acc:{wagon}:{nnn}:{acceptance_id} (e.g. acc:authenticate-user:001:AC-EXEC-201) — it is being migrated away.",
+    "Dropping the WMBT id or harness code from the URN, or sharing one sequence across harnesses.",
+    "Lowercase or unlisted harness codes, step letters outside D/L/P/C/E/M/Y/R/K, or non-kebab slugs."
+  ],
+  "unless": [],
+  "why": "The URN is the canonical id of an acceptance: it makes the WMBT tie explicit, bakes in harness visibility for routing, keeps a per-harness sequence, and allows an optional readability slug.",
+  "evidence": [
+    "Every new/changed acceptance URN matches the acceptance_urn pattern (prefer[3]) and its NNN is in 001-999.",
+    "URNBuilder.acceptance(\"authenticate-user\", \"C004\", \"E2E\", \"019\") -> acc:authenticate-user:C004-E2E-019",
+    "URNBuilder.acceptance(\"maintain-ux\", \"C004\", \"E2E\", \"019\", \"user-connection\") -> acc:maintain-ux:C004-E2E-019-user-connection",
+    "No URN in the legacy form acc:{wagon}:{nnn}:{acceptance_id} (e.g. acc:authenticate-user:001:AC-EXEC-201) is newly introduced."
+  ],
+  "verifier_detail": [
+    "Term acceptance_urn (label 'Acceptance URN'): the canonical id of an acceptance.",
+    "Pattern: ^acc:[a-z][a-z0-9-]*:[DLPCEMYRK][0-9]{3}-(UNIT|HTTP|EVENT|WS|E2E|A11Y|VIS|METRIC|JOB|DB|SEC|LOAD|SCRIPT|WIDGET|GOLDEN|BLOC|INTEGRATION|RLS|EDGE|REALTIME|STORAGE|SMOKE)-[0-9]{3}(?:-[a-z0-9-]+)?$ — note the regex alone accepts NNN=000; parts definition restricts NNN to 001-999 per harness.",
+    "Parts: wagon = kebab-case wagon; wmbt_id = step code + seq (C004); harness = UPPERCASE harness code; NNN = per-harness 001-999; slug = optional kebab descriptor.",
+    "Separator semantics: colon = hierarchy (acc:wagon:wmbt_id); dash = facet cluster (-harness-NNN[-slug]).",
+    "Counter-example to flag: acc:authenticate-user:001:AC-EXEC-201 (legacy acc:{wagon}:{nnn}:{acceptance_id}, being migrated)."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "kind: rule; status: active",
+    "source: legacy_path src/atdd/planner/conventions/acceptance.convention.yaml, legacy_section urn_generation, legacy_sha 027e2d86ff127550, extraction_mode high_fidelity",
+    "parity: source_fragments_preserved true, examples_preserved true, implementation_preserved false, fix_hint_preserved false, reviewed_at 2026-06-16",
+    "term_id: acceptance_urn; label: Acceptance URN; source name: Acceptance URN generation"
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "Activation facts, fires and doesNotFire cases.",
+      "justification": "Required by the schema; derived from the rule's scope (acceptance URN authoring) and the graph edge to planner.acceptance.harness-vocabulary."
+    },
+    {
+      "field": "evidence[0]",
+      "text": "Every new/changed acceptance URN matches the acceptance_urn pattern and its NNN is in 001-999.",
+      "justification": "Turns the source pattern and parts definition into a verifiable compliance check."
+    },
+    {
+      "field": "prefer[3]",
+      "text": "Coder-facing exposure of the full pattern, allowed step letters and harness codes.",
+      "justification": "Auditor required S018's construction restrictions to be visible where the planner builds URNs; this pushes coder-facing text slightly above ~1,000 chars, accepted for losslessness."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "then",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "avoid[0]",
+        "evidence[3]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "verifier_detail[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "why",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "prefer[3]",
+        "avoid[2]",
+        "evidence[0]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "prefer[2]",
+        "avoid[2]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "prefer[2]",
+        "avoid[1]",
+        "evidence[0]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[2]"
+      ]
+    }
+  ]
+}

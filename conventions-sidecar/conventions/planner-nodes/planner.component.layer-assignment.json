@@ -1,0 +1,483 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.component.layer-assignment.convention.yaml",
+    "sha256": "f3e9dedef3ed84c79586704eadb83d4d7b4e2404fe8dae446fc55568ae91bd96"
+  },
+  "rule_id": "planner.component.layer-assignment",
+  "kind": "rule",
+  "title": "Assign each component's layer from its artifact type and responsibility",
+  "activation": {
+    "facts": [
+      {
+        "fact": "phase",
+        "values": [
+          "planning"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Fires while the planner authors or revises component entries; the planning phase must be exposed by the harness."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "plan",
+          "wagon",
+          "wmbt",
+          "component-spec"
+        ],
+        "observability": "llm_judged",
+        "note": "Illustrative examples only, not an exhaustive gate: any planner artifact that declares a component with an artifact type, responsibility or layer qualifies. The source does not define a file-kind classifier."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "component_added",
+          "component_layer_changed",
+          "component_artifact_type_changed",
+          "component_responsibility_changed",
+          "component_layer_reassessed"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Diff-level fact: a component entry is added, its layer/artifact type/responsibility is edited, or an existing placement is being reviewed."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "component",
+          "layer",
+          "responsibility",
+          "publisher",
+          "emitter",
+          "tracker",
+          "handler",
+          "persister",
+          "configurator",
+          "loader"
+        ],
+        "observability": "observable_now",
+        "note": "Task text mentions components, their responsibility or layer placement."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "component_layer_assignment"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Validator test_component_layer_assignment reports a component whose layer is outside its artifact type's typical layers."
+      }
+    ],
+    "fires": [
+      "Planner adds an event-publisher component and must choose its layer",
+      "Planner declares a state-tracker component and sets its layer",
+      "Planner changes a config component's layer or artifact type",
+      "Planner changes a component's responsibility (e.g. a data component goes from coordinating a workflow to persisting to a store), so its existing placement must be reassessed",
+      "Planner reviews existing component placements in a plan",
+      "Validator flags an external event publisher assigned to the domain layer"
+    ],
+    "doesNotFire": [
+      "Coder edits implementation code without touching planned component layer assignments",
+      "Planner edits acceptance wording that changes neither the component's responsibility nor its artifact type or layer",
+      "Checking that a component has exactly one layer (covered by planner.component.layer-consistency)"
+    ]
+  },
+  "given": "A planned component has an artifact type (events, states, data or configs) and a responsibility.",
+  "when": "The planner assigns, changes or reassesses its layer, or its responsibility changes.",
+  "then": "Assign a layer from the artifact type's typical layers, chosen by responsibility: events → integration|application; states → domain|application; data → domain|application|integration; configs → application|integration.",
+  "prefer": [
+    "Events (publishers sit at boundaries): publishing to external systems → integration; emitting internal events → application.",
+    "States: tracking core business state → domain; coordinating state/lifecycle → application.",
+    "Data (spans layers by responsibility): business logic → domain; coordinating the workflow → application; persisting to a store → integration.",
+    "Configs: coordinating setup → application; loading settings (e.g. from an external config store) → integration.",
+    "Treat the mapping as the default, defensible placement, not an absolute prohibition: the rule is advisory (severity 2) — findings are reported but do not block."
+  ],
+  "avoid": [
+    "Placing an external event publisher in the domain layer.",
+    "Deciding the layer case by case or from the component name alone, ignoring its responsibility."
+  ],
+  "unless": [],
+  "why": "A typical-layer mapping per artifact type gives a default, defensible placement for each component, so layer assignment is consistent rather than guessed case by case.",
+  "evidence": [
+    "Validator test_component_layer_assignment::test_component_layer_assignment passes for the plan's components (advisory: failures are reported, not blocking).",
+    "Each component's layer is in its artifact type's typical_layers set and the stated responsibility matches the chosen layer (boundary/external or settings loading/persistence → integration, coordination → application, core business state/logic → domain).",
+    "Compliant example: a state tracker placed at backend.domain. Non-compliant: an external event publisher placed at backend.domain."
+  ],
+  "verifier_detail": [
+    "Typical-layer mapping by term_id: events_layers=[integration, application]; states_layers=[domain, application]; data_layers=[domain, application, integration]; configs_layers=[application, integration].",
+    "Layers are written qualified by side, e.g. backend.domain, backend.application, backend.integration; compare the layer suffix against typical_layers.",
+    "Term labels: events_layers 'Layers for event components'; states_layers 'Layers for state components'; data_layers 'Layers for data components'; configs_layers 'Layers for config components'.",
+    "Term rationales: events 'Event publishers at boundaries (external integration or internal application)'; states 'State trackers manage business state (domain) or coordinate (application)'; data 'Data handlers span layers based on responsibility'; configs 'Configuration components coordinate setup or load settings'.",
+    "Source illustrative examples (events): MatchStartedPublisher → backend.integration (publishes to external systems); StateCommittedEmitter → backend.application (emits internal events).",
+    "Source illustrative examples (states): TimebankTracker → backend.domain (tracks core business state); SessionManager → backend.application (coordinates session lifecycle).",
+    "Source illustrative examples (data): ChoiceMaker → backend.domain (business logic for making choice); ChoiceHandler → backend.application (coordinates choice workflow); ChoicePersister → backend.integration (persists to database).",
+    "Source illustrative examples (configs): MatchConfigurator → backend.application (coordinates match setup); ConfigLoader → backend.integration (loads from external config store). The external store is an example; loading settings in general maps to integration.",
+    "Disposition advisory, severity 2: findings are reported but do not block."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "kind: rule; status: active",
+    "name: 'Component: Layer Assignment'",
+    "implementation: validator test_component_layer_assignment::test_component_layer_assignment",
+    "source: legacy_path src/atdd/planner/conventions/component.convention.yaml, legacy_sha sha256:8bfb25fd6c2bdb6e, extraction_mode high_fidelity, legacy_section layer-assignment",
+    "metadata: severity 2, disposition advisory, introduced_in 4.28.0",
+    "parity: source_fragments_preserved, examples_preserved, implementation_preserved, fix_hint_preserved all true; reviewed_at 2026-06-16",
+    "Term ids: events_layers, states_layers, data_layers, configs_layers",
+    "Named examples (Match*, Timebank*, Session*, Choice*, ConfigLoader) come from the originating application and are kept in verifier_detail, not coder fields, for codebase neutrality."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "Activation facts, fires and doesNotFire situations (including responsibility changes and reassessment of existing placements)",
+      "justification": "Required by the target schema; derived from the source statement (layer chosen by artifact type and responsibility) and the related layer-consistency edge, not new obligations."
+    },
+    {
+      "field": "avoid",
+      "text": "Deciding the layer case by case or from the component name alone, ignoring its responsibility.",
+      "justification": "Restates the source's 'based on artifact type and responsibility' and 'rather than guessed case by case' as a concrete anti-pattern."
+    },
+    {
+      "field": "verifier_detail",
+      "text": "Compare the layer suffix (after backend.) against typical_layers.",
+      "justification": "Normalisation needed because source examples use side-qualified layers while typical_layers lists bare layer names."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Becomes the title basis"
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "when",
+        "then"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "verifier_detail[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "then",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "then",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "then",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "then",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "verifier_detail[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "then",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "then",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "then",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "verifier_detail[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "prefer[3]"
+      ],
+      "note": "Loading settings in general → integration; external config store is only an example."
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "then",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "then",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[7]"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[7]"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "audit",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "why",
+        "prefer[4]"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S045",
+      "dest": [
+        "avoid[0]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S046",
+      "dest": [
+        "identity",
+        "prefer[4]",
+        "verifier_detail[8]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S047",
+      "dest": [
+        "identity",
+        "prefer[4]",
+        "evidence[0]",
+        "verifier_detail[8]",
+        "audit"
+      ],
+      "note": "Advisory disposition exposed to the planner in prefer[4]: mapping is a default, findings do not block."
+    },
+    {
+      "seg": "S048",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S049",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

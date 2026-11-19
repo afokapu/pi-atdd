@@ -1,0 +1,473 @@
+{
+  "schema": "pi-atdd/convention-sidecar-split/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.journey.strategy.cached.convention.yaml",
+    "sha256": "cabd71aa928248f4e27150f8598db69da7c7d5800f96f21ee0b6ec449ba7dac7"
+  },
+  "source_rule_id": "planner.journey.strategy.cached",
+  "rationale": "The single rewrite had to cram three independently checkable obligations into one THEN: (1) define the reuse-safety contracts (key, freshness, invalidation, authorization, tenant isolation, side effects; hits keep required permissions/mutations), checked against plan text; (2) plan acceptances/tests for cold/warm, staleness, invalidation races, isolation, equivalence and hit-rate measurement, checked against the acceptance/WMBT artifacts; (3) the runtime boundary: this pattern is not itself a runtime dispatch option and does not license relying on unimplemented orchestration inferred from it, checked against wagon/interlocking structure. Each has different evidence and a different artifact. The source makes them jointly applicable to the same reuse decision, so the parts are linked with mutual `requires`. Previous audit defects fixed: no planning-phase gate; 'existing validators apply' is never strengthened to 'validators pass'; round 2: runtime-placement no longer prohibits all new dispatch options, only treating this pattern as providing or authorizing one.",
+  "parts": [
+    {
+      "rule_id": "planner.journey.strategy.cached.reuse-contracts",
+      "kind": "rule",
+      "title": "Cached or incremental results: define reuse-safety contracts",
+      "activation": {
+        "facts": [
+          {
+            "fact": "finding",
+            "values": [
+              "expensive repeatable read or derivation with stable identity and tractable dependencies"
+            ],
+            "observability": "llm_judged",
+            "note": "REQUIRED. All four criteria (expensive, repeatable, stable identity, tractable dependencies) must hold; judged from the work content whether or not caching is mentioned. No phase restriction."
+          },
+          {
+            "fact": "task_term",
+            "values": [
+              "cache",
+              "cached",
+              "incremental",
+              "memoize",
+              "recompute",
+              "reuse",
+              "hit rate"
+            ],
+            "observability": "observable_now",
+            "note": "OPTIONAL hint only: raises priority; neither necessary nor sufficient."
+          }
+        ],
+        "fires": [
+          "A wagon repeatedly performs an expensive read keyed by a stable identity with tractable dependencies.",
+          "An expensive derived result is requested repeatedly and only parts change between requests (incremental recompute candidate)."
+        ],
+        "doesNotFire": [
+          "A one-off or non-repeatable computation.",
+          "A cheap read where recomputation costs nothing meaningful.",
+          "Reads without stable identity or with intractable dependencies (outside this pattern's applicability; no guidance given for them)."
+        ]
+      },
+      "given": "Work includes an expensive, repeatable read or derivation with stable identities and tractable dependencies",
+      "when": "deciding to reuse its results or recompute only affected portions",
+      "then": "Reuse valid results, or recompute only affected portions, only where you define cache key, freshness, invalidation, authorization, tenant isolation and side-effect contracts that make reuse safe; a hit must never omit a required permission check or mutation.",
+      "prefer": [
+        "Reuse only where freshness and invalidation contracts make it safe."
+      ],
+      "avoid": [
+        "A cache hit that skips a required permission check or mutation."
+      ],
+      "unless": [],
+      "why": "Unsafe reuse serves stale, cross-tenant or unauthorized results and silently skips required mutations.",
+      "evidence": [
+        "The plan states cache key, freshness, invalidation, authorization, tenant isolation and side-effect handling for the reused or incrementally recomputed result.",
+        "Every planned hit path still performs required permission checks and mutations."
+      ],
+      "verifier_detail": [
+        "Advisory pattern guidance (severity 3, disposition advisory); see shared:policy.pattern-guidance — not independent enforcement; existing plan and source validators apply.",
+        "Check that no planned hit path omits a required permission or mutation."
+      ],
+      "audit": [
+        "schema_version: 1.0.0",
+        "source kind: pattern (normalized to rule; advisory pattern semantics retained)",
+        "status: active",
+        "metadata.introduced_in: 0.1.0",
+        "source name: Cached or incremental results",
+        "source term_ids: applicability, constraints"
+      ],
+      "additions": [
+        {
+          "field": "activation",
+          "text": "Activation facts, fires and doesNotFire cases.",
+          "justification": "Required by schema; derived solely from applicability term S008. No phase gate. Out-of-scope cases are described as outside applicability, not prohibited."
+        },
+        {
+          "field": "why",
+          "text": "Unsafe reuse serves stale, cross-tenant or unauthorized results and silently skips required mutations.",
+          "justification": "Rationale derived from S006/S010/S011 (freshness, tenant isolation, authorization, mutation)."
+        }
+      ]
+    },
+    {
+      "rule_id": "planner.journey.strategy.cached.reuse-tests",
+      "kind": "rule",
+      "title": "Cached or incremental results: plan reuse acceptances and hit-rate measurement",
+      "activation": {
+        "facts": [
+          {
+            "fact": "finding",
+            "values": [
+              "expensive repeatable read or derivation with stable identity and tractable dependencies, planned for reuse or incremental recompute"
+            ],
+            "observability": "llm_judged",
+            "note": "REQUIRED. Same applicability criteria as reuse-contracts. No phase restriction."
+          },
+          {
+            "fact": "task_term",
+            "values": [
+              "cache",
+              "cached",
+              "incremental",
+              "memoize",
+              "recompute",
+              "reuse",
+              "hit rate"
+            ],
+            "observability": "observable_now",
+            "note": "OPTIONAL hint only."
+          }
+        ],
+        "fires": [
+          "Writing acceptances/WMBTs for a wagon that reuses or incrementally recomputes an expensive, repeatable, stably identified result."
+        ],
+        "doesNotFire": [
+          "Results that are not reused or incrementally recomputed.",
+          "Work outside the applicability criteria (one-off, cheap, no stable identity, intractable dependencies)."
+        ]
+      },
+      "given": "Work reuses or incrementally recomputes an expensive, repeatable read or derivation with stable identities and tractable dependencies",
+      "when": "writing its acceptances or tests",
+      "then": "Include tests for cold and warm paths, staleness, invalidation races, tenant isolation and equivalence with the accepted result, and measure hit rate.",
+      "prefer": [
+        "Equivalence acceptances that compare cached/incremental output with the accepted (uncached) result."
+      ],
+      "avoid": [
+        "Treating hit rate as proof of correctness without equivalence and staleness tests."
+      ],
+      "unless": [],
+      "why": "Reuse is only trustworthy if tests show warm results equal accepted results, stay fresh and stay isolated.",
+      "evidence": [
+        "Acceptances/tests exist for cold/warm paths, staleness, invalidation races, isolation and accepted-result equivalence; hit rate is measured."
+      ],
+      "verifier_detail": [
+        "Advisory pattern guidance (severity 3, disposition advisory); see shared:policy.pattern-guidance — not independent enforcement; existing plan and source validators apply."
+      ],
+      "audit": [
+        "source term_ids: evidence",
+        "source name: Cached or incremental results"
+      ],
+      "additions": [
+        {
+          "field": "activation",
+          "text": "Activation facts, fires and doesNotFire cases.",
+          "justification": "Required by schema; derived from S008 plus the reuse decision of S006. No phase gate."
+        },
+        {
+          "field": "avoid[0]",
+          "text": "Treating hit rate as proof of correctness without equivalence and staleness tests.",
+          "justification": "Metric-gaming guard; derived from S013, which pairs hit-rate measurement with equivalence and staleness tests."
+        },
+        {
+          "field": "prefer[0]",
+          "text": "Equivalence acceptances that compare cached/incremental output with the accepted (uncached) result.",
+          "justification": "Restates S013 'accepted-result equivalence' as actionable acceptance wording; no new obligation."
+        },
+        {
+          "field": "why",
+          "text": "Reuse is only trustworthy if tests show warm results equal accepted results, stay fresh and stay isolated.",
+          "justification": "Rationale derived from S013."
+        }
+      ]
+    },
+    {
+      "rule_id": "planner.journey.strategy.cached.runtime-placement",
+      "kind": "rule",
+      "title": "Cached or incremental results: place cache work within implemented runtime",
+      "activation": {
+        "facts": [
+          {
+            "fact": "finding",
+            "values": [
+              "placement of cache/incremental work or a hit/miss route for an expensive repeatable result with stable identity and tractable dependencies"
+            ],
+            "observability": "llm_judged",
+            "note": "REQUIRED. No phase restriction."
+          },
+          {
+            "fact": "task_term",
+            "values": [
+              "cache",
+              "hit/miss",
+              "interlocking",
+              "incremental",
+              "reuse"
+            ],
+            "observability": "observable_now",
+            "note": "OPTIONAL hint only."
+          }
+        ],
+        "fires": [
+          "Deciding whether cache work lives inside a wagon or behind an explicit hit/miss route.",
+          "A plan proposes an explicit hit/miss route for a reused result."
+        ],
+        "doesNotFire": [
+          "Work outside the applicability criteria of this pattern."
+        ]
+      },
+      "given": "Work reuses or incrementally recomputes an expensive, repeatable read or derivation with stable identities and tractable dependencies",
+      "when": "deciding where the cache work or hit/miss routing runs",
+      "then": "Do not treat this pattern as providing a new runtime dispatch option, and do not plan on orchestration behavior inferred from it that is not implemented.",
+      "prefer": [
+        "Cache work can be internal to a wagon.",
+        "An explicit hit/miss route can use an existing interlocking."
+      ],
+      "avoid": [
+        "Citing this pattern as providing or authorizing a new runtime dispatch option for cache hit/miss.",
+        "Relying on unimplemented orchestration behavior inferred from this pattern."
+      ],
+      "unless": [],
+      "why": "The pattern is guidance only; plans that assume dispatch or orchestration that does not exist cannot run.",
+      "evidence": [
+        "Planned cache placement does not rely on this pattern as the source of any new runtime dispatch option (placements the pattern names include cache work internal to a wagon, or an explicit hit/miss route using an existing interlocking; these are examples, not an exhaustive or mandatory list).",
+        "The plan relies on no orchestration behavior that is unimplemented and only inferred from this pattern."
+      ],
+      "verifier_detail": [
+        "Advisory pattern guidance (severity 3, disposition advisory); see shared:policy.pattern-guidance — not independent enforcement; existing plan and source validators apply.",
+        "Flag reliance on unimplemented orchestration behavior inferred from this pattern; such behavior cannot be inferred from a pattern."
+      ],
+      "audit": [
+        "source term_ids: runtime_boundary",
+        "source notes: dispatch/orchestration limits",
+        "source name: Cached or incremental results"
+      ],
+      "additions": [
+        {
+          "field": "activation",
+          "text": "Activation facts, fires and doesNotFire cases.",
+          "justification": "Required by schema; derived from S008 and S015. No phase gate."
+        },
+        {
+          "field": "why",
+          "text": "The pattern is guidance only; plans that assume dispatch or orchestration that does not exist cannot run.",
+          "justification": "Rationale derived from S016/S018."
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "source": "planner.journey.strategy.cached.reuse-contracts",
+      "target": "planner.journey.strategy.cached.reuse-tests",
+      "type": "requires",
+      "reason": "Source makes the contracts and their evidence jointly mandatory for the same reuse decision; defining contracts without testing them would satisfy only half."
+    },
+    {
+      "source": "planner.journey.strategy.cached.reuse-tests",
+      "target": "planner.journey.strategy.cached.reuse-contracts",
+      "type": "requires",
+      "reason": "Staleness, invalidation and isolation tests are only meaningful against the defined key/freshness/invalidation/isolation contracts."
+    },
+    {
+      "source": "planner.journey.strategy.cached.reuse-contracts",
+      "target": "planner.journey.strategy.cached.runtime-placement",
+      "type": "requires",
+      "reason": "Any planned reuse must also respect the runtime boundary (pattern is not a dispatch option; no inferred orchestration)."
+    },
+    {
+      "source": "planner.journey.strategy.cached.runtime-placement",
+      "target": "planner.journey.strategy.cached.reuse-contracts",
+      "type": "requires",
+      "reason": "Placing a cache or hit/miss route implies reuse, which needs the safety contracts."
+    }
+  ],
+  "edgeRemap": [
+    {
+      "original": {
+        "source_ref": "planner.journey.strategy.cached",
+        "target_ref": "planner.journey.execution-strategies",
+        "type": "requires"
+      },
+      "remappedTo": [
+        "planner.journey.strategy.cached.reuse-contracts",
+        "planner.journey.strategy.cached.reuse-tests",
+        "planner.journey.strategy.cached.runtime-placement"
+      ],
+      "reason": "The shared applicability principles gate every part (all use the S008 applicability), and the shared evidence principles bear on every part's evidence; each part keeps the mandatory requires edge."
+    }
+  ],
+  "aliasOf": {
+    "planner.journey.strategy.cached": [
+      "planner.journey.strategy.cached.reuse-contracts",
+      "planner.journey.strategy.cached.reuse-tests",
+      "planner.journey.strategy.cached.runtime-placement"
+    ]
+  },
+  "sharedNodes": [
+    {
+      "id": "policy.pattern-guidance",
+      "kind": "policy",
+      "text": "Pattern conventions are guidance for agents, not independent enforcement; existing plan and source validators still apply."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ],
+      "note": "Recorded in reuse-contracts audit."
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "structure"
+      ],
+      "note": "Becomes the alias id (aliasOf) and the prefix of every part id."
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ],
+      "note": "kind pattern normalized to rule; recorded in reuse-contracts audit."
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "planner.journey.strategy.cached.reuse-contracts:title",
+        "planner.journey.strategy.cached.reuse-tests:title",
+        "planner.journey.strategy.cached.runtime-placement:title",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "planner.journey.strategy.cached.reuse-contracts:then",
+        "planner.journey.strategy.cached.reuse-contracts:prefer[0]",
+        "planner.journey.strategy.cached.reuse-contracts:when"
+      ],
+      "note": "Reuse/incremental recompute gated on safety contracts."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "structure"
+      ],
+      "note": "Term label; its content is the given/activation of each part."
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "planner.journey.strategy.cached.reuse-contracts:given",
+        "planner.journey.strategy.cached.reuse-contracts:activation",
+        "planner.journey.strategy.cached.reuse-tests:given",
+        "planner.journey.strategy.cached.reuse-tests:activation",
+        "planner.journey.strategy.cached.runtime-placement:given",
+        "planner.journey.strategy.cached.runtime-placement:activation"
+      ],
+      "note": "Applicability only, no phase gate; no prohibition outside it."
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "structure"
+      ],
+      "note": "Term label; content carried by reuse-contracts."
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "planner.journey.strategy.cached.reuse-contracts:then",
+        "planner.journey.strategy.cached.reuse-contracts:evidence[0]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "planner.journey.strategy.cached.reuse-contracts:then",
+        "planner.journey.strategy.cached.reuse-contracts:avoid[0]",
+        "planner.journey.strategy.cached.reuse-contracts:evidence[1]",
+        "planner.journey.strategy.cached.reuse-contracts:verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "structure"
+      ],
+      "note": "Term label; content carried by reuse-tests."
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "planner.journey.strategy.cached.reuse-tests:then",
+        "planner.journey.strategy.cached.reuse-tests:evidence[0]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "structure"
+      ],
+      "note": "Term label; content carried by runtime-placement."
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "planner.journey.strategy.cached.runtime-placement:prefer[0]",
+        "planner.journey.strategy.cached.runtime-placement:prefer[1]",
+        "planner.journey.strategy.cached.runtime-placement:evidence[0]"
+      ],
+      "note": "Permissive 'can' kept: placements are permitted, not exhaustive or mandatory."
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "shared:policy.pattern-guidance",
+        "planner.journey.strategy.cached.reuse-contracts:verifier_detail[0]",
+        "planner.journey.strategy.cached.reuse-tests:verifier_detail[0]",
+        "planner.journey.strategy.cached.runtime-placement:verifier_detail[0]",
+        "planner.journey.strategy.cached.runtime-placement:then",
+        "planner.journey.strategy.cached.runtime-placement:avoid[0]",
+        "planner.journey.strategy.cached.runtime-placement:evidence[0]"
+      ],
+      "note": "Generic 'guidance, not enforcement' to shared node; rule-specific 'this pattern is not a new runtime dispatch option' kept in runtime-placement, scoped to the pattern itself (does not forbid independently specified dispatch extensions)."
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "shared:policy.pattern-guidance",
+        "planner.journey.strategy.cached.reuse-contracts:verifier_detail[0]",
+        "planner.journey.strategy.cached.reuse-tests:verifier_detail[0]",
+        "planner.journey.strategy.cached.runtime-placement:verifier_detail[0]"
+      ],
+      "note": "Kept as 'apply', not strengthened to 'pass'."
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "planner.journey.strategy.cached.runtime-placement:then",
+        "planner.journey.strategy.cached.runtime-placement:avoid[1]",
+        "planner.journey.strategy.cached.runtime-placement:evidence[1]",
+        "planner.journey.strategy.cached.runtime-placement:verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "planner.journey.strategy.cached.reuse-contracts:verifier_detail[0]",
+        "planner.journey.strategy.cached.reuse-tests:verifier_detail[0]",
+        "planner.journey.strategy.cached.runtime-placement:verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "planner.journey.strategy.cached.reuse-contracts:verifier_detail[0]",
+        "planner.journey.strategy.cached.reuse-tests:verifier_detail[0]",
+        "planner.journey.strategy.cached.runtime-placement:verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

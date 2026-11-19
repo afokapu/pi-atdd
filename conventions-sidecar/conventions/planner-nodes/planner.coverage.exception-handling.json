@@ -1,0 +1,266 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.coverage.exception-handling.convention.yaml",
+    "sha256": "6247c74c1a8802ce953ca2197c6376300b5d2618164b2354049171f9070ccff6"
+  },
+  "rule_id": "planner.coverage.exception-handling",
+  "kind": "rule",
+  "title": "Declare coverage exceptions only through config allow-lists or draft status",
+  "activation": {
+    "facts": [
+      {
+        "fact": "layer",
+        "values": [
+          "planning"
+        ],
+        "observability": "observable_now",
+        "note": "Plan artifacts (trains, wagons, features, WMBTs, acceptances) and coverage config are identifiable by path."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "**/plan/**",
+          "**/*.wagon.yaml",
+          "**/*.train.yaml",
+          "**/*.feature*",
+          "**/.atdd/config*"
+        ],
+        "observability": "observable_now",
+        "note": "Plan artifact and config locations; exact globs depend on repository layout."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "coverage exception",
+          "allow-list",
+          "exempt",
+          "draft",
+          "orphaned feature",
+          "wagon not in train",
+          "WMBT without acceptance"
+        ],
+        "observability": "observable_now",
+        "note": "Task wording signalling an intended coverage gap."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "COVERAGE-PLAN-2.1",
+          "COVERAGE-PLAN-2.4",
+          "wagon not in any train",
+          "orphaned feature",
+          "WMBT without acceptance"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Requires coverage-detector output to know a gap exists that must either be closed or excepted."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "coverage.exceptions.* allow-list entry added/edited",
+          "artifact status set to or from draft"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Diff-level observer on config and artifact status fields."
+      }
+    ],
+    "fires": [
+      "Planner adds a utility/shared/under-development wagon that is intentionally not placed in any train.",
+      "Planner keeps a deprecated or experimental feature that no wagon/WMBT references.",
+      "Planner authors a draft or placeholder WMBT that has no acceptance yet.",
+      "A coverage check reports a gap and the planner intends to exempt rather than close it."
+    ],
+    "doesNotFire": [
+      "Planner adds a wagon to a train, or a WMBT with full acceptance coverage — no exception is needed.",
+      "Code-only changes that touch no plan artifact or coverage config.",
+      "Editing non-coverage config keys."
+    ]
+  },
+  "given": "A plan artifact (wagon, feature or WMBT) intentionally does not satisfy full coverage",
+  "when": "the planner records that coverage gap",
+  "then": "Declare the exception only through the matching coverage.exceptions.* config allow-list entry or by marking the artifact status: draft — never leave the gap undeclared.",
+  "prefer": [
+    "List wagons that are utility, shared or under development in coverage.exceptions.wagons_not_in_train.",
+    "List deprecated or experimental features in coverage.exceptions.features_orphaned.",
+    "List draft/placeholder WMBTs in coverage.exceptions.wmbts_without_acceptance.",
+    "Mark genuinely unfinished artifacts status: draft; draft status exempts them from full coverage (COVERAGE-PLAN-2.1 and COVERAGE-PLAN-2.4) only."
+  ],
+  "avoid": [
+    "Leaving a coverage gap with no allow-list entry or draft status.",
+    "Allow-listing an artifact in a list whose use case does not fit it (e.g. putting a finished, live wagon in wagons_not_in_train).",
+    "Marking finished artifacts draft just to silence coverage checks, or assuming draft exempts from checks other than COVERAGE-PLAN-2.1 and 2.4."
+  ],
+  "unless": [],
+  "why": "Coverage checks are strict; explicit, config-recorded exceptions keep intentional gaps visible and reviewable instead of hiding real missing coverage.",
+  "evidence": [
+    "Every coverage gap reported by the detector maps to an entry under the matching coverage.exceptions.* key or to an artifact with status: draft.",
+    "Draft exemptions are only applied to COVERAGE-PLAN-2.1 and COVERAGE-PLAN-2.4 findings.",
+    "Each allow-list entry fits its list's use case (utility/shared/under-development wagons; deprecated/experimental features; draft/placeholder WMBTs)."
+  ],
+  "verifier_detail": [
+    "Allow-list = config path + use case: coverage.exceptions.wagons_not_in_train (utility/shared/under-development wagons); coverage.exceptions.features_orphaned (deprecated/experimental features); coverage.exceptions.wmbts_without_acceptance (draft/placeholder WMBTs).",
+    "Status exemption: artifacts with status draft are exempt from full coverage, specifically draft_exempt_from = [COVERAGE-PLAN-2.1, COVERAGE-PLAN-2.4]; other coverage checks still apply.",
+    "Term ids: allow_list (label 'Allow-lists'), status_exemption."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "Original kind: principle; status: active.",
+    "Original name: Coverage exception handling.",
+    "Original statement: Coverage exceptions are declared via config allow-lists and status exemptions (draft artifacts are exempt from 2.1 and 2.4).",
+    "source: legacy_path src/atdd/planner/conventions/coverage.convention.yaml, legacy_section exception_handling, legacy_sha 27e800378c584902, extraction_mode high_fidelity.",
+    "parity: source_fragments_preserved true, examples_preserved false, implementation_preserved false, fix_hint_preserved false, reviewed_at 2026-06-16.",
+    "Term ids: allow_list (label 'Allow-lists'), status_exemption."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "avoid",
+      "text": "Misfiled allow-list entries and marking finished artifacts draft to silence checks.",
+      "justification": "Direct inverse of the source's per-list use cases and the draft-exempt scope; makes the anti-pattern (metric gaming) explicit for the planner."
+    },
+    {
+      "field": "activation",
+      "text": "Activation facts, fires/doesNotFire situations, and path globs.",
+      "justification": "Required by the schema; source has no activation section. Globs are indicative and layout-dependent."
+    },
+    {
+      "field": "why",
+      "text": "Rationale about keeping intentional gaps visible and reviewable.",
+      "justification": "Source states no reason; inferred from graph edge 'relieves planner.coverage.every-wmbt-must-have' (strict acceptance rule)."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Rendered as title; original name kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "prefer[3]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "verifier_detail[2]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[2]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[0]",
+        "avoid[1]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[0]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[0]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[0]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[2]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "prefer[3]",
+        "avoid[2]",
+        "verifier_detail[1]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "prefer[3]",
+        "avoid[2]",
+        "verifier_detail[1]",
+        "evidence[1]"
+      ]
+    }
+  ]
+}

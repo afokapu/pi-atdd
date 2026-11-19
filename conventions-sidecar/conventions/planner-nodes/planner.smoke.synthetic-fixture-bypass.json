@@ -1,0 +1,282 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.smoke.synthetic-fixture-bypass.convention.yaml",
+    "sha256": "60664c44ed7b0012b6d1ad02b7b2a57e76d60cb6155388de12b5865fd1fbe8b7"
+  },
+  "rule_id": "planner.smoke.synthetic-fixture-bypass",
+  "kind": "rule",
+  "title": "SMOKE must drive the real entry point, not a synthetic fixture",
+  "activation": {
+    "facts": [
+      {
+        "fact": "phase",
+        "values": [
+          "SMOKE"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Needs an observer that knows the test (or the plan/acceptance/WMBT specifying it) is in the SMOKE phase, e.g. SMOKE-tagged acceptance or test id."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "smoke",
+          "SMOKE",
+          "end-to-end",
+          "launch",
+          "spawn"
+        ],
+        "observability": "observable_now",
+        "note": "Task/plan text mentions planning, writing or fixing SMOKE tests or the launch path."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "test",
+          "acceptance",
+          "plan"
+        ],
+        "observability": "observable_now",
+        "note": "SMOKE test files themselves, and planner artifacts that specify SMOKE tests."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "smoke_test_added",
+          "smoke_test_modified"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Diff-level observer for SMOKE tests being written or modified (not just planned)."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "synthetic_fixture_in_smoke"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Detector for banned fixtures (FakeMultiplexer, Popen of cat/sleep/python -c, _SYNTHETIC_AGENT) used as primary wiring in a SMOKE test."
+      }
+    ],
+    "fires": [
+      "A SMOKE acceptance/WMBT or plan specifies a test that drives a fake multiplexer or a subprocess stub instead of the real CLI entry point.",
+      "A SMOKE-phase test is written or modified so it launches Popen(['python','-c',...]) or an embedded synthetic agent script as the agent command.",
+      "An existing SMOKE test proves the launch path only via Popen(['cat',...]) or Popen(['sleep',...])."
+    ],
+    "doesNotFire": [
+      "Unit or integration (non-SMOKE) tests that use a fake multiplexer or subprocess stub to isolate a component.",
+      "A SMOKE test that drives the real CLI entry point (spawn, coach, or rendered launch prompt) and writes agent scripts to temporary files.",
+      "A SMOKE test carrying a valid, unexpired dated inline suppression for this rule."
+    ]
+  },
+  "given": "A SMOKE-phase test of the agent launch / production wiring is planned (plan, acceptance, WMBT), written or modified.",
+  "when": "Choosing what the SMOKE test drives as its primary production wiring.",
+  "then": "The SMOKE test must drive the real CLI entry point (spawn, coach, or the rendered launch prompt), not a synthetic subprocess stub or fake multiplexer.",
+  "prefer": [
+    "Run the real CLI as a subprocess (subprocess.run([sys.executable, -m, atdd.cli, spawn, ...])) or use invoke_atdd_spawn, driving the real cmux-native launch path.",
+    "Write agent scripts to tmp_path files."
+  ],
+  "avoid": [
+    "FakeMultiplexer as SMOKE wiring (bypasses real surface dispatch).",
+    "Popen of cat, sleep or python -c as the agent command (pty wrapper / lifecycle only / bypasses adapter command construction).",
+    "Agent scripts embedded as string constants (e.g. _SYNTHETIC_AGENT).",
+    "Treating a green SMOKE suite as proof when it only proves the harness."
+  ],
+  "unless": [
+    "Inline '# atdd:suppress(planner.smoke.synthetic-fixture-bypass) UNTIL=YYYY-MM-DD'; the debt expires on that date."
+  ],
+  "why": "A stubbed SMOKE test proves the harness, not the product, and is green precisely where real wiring is untested. Incident #854: a Popen crash (missing shell=True on the adapter command tuple) stayed invisible because SMOKE used a Python stub.",
+  "evidence": [
+    "SMOKE test invokes the real CLI entry point (atdd spawn / atdd coach / rendered launch prompt) or invoke_atdd_spawn, exercising real adapter command construction and the cmux-native launch path.",
+    "No banned fixture (FakeMultiplexer, Popen(['cat'|'sleep'|'python','-c',...]), _SYNTHETIC_AGENT) appears as primary wiring in SMOKE tests, unless under an unexpired dated suppression.",
+    "Agent scripts are written to tmp_path files rather than embedded as string constants."
+  ],
+  "verifier_detail": [
+    "Banned fixtures in SMOKE-phase tests: FakeMultiplexer (bypasses real surface dispatch); Popen(['cat',...]) (exercises the pty wrapper, not the agent command); Popen(['sleep',...]) (proves process lifecycle, not agent behaviour); Popen(['python','-c',...]) (bypasses adapter command construction); _SYNTHETIC_AGENT (embedded script constant replacing the real adapter command).",
+    "Real entry points: atdd spawn, atdd coach, and the rendered launch prompt — the surfaces that exercise real adapter command construction and the cmux-native launch path. Accepted forms include subprocess.run([sys.executable, -m, atdd.cli, spawn, ...]) and the invoke_atdd_spawn helper.",
+    "Suppression: inline '# atdd:suppress(planner.smoke.synthetic-fixture-bypass) UNTIL=YYYY-MM-DD'; dated so the debt expires — expired suppressions do not suppress.",
+    "Disposition suppress-and-clean, severity 3."
+  ],
+  "audit": [
+    "schema_version 1.0.0; kind anti_pattern; status active; introduced_in 3.83.0.",
+    "implementation: validator conventions/policy/test_smoke_synthetic_fixture_bypass::test_fault_injection_legacy_parity.",
+    "source: legacy_path src/atdd/tester/conventions/smoke.convention.yaml, section synthetic_fixture_anti_patterns, legacy_rule_id planner.smoke.synthetic-fixture-bypass, extraction_mode high_fidelity.",
+    "Rationale label: 'The real-entry-point mandate.' Lineage: incident #854 (E003-SMOKE tests used a Python stub that never exercised the real command-construction path); issues #860/#862.",
+    "Term ids: banned_fixtures, real_entry_points, suppression."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "Activation facts, fires/doesNotFire situations (incl. non-SMOKE unit/integration tests not firing; planning as well as writing/modifying SMOKE tests).",
+      "justification": "Schema requires observable activation; derived from the source's SMOKE-phase scope and banned-fixture list. Planning context added because the audience is the planner; the obligation itself stays on the SMOKE test."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "when",
+        "then",
+        "avoid[0]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ],
+      "note": "Label of the rationale; content restated by then."
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "avoid[0]",
+        "avoid[1]",
+        "avoid[2]",
+        "verifier_detail[0]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "then",
+        "prefer[0]",
+        "verifier_detail[1]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "why",
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[1]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "prefer[1]",
+        "avoid[2]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "identity",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "identity",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

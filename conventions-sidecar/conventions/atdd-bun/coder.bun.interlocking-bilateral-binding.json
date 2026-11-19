@@ -1,0 +1,691 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.bun/coder.bun.interlocking-bilateral-binding.convention.yaml",
+    "sha256": "6d36fcd234f9c0121443cd0123c500139155f1297663a0c31c44afcaa7ab7053"
+  },
+  "rule_id": "coder.bun.interlocking-bilateral-binding",
+  "kind": "rule",
+  "title": "Keep interlocking declaration, runtime, Station Master and trace bilaterally bound (Bun)",
+  "activation": {
+    "facts": [
+      {
+        "fact": "path_glob",
+        "values": [
+          "plan/_trains/_interlockings/**",
+          "plan/_trains/*.yaml",
+          "server.ts",
+          "src/trains/**",
+          "e2e/**"
+        ],
+        "observability": "observable_now",
+        "note": "The surfaces the detector walks: interlocking YAML route space, train artifacts, Station Master JOURNEY_MAP, InterlockingRunner runtime, e2e trace tests. Presence of either the route space or an InterlockingRunner makes the tree an interlocking system."
+      },
+      {
+        "fact": "language",
+        "values": [
+          "typescript",
+          "bun"
+        ],
+        "observability": "observable_now",
+        "note": "Bun-stack rendering only; other stacks own their own packages."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "interlocking route/entrypoint declared, edited or removed",
+          "train artifact added, renamed or deleted",
+          "routeId/trainId literal added in runtime",
+          "InterlockingRunner resolution or TrainRunner delegation edited",
+          "trace emission added, edited or removed",
+          "JOURNEY_MAP interlocking mapping added, edited or removed",
+          "trace assertion added or edited",
+          "reachability field added to interlocking YAML"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Diff-level facts; needs an observer that classifies the edit by binding surface. Not edit-only: existing violations are covered by the finding fact."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "bun_interlocking_binding:declaration_to_runtime",
+          "bun_interlocking_binding:runtime_to_declaration",
+          "bun_interlocking_binding:station_to_declaration",
+          "bun_interlocking_binding:declaration_to_station",
+          "bun_interlocking_binding:trace_to_declaration",
+          "bun_interlocking_binding:schema_drift"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Detector findings on the whole consumer tree (including pre-existing violations in unchanged files) must be surfaced to the activation layer with the failing direction."
+      }
+    ],
+    "fires": [
+      "A Bun consumer repo has (or gains) a declared interlocking route whose train artifact does not exist, e.g. a route added or a train artifact deleted/renamed.",
+      "InterlockingRunner code returns a routeId/selectedTrainId literal not declared in any interlocking YAML.",
+      "A JOURNEY_MAP interlocking mapping points at a path with no YAML or an undeclared interlockingId.",
+      "An interlocking marked entrypoint.exposed=true has none of its entrypoint.actions wired in JOURNEY_MAP.",
+      "An executed interlocking route emits no trace metadata, or emits trace interlockingId/routeId values that do not resolve to the declared YAML.",
+      "An e2e trace test asserts a trace.routeId/interlockingId absent from the declared route space.",
+      "An interlocking YAML gains a field such as `reachability` or `station_actions` instead of core `entrypoint`.",
+      "The detector reports an existing binding violation in a tree the task did not otherwise touch on that surface.",
+      "A repo has an InterlockingRunner but no interlocking route space (or vice versa)."
+    ],
+    "doesNotFire": [
+      "A consumer tree with neither an interlocking route space nor an InterlockingRunner.",
+      "An interlocking with entrypoint.exposed:false lacking a JOURNEY_MAP action (only the declaration_to_station direction is exempt).",
+      "A non-Bun stack rendering of interlocking (owned by its own workspace package)."
+    ]
+  },
+  "given": "A Bun consumer repo with an interlocking route space (plan/_trains/_interlockings/**) or an InterlockingRunner",
+  "when": "you add, change or delete any binding surface (interlocking YAML, train artifact, runtime resolver/delegation, JOURNEY_MAP, trace emission or e2e trace test), or the detector reports a binding violation",
+  "then": "Keep all five directions closed: every declared route resolves through InterlockingRunner to its declared trainId (train artifact exists); the runtime resolves only declared routeIds/trainIds before TrainRunner delegation; every JOURNEY_MAP mapping points at an existing declared interlocking; every entrypoint.exposed=true interlocking is reachable via one of its entrypoint.actions; every executed route emits trace metadata whose interlockingId/routeId resolve to the declared YAML.",
+  "prefer": [
+    "Close the direction named in the violation: add the missing train artifact; remove or declare a hidden routeId/trainId literal; repoint the JOURNEY_MAP path at the real YAML; wire the exposed interlocking's entrypoint.action into JOURNEY_MAP; assert only declared trace interlockingId/routeId values.",
+    "If an interlocking is genuinely internal, set entrypoint.exposed:false with a reason instead of wiring it.",
+    "Read core `entrypoint.exposed`/`entrypoint.actions` as owned by core; follow core if its name or shape changes.",
+    "Follow the additive call chain (core runtime spec #1251): interlocking YAML -> entrypoint.actions[] -> JOURNEY_MAP action -> InterlockingRunner.resolveTrain(...) -> InterlockingResolution(routeId, trainId, category, guardId, resolutionStrategy, ...) -> TrainRunner.execute(selectedTrainId) -> trace(interlockingId, routeId, selectedTrainId, ...), so the validator can resolve the trace back to the YAML route."
+  ],
+  "avoid": [
+    "Hidden routes: runtime routeId/selectedTrainId literals declared in no interlocking YAML.",
+    "Parallel reachability fields (`entrypoints`, `runtime_exposure`, `station_actions`, `exposed_actions`, `reachability`) that fork core `entrypoint` — schema drift; replace them with core `entrypoint`.",
+    "Dangling JOURNEY_MAP mappings, executed routes without trace emission, or trace assertions on undeclared values."
+  ],
+  "unless": [
+    "Interlockings with entrypoint.exposed:false (internal-transition-only / library-only / planned-not-exposed) carry no Station-Master-reachability (declaration_to_station) obligation.",
+    "A tree with no interlocking route space and no InterlockingRunner is not an interlocking system; the rule does not bite."
+  ],
+  "why": "Bilateral binding is what makes interlocking a route-control system rather than a description; any broken direction lets declaration, runtime, Station Master and trace drift apart silently, so it blocks CI.",
+  "evidence": [
+    "bun_interlocking_binding reports no violation for any of the five directions or schema drift on the consumer tree.",
+    "Each violation names its failing `direction` in evidence; the fix closes that direction.",
+    "Detector fails on fixtures/dirty (declaration_to_runtime), fixtures/dirty_runtime_hidden (runtime_to_declaration), fixtures/dirty_station_missing (station_to_declaration), fixtures/dirty_unreachable (declaration_to_station), fixtures/dirty_trace (trace_to_declaration) and passes the clean tree."
+  ],
+  "verifier_detail": [
+    "One JS detector `bun_interlocking_binding` walks plan/_trains/_interlockings/** (route space), server.ts (Station Master JOURNEY_MAP), src/trains/** (InterlockingRunner runtime) and e2e/** (trace tests), emitting RAW v1.1 violations under this single rule_id with the failing `direction` in evidence, plus a schema-drift signal when a parallel reachability field is used instead of core #1248 `entrypoint`.",
+    "declaration_to_runtime: every declared route resolves through InterlockingRunner to the declared trainId — the route's train artifact (train_path / plan/_trains/<train_id>.yaml) must exist so the runtime can load it. Fail fixture: fixtures/dirty.",
+    "runtime_to_declaration: InterlockingRunner never resolves a routeId/trainId absent from the loaded YAML; a runtime returning a routeId/selectedTrainId literal not declared in any interlocking is a hidden route. Fail fixture: fixtures/dirty_runtime_hidden.",
+    "station_to_declaration: every Station Master interlocking mapping ({interlockingId, path}) points to an existing interlocking YAML; a mapping whose path resolves to no file or names an undeclared interlockingId is a dangling route. Fail fixture: fixtures/dirty_station_missing.",
+    "declaration_to_station: every interlocking with core entrypoint.exposed=true is Station-Master-reachable through one of its core entrypoint.actions wired into JOURNEY_MAP to that interlocking. Consumes core afokapu/atdd#1248 entrypoint.exposed + entrypoint.actions; defines no parallel reachability field. Fail fixture: fixtures/dirty_unreachable.",
+    "trace_to_declaration: every executed interlocking route emits trace metadata resolving back to the source YAML; a trace test asserting trace.routeId / trace.interlockingId values absent from the declared route space does not bind the run to its declaration (core afokapu/atdd#1251 trace contract). Fail fixture: fixtures/dirty_trace.",
+    "Call model whose closure is enforced (core runtime spec afokapu/atdd#1251, additive): plan/_trains/_interlockings/<id>.yaml (declaration, core #1248) -> entrypoint.actions[] (core #1248 entrypoint field, CONSUMED here) -> Station Master JOURNEY_MAP action (reachability, server.ts) -> InterlockingRunner.resolveTrain(...) (runtime, core #1251) -> InterlockingResolution(routeId, trainId, category, guardId, resolutionStrategy, ...) -> TrainRunner.execute(selectedTrainId) (delegation) -> trace(interlockingId, routeId, selectedTrainId, ...) -> validator resolves the trace back to the YAML route.",
+    "Ownership split (collision prevention): core afokapu/atdd#1248/#1249 own the interlocking YAML schema and the shape/allowed values of `entrypoint`; this extension only READS those core fields to validate reachability against Station Master and runtime traces in a consumer repo. It MUST NOT introduce `entrypoints`, `runtime_exposure`, `station_actions`, `exposed_actions`, `reachability` or any other parallel reachability field. If core #1248 changes the field name or shape, this rule follows core and updates its detector/fixtures.",
+    "Term parallel_reachability_field: any non-core reachability field (entrypoints, runtime_exposure, station_actions, exposed_actions, reachability) that forks core afokapu/atdd#1248's `entrypoint`; using one is schema drift.",
+    "Term hidden_route: a routeId/selectedTrainId the InterlockingRunner runtime resolves that is declared in no interlocking YAML — a runtime-to-declaration binding break.",
+    "Term bilateral_binding: the property that interlocking declaration, runtime resolution, Station Master reachability and execution trace are bound in both directions so none can drift from the others undetected.",
+    "The detector emits RAW facts only; the strict verdict is applied by a downstream gate.",
+    "Scope: Bun stack only; per-stack renderings other than Bun are owned by their own workspace packages."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "implementation: {type: validator, ref: coder.bun.interlocking-bilateral-binding}.",
+    "aliases: BUN-INTERLOCKING-BILATERAL-BINDING-001.",
+    "severity 1, disposition strict. Disposition justification: a broken binding direction — unresolvable declared route, hidden runtime route, dangling Station Master mapping, unreachable exposed interlocking, or a trace not resolving to its declaration — is the exact silent-drift failure class the train-interlocking design (afokapu/atdd#1246) exists to close; it therefore blocks CI.",
+    "Bun-stack realization of the agnostic core obligation `coder.train.interlocking-bilateral-binding`; rendered for the Bun backend.",
+    "core_design_refs: afokapu/atdd#1246, afokapu/atdd#1248, afokapu/atdd#1249, afokapu/atdd#1251.",
+    "Per boundary spec §6.2 the core contracts are referenced NARRATIVELY, and the core `entrypoint` field is CONSUMED, never forked.",
+    "Closure surfaces: declaration (interlocking YAML route space, core #1248), runtime resolution (InterlockingRunner, core #1251), Station Master reachability (server.ts JOURNEY_MAP), TrainRunner delegation, execution trace."
+  ],
+  "splitSuggestion": [
+    {
+      "id": "coder.bun.interlocking-entrypoint-no-schema-fork",
+      "then": "Express interlocking reachability only through core `entrypoint.exposed`/`entrypoint.actions`; never add a parallel reachability field.",
+      "segments": [
+        "S020",
+        "S037",
+        "S038",
+        "S039",
+        "S040",
+        "S041",
+        "S042",
+        "S043",
+        "S044",
+        "S052",
+        "S070",
+        "S075",
+        "S076"
+      ]
+    }
+  ],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "strict: a finding is not advisory; a strict finding blocks CI."
+    }
+  ],
+  "additions": [
+    {
+      "field": "split_suggestion",
+      "text": "The schema-drift obligation (no parallel reachability field; consume core `entrypoint`) is independent of the five-direction closure and could be its own convention; kept here in avoid/prefer/verifier_detail since the source detector emits it under this rule_id.",
+      "justification": "Rule 2: one obligation in then."
+    },
+    {
+      "field": "then",
+      "text": "The five directions are merged into one closure obligation; coder-facing text (~2,000 chars) exceeds the ~1,000-character guideline because the five directions, both exceptions and the runtime call chain (InterlockingResolution fields, TrainRunner.execute(selectedTrainId), trace payload) must be visible to the coder.",
+      "justification": "Lossless placement wins over brevity; auditor required the runtime call chain and trace emission to be coder-facing."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "when",
+        "then",
+        "prefer[3]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "then",
+        "why"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit",
+        "verifier_detail[0]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "then",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "then",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[1]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "then",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "then",
+        "avoid[0]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[2]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "then",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "then",
+        "avoid[2]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "verifier_detail[3]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "then",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "then",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "avoid[1]",
+        "prefer[2]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "verifier_detail[4]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "then",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "then",
+        "avoid[2]",
+        "activation",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "verifier_detail[5]",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "audit",
+        "why"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "verifier_detail[0]",
+        "activation",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "prefer[3]",
+        "then",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "verifier_detail[7]",
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "verifier_detail[7]",
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "verifier_detail[7]"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "verifier_detail[7]"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "verifier_detail[7]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "verifier_detail[7]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "verifier_detail[7]",
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "verifier_detail[7]",
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S045",
+      "dest": [
+        "prefer[0]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S046",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S047",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S048",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S049",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S050",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S051",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S052",
+      "dest": [
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S053",
+      "dest": [
+        "shared:policy.strict-disposition",
+        "why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S054",
+      "dest": [
+        "shared:policy.strict-disposition",
+        "why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S055",
+      "dest": [
+        "unless[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S056",
+      "dest": [
+        "unless[1]",
+        "given",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S057",
+      "dest": [
+        "activation",
+        "verifier_detail[12]"
+      ]
+    },
+    {
+      "seg": "S058",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S059",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S060",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S061",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S062",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S063",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S064",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S065",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S066",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S067",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S068",
+      "dest": [
+        "why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S069",
+      "dest": [
+        "verifier_detail[11]"
+      ]
+    },
+    {
+      "seg": "S070",
+      "dest": [
+        "audit",
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S071",
+      "dest": [
+        "verifier_detail[10]"
+      ]
+    },
+    {
+      "seg": "S072",
+      "dest": [
+        "verifier_detail[10]"
+      ]
+    },
+    {
+      "seg": "S073",
+      "dest": [
+        "verifier_detail[9]",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S074",
+      "dest": [
+        "verifier_detail[9]",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S075",
+      "dest": [
+        "verifier_detail[8]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S076",
+      "dest": [
+        "verifier_detail[8]",
+        "avoid[1]"
+      ]
+    }
+  ]
+}

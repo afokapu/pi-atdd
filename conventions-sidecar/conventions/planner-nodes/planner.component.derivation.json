@@ -1,0 +1,692 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.component.derivation.convention.yaml",
+    "sha256": "b36b94a289085626449e7ddf9ec550a80363210650e0f8e240b2183a3cc492f0"
+  },
+  "rule_id": "planner.component.derivation",
+  "kind": "rule",
+  "title": "Derive components from the feature's ioSeeds and WMBT verbs",
+  "activation": {
+    "facts": [
+      {
+        "fact": "task_term",
+        "values": [
+          "component",
+          "components",
+          "ioSeeds",
+          "WMBT",
+          "feature",
+          "wagon"
+        ],
+        "observability": "observable_now",
+        "note": "Lexical hint: task text mentions components, ioSeeds, WMBTs or features. Fires regardless of whether the feature currently has ioSeeds or WMBTs; with neither present, the rule still applies and forbids inventing components."
+      },
+      {
+        "fact": "operation",
+        "values": [
+          "plan",
+          "author_components",
+          "rederive_components"
+        ],
+        "observability": "llm_judged",
+        "note": "Whether the planner is generating, adding or re-deriving a feature's components (not merely editing prose) is judged from the task."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "component_added_to_plan",
+          "component_changed_in_plan",
+          "feature_ioSeeds_or_wmbts_changed"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Needs a diff-level observer detecting component entries added/changed in planning artifacts, or ioSeeds/WMBT edits on a feature that already has components."
+      },
+      {
+        "fact": "phase",
+        "values": [
+          "planning"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Planner phase is not currently emitted as an observable fact."
+      }
+    ],
+    "fires": [
+      "Planner generates the component list for a feature that has ioSeeds, WMBTs, or both.",
+      "Planner generates components for a feature that has only WMBTs (no ioSeeds), or only ioSeeds (no WMBTs).",
+      "Planner is asked to generate or add components for a feature that has neither ioSeeds nor WMBTs: the rule fires and any component without a trigger is rejected as invented.",
+      "Planner adds a new component to an existing feature plan.",
+      "Planner revises a feature's WMBTs or ioSeeds and re-derives its existing components."
+    ],
+    "doesNotFire": [
+      "Planner edits a feature's description or acceptance wording without touching components, ioSeeds or WMBTs.",
+      "Coder implements an already-planned component in code.",
+      "Planner authors wagon-level docs that list no components."
+    ]
+  },
+  "given": "A feature's components are being planned, whatever ioSeeds (consume/produce) or WMBTs the feature currently has, including none",
+  "when": "the planner generates, adds or re-derives that feature's components",
+  "then": "Derive each component from a concrete ioSeed trigger or WMBT verb in the feature, with the business capability and layer the derivation map gives that trigger.",
+  "prefer": [
+    "Steps: analyze ioSeeds/WMBTs → identify needed capabilities → assign layers → generate up to 8 components with complete structure → confirm all feature needs are covered.",
+    "ioSeeds map: produce event:*/notification:* → event publishing (application|integration); consume event:*/notification:* → event handling (application|integration); consume command:* → command processing (application); produce query:* → query handling (application|domain).",
+    "WMBT verbs map: validate/verify/check → validator (domain); process/compute/calculate → processor (application|domain); display/show/render → display (presentation); store/save/persist → persister (integration); coordinate/orchestrate/manage → coordinator (application).",
+    "Examples: WMBT 'persist choice' → ChoicePersister at integration; ioSeeds.consume has command:* → command-processing component at application.",
+    "Where the map allows two layers (a|b), either listed layer complies; the source gives no tie-breaker, so record which trigger justified the chosen layer.",
+    "If the feature has neither ioSeeds nor WMBTs, or covering every trigger would need more than 8 components, report that conflict instead of inventing components, exceeding the cap or silently dropping coverage."
+  ],
+  "avoid": [
+    "Inventing a component with no ioSeed or WMBT trigger behind it.",
+    "More than 8 components for one feature.",
+    "Leaving an ioSeed trigger or WMBT need uncovered."
+  ],
+  "unless": [],
+  "why": "Deriving components from ioSeeds and WMBTs keeps generation systematic and traceable: every component exists because a concrete trigger in the feature called for it.",
+  "evidence": [
+    "Each planned component can be traced to an ioSeed entry or WMBT verb of the feature.",
+    "Each component's business capability and layer match the derivation map entry for its trigger.",
+    "The feature has at most 8 components.",
+    "Every ioSeed trigger and WMBT need of the feature is covered by at least one component.",
+    "A feature with neither ioSeeds nor WMBTs has no derived components; any component listed for it is a finding."
+  ],
+  "verifier_detail": [
+    "Derivation from ioSeeds (from_io_seeds): ioSeeds triggers generate components with event-publishing, event-handling, command-processing, or query-handling capability. produce_events: trigger feature.ioSeeds.produce contains event:* or notification:* → Component with event publishing capability, layer application or integration. consume_events: trigger feature.ioSeeds.consume contains event:* or notification:* → Component with event handling capability, layer application or integration. consume_commands: trigger feature.ioSeeds.consume contains command:* → Component with command processing capability, layer application. produce_queries: trigger feature.ioSeeds.produce contains query:* → Component with query handling capability, layer application or domain.",
+    "Derivation from WMBT analysis (from_wmbt_analysis): WMBT verbs generate validation, processing, presentation, persistence, or coordination components with a business capability and layer. validation_needs: WMBTs contain 'validate','verify','check' → Validation component, business_capability validator, layer domain. processing_needs: 'process','compute','calculate' → Processing component, processor, application or domain. presentation_needs: 'display','show','render' → Presentation component, display, presentation. persistence_needs: 'store','save','persist' → Persistence component, persister, integration. coordination_needs: 'coordinate','orchestrate','manage' → Coordination component, coordinator, application.",
+    "Component generation strategy (generation_strategy): the end-to-end strategy from feature analysis to validated components. step_1_analyze: analyze feature ioSeeds and WMBTs; step_2_identify: identify needed business capabilities; step_3_assign: assign capabilities to appropriate layers; step_4_generate: generate up to 8 components with complete structure; step_5_validate: ensure all feature needs covered by components.",
+    "Feature-to-component mapping example (mapping_example, binary_choice_feature): a binary-choice feature with consume/produce ioSeeds and WMBTs maps to validator, processor, and display components. Input ioSeeds.consume: [dilemma:presented]; ioSeeds.produce: [decision:made]; wmbts: [validate options, process choice, display result]. Output components: option-validator @ domain (reason: WMBT mentions validation); choice-processor @ application (reason: WMBT mentions processing); result-display @ presentation (reason: WMBT mentions display).",
+    "Examples: WMBT 'persist choice' → ChoicePersister at integration; feature.ioSeeds.consume contains command:* → command-processing component at application. Counter-example: inventing a component with no ioSeed or WMBT trigger behind it.",
+    "Applicability does not depend on ioSeeds/WMBTs being present: when both are absent, every component in the feature is untriggered and therefore a counter-example finding."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "kind: rule; status: active",
+    "implementation: {type: none}",
+    "source: legacy_path src/atdd/planner/conventions/component.convention.yaml, legacy_sha sha256:8bfb25fd6c2bdb6e, extraction_mode high_fidelity, legacy_section derivation",
+    "parity: source_fragments_preserved, examples_preserved, implementation_preserved, fix_hint_preserved all true; reviewed_at 2026-06-16",
+    "name: 'Component: Derivation'",
+    "term ids: from_io_seeds, from_wmbt_analysis, generation_strategy, mapping_example"
+  ],
+  "splitSuggestion": [
+    {
+      "id": "planner.component.coverage",
+      "then": "Ensure every ioSeed trigger and WMBT need of a feature is covered by at least one component.",
+      "segments": [
+        "S059"
+      ]
+    },
+    {
+      "id": "planner.component.limit",
+      "then": "Generate at most 8 components per feature, each with complete structure.",
+      "segments": [
+        "S058"
+      ]
+    }
+  ],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "evidence",
+      "text": "Evidence items (traceable trigger, map match, ≤8 components, full coverage, no components for a trigger-less feature).",
+      "justification": "Source has no evidence section; these restate source content (statement, strategy steps 4–5, counter-example) as reviewer checks. No new documentation requirement beyond prefer[4]/prefer[5]."
+    },
+    {
+      "field": "split_suggestion",
+      "text": "Coverage (step 5) and the 8-component cap (step 4) are independent obligations; suggested as planner.component.coverage and planner.component.limit. Kept here as prefer/avoid since they are part of the same derivation decision.",
+      "justification": "One-obligation rule."
+    },
+    {
+      "field": "activation",
+      "text": "Activation facts, fires and doesNotFire, including re-derivation when ioSeeds/WMBTs change and the no-trigger case (feature with neither ioSeeds nor WMBTs).",
+      "justification": "Source has no activation metadata; derived from statement scope and counter-example S012, which must be enforced precisely when no trigger exists."
+    },
+    {
+      "field": "prefer",
+      "text": "prefer[4]: where the map allows two layers, either complies; record the justifying trigger.",
+      "justification": "Source lists alternative layers without a selection criterion; this states that both are compliant (no new restriction) and asks only for traceability already implied by the summary (S009)."
+    },
+    {
+      "field": "prefer",
+      "text": "prefer[5]: report rather than resolve silently when there is no trigger at all or when full coverage would exceed 8 components.",
+      "justification": "Source steps 4 and 5 and counter-example S012 can conflict; source offers no reconciliation, so the planner surfaces the conflict instead of breaking one of them."
+    },
+    {
+      "field": "verifier_detail",
+      "text": "verifier_detail[5]: applicability independent of ioSeeds/WMBT presence.",
+      "justification": "Fixes activation fidelity so the anti-invention counter-example is enforced in the no-trigger case."
+    },
+    {
+      "field": "note",
+      "text": "Coder-facing text exceeds ~1,000 characters because the two trigger→capability/layer maps are the decision content the planner needs.",
+      "justification": "Losslessness wins over brevity."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "given",
+        "when",
+        "prefer[1]",
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "avoid[0]",
+        "verifier_detail[4]",
+        "verifier_detail[5]",
+        "evidence[4]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "audit",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[0]",
+        "prefer[1]"
+      ],
+      "note": "Label 'Derivation from ioSeeds' heads verifier_detail[0]; prefer[1] is the 'ioSeeds map'."
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "prefer[1]",
+        "prefer[4]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "prefer[1]",
+        "prefer[4]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "prefer[1]",
+        "prefer[4]",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "audit",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "verifier_detail[1]",
+        "prefer[2]"
+      ],
+      "note": "Label 'Derivation from WMBT analysis' heads verifier_detail[1]; prefer[2] is the 'WMBT verbs map'."
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "prefer[2]",
+        "prefer[4]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S045",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S046",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S047",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S048",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S049",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S050",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S051",
+      "dest": [
+        "prefer[2]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S052",
+      "dest": [
+        "audit",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S053",
+      "dest": [
+        "verifier_detail[2]",
+        "prefer[0]"
+      ],
+      "note": "Label 'Component generation strategy' heads verifier_detail[2]; prefer[0] carries the steps."
+    },
+    {
+      "seg": "S054",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S055",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S056",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S057",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S058",
+      "dest": [
+        "prefer[0]",
+        "prefer[5]",
+        "avoid[1]",
+        "evidence[2]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S059",
+      "dest": [
+        "prefer[0]",
+        "prefer[5]",
+        "avoid[2]",
+        "evidence[3]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S060",
+      "dest": [
+        "audit",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S061",
+      "dest": [
+        "verifier_detail[3]"
+      ],
+      "note": "Label 'Feature-to-component mapping example' heads verifier_detail[3]."
+    },
+    {
+      "seg": "S062",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S063",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S064",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S065",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S066",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S067",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S068",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S069",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S070",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S071",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S072",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S073",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S074",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S075",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S076",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    }
+  ]
+}

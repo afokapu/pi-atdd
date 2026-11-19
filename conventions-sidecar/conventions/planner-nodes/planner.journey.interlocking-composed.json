@@ -1,0 +1,299 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.journey.interlocking-composed.convention.yaml",
+    "sha256": "91d3f1a9061a1fccaeeb52a07f1459f93f665d310dc453fecbd5db23c603a7ec"
+  },
+  "rule_id": "planner.journey.interlocking-composed",
+  "kind": "rule",
+  "title": "Compose every interlocking into a journey",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "plan"
+        ],
+        "observability": "observable_now",
+        "note": "Plan artifacts are identifiable by path/kind. The rule is state-based: it applies to any plan whose current content declares one or more interlockings, whatever was or was not edited."
+      },
+      {
+        "fact": "phase",
+        "values": [
+          "CONFIRM"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Validation runs at CONFIRM and its findings block CONFIRM; the harness must report the current phase."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "interlocking"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Whether the plan declares interlockings must be read from the plan graph (validation subject_kind: interlocking); a plan-graph observer is needed. No particular edit or preexisting finding is required for activation."
+      }
+    ],
+    "fires": [
+      "At CONFIRM, a plan declares interlockings but declares no journey (vacuous topology): every interlocking is reported.",
+      "At CONFIRM, a plan declares journeys, but an interlocking is neither a journey entrypoint nor the destination of any continuation reachable from one.",
+      "At CONFIRM, a plan whose only change is adding an interlocking, or a plan that was not edited at all but already leaves an interlocking outside every journey (non-exhaustive examples).",
+      "At CONFIRM, after a journey entrypoint is retargeted, a continuation endpoint is changed, or a continuation/journey is removed, so an interlocking is no longer reached (non-exhaustive examples)."
+    ],
+    "doesNotFire": [
+      "A plan that declares no interlockings at all.",
+      "Checking whether declared journeys' continuations are themselves closed (that is planner.journey.continuation-closure)."
+    ]
+  },
+  "given": "A plan that declares one or more interlockings (regardless of what was edited).",
+  "when": "The plan is validated at CONFIRM, where any finding of this rule blocks CONFIRM (confirm-blocking).",
+  "then": "Declare at least one journey and make every interlocking reached by a journey: as a journey's entrypoint interlocking or as the destination of a continuation reachable from that entrypoint.",
+  "prefer": [
+    "For each interlocking, state the journey that starts it (what triggers the routing decision) or the continuation that leads into it from a reachable interlocking.",
+    "Decide the end-to-end flow: for each interlocking, state what happens after its train completes via continuations."
+  ],
+  "avoid": [
+    "Stopping the decomposition at interlockings so it looks complete while the end-to-end flow was never decided.",
+    "A plan with interlockings and no journey (vacuous topology), relying on continuation-closure passing vacuously.",
+    "Orphan interlockings: routing decisions with no stated trigger and no stated place in the product flow."
+  ],
+  "unless": [],
+  "why": "The journey is where the plan says what starts a routing decision and what happens after its train completes. planner.journey.continuation-closure only validates the journeys a plan declares, so plans with none, or with interlockings outside every journey, would pass it vacuously.",
+  "evidence": [
+    "Validator journeyCompositionFindings reports no findings at CONFIRM; enforcement is confirm-blocking, so any finding blocks CONFIRM.",
+    "Each finding carries interlocking_id, journey_count and reason, identifying the uncomposed interlocking and whether the plan has zero journeys."
+  ],
+  "verifier_detail": [
+    "composed_interlocking: an interlocking that is the entrypoint of at least one journey, or the destination of a continuation reachable from a journey's entrypoint.",
+    "vacuous_topology: a plan with interlockings and no journey. Every interlocking is reported, because none of them is composed.",
+    "Validation: family=closure, template=graph_route_space_closure, variant=planner_journey_composition, phase=CONFIRM, enforcement=confirm-blocking, subject_kind=interlocking.",
+    "failure_evidence fields: interlocking_id, journey_count, reason.",
+    "Severity 4; disposition strict.",
+    "Context: planner.journey.continuation-closure validates only the journeys a plan declares, so it passes vacuously on plans with no journeys or with interlockings outside every journey; this rule covers that gap.",
+    "Enforcement: confirm-blocking — findings of this rule block CONFIRM."
+  ],
+  "audit": [
+    "schema_version: 1.0.0",
+    "source kind: constraint",
+    "status: active",
+    "implementation: validator planner.static.validators.bun::journeyCompositionFindings",
+    "introduced_in: 0.4.0",
+    "source name: Every interlocking is composed into a journey"
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Disposition strict: the rule fails on every finding; no advisory mode, no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "prefer",
+      "text": "Prefer items phrase the source's journey purpose (stated trigger and what happens after the train completes) as planner moves.",
+      "justification": "Turns the rationale into concrete planner actions without adding a new obligation."
+    },
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire scenarios (including non-exhaustive edit examples) and the doesNotFire boundary with continuation-closure.",
+      "justification": "Required by the schema; derived from statement, terms, rationale and graph edges. Change scenarios are examples only; activation is state-based."
+    },
+    {
+      "field": "sharedNodes",
+      "text": "policy.strict-disposition text uses the standard shared wording (no advisory mode, no ratchet baseline) to explain disposition strict.",
+      "justification": "Shared-node canonical wording for the source's 'disposition: strict'; the rule-specific confirm-blocking enforcement stays in this rule (when, evidence, verifier_detail)."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Title rephrased imperatively; original name kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "then",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "why",
+        "avoid[1]",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "why",
+        "avoid[0]",
+        "prefer[0]",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[0]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[1]",
+        "avoid[1]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[1]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "audit",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "identity",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "identity",
+        "verifier_detail[4]",
+        "shared:policy.strict-disposition"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "verifier_detail[2]",
+        "activation",
+        "when"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "when",
+        "evidence[0]",
+        "verifier_detail[2]",
+        "verifier_detail[6]"
+      ],
+      "note": "Rule-specific enforcement kept in this rule, not in the shared node."
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "verifier_detail[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "verifier_detail[3]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "verifier_detail[3]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "verifier_detail[3]",
+        "evidence[1]"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,580 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/tester.bun/tester.bun.interlocking-route-coverage.convention.yaml",
+    "sha256": "e75b1285aa650cf2a5d94d9c98b6351df4a24e3942dcf01e2faa9ed6676f1ca6"
+  },
+  "rule_id": "tester.bun.interlocking-route-coverage",
+  "kind": "rule",
+  "title": "Prove every admissible interlocking route with an e2e test (Bun)",
+  "activation": {
+    "facts": [
+      {
+        "fact": "path_glob",
+        "values": [
+          "plan/_trains/_interlockings/**/*.yaml",
+          "e2e/**/*.ts"
+        ],
+        "observability": "observable_now",
+        "note": "Interlocking route-space artifacts and Bun e2e tests are identifiable by path."
+      },
+      {
+        "fact": "language",
+        "values": [
+          "typescript",
+          "bun"
+        ],
+        "observability": "observable_now",
+        "note": "Bun-stack realization only; other stacks own their own rendering."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "interlocking route added or changed",
+          "e2e route test added, changed or removed"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Needs a diff-level observer that parses `routes:` entries and detects added/changed routes or removed covering tests."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "bun_interlocking_coverage: declared route with no covering e2e test"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Produced by the JS detector of the bun_interlocking_coverage family."
+      },
+      {
+        "fact": "layer",
+        "values": [
+          "e2e"
+        ],
+        "observability": "observable_now",
+        "note": "Tester work in the e2e layer."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "interlocking",
+          "route",
+          "routeId",
+          "trainId",
+          "InterlockingRunner",
+          "TrainRunner"
+        ],
+        "observability": "observable_now",
+        "note": "Task text mentioning interlocking routes."
+      },
+      {
+        "fact": "task_has_acceptance",
+        "values": [
+          "test genuinely exercises route behavior rather than only containing a token",
+          "existing proof still proves the changed route"
+        ],
+        "observability": "llm_judged",
+        "note": "Whether a referencing test actually drives guard-true inputs through production resolution and execution, or still does so after a guard/trainId change, is a semantic review judgment, not observable from path or tokens."
+      }
+    ],
+    "fires": [
+      "A new entry is added under `routes:` of an interlocking YAML and no e2e/**/*.ts test references its routeId or resolved trainId.",
+      "A route's guard or trainId mapping changes and its existing e2e proof is absent or no longer proves the changed route (its guard-true inputs or asserted trainId no longer match).",
+      "The detector reports a declared route with no covering e2e test.",
+      "A covering e2e test is deleted, leaving a declared route uncovered.",
+      "A route's routeId or trainId appears in e2e/**/*.ts only inside a comment: comments are masked and do not establish coverage, so the route is still uncovered."
+    ],
+    "doesNotFire": [
+      "YAML under the interlocking scope that declares no `routes:` (the `_interlockings.yaml` registry index, generated projections).",
+      "A route already referenced by its routeId or resolved trainId in an e2e/**/*.ts test whose proof still exercises the route (not flagged by the detector).",
+      "A route guard/trainId change whose existing e2e proof still drives and asserts the changed route correctly.",
+      "Non-Bun stacks' e2e renderings, which are owned by their own workspace packages."
+    ]
+  },
+  "given": "An interlocking YAML declares admissible routes under `routes:`",
+  "when": "a declared route has no e2e/**/*.ts test exercising it",
+  "then": "Write an e2e test that drives the route's guard-true inputs through production InterlockingRunner resolution, asserts the declared trainId was selected before execution, then executes that train via TrainRunner.",
+  "prefer": [
+    "Read route, guard and trainId; choose guard-true inputs that distinguish it from alternative routes.",
+    "Place it at e2e/interlockings/<interlocking_slug>/<slug>.routes.test.ts.",
+    "Call `new InterlockingRunner(...).resolveTrain(action, inputs)`; pass the selected train to TrainRunner and execute it.",
+    "Also assert the route- or acceptance-specific execution outcome when one is declared."
+  ],
+  "avoid": [
+    "A routeId/trainId literal added only so lexical coverage sees it.",
+    "A mock resolver or hand-built substitute for production route control.",
+    "A descriptive assertion restating the plan without exercising resolution.",
+    "Bypassing TrainRunner after proving only selection."
+  ],
+  "unless": [
+    "The YAML declares no `routes:` (registry index, generated projections).",
+    "The route is already referenced by routeId/trainId in an e2e/**/*.ts test: not flagged, though a token-only test still fails review.",
+    "The e2e rendering belongs to a non-Bun stack's own package."
+  ],
+  "why": "Each route is a production route-control branch; unexercised, it is a silent-green gap, and a bare token passes discovery while proving nothing. Strict: an admissible route without a covering e2e test blocks.",
+  "evidence": [
+    "The detector finds, for every declared route, at least one e2e/**/*.ts test referencing its routeId or resolved trainId outside comments.",
+    "Reviewer confirms the case would fail if the route guard or route-to-train mapping regressed.",
+    "Reviewer confirms the production runners (InterlockingRunner -> TrainRunner) actually execute the selected path, and that selection of the declared trainId is asserted before the train is executed.",
+    "Reviewer confirms the discoverable route/train token corresponds to behavior the case genuinely proves."
+  ],
+  "verifier_detail": [
+    "JS detector (member of the bun_interlocking_coverage FAMILY) parses each interlocking artifact under plan/_trains/_interlockings/**/*.yaml and extracts declared routes (routeId/trainId/category).",
+    "Scans the consumer's e2e/**/*.ts tests for references to each route by routeId or by its resolved trainId; comments are masked so a name appearing only in a comment does not count.",
+    "A route is COVERED when at least one e2e/**/*.ts test references its routeId or resolved trainId; that token is a discovery proxy, not the testing objective.",
+    "Any declared route with no covering e2e test is flagged as a RAW violation anchored at the route's declaration line in the source interlocking YAML.",
+    "Files under the interlocking scope with no `routes:` key (`_interlockings.yaml` registry index, generated projections) carry no admissible route space and are skipped.",
+    "Per-stack discovery (here Bun e2e/**/*.ts scanned for route/train tokens) is delegated to this realization; other stacks render the same obligation in their own e2e layout.",
+    "Severity 1, disposition strict: an admissible route with no covering e2e test blocks.",
+    "Terms: admissible_route = a single entry under `routes:` of an interlocking artifact (afokapu/atdd#1248) carrying routeId, resolved trainId, category and guard_ref; the interlocking YAML is authoritative for the guarded route space and the InterlockingRunner resolves each route to exactly one trainId (afokapu/atdd#1251). silent_green_route_gap = an admissible route with no covering e2e test; its interlocking branch is never executed so CI passes while a guarded route-control path is entirely unproven."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "implementation: {type: validator, ref: tester.bun.interlocking-route-coverage}.",
+    "aliases: BUN-TESTER-INTERLOCKING-ROUTE-COVERAGE-001.",
+    "Bun-stack realization of the agnostic core obligation tester.interlocking.route-coverage, rendered for the Bun application; coverage of the route space is a tester obligation.",
+    "core_design_refs: afokapu/atdd#1246, afokapu/atdd#1248 (route space lock), afokapu/atdd#1251 (InterlockingRunner -> TrainRunner resolution).",
+    "Source name: 'Every admissible interlocking route has an e2e test that exercises it (Bun)'.",
+    "Metadata: severity 1, disposition strict."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Strict disposition: the rule blocks on every finding."
+    }
+  ],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "Activation facts, fires and doesNotFire lists, including the 'covering test deleted' situation, the qualified guard/trainId-change trigger, and the llm_judged fact on whether a test genuinely exercises the route.",
+      "justification": "Required by the output schema; derived from the source scope, detector, meaningful-proof text, Verify steps and exceptions."
+    },
+    {
+      "field": "audit",
+      "text": "Coder-facing text is slightly above ~1,000 characters.",
+      "justification": "Losslessness of the meaningful-proof obligation (including pre-execution selection assertion), fix-hint steps, three authored exceptions and the strict blocking consequence wins over brevity."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Rendered as title; original name kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "when",
+        "then",
+        "avoid[2]",
+        "activation",
+        "audit",
+        "verifier_detail[7]"
+      ],
+      "note": "Route space path in activation; #1248/#1251 refs in audit/verifier_detail; 'not asserted descriptively' in avoid[2]."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit",
+        "verifier_detail[0]",
+        "verifier_detail[1]",
+        "verifier_detail[3]"
+      ],
+      "note": "Core-obligation lineage in audit; detector family/parsing in verifier_detail[0]; scanning in verifier_detail[1]; flagging in verifier_detail[3]."
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "why",
+        "verifier_detail[7]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit",
+        "then"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[0]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[7]",
+        "given"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[7]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[7]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "verifier_detail[2]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "verifier_detail[2]",
+        "avoid[0]",
+        "unless[1]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "then",
+        "evidence[2]"
+      ],
+      "note": "then mandates guard-true inputs, production resolution, and asserting selection of the declared trainId."
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "then",
+        "evidence[2]"
+      ],
+      "note": "then mandates the selection assertion before the train is executed via TrainRunner."
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "why",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "why",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "verifier_detail[5]",
+        "unless[2]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "then",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "prefer[2]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "prefer[2]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "then"
+      ],
+      "note": "Selection assertion of the declared trainId is in then."
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "prefer[3]"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S045",
+      "dest": [
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S046",
+      "dest": [
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S047",
+      "dest": [
+        "evidence[3]",
+        "unless[1]"
+      ]
+    },
+    {
+      "seg": "S048",
+      "dest": [
+        "why",
+        "verifier_detail[6]",
+        "shared:policy.strict-disposition"
+      ],
+      "note": "Blocking consequence stated to the tester in why; also kept in verifier_detail."
+    },
+    {
+      "seg": "S049",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[4]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S050",
+      "dest": [
+        "unless[1]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S051",
+      "dest": [
+        "unless[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S052",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S053",
+      "dest": [
+        "verifier_detail[6]",
+        "audit"
+      ],
+      "note": "Rule-specific severity kept locally."
+    },
+    {
+      "seg": "S054",
+      "dest": [
+        "shared:policy.strict-disposition",
+        "verifier_detail[6]",
+        "why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S055",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S056",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S057",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S058",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S059",
+      "dest": [
+        "verifier_detail[7]"
+      ]
+    },
+    {
+      "seg": "S060",
+      "dest": [
+        "verifier_detail[7]",
+        "given"
+      ]
+    },
+    {
+      "seg": "S061",
+      "dest": [
+        "verifier_detail[7]"
+      ]
+    },
+    {
+      "seg": "S062",
+      "dest": [
+        "verifier_detail[7]",
+        "why"
+      ]
+    }
+  ]
+}

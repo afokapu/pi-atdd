@@ -1,0 +1,1843 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.component.type-catalog.convention.yaml",
+    "sha256": "a07bdd9f72b70a03b24ff9b05687f24cd7eaa29a24ae233d648b4c9e89b09886"
+  },
+  "rule_id": "planner.component.type-catalog",
+  "kind": "rule",
+  "title": "Take component side, layer, type, suffix and weight from one canonical catalog entry",
+  "activation": {
+    "facts": [
+      {
+        "fact": "task_term",
+        "values": [
+          "component type",
+          "component URN",
+          "component catalog",
+          "complexity weight",
+          "file suffix",
+          "file pattern",
+          "effort estimate",
+          "footprint"
+        ],
+        "observability": "observable_now",
+        "note": "Task text about deriving components, naming file patterns, estimating effort, or editing the catalog. Bare 'wagon'/'WMBT' is not enough on its own; it must co-occur with one of these catalog-related terms."
+      },
+      {
+        "fact": "phase",
+        "values": [
+          "planning"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Needs an observer that knows the agent is authoring plans/wagons/WMBTs/docs rather than coding."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "component side/layer/type/URN, file pattern or weight added or changed in a plan artifact",
+          "component type catalog edited"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Diff-level detection of component entries in plan files, or of edits to the catalog itself."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "component values not from one matching catalog entry",
+          "catalog type missing suffix/description/weight or out of sync with coder conventions"
+        ],
+        "observability": "llm_judged",
+        "note": "The validator checks the catalog; checking plan entries against it is reviewer-judged until a plan-schema detector exists."
+      }
+    ],
+    "fires": [
+      "Planner derives the components a feature needs and assigns side, layer and type.",
+      "Planner writes a component URN (its side/layer values) into a plan, WMBT or doc.",
+      "Planner states the expected file name pattern for a planned component in a given language.",
+      "Planner estimates effort/footprint using component complexity weights.",
+      "The component type catalog itself is added to, edited or validated."
+    ],
+    "doesNotFire": [
+      "Coder implementing an already-planned component (coder backend/frontend conventions govern).",
+      "Planning text that names no components, types, file patterns or weights (e.g. pure acceptance wording).",
+      "Docs unrelated to component derivation, file patterns, effort estimation or the catalog."
+    ]
+  },
+  "given": "A plan, WMBT or doc derives components, names file patterns or estimates effort, or the catalog is edited. The catalog (context.component-type-catalog) lists every type by side, layer, per-language suffix, description and weight, derived from the coder backend/frontend conventions.",
+  "when": "You set a component's side, layer, type, URN side/layer, file pattern or weight.",
+  "then": "Take all of a component's values from one matching catalog entry: side, layer, type, the target language's suffix and the weight.",
+  "prefer": [
+    "Take URN side/layer values from the catalog structure; look entries up by side.layer.type.",
+    "Pick the type whose description fits; estimate effort with catalog weights.",
+    "Catalog edits: keep each type complete and derived from coder conventions; flag mismatches, never pick ad hoc."
+  ],
+  "avoid": [
+    "Ad-hoc types, layers, sides or weights; tweaking weights to shape an estimate.",
+    "Mixing values across entries or languages."
+  ],
+  "unless": [],
+  "why": "One canonical catalog keeps component derivation and effort estimates consistent with the coder conventions instead of ad hoc.",
+  "evidence": [
+    "Every planned component's side, layer and type resolve to exactly one entry in context.component-type-catalog.",
+    "Each declared file pattern equals that same entry's suffix for the component's language (an entry with no suffix for that language means the type is unavailable there).",
+    "Each weight used in effort/footprint estimation equals that same entry's weight.",
+    "Catalog examples: backend.integration.engines → *_engine.py, weight 3 (highest complexity); backend.presentation.routes → *_routes.py, weight 0; frontend.presentation.controllers → *_bloc.dart / *-store.ts, weight 2.",
+    "Validator test_component_type_catalog::test_component_type_catalog passes.",
+    "Disposition: advisory, severity 2."
+  ],
+  "verifier_detail": [
+    "Resolve each plan component by the tuple (side, layer, type, language) against context.component-type-catalog; suffix and weight must come from that single tuple, not merely exist somewhere in the catalog.",
+    "Suffix collisions — resolve by side/layer, never by suffix alone: frontend.presentation.controllers and frontend.integration.stores both use typescript '*-store.ts'; domain entities use catch-all '*.py'/'*.ts'/'*.dart' and backend value_objects also accept '*.py'; frontend components use catch-all '*.tsx'; backend.integration.stores ('*-store.ts') shares the TypeScript suffix too.",
+    "Multi-suffix entries: backend application ports python 'protocols.py, *_port.py'; backend workflows python '*_workflow.py, *_saga.py'; backend value_objects python '*_vo.py, *.py' — any listed alternative is valid.",
+    "Language-missing entries (TypeScript only): frontend presentation containers, hooks, directives, filters; frontend integration workers.",
+    "Implementation: validator test_component_type_catalog::test_component_type_catalog checks the catalog.",
+    "The source prescribes no aggregation formula for weights; do not flag an estimate for how weights are combined, only for weights that differ from the matching entry."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "original kind: pattern",
+    "status: active",
+    "original name: 'Component: Type Catalog'",
+    "metadata.severity: 2; metadata.disposition: advisory",
+    "metadata.introduced_in: 4.28.0",
+    "implementation: {type: validator, ref: test_component_type_catalog::test_component_type_catalog}",
+    "source: legacy_path src/atdd/planner/conventions/component.convention.yaml, legacy_sha sha256:8bfb25fd6c2bdb6e, extraction_mode high_fidelity, legacy_section type-catalog",
+    "Derived from .claude/conventions/coder/{backend,frontend}.convention.yaml.",
+    "parity: source_fragments_preserved true, examples_preserved true, implementation_preserved true, fix_hint_preserved true, reviewed_at 2026-06-16"
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "context.component-type-catalog",
+      "kind": "context",
+      "text": "CANONICAL COMPONENT TYPE CATALOG. Enumerates every component type by side (backend|frontend), layer, file suffix per language, description and complexity weight; derived from the coder backend/frontend conventions (.claude/conventions/coder/{backend,frontend}.convention.yaml). Entries are listed under side.layer headings; side.layer.type is the lookup key for an entry. Format: type — suffix(es) — description — weight. Types without a suffix for a language are not available in that language.\n\nBACKEND (term backend_catalog, 'Backend component types': all backend component types keyed by layer (presentation, application, domain, integration), each with per-language file suffix, description, and complexity weight). Languages: python | typescript.\nbackend.presentation:\n- controllers — *_controller.py | *-controller.ts — Request/response handlers for external interfaces — 1\n- routes — *_routes.py | *-routes.ts — Routing configuration and endpoint definitions — 0\n- serializers — *_serializer.py | *-serializer.ts — Input/output data serialization and formatting — 0.5\n- validators — *_validator.py | *-validator.ts — Input validation at the edge — 0.5\n- middleware — *_middleware.py | *-middleware.ts — Cross-cutting request/response processing — 1\n- guards — *_guard.py | *-guard.ts — Authentication and authorization at transport layer — 1\n- views — *_view.py | *-view.ts — Server-side rendered templates and UI components — 1\nbackend.application:\n- use_cases — *_use_case.py | *-use-case.ts — Application-specific business workflows — 2\n- handlers — *_handler.py | *-handler.ts — Command, query, and event processing — 1\n- ports — protocols.py, *_port.py | *-port.ts — Interfaces and protocols for integration layer — 0\n- dtos — *_dto.py | *-dto.ts — Data transfer objects between layers — 0\n- policies — *_policy.py | *-policy.ts — Application-level business policies and rules — 1\n- workflows — *_workflow.py, *_saga.py | *-workflow.ts — Long-running processes and orchestrations — 2\nbackend.domain:\n- entities — *.py | *.ts — Core business objects with identity and lifecycle — 1\n- value_objects — *_vo.py, *.py | *-vo.ts — Immutable types with equality-by-value semantics — 0.5\n- aggregates — *_aggregate.py | *-aggregate.ts — Transactional consistency boundaries — 2\n- services — *_service.py | *-service.ts — Domain services for cross-entity business logic — 1\n- specifications — *_spec.py | *-spec.ts — Composable business rules and predicates — 0.5\n- events — *_event.py | *-event.ts — Domain events representing facts that happened — 0\n- exceptions — *_exception.py | *-exception.ts — Domain-specific errors and invariant violations — 0\nbackend.integration:\n- repositories — *_repository.py | *-repository.ts — Data persistence and retrieval adapters — 2\n- clients — *_client.py | *-client.ts — External API and service clients — 1\n- caches — *_cache.py | *-cache.ts — Caching implementations — 0.5\n- engines — *_engine.py | *-engine.ts — Computational and processing engines (ML, graph, optimization) — 3\n- formatters — *_formatter.py | *-formatter.ts — Output formatting and rendering services — 1\n- notifiers — *_notifier.py | *-notifier.ts — Communication and notification services — 1\n- queues — *_queue.py | *-queue.ts — Message queue and event streaming clients — 2\n- stores — *_store.py | *-store.ts — File and object storage adapters — 1\n- mappers — *_mapper.py | *-mapper.ts — Data transformation and mapping between layers — 0.5\n- schedulers — *_scheduler.py | *-scheduler.ts — Background tasks and scheduled jobs — 2\n- monitors — *_monitor.py | *-monitor.ts — Observability and infrastructure monitoring — 1\n\nFRONTEND (term frontend_catalog, 'Frontend component types': all frontend component types keyed by layer (presentation, application, domain, integration), each with per-language file suffix, description, and complexity weight). Languages: dart | typescript.\nfrontend.presentation:\n- views — *_page.dart | *-page.tsx — Full-screen views and pages — 1\n- components — *_widget.dart | *.tsx — Reusable UI components — 0.5\n- containers — (no dart) | *-container.tsx — Smart components connected to state — 1\n- controllers — *_bloc.dart | *-store.ts — UI state management and business logic — 2\n- routes — *_router.dart | *-routes.ts — Navigation and routing configuration — 0\n- layouts — *_layout.dart | *-layout.tsx — Page structure and composition templates — 1\n- styles — *_theme.dart | *.css — Design tokens, themes, and styling — 0\n- animations — *_animation.dart | *-animation.ts — UI animations and transitions — 0.5\n- forms — *_form.dart | *-form.ts — Form state management and validation — 1\n- hooks — (no dart) | use-*.ts — Reusable stateful logic (React-style) — 0.5\n- directives — (no dart) | *-directive.ts — Custom DOM/element behaviors (Vue/Angular) — 0.5\n- filters — (no dart) | *-filter.ts — Data formatting pipes/filters — 0.5\nfrontend.application:\n- use_cases — *_use_case.dart | *-use-case.ts — Frontend-initiated workflows — 2\n- ports — *_port.dart | *-port.ts — Interfaces for data access and external services — 0\n- policies — *_policy.dart | *-policy.ts — Frontend business policies and rules — 1\n- dtos — *_dto.dart | *-dto.ts — Application-internal data structures — 0\nfrontend.domain:\n- entities — *.dart | *.ts — Domain models used on the client — 1\n- value_objects — *_vo.dart | *-vo.ts — Immutable typed values — 0.5\n- services — *_service.dart | *-service.ts — Pure domain logic services — 1\n- specifications — *_spec.dart | *-spec.ts — Composable rules and predicates — 0.5\n- exceptions — *_exception.dart | *-exception.ts — Domain-level errors — 0\nfrontend.integration:\n- repositories — *_repository.dart | *-repository.ts — Data access implementations — 2\n- clients — *_client.dart | *-client.ts — HTTP/WebSocket/GraphQL API clients — 1\n- stores — *_store.dart | *-store.ts — Local persistence implementations — 1\n- serializers — *_serializer.dart | *-serializer.ts — API data transformation — 0.5\n- mappers — *_mapper.dart | *-mapper.ts — Data transformation between layers — 0.5\n- interceptors — *_interceptor.dart | *-interceptor.ts — HTTP request/response middleware — 1\n- caches — *_cache.dart | *-cache.ts — Client-side caching implementations — 0.5\n- synchronizers — *_sync.dart | *-sync.ts — Offline sync and conflict resolution — 2\n- monitors — *_monitor.dart | *-monitor.ts — Client-side monitoring and telemetry — 1\n- validators — *_validator.dart | *-validator.ts — Client-side validation engines — 0.5\n- workers — (no dart) | *.worker.ts — Background processing and web workers — 2\n- connectors — *_connector.dart | *-connector.ts — Real-time and streaming connections — 1\n\nExamples: backend.integration.engines → *_engine.py, weight 3 (highest complexity); backend.presentation.routes → *_routes.py, weight 0; frontend.presentation.controllers → *_bloc.dart / *-store.ts, weight 2."
+    }
+  ],
+  "additions": [
+    {
+      "field": "verifier_detail",
+      "text": "Suffix collisions, multi-suffix entries and TypeScript-only entries listed explicitly; no weight-aggregation formula is enforced.",
+      "justification": "Derived observations from the source catalog values so a verifier does not misclassify files by suffix alone, and does not enforce an aggregation formula the source never prescribes. Not a new obligation."
+    },
+    {
+      "field": "avoid",
+      "text": "Tweaking weights to shape an estimate; mixing values across entries or languages.",
+      "justification": "Concrete forms of the source's 'instead of inventing types or weights ad hoc' and of the per-entry, per-language catalog structure."
+    },
+    {
+      "field": "prefer",
+      "text": "side.layer.type used as the catalog lookup key (not as a prescribed URN syntax); 'flag mismatches (catalog vs coder conventions), never pick ad hoc'.",
+      "justification": "The lookup key mirrors the source's own example keys (S269–S271). The flag-on-mismatch move is the minimal consequence of the source's 'derived from the coder conventions' plus 'instead of inventing ... ad hoc'; no new waiver or procedure."
+    },
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire situations and activation facts, including catalog maintenance.",
+      "justification": "Required by target schema; derived from the source summary and statement (catalog defined, derived from coder conventions, used for derivation and estimation)."
+    },
+    {
+      "field": "evidence",
+      "text": "An entry with no suffix for a language means the type is unavailable there.",
+      "justification": "Reading of the source catalog, where some frontend types define only a typescript suffix."
+    },
+    {
+      "field": "note",
+      "text": "The full catalog is delivered as new shared context node context.component-type-catalog (neutral reference data, no existing shared id fits: it is not a layer map or repo idiom but this convention's own catalog, which other planner/coder conventions may reference). The planner-specific use of it (component derivation, URN side/layer values, effort estimation) stays in this rule's given/then/prefer/why. Coder-facing text trimmed to ~1,000 characters; detail lives in evidence/verifier_detail.",
+      "justification": "Keeps coder-facing fields within budget while keeping rule-specific framing out of the shared node."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "prefer[2]",
+        "shared:context.component-type-catalog"
+      ],
+      "note": "Complete enumeration by side/layer/suffix/description/weight and derivation from coder conventions stated in given and at the head of the catalog node."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S045",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S046",
+      "dest": [
+        "shared:context.component-type-catalog",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S047",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S048",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S049",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S050",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S051",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S052",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S053",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S054",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S055",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S056",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S057",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S058",
+      "dest": [
+        "shared:context.component-type-catalog",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S059",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S060",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S061",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S062",
+      "dest": [
+        "shared:context.component-type-catalog",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S063",
+      "dest": [
+        "shared:context.component-type-catalog",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S064",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S065",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S066",
+      "dest": [
+        "shared:context.component-type-catalog",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S067",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S068",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S069",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S070",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S071",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S072",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S073",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S074",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S075",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S076",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S077",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S078",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S079",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S080",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S081",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S082",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S083",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S084",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S085",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S086",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S087",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S088",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S089",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S090",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S091",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S092",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S093",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S094",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S095",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S096",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S097",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S098",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S099",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S100",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S101",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S102",
+      "dest": [
+        "shared:context.component-type-catalog",
+        "evidence[3]"
+      ]
+    },
+    {
+      "seg": "S103",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S104",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S105",
+      "dest": [
+        "shared:context.component-type-catalog",
+        "evidence[3]"
+      ]
+    },
+    {
+      "seg": "S106",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S107",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S108",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S109",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S110",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S111",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S112",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S113",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S114",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S115",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S116",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S117",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S118",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S119",
+      "dest": [
+        "shared:context.component-type-catalog",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S120",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S121",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S122",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S123",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S124",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S125",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S126",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S127",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S128",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S129",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S130",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S131",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S132",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S133",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S134",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S135",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S136",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S137",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S138",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S139",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S140",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S141",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S142",
+      "dest": [
+        "shared:context.component-type-catalog",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S143",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S144",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S145",
+      "dest": [
+        "shared:context.component-type-catalog",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S146",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S147",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S148",
+      "dest": [
+        "shared:context.component-type-catalog",
+        "evidence[3]"
+      ]
+    },
+    {
+      "seg": "S149",
+      "dest": [
+        "shared:context.component-type-catalog",
+        "evidence[3]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S150",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S151",
+      "dest": [
+        "shared:context.component-type-catalog",
+        "evidence[3]"
+      ]
+    },
+    {
+      "seg": "S152",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S153",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S154",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S155",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S156",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S157",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S158",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S159",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S160",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S161",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S162",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S163",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S164",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S165",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S166",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S167",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S168",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S169",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S170",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S171",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S172",
+      "dest": [
+        "shared:context.component-type-catalog",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S173",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S174",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S175",
+      "dest": [
+        "shared:context.component-type-catalog",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S176",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S177",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S178",
+      "dest": [
+        "shared:context.component-type-catalog",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S179",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S180",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S181",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S182",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S183",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S184",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S185",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S186",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S187",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S188",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S189",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S190",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S191",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S192",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S193",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S194",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S195",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S196",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S197",
+      "dest": [
+        "shared:context.component-type-catalog",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S198",
+      "dest": [
+        "shared:context.component-type-catalog",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S199",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S200",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S201",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S202",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S203",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S204",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S205",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S206",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S207",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S208",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S209",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S210",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S211",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S212",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S213",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S214",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S215",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S216",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S217",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S218",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S219",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S220",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S221",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S222",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S223",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S224",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S225",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S226",
+      "dest": [
+        "shared:context.component-type-catalog",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S227",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S228",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S229",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S230",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S231",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S232",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S233",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S234",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S235",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S236",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S237",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S238",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S239",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S240",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S241",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S242",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S243",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S244",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S245",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S246",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S247",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S248",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S249",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S250",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S251",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S252",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S253",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S254",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S255",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S256",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S257",
+      "dest": [
+        "shared:context.component-type-catalog",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S258",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S259",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S260",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S261",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S262",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S263",
+      "dest": [
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S264",
+      "dest": [
+        "audit",
+        "verifier_detail[4]",
+        "evidence[4]"
+      ]
+    },
+    {
+      "seg": "S265",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S266",
+      "dest": [
+        "why",
+        "avoid[0]",
+        "prefer[1]"
+      ],
+      "note": "Weights are used for estimation; no aggregation formula is prescribed (see verifier_detail[5])."
+    },
+    {
+      "seg": "S267",
+      "dest": [
+        "given",
+        "prefer[2]",
+        "audit",
+        "shared:context.component-type-catalog"
+      ],
+      "note": "Lineage path kept in audit and catalog node; derivation reasoning in given/prefer."
+    },
+    {
+      "seg": "S268",
+      "dest": [
+        "prefer[0]"
+      ],
+      "note": "Side/layer values for component URNs come from the catalog structure; no full URN grammar is prescribed."
+    },
+    {
+      "seg": "S269",
+      "dest": [
+        "evidence[3]",
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S270",
+      "dest": [
+        "evidence[3]",
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S271",
+      "dest": [
+        "evidence[3]",
+        "shared:context.component-type-catalog"
+      ]
+    },
+    {
+      "seg": "S272",
+      "dest": [
+        "identity",
+        "audit",
+        "evidence[5]"
+      ]
+    },
+    {
+      "seg": "S273",
+      "dest": [
+        "identity",
+        "audit",
+        "evidence[5]"
+      ]
+    },
+    {
+      "seg": "S274",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S275",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

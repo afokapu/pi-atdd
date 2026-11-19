@@ -1,0 +1,401 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/tester.bun/tester.bun.security-input.convention.yaml",
+    "sha256": "6f089d2641f264e59ab38973f848644bb48d6e254613dba62c2616f1edb82a68"
+  },
+  "rule_id": "tester.bun.security-input",
+  "kind": "rule",
+  "title": "Input-validation tests assert on rejection",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "test"
+        ],
+        "observability": "observable_now",
+        "note": "Bun test files."
+      },
+      {
+        "fact": "language",
+        "values": [
+          "typescript",
+          "javascript"
+        ],
+        "observability": "observable_now",
+        "note": "Bun test runtime."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "-INPUT-",
+          "-VALIDATION-",
+          "-VALIDATE-"
+        ],
+        "observability": "observable_now",
+        "note": "Test URN kind segment identifies an input-validation test; only these tests are scanned (any such test, existing or new)."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "input-validation test without rejection assertion"
+        ],
+        "observability": "needs_new_observer",
+        "note": "bun_tester_discipline_detector finding; requires parsing the test body for rejection signals. Fires only when NO listed rejection signal is present."
+      }
+    ],
+    "fires": [
+      "A Bun test whose URN has a -VALIDATION- kind segment submits only a well-formed payload and asserts success.",
+      "A Bun test with -INPUT- in its URN has no .rejects, toThrow, 400/422, invalid, reject or error expectation.",
+      "A Bun test with -VALIDATE- in its URN asserts only on the shape of returned data and contains none of the listed rejection signals."
+    ],
+    "doesNotFire": [
+      "A test whose URN has no INPUT / VALIDATION / VALIDATE kind segment.",
+      "An input-validation test that asserts toThrow(\"<specific error>\") or a 422 status for the declared malformed input."
+    ]
+  },
+  "given": "A Bun test whose URN carries an INPUT, VALIDATION or VALIDATE kind segment",
+  "when": "the test is scanned",
+  "then": "It MUST drive the malformed/missing/adversarial input named by the acceptance through the production boundary and assert its rejection (.rejects, toThrow, 400, 422, invalid, reject, or an error expectation) for that specific invalid condition.",
+  "prefer": [
+    "Construct the malformed, missing, boundary or adversarial value the acceptance names.",
+    "Send it through the same boundary production receives.",
+    "Assert the acceptance-specific rejection: exact error, 400/422 response, rejection or throw.",
+    "When accepting the bad input could create or mutate state, also assert the rejected request left that protected side effect absent."
+  ],
+  "avoid": [
+    "Testing only a well-formed payload (it proves only that the parser works on good input; a well-formed payload proves nothing about adversarial input).",
+    "Triggering some unrelated error and treating any rejection as proof (the detector may not flag this, but it does not witness the declared invalid condition).",
+    "Bypassing the production validation boundary with a direct fixture assertion."
+  ],
+  "unless": [],
+  "why": "An input-validation acceptance is about BAD input, which a happy-path test never touches — the same silent-green-gap shape as security-auth. It is grouped with the security family because unvalidated input is the entry point for most of what the security rules defend against.",
+  "evidence": [
+    "The test contains a rejection assertion tied to the declared invalid condition, e.g. `expect(() => parseOrder({ sku: null })).toThrow(\"INVALID_SKU\");` or, over HTTP, `expect(res.status).toBe(422);`.",
+    "The case would turn red if validation for the declared bad input were removed.",
+    "The observed failure is caused by the intended validation rule, not by test setup.",
+    "Where invalid input could mutate state, the test asserts no protected side effect occurred."
+  ],
+  "verifier_detail": [
+    "Identify input-validation tests by URN kind segment `-INPUT-`, `-VALIDATION-` or `-VALIDATE-`; only these tests are scanned.",
+    "Rejection signals: `.rejects`, `toThrow`, 400, 422, `invalid`, `reject`, or an error expectation. Any one of the listed signals satisfies the rule.",
+    "Detector: identifies input-validation tests from the URN and flags those with no rejection assertion (implementation: validator bun_tester_discipline_detector).",
+    "Severity 4, disposition strict."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "Bun realization of core `tester.security.input`, mirroring `tester.convex.security-input`.",
+    "Aliases: TESTER-SECURITY-INPUT-001, BUN-SECURITY-INPUT-001.",
+    "Implementation: {type: validator, ref: bun_tester_discipline_detector}.",
+    "Source terms: input_validation_test, rejection_assertion."
+  ],
+  "splitSuggestion": [
+    {
+      "id": "tester.bun.security-input-no-side-effect",
+      "then": "When accepting invalid input could create or mutate state, the input-validation test MUST assert the rejected request left the protected effect absent.",
+      "segments": [
+        "S018",
+        "S026"
+      ]
+    }
+  ],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "split_suggestion",
+      "text": "The conditional no-protected-side-effect assertion (S018/S026) is an independent obligation; kept in prefer/evidence here and proposed as tester.bun.security-input-no-side-effect.",
+      "justification": "Rule 2: one obligation in then."
+    },
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire examples and language/file_kind facts.",
+      "justification": "Required by output schema; derived only from the source scanning scope (URN kind segment) and rejection signals, with no phase or changed-file restriction. Fires examples are restricted to the mechanical absence-of-any-signal trigger."
+    },
+    {
+      "field": "avoid[1]",
+      "text": "Parenthetical noting the detector may not flag unrelated-error rejections.",
+      "justification": "Clarifies that this anti-pattern is normative guidance, not a detector finding, consistent with the any-signal exception (S038)."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "then",
+        "activation",
+        "verifier_detail[0]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "given",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "then",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "avoid[0]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "why",
+        "then"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "then",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "then",
+        "prefer[0]",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "prefer[3]",
+        "evidence[3]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "prefer[2]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "prefer[3]",
+        "evidence[3]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "activation",
+        "verifier_detail[0]"
+      ],
+      "note": "Scope boundary expressed as activation (URN kind segment only; no phase or changed-test restriction), not a waiver."
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "verifier_detail[1]",
+        "activation"
+      ],
+      "note": "Any listed signal satisfies the detector; fires examples only cover absence of all signals."
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "identity",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "identity",
+        "verifier_detail[3]"
+      ],
+      "note": "Kept as the bare source value 'strict'; no extra disposition semantics added."
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

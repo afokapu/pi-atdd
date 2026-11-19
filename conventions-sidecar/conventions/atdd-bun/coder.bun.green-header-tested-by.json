@@ -1,0 +1,383 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.bun/coder.bun.green-header-tested-by.convention.yaml",
+    "sha256": "abb98d89482185bad4b77609776c3fb4da6a46c14069719256bcfc9f11703647"
+  },
+  "rule_id": "coder.bun.green-header-tested-by",
+  "kind": "rule",
+  "title": "Bind every implementation file to at least one acceptance via Tested-By",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "implementation"
+        ],
+        "observability": "observable_now",
+        "note": "Primary and sufficient trigger: every non-test implementation file in the repository, whether new, modified, or pre-existing and untouched. Test files are excluded (the other end of the binding). No change or phase prerequisite applies; the obligation is continuous, not event-gated. Activation is deterministic on file kind alone; whether the listed entries are valid is a compliance question (judged in evidence), not an activation fact."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "GREEN-HEADER-003",
+          "BUN-GREEN-HEADER-TESTED-BY-001"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Alternative diagnostic trigger only, not a prerequisite: a bun_green_traceability_detector finding (Tested-By block missing or empty) also activates the rule; the obligation applies to implementation files even without a finding."
+      }
+    ],
+    "fires": [
+      "A new implementation file is written without a `Tested-By:` block in its header.",
+      "An existing, untouched implementation file has no `Tested-By:` block in its header.",
+      "An implementation file's header has a `Tested-By:` line with no `- test:` entries beneath it (e.g. a half-finished backfill).",
+      "Files are migrated/rewritten onto a new stack and the new files lack headers.",
+      "An implementation file's `Tested-By:` block is populated but names an invented acceptance ID, or an acceptance that does not exercise the file (the detector may stay silent; the rule still applies).",
+      "An implementation file's `Tested-By:` block mixes at least one valid binding with one or more invented, not-exactly-declared, or non-exercising entries (the valid entry does not excuse the invalid ones).",
+      "The detector reports GREEN-HEADER-003 / BUN-GREEN-HEADER-TESTED-BY-001 for a file."
+    ],
+    "doesNotFire": [
+      "The file is a test file (it is the other end of the binding)."
+    ]
+  },
+  "given": "Any implementation (non-test) source file — new, modified, or untouched",
+  "when": "It exists in the repository (continuous obligation, not only when the header is edited)",
+  "then": "The header MUST contain a `Tested-By:` line followed by at least one `- test:` entry, each naming a real, exactly-declared acceptance URN that exercises the file; an empty block counts as absent.",
+  "prefer": [
+    "During GREEN, derive the binding from the acceptance being implemented.",
+    "Keep existing valid bindings; add only the acceptance that genuinely covers this file.",
+    "Use the exact declared acceptance URN.",
+    "One entry suffices; more are encouraged when they genuinely cover the file.",
+    "Pick the acceptance whose scenario drives code in this file (check its behavior, not just its name).",
+    "Prove the binding by running the behavioral acceptance named in the `Tested-By:` header and confirming it passes."
+  ],
+  "avoid": [
+    "Inventing acceptance IDs.",
+    "Adding unrelated tests merely to make the block non-empty.",
+    "Claiming coverage from an acceptance that does not exercise the implementation.",
+    "Leaving a bare `Tested-By:` line with no entries."
+  ],
+  "unless": [
+    "The file is a test file — the other end of this binding."
+  ],
+  "why": "The URN says what the file IS; `Tested-By:` says what PROVES it, closing the acceptance-to-implementation loop that stack migrations silently break. An empty block (half-finished backfill) would report full coverage with zero bindings.",
+  "evidence": [
+    "The behavioral acceptance named in the file's `Tested-By:` header passes.",
+    "The file's `Tested-By:` block names the acceptance that actually proves it, and every listed entry is a real, exactly-declared acceptance that exercises the file (judged by inspecting the acceptance's behavior against the declared acceptances; not syntactically observable).",
+    "bun_green_traceability_detector reports no GREEN-HEADER-003 / BUN-GREEN-HEADER-TESTED-BY-001 finding for the file."
+  ],
+  "verifier_detail": [
+    "tested_by_block: the `Tested-By:` line followed by one or more `- test:` acceptance URNs. Pass = line present AND >=1 `- test:` entry.",
+    "empty_block: a `Tested-By:` line with no entries — treated as absent (same finding as a missing block), because it is the shape a half-finished backfill leaves and would otherwise report full coverage with zero bindings.",
+    "Threshold: one entry satisfies the rule; more are encouraged.",
+    "Test files are excluded from detection.",
+    "Entry resolution against `plan/` is out of scope for this per-file detector (it checks presence and non-emptiness only); a silent detector therefore does not prove the URNs are real or exercise the file.",
+    "Realized by validator `bun_green_traceability_detector` (stack-neutral obligation, Bun-specific detector); core alias GREEN-HEADER-003, stack alias BUN-GREEN-HEADER-TESTED-BY-001; severity 2; disposition strict."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "Aliases: GREEN-HEADER-003 (shared core alias), BUN-GREEN-HEADER-TESTED-BY-001.",
+    "Stack-neutral obligation, Bun-specific detector; implementation: {type: validator, ref: bun_green_traceability_detector}.",
+    "Source name: 'The header binds the file to at least one acceptance'. Source term ids: tested_by_block, empty_block.",
+    "Source normative text: 'This is the rule that makes the whole header load-bearing rather than decorative.'",
+    "Severity 2; disposition strict."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "strict: the stack's ATDD tooling fails on every finding; it has no advisory mode and no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "Activation facts, fires/doesNotFire situations, and the given/when phrasing are derived from the source statement and exceptions; populated-but-invalid and mixed valid/invalid blocks are listed as firing because the source forbids invented IDs, unrelated tests and non-exercising coverage claims.",
+      "justification": "Required structure; no new obligation or scope restriction introduced."
+    },
+    {
+      "field": "prefer[4]",
+      "text": "Pick the acceptance by behavior (its scenario drives code in this file), not by name similarity.",
+      "justification": "Operationalises S023/S028 ('genuinely covers', 'exercise the implementation') without adding a new obligation."
+    },
+    {
+      "field": "shared:policy.strict-disposition",
+      "text": "Elaboration of 'strict' as: fails on every finding, no advisory mode, no ratchet baseline.",
+      "justification": "Source only says disposition strict (S037); the shared node carries the standard definition of that disposition used across conventions."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Source name informs title; kept verbatim in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "given",
+        "when",
+        "activation"
+      ],
+      "note": "Universal, continuous scope: every implementation file."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "verifier_detail[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "verifier_detail[0]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[1]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[1]",
+        "avoid[3]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[1]",
+        "why",
+        "then"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "then",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "avoid[3]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "why",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "why",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "prefer[0]"
+      ],
+      "note": "Context for the binding-derivation guidance only, not an activation gate."
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "prefer[1]",
+        "prefer[4]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "prefer[2]",
+        "then"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "avoid[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "avoid[1]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "avoid[2]",
+        "then",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "structure"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "evidence[0]",
+        "prefer[5]"
+      ],
+      "note": "Rule-specific: the acceptance to prove with is the one named in the Tested-By header; kept in this rule rather than a shared node."
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "unless[0]",
+        "activation",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "prefer[3]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "verifier_detail[4]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "audit",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "identity",
+        "verifier_detail[5]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "audit",
+        "verifier_detail[5]"
+      ]
+    }
+  ]
+}

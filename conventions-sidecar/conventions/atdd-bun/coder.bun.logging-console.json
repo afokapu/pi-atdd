@@ -1,0 +1,289 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.bun/coder.bun.logging-console.convention.yaml",
+    "sha256": "e85fc1038ac78799b36d1f4156b6547fb00441f1e3ac3ec93e59e7e895e37aef"
+  },
+  "rule_id": "coder.bun.logging-console",
+  "kind": "rule",
+  "title": "No console logging in application source",
+  "activation": {
+    "facts": [
+      {
+        "fact": "language",
+        "values": [
+          "typescript",
+          "javascript"
+        ],
+        "observability": "observable_now",
+        "note": "Bun stack source files."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "application_source"
+        ],
+        "observability": "observable_now",
+        "note": "Any application source file, new or existing; test files and vendored/build directories are excluded by path."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "LOGGING-PRINT-001"
+        ],
+        "observability": "needs_new_observer",
+        "note": "A console.log/info/warn/error/debug/trace/dir call outside masked strings/comments, reported by bun_security_hygiene_detector."
+      }
+    ],
+    "fires": [
+      "A server handler or service module in application source calls console.log/info/warn/error/debug/trace/dir.",
+      "A shared module that runs on both server and browser calls console.error in a catch block.",
+      "A CLI entry point in application source prints its user-facing output with console.log.",
+      "An existing application source file already contains a console.warn call."
+    ],
+    "doesNotFire": [
+      "`console.log` appears only inside a comment or a string literal.",
+      "console.* calls in test files.",
+      "console.* calls in vendored or build output directories.",
+      "A CLI writes its user-facing output via process.stdout.write / process.stderr.write."
+    ]
+  },
+  "given": "A Bun application source file (not a test, vendored or build file).",
+  "when": "Code calls console.log/info/warn/error/debug/trace/dir, for any purpose (log, diagnostic or CLI interface output).",
+  "then": "Do not call `console.log`/`info`/`warn`/`error`/`debug`/`trace`/`dir` in application source; log via the structured logger.",
+  "prefer": [
+    "`logger.info(\"processing order\", { orderId: order.id });` (the logger owns level, timestamp, correlation).",
+    "CLI whose stdout IS its UI: `process.stdout.write` (errors: `process.stderr.write`); it says it is the interface, not a log."
+  ],
+  "avoid": [
+    "`console.log(\"processing\", order.id);`; `console.error` too: stderr is still unlevelled, uncorrelated, not queryable.",
+    "Per-file exemptions (none exist); process.stdout.write for output that is really a log."
+  ],
+  "unless": [
+    "Inside a comment or string literal (masked, never flagged).",
+    "Test file or vendored/build directory."
+  ],
+  "why": "console.* lacks level, timestamp and request correlation, so production logs become one unfilterable stream; a full-stack module may run in the browser, sending output to the user's devtools, not the operator.",
+  "evidence": [
+    "bun_security_hygiene_detector reports no LOGGING-PRINT-001 finding across in-scope application source (not only changed files).",
+    "Review: log output goes through the structured logger (levels, timestamps, correlation); CLI interface output uses process.stdout.write / process.stderr.write."
+  ],
+  "verifier_detail": [
+    "Detector: bun_security_hygiene_detector (validator), core alias LOGGING-PRINT-001. Matches calls to console.log, console.info, console.warn, console.error, console.debug, console.trace, console.dir.",
+    "Source is scanned with strings and comments MASKED, so `console.log` inside a comment or string literal never trips the rule.",
+    "Test files and vendored/build directories are excluded from the scan.",
+    "Only console.* is matched; process.stdout.write / process.stderr.write are not flagged. atdd-bun has no per-rule scope to exempt a file.",
+    "Severity 2, disposition strict.",
+    "Term unlevelled_output: a console.* call — no level, no timestamp, no request correlation; in a full-stack app the same module may write to the operator's stdout or the user's devtools.",
+    "Term structured_logger: the project logger that owns levels, timestamps and correlation."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "Stack-neutral obligation, RE-REALIZED for Bun: the python-pytest sibling walks the AST for a bare `print(...)`; the Bun equivalent is `console.*`.",
+    "The obligation is the same as the Python one but the consequence is sharper.",
+    "Realized by bun_security_hygiene_detector (core alias LOGGING-PRINT-001).",
+    "aliases: [\"LOGGING-PRINT-001\"].",
+    "implementation: {\"type\":\"validator\",\"ref\":\"bun_security_hygiene_detector\"}."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire examples (shared server/browser module, CLI using console.log, existing file with console.warn).",
+      "justification": "Required activation examples; derived directly from source statement, reasoning and exceptions; no new obligation."
+    },
+    {
+      "field": "avoid",
+      "text": "process.stdout.write for output that is really a log rather than a CLI's interface.",
+      "justification": "Metric-gaming guard: the source permits process.stdout.write only because it 'says plainly that it is the interface, not a log'; this makes that limit explicit since the detector matches only console.*."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "when",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "verifier_detail[0]",
+        "evidence[0]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[5]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[5]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[6]",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[1]",
+        "unless[0]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "then",
+        "prefer[0]",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[2]",
+        "given"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "prefer[1]",
+        "avoid[1]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "identity",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "identity",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,338 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.bun/coder.bun.telemetry-raw-string-emit.convention.yaml",
+    "sha256": "7fb7c83a916078184862c89edf1bf3bc6332ffd6bc8e2f17d96a221af1a40007"
+  },
+  "rule_id": "coder.bun.telemetry-raw-string-emit",
+  "kind": "rule",
+  "title": "No undeclared raw-string telemetry names",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "source (non-test)"
+        ],
+        "observability": "observable_now",
+        "note": "Test files are excluded by path/file-kind classification."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "emit-like call with an event-shaped string-literal first argument that is not a declared concrete telemetry id"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Requires the bun_telemetry_code validator: AST match of the emit vocabulary (emit, emitted, track, capture, record, logEvent, emitEvent, sendEvent) as function or method with a string-literal first argument, event-shape classifier, and resolution against declared ids in the tracking plan. Applies to every qualifying call in the repository, existing or new, not only changed calls."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "repository has adopted the telemetry tracking plan"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Rule is inert until adoption; requires an observer that detects presence of the tracking plan/registry."
+      }
+    ],
+    "fires": [
+      "Any non-test source file (existing or newly written) contains an emit-like call whose first argument is a string literal in telemetry: URN, snake_case, internal-camelCase or Title Case form that is not a declared telemetry id in the tracking plan.",
+      "A method call such as <client>.track(\"Order Placed\", ...) or <obj>.capture(\"user_signed_up\") where no matching item exists in the plan.",
+      "A previously declared item is removed from the registry while a raw-string emit of its id remains in source."
+    ],
+    "doesNotFire": [
+      "The emit-like call is in a test file asserting on the event it proves.",
+      "The first argument is a non-event-shaped string such as a log level (\"info\") or a single lowercase key.",
+      "The first argument is computed (variable, template literal, contract constant) — invisible to this check by design.",
+      "The repository has not adopted the telemetry plan (rule is inert until adoption).",
+      "The string literal is a declared concrete telemetry id (passes today, until generated contracts ship)."
+    ]
+  },
+  "given": "A non-test source file in a repository that has adopted a telemetry tracking plan",
+  "when": "An emit-like call (emit, emitted, track, capture, record, logEvent, emitEvent, sendEvent; function or method) passes an event-shaped string literal as first argument",
+  "then": "That string MUST be a concrete telemetry id declared in the tracking plan.",
+  "prefer": [
+    "Declare the item first (e.g. telemetry/commons/response-invocation-accepted/event.be.json), then emit through the plan: telemetry.emit(\"telemetry:event:be:commons:response-invocation-accepted\", { ... });",
+    "Once generated contracts ship, emit via the contract constant, not a raw string."
+  ],
+  "avoid": [
+    "Emitting an undeclared event name as a raw string literal.",
+    "Hiding an undeclared name behind a variable or template literal to dodge the check.",
+    "Treating this name-resolution check as proof of transaction ordering or other runtime properties."
+  ],
+  "unless": [
+    "Test files: assertion code legitimately names events it is proving.",
+    "Non-event-shaped strings (log levels like \"info\", single-word keys) — some other concern.",
+    "Repository has not adopted the tracking plan (inert until adoption)."
+  ],
+  "why": "Undeclared event strings are how tracking plans rot: the string compiles, the dashboard never fills, and nobody owns the difference. The registry is the list of names that may be emitted.",
+  "evidence": [
+    "bun_telemetry_code validator reports no undeclared event-shaped string literal as first argument of an emit-like call in non-test source.",
+    "Every event-shaped literal emitted resolves to a declared concrete telemetry id in the tracking plan (e.g. a telemetry/<domain>/<item>/event.<side>.json declaration)."
+  ],
+  "verifier_detail": [
+    "Emit vocabulary: emit, emitted, track, capture, record, logEvent, emitEvent, sendEvent — matched both as bare function and as method call; only calls whose first argument is a string literal are checked.",
+    "Calls with computed first arguments (variables, template literals, contract constants) are invisible to this check by design.",
+    "Event-shaped string = telemetry: URN, snake_case, camelCase with an internal case shift, or Title Case analytics name. Single lowercase words (log levels, keys) are not event names and never trigger; the emit vocabulary with a non-event string is some other concern.",
+    "Resolution target: declared concrete telemetry ids in the tracking plan (registry). A declared id passed as a raw string passes today; once generated contracts ship, emitting even a declared id by string is the drift the contract exists to prevent, and the rule tightens with it.",
+    "Name-resolution check only; does not attempt to prove transaction ordering or any other runtime property.",
+    "Exclude test files. Rule is inert until the repository adopts the telemetry plan, like every rule in this family. Scope is all qualifying calls in the repository, not only changed ones.",
+    "Severity 3; disposition strict."
+  ],
+  "audit": [
+    "schema_version: 1.1.0",
+    "kind: rule",
+    "status: active",
+    "aliases: CODER-TELEMETRY-RAW-STRING-EMIT-001",
+    "introduced_in: 0.7.0",
+    "implementation: validator, ref bun_telemetry_code",
+    "term ids: emit_like_call, event_shaped_string",
+    "severity: 3; disposition: strict"
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "strict: fails on every finding; there is no advisory mode and no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "avoid",
+      "text": "Hiding an undeclared name behind a variable or template literal to dodge the check.",
+      "justification": "Metric-gaming guard required by the authoring format; derived from the source's note that computed arguments are invisible by design (S009) and that the registry is the list of names that may be emitted (S014). Adds no new obligation beyond the source's intent."
+    },
+    {
+      "field": "activation.fires",
+      "text": "Method-call example with placeholder names; registry-removal example.",
+      "justification": "Concrete firing situations required by format; use neutral placeholders and the source's vocabulary and follow directly from the source's resolution-against-registry semantics."
+    },
+    {
+      "field": "activation.facts",
+      "text": "task_term fact for tracking-plan adoption",
+      "justification": "Expresses the source's 'inert until adoption' exception (S027) as an activation fact; marked needs_new_observer."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "when",
+        "then",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ],
+      "note": "term id"
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "when",
+        "verifier_detail[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "verifier_detail[1]",
+        "activation",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit"
+      ],
+      "note": "term id"
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[2]",
+        "unless[1]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "why",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "when",
+        "then"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "verifier_detail[3]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "verifier_detail[3]",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "verifier_detail[3]",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "verifier_detail[4]",
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "verifier_detail[4]",
+        "avoid[2]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "prefer[0]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[5]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "unless[2]",
+        "verifier_detail[5]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "identity",
+        "verifier_detail[6]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,321 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.bun/coder.bun.telemetry-implementation-binding.convention.yaml",
+    "sha256": "5eb854948cdb8a1510fe808e3e5be13840d02b6bf07b4aa6d6ca94739128e7a7"
+  },
+  "rule_id": "coder.bun.telemetry-implementation-binding",
+  "kind": "rule",
+  "title": "Bind every required telemetry item to its emitting source",
+  "activation": {
+    "facts": [
+      {
+        "fact": "task_has_acceptance",
+        "values": [
+          "true"
+        ],
+        "observability": "observable_now",
+        "note": "Required items come only from acceptance decisions; the rule applies to the existing acceptance state, not only when an acceptance is changed."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "acceptance state: telemetry disposition required with at least one resolvable concrete telemetry URN"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Requires parsing all current acceptance decisions (changed or unchanged) for telemetry disposition=required and resolving their URNs."
+      },
+      {
+        "fact": "file_kind",
+        "values": [
+          "non-test implementation source (any directory; test files excluded)"
+        ],
+        "observability": "observable_now",
+        "note": "Bindings count from every resolved `// Telemetry:` header in non-test source, with no directory restriction."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "bun_telemetry_code: required item with no implementation binding"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Set difference (required items minus implementation bindings) computed by the bun_telemetry_code validator over the whole repository; only active once the telemetry rule family is adopted."
+      }
+    ],
+    "fires": [
+      "An existing acceptance with required telemetry disposition lists a concrete URN and no non-test source file carries a resolved `// Telemetry:` header naming it — even if the current change touches no source.",
+      "An acceptance-only change adds a required concrete URN that no non-test source binds.",
+      "The only `// Telemetry:` header naming a required URN sits in a test file.",
+      "The emitting source is removed or its `// Telemetry:` header is deleted while the acceptance still requires the item."
+    ],
+    "doesNotFire": [
+      "The repository has not adopted the telemetry rule family (rule is inert).",
+      "The acceptance's telemetry disposition is not required.",
+      "The required URN is unresolvable — that is the acceptance-decision rule's finding, not this one's.",
+      "At least one non-test source file, in any directory, already binds the required item via a resolved `// Telemetry:` header."
+    ]
+  },
+  "given": "An acceptance in the repository (changed or not) has telemetry disposition required and lists a resolvable concrete telemetry URN (a required item)",
+  "when": "the repository's acceptances and non-test source are in that state, regardless of which files the current change touches",
+  "then": "Bind the required item to at least one non-test implementation source file with a `// Telemetry: <urn>` header that resolves to it.",
+  "prefer": [
+    "Put the header `// Telemetry: <urn>` (the required item's exact URN) in the non-test source file that actually emits the item; the header must resolve the way coder.bun.telemetry-source-binding defines — fix resolution failures under that rule.",
+    "If nothing emits the item, drop the requirement from the acceptance instead of inventing a binding."
+  ],
+  "avoid": [
+    "Binding the required item only from a test file — test headers do not count as implementation.",
+    "Adding a `// Telemetry:` header to source that does not emit the item just to silence the finding.",
+    "Leaving a required item no source claims: telemetry the plan believes in and the code has never heard of."
+  ],
+  "unless": [
+    "The repository has not yet adopted the telemetry rule family — the rule is inert until adoption, like every rule in this family."
+  ],
+  "why": "Traceability needs all three legs — planned, implemented, tested; this rule closes the implemented leg so a required item is never planned yet unemitted.",
+  "evidence": [
+    "bun_telemetry_code reports no finding for this rule: every required item has a resolved `// Telemetry:` header in non-test source.",
+    "Reviewer can point, for each required URN of every acceptance, to the non-test source file whose header names it, or to the removal of the requirement."
+  ],
+  "verifier_detail": [
+    "Required items: concrete telemetry URNs collected from acceptance decisions whose telemetry disposition is required.",
+    "Implementation bindings: every resolved `// Telemetry:` header in non-test source (no directory restriction) — the source-to-telemetry edge resolved by coder.bun.telemetry-source-binding.",
+    "Finding = required items minus implementation bindings; report it at the tracking-plan item's own file, because that is where the remedy starts (bind the emitting source or stop requiring what nothing emits).",
+    "An unresolvable required URN is the acceptance-decision rule's finding and is not double-reported here.",
+    "Fix hint shape (source fix_hint verbatim, application-specific example kept as provenance only): `// src/.../accept-response.ts` followed by `// Telemetry: telemetry:metric:be:commons:response-invocation-accepted:duration`.",
+    "Inert until the telemetry rule family is adopted.",
+    "Severity 2."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active.",
+    "Source name: 'Required telemetry is bound to its implementation'.",
+    "Term ids: required_item, implementation_binding.",
+    "Alias: CODER-TELEMETRY-IMPLEMENTATION-BINDING-001.",
+    "Severity 2; disposition strict; introduced_in 0.7.0.",
+    "Implementation: validator, ref bun_telemetry_code.",
+    "Framing: third leg of the traceability tripod (planned, implemented, tested); this rule closes the second (implemented) leg."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Disposition strict: atdd-bun fails on every finding; there is no advisory mode and no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire scenarios and fact observability notes",
+      "justification": "Required by output shape; derived directly from source normative text and exceptions."
+    },
+    {
+      "field": "when",
+      "text": "State-based trigger ('the repository's acceptances and non-test source are in that state, regardless of which files the current change touches')",
+      "justification": "The source states an unconditional repository-wide obligation; the When field must be filled and is phrased as a standing state so as not to narrow it to source-editing activity."
+    },
+    {
+      "field": "avoid[1]",
+      "text": "Adding a header to non-emitting source just to silence the finding",
+      "justification": "Metric-gaming anti-pattern implied by 'bind the emitting source'; makes the obligation non-gameable."
+    },
+    {
+      "field": "prefer[0]",
+      "text": "Pointer that header resolution semantics and resolution failures are governed by coder.bun.telemetry-source-binding",
+      "justification": "Reviewer usability risk: coders need to know where 'resolves' is defined; the source term definition (S010) names that rule as the resolver."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "given",
+        "when",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "given",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "then",
+        "verifier_detail[1]",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "why",
+        "avoid[2]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[0]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[1]",
+        "avoid[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "verifier_detail[2]",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "verifier_detail[2]",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "verifier_detail[3]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "verifier_detail[3]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "prefer[0]",
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "verifier_detail[4]"
+      ],
+      "note": "Application-specific URN kept only as verifier provenance; coder-facing prefer[0] uses the generic `// Telemetry: <urn>` form."
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[5]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "identity",
+        "verifier_detail[6]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "audit"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,613 @@
+{
+  "schema": "pi-atdd/convention-sidecar-split/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/planner.docs/planner.docs.reference-integrity.convention.yaml",
+    "sha256": "34310088114ac7cc58bc74443a76366e3e644121aaa3ff39b6602a0d15e03293"
+  },
+  "source_rule_id": "planner.docs.reference-integrity",
+  "rationale": "The source holds three independent obligations, joined in one THEN. (1) The corpus renders with asciidoctor, and an attributable build failure is FAIL. (2) Every internal cross-reference resolves, and an unresolvable one is FAIL. Its evidence, fix and external-link exception differ from (1). (3) When the validator cannot observe (absent toolchain, crashed renderer, unreadable tree, unattributable failure), the verdict is COULD_NOT_CHECK, which blocks, and never PASS, FAIL or NOT_APPLICABLE. Part 3 has a different trigger (toolchain or renderer state, not document content) and a different fix (make the renderer runnable, do not edit docs). The source calls this verdict distinction 'the point of this rule'. The source makes (1) and (2) jointly mandatory, so the two parts require each other. Both also require (3), so an unexamined corpus can never pass either one. Round 3: parts (1) and (2) now activate on every docs_validation run, unconditionally; findings only classify the verdict and are no longer activation prerequisites. Strict disposition is stated directly in every part and each part also requires the shared strict-disposition policy; could-not-check also requires the shared unknown-not-exempt policy.",
+  "parts": [
+    {
+      "rule_id": "planner.docs.reference-integrity.render-builds",
+      "kind": "rule",
+      "title": "The docs corpus renders with asciidoctor",
+      "activation": {
+        "facts": [
+          {
+            "fact": "phase",
+            "values": [
+              "docs_validation"
+            ],
+            "observability": "needs_new_observer",
+            "note": "Every docs_capability validation of the configured documentation corpus, whatever changed (documents, toolchain or CI), and whatever the result. No directory or extension is assumed, and docs/dist/** is render output, never an input. Findings classify the verdict afterwards; they do not gate activation."
+          }
+        ],
+        "fires": [
+          "Every validation of the docs corpus, including a clean one",
+          "A plan or doc change adds or edits a corpus document",
+          "A CI or toolchain change alters how the corpus is rendered, even though no document changed"
+        ],
+        "doesNotFire": [
+          "Files under docs/dist/** (render output) are not render inputs",
+          "Classifying a crashed renderer, an unreadable tree, a missing toolchain or any failure not pinned to a document: that verdict belongs to .could-not-check (the render obligation itself still applies)"
+        ]
+      },
+      "given": "The documentation corpus is being validated, whatever changed.",
+      "when": "The docs validator runs over the corpus.",
+      "then": "The corpus MUST render with asciidoctor. A build failure attributable to a specific document is FAIL.",
+      "prefer": [
+        "Author docs that asciidoctor renders cleanly, and fix the document the build failure is attributed to"
+      ],
+      "avoid": [
+        "Feeding docs/dist/** back in as a render input",
+        "Scoring a crashed renderer, an unreadable tree or a missing toolchain as FAIL. Those are COULD_NOT_CHECK."
+      ],
+      "unless": [
+        "docs/dist/** is the render OUTPUT and is never an input to the render"
+      ],
+      "why": "asciidoctor (Ruby) is the reference renderer because unresolvable internal references must be validation failures, and the Python options detect them weakly.",
+      "evidence": [
+        "The docs_capability report shows the asciidoctor build of the corpus completed with no build failure attributed to a document"
+      ],
+      "verifier_detail": [
+        "Verdict mapping: a build failure attributable to a document is FAIL. An absent toolchain, or a build failure not attributable to a specific document, is COULD_NOT_CHECK: never PASS and never FAIL (spec 2 §3 'What the capability owes core', and §7).",
+        "The reference implementation is asciidoctor (Ruby), not a pure Python renderer, because unresolvable internal references must be VALIDATION FAILURES and the Python options detect them weakly. A Ruby runtime in CI is the cost, accepted deliberately (spec 2 §9 Decision 4).",
+        "Render inputs exclude docs/dist/**. Documents that contain external links are still rendered. The links themselves are not fetched, because their liveness is a network property and checking it would make the gate non-deterministic.",
+        "Severity 1. Disposition strict: fails on every finding; no advisory mode, no ratchet baseline."
+      ],
+      "audit": [
+        "Source name: The site builds deterministically and every internal reference resolves",
+        "implementation: {type: validator, ref: docs_capability}"
+      ],
+      "additions": [
+        {
+          "field": "activation",
+          "text": "Activation facts, fires and doesNotFire, including the phase fact docs_validation",
+          "justification": "The schema requires them. They are derived from the source scope: the corpus, the docs/dist/** exclusion, and validation whatever changed. Only known facts are used, no corpus glob is assumed, and no result finding gates activation."
+        }
+      ]
+    },
+    {
+      "rule_id": "planner.docs.reference-integrity.internal-refs-resolve",
+      "kind": "rule",
+      "title": "Every internal cross-reference in the docs corpus resolves",
+      "activation": {
+        "facts": [
+          {
+            "fact": "phase",
+            "values": [
+              "docs_validation"
+            ],
+            "observability": "needs_new_observer",
+            "note": "Every docs_capability validation of the configured documentation corpus, whatever changed and whatever the result. No directory or extension is assumed, and docs/dist/** is excluded. An unresolved-reference finding classifies the verdict as FAIL; it does not gate activation."
+          }
+        ],
+        "fires": [
+          "Every validation of the docs corpus, including a clean one",
+          "A plan or doc adds an xref: or <<anchor>> that points at another corpus document",
+          "A document or anchor is renamed, moved or deleted while other documents still reference it"
+        ],
+        "doesNotFire": [
+          "Checking whether external (http/https) link targets are live. The document that contains them must still render, and its internal references must still resolve."
+        ]
+      },
+      "given": "The documentation corpus is being validated, whatever changed.",
+      "when": "The docs validator checks the corpus's xref: and <<anchor>> cross-references between corpus documents.",
+      "then": "Every internal cross-reference MUST resolve. An unresolvable internal reference is FAIL.",
+      "prefer": [
+        "Fix a reported reference by fixing its target or the reference itself"
+      ],
+      "avoid": [
+        "Leaving an xref: or <<anchor>> that points at a document or anchor that does not exist"
+      ],
+      "unless": [
+        "External links are not resolved. Their liveness is a network property, and checking it would make the gate non-deterministic."
+      ],
+      "why": "Unresolvable internal references must be VALIDATION FAILURES. That is why asciidoctor, not a Python renderer, is the reference implementation.",
+      "evidence": [
+        "The docs_capability report lists no unresolved internal reference",
+        "Example: xref:architecture/shared-control-rooot.adoc[] is unresolvable, so FAIL. xref:architecture/shared-control-root.adoc[] resolves."
+      ],
+      "verifier_detail": [
+        "internal_reference: a cross-reference from one document in the corpus to another (`xref:`, `<<anchor>>`). External links are out of scope, because their liveness is a network property, not a corpus property.",
+        "If the render could not run (absent toolchain, or a failure not attributable to a document), reference resolution was not observed. The verdict is COULD_NOT_CHECK: never PASS and never FAIL.",
+        "Severity 1. Disposition strict: fails on every finding; no advisory mode, no ratchet baseline."
+      ],
+      "audit": [
+        "Source name: The site builds deterministically and every internal reference resolves"
+      ],
+      "additions": [
+        {
+          "field": "activation",
+          "text": "Activation facts, fires and doesNotFire",
+          "justification": "The schema requires them. They are derived from the source definition of internal_reference, the source statement and the external-link exception. Only known facts are used, no corpus glob is assumed, and no result finding gates activation."
+        }
+      ]
+    },
+    {
+      "rule_id": "planner.docs.reference-integrity.could-not-check",
+      "kind": "rule",
+      "title": "An unexamined docs corpus is COULD_NOT_CHECK, never PASS or FAIL",
+      "activation": {
+        "facts": [
+          {
+            "fact": "phase",
+            "values": [
+              "docs_validation"
+            ],
+            "observability": "needs_new_observer",
+            "note": "The docs_capability validator ran, or was required to run, over the configured corpus."
+          },
+          {
+            "fact": "finding",
+            "values": [
+              "toolchain_absent",
+              "unattributable_render_failure"
+            ],
+            "observability": "needs_new_observer",
+            "note": "Covers asciidoctor not installed, a crashed renderer, an unreadable tree, and a build failure not pinned to a document."
+          }
+        ],
+        "fires": [
+          "The docs validator runs where asciidoctor is not installed",
+          "The renderer crashes or the document tree is unreadable",
+          "A build failure cannot be attributed to a specific document",
+          "A plan, acceptance or validator design defines what the docs gate reports when it cannot observe"
+        ],
+        "doesNotFire": [
+          "A build failure attributed to a specific document. That is FAIL under .render-builds.",
+          "An unresolved internal reference. That is FAIL under .internal-refs-resolve."
+        ]
+      },
+      "given": "The docs validator is run over the corpus.",
+      "when": "The toolchain is absent, the renderer crashes, the tree is unreadable, or a build failure cannot be attributed to a specific document.",
+      "then": "The verdict MUST be COULD_NOT_CHECK, which BLOCKS. It is reported as a named state that reaches the report: never PASS, never FAIL, never NOT_APPLICABLE.",
+      "prefer": [
+        "For COULD_NOT_CHECK, install the toolchain (gem install asciidoctor) and re-run, rather than suppressing the verdict"
+      ],
+      "avoid": [
+        "Treating a missing asciidoctor as a clean corpus. It is an unexamined one.",
+        "Collapsing COULD_NOT_CHECK (blocks) into NOT_APPLICABLE (permits) or PASS",
+        "'Fixing' COULD_NOT_CHECK by making the capability return PASS when the renderer is absent. That is the #1745 defect, re-committed.",
+        "Turning an unresolvable lookup into an empty clean result"
+      ],
+      "unless": [],
+      "why": "The verdict distinction is the point of this rule and the thing most likely to be got wrong. This repository has had the bug in at least three places (#1745, #1774, #1716).",
+      "evidence": [
+        "When the toolchain is absent or the failure is unattributable, the docs_capability report shows COULD_NOT_CHECK (not PASS, FAIL or NOT_APPLICABLE) and the gate blocks"
+      ],
+      "verifier_detail": [
+        "unattributable_failure: a render failure the capability cannot pin to a document, such as a crashed renderer, an unreadable tree, or a toolchain that is not installed. It is reported as COULD_NOT_CHECK, which BLOCKS.",
+        "Verdict mapping: an ABSENT toolchain, or a build failure the capability cannot attribute to a specific document, is COULD_NOT_CHECK: never PASS and never FAIL (spec 2 §3 'What the capability owes core', and §7).",
+        "THE VERDICT DISTINCTION IS THE POINT OF THIS RULE, and the thing most likely to be got wrong. 'There is no obligation here' (NOT_APPLICABLE, permits) and 'I could not see whether the obligation was met' (COULD_NOT_CHECK, blocks) must never collapse into one another.",
+        "An unresolvable lookup must remain DATA: a named, reportable state that reaches the report, never an empty clean result.",
+        "Defect lineage. Spec 2 §3 states this emphatically because the repository has the bug in at least three places. In #1745, coach.pr.merge-blocks-on-pre-smoke-close degrades to advisory on a lookup failure and REPORTS IT AS A PASS. In #1774, 'no mirror found' is read as 'nothing to lose', and 15 nodes are invisible to the succession guard. In #1716, checks pass when they cannot observe, and C011 compares the store against itself.",
+        "Severity 1. Disposition strict: fails on every finding; no advisory mode, no ratchet baseline."
+      ],
+      "audit": [
+        "Defect lineage #1745, #1774 and #1716 (source normative_text)"
+      ],
+      "additions": [
+        {
+          "field": "activation",
+          "text": "Activation facts, fires and doesNotFire, including the fire for a plan, acceptance or validator design that defines what the docs gate reports when it cannot observe",
+          "justification": "The schema requires them, and the planner audience authors acceptances for this gate. They are derived from the source's unattributable_failure term and its verdict mapping."
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "source": "planner.docs.reference-integrity.render-builds",
+      "target": "planner.docs.reference-integrity.internal-refs-resolve",
+      "type": "requires",
+      "reason": "The source makes render success and reference resolution jointly mandatory (one MUST ... and ... MUST). A corpus that renders but has broken internal references does not satisfy the source."
+    },
+    {
+      "source": "planner.docs.reference-integrity.internal-refs-resolve",
+      "target": "planner.docs.reference-integrity.render-builds",
+      "type": "requires",
+      "reason": "References are resolved by the asciidoctor render, and the source makes both MUSTs jointly mandatory."
+    },
+    {
+      "source": "planner.docs.reference-integrity.render-builds",
+      "target": "planner.docs.reference-integrity.could-not-check",
+      "type": "requires",
+      "reason": "The source's verdict mapping for the render (S008) sends an absent toolchain or an unattributable failure to COULD_NOT_CHECK, never PASS or FAIL. It must be delivered with the render obligation so that such a failure is not misclassified."
+    },
+    {
+      "source": "planner.docs.reference-integrity.internal-refs-resolve",
+      "target": "planner.docs.reference-integrity.could-not-check",
+      "type": "requires",
+      "reason": "When the render could not run, reference resolution was not observed. The verdict must be COULD_NOT_CHECK, never a clean PASS."
+    },
+    {
+      "source": "planner.docs.reference-integrity.render-builds",
+      "target": "policy.strict-disposition",
+      "type": "requires",
+      "reason": "Source disposition is strict (S042); the strict, non-advisory policy must be delivered with this part."
+    },
+    {
+      "source": "planner.docs.reference-integrity.internal-refs-resolve",
+      "target": "policy.strict-disposition",
+      "type": "requires",
+      "reason": "Source disposition is strict (S042); the strict, non-advisory policy must be delivered with this part."
+    },
+    {
+      "source": "planner.docs.reference-integrity.could-not-check",
+      "target": "policy.strict-disposition",
+      "type": "requires",
+      "reason": "Source disposition is strict (S042); the strict, non-advisory policy must be delivered with this part."
+    },
+    {
+      "source": "planner.docs.reference-integrity.could-not-check",
+      "target": "policy.unknown-not-exempt",
+      "type": "requires",
+      "reason": "The NOT_APPLICABLE / COULD_NOT_CHECK distinction (S019-S020, S026-S027) is the generic policy this part applies."
+    }
+  ],
+  "edgeRemap": [
+    {
+      "original": {
+        "source_ref": "planner.docs.reference-integrity",
+        "target_ref": "planner.docs.asciidoc-only",
+        "type": "requires"
+      },
+      "remappedTo": [
+        "planner.docs.reference-integrity.render-builds",
+        "planner.docs.reference-integrity.internal-refs-resolve"
+      ],
+      "reason": "asciidoc-only bounds what asciidoctor can render and which references it can resolve through. Both the render part and the reference part depend on it. The COULD_NOT_CHECK verdict part does not depend on document format."
+    },
+    {
+      "original": {
+        "source_ref": "planner.docs.journey-view-current",
+        "target_ref": "planner.docs.reference-integrity",
+        "type": "runs_alongside"
+      },
+      "remappedTo": [
+        "planner.docs.reference-integrity.internal-refs-resolve",
+        "planner.docs.reference-integrity.render-builds"
+      ],
+      "reason": "The edge pairs keeping rendered docs truthful (references resolve) with journey views being current. It concerns the reference part, and the render part that produces the rendered docs."
+    }
+  ],
+  "aliasOf": {
+    "planner.docs.reference-integrity": [
+      "planner.docs.reference-integrity.render-builds",
+      "planner.docs.reference-integrity.internal-refs-resolve",
+      "planner.docs.reference-integrity.could-not-check"
+    ]
+  },
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Disposition strict: the tool fails on every finding. There is no advisory mode and no ratchet baseline."
+    },
+    {
+      "id": "policy.unknown-not-exempt",
+      "kind": "policy",
+      "text": "Unknown is not exempt. NOT_APPLICABLE (there is no obligation here, permits) and COULD_NOT_CHECK (I could not see whether the obligation was met, blocks) must never collapse into one another. A check that could not observe reports COULD_NOT_CHECK as a named state that reaches the report, never PASS, NOT_APPLICABLE or an empty clean result."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "structure"
+      ],
+      "note": "Source id becomes the alias that resolves to all three parts."
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "planner.docs.reference-integrity.render-builds:title",
+        "planner.docs.reference-integrity.internal-refs-resolve:title",
+        "planner.docs.reference-integrity.render-builds:audit[0]",
+        "planner.docs.reference-integrity.internal-refs-resolve:audit[0]"
+      ],
+      "note": "The name's two halves (the site builds; internal references resolve) become the two part titles. 'Deterministically' is carried by the external-link exception."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "planner.docs.reference-integrity.render-builds:then",
+        "planner.docs.reference-integrity.internal-refs-resolve:then",
+        "planner.docs.reference-integrity.render-builds:activation",
+        "planner.docs.reference-integrity.internal-refs-resolve:activation",
+        "structure"
+      ],
+      "note": "Both MUSTs activate unconditionally on every docs_validation; the joint mandate is kept through mutual requires edges."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "planner.docs.reference-integrity.render-builds:then",
+        "planner.docs.reference-integrity.render-builds:verifier_detail[0]",
+        "planner.docs.reference-integrity.internal-refs-resolve:then"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "planner.docs.reference-integrity.could-not-check:then",
+        "planner.docs.reference-integrity.could-not-check:verifier_detail[1]",
+        "planner.docs.reference-integrity.render-builds:verifier_detail[0]",
+        "planner.docs.reference-integrity.internal-refs-resolve:verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "planner.docs.reference-integrity.internal-refs-resolve:verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "planner.docs.reference-integrity.internal-refs-resolve:verifier_detail[0]",
+        "planner.docs.reference-integrity.internal-refs-resolve:when",
+        "planner.docs.reference-integrity.internal-refs-resolve:then"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "planner.docs.reference-integrity.internal-refs-resolve:verifier_detail[0]",
+        "planner.docs.reference-integrity.internal-refs-resolve:unless[0]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "planner.docs.reference-integrity.could-not-check:verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "planner.docs.reference-integrity.could-not-check:verifier_detail[0]",
+        "planner.docs.reference-integrity.could-not-check:when",
+        "planner.docs.reference-integrity.render-builds:avoid[1]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "planner.docs.reference-integrity.could-not-check:verifier_detail[0]",
+        "planner.docs.reference-integrity.could-not-check:then"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "planner.docs.reference-integrity.render-builds:why",
+        "planner.docs.reference-integrity.render-builds:verifier_detail[1]",
+        "planner.docs.reference-integrity.internal-refs-resolve:why"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "planner.docs.reference-integrity.render-builds:verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "planner.docs.reference-integrity.could-not-check:verifier_detail[2]",
+        "planner.docs.reference-integrity.could-not-check:why"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "planner.docs.reference-integrity.could-not-check:verifier_detail[2]",
+        "planner.docs.reference-integrity.could-not-check:why"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "planner.docs.reference-integrity.could-not-check:verifier_detail[2]",
+        "planner.docs.reference-integrity.could-not-check:avoid[1]",
+        "shared:policy.unknown-not-exempt"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "planner.docs.reference-integrity.could-not-check:verifier_detail[2]",
+        "planner.docs.reference-integrity.could-not-check:avoid[1]",
+        "planner.docs.reference-integrity.could-not-check:then",
+        "shared:policy.unknown-not-exempt"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "planner.docs.reference-integrity.could-not-check:verifier_detail[4]",
+        "planner.docs.reference-integrity.could-not-check:why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "planner.docs.reference-integrity.could-not-check:verifier_detail[4]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "planner.docs.reference-integrity.could-not-check:verifier_detail[4]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "planner.docs.reference-integrity.could-not-check:verifier_detail[4]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "planner.docs.reference-integrity.could-not-check:verifier_detail[4]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "planner.docs.reference-integrity.could-not-check:verifier_detail[3]",
+        "planner.docs.reference-integrity.could-not-check:then",
+        "shared:policy.unknown-not-exempt"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "planner.docs.reference-integrity.could-not-check:verifier_detail[3]",
+        "planner.docs.reference-integrity.could-not-check:avoid[3]",
+        "shared:policy.unknown-not-exempt"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "planner.docs.reference-integrity.could-not-check:avoid[0]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "planner.docs.reference-integrity.could-not-check:avoid[0]"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "planner.docs.reference-integrity.internal-refs-resolve:prefer[0]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "planner.docs.reference-integrity.internal-refs-resolve:evidence[1]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "planner.docs.reference-integrity.internal-refs-resolve:evidence[1]"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "planner.docs.reference-integrity.could-not-check:prefer[0]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "planner.docs.reference-integrity.could-not-check:prefer[0]"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "planner.docs.reference-integrity.could-not-check:avoid[2]"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "planner.docs.reference-integrity.could-not-check:avoid[2]"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "planner.docs.reference-integrity.internal-refs-resolve:unless[0]",
+        "planner.docs.reference-integrity.render-builds:verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "planner.docs.reference-integrity.internal-refs-resolve:unless[0]",
+        "planner.docs.reference-integrity.render-builds:verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "planner.docs.reference-integrity.render-builds:unless[0]",
+        "planner.docs.reference-integrity.render-builds:avoid[0]",
+        "planner.docs.reference-integrity.render-builds:verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "planner.docs.reference-integrity.render-builds:verifier_detail[3]",
+        "planner.docs.reference-integrity.internal-refs-resolve:verifier_detail[2]",
+        "planner.docs.reference-integrity.could-not-check:verifier_detail[5]",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "planner.docs.reference-integrity.render-builds:verifier_detail[3]",
+        "planner.docs.reference-integrity.internal-refs-resolve:verifier_detail[2]",
+        "planner.docs.reference-integrity.could-not-check:verifier_detail[5]",
+        "shared:policy.strict-disposition",
+        "audit"
+      ],
+      "note": "Strict disposition stated directly in every part, and each part requires policy.strict-disposition."
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "audit",
+        "planner.docs.reference-integrity.render-builds:audit[1]"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,500 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.bun/coder.bun.runtime-executes-the-declaration.convention.yaml",
+    "sha256": "ed1643e92878a746298a20bfbc301c1f469d123d71ca272de1384d2f7cc03ba1"
+  },
+  "rule_id": "coder.bun.runtime-executes-the-declaration",
+  "kind": "rule",
+  "title": "Make the runtime load and resolve from the declared route space, not transcribe it",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "interlocking route declaration (YAML)",
+          "train definition (YAML)"
+        ],
+        "observability": "observable_now",
+        "note": "The consumer declares guarded interlocking routes / train definitions in its plan; this alone triggers the obligation, whether or not a runtime exists yet. Without a declared route space the rule does not apply (S050)."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "<runtime selector of the consumer>"
+        ],
+        "observability": "observable_now",
+        "note": "Modules under the runtime selector form the runtime surface checked as a whole; an empty/missing runtime surface for a declared route space is itself in scope."
+      },
+      {
+        "fact": "operation",
+        "values": [
+          "create, modify or review the runtime (InterlockingRunner / TrainRunner)",
+          "assess an existing consumer that declares routes"
+        ],
+        "observability": "llm_judged",
+        "note": "Covers implementing a missing runtime, changing an existing one, and assessing an unchanged consumer."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "runtime does not load the declaration",
+          "unreachable_route"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Realized by the validator's scan_execution(); the gated scan_root() must call it for the finding to be observable at the gate."
+      }
+    ],
+    "fires": [
+      "A consumer declares a guarded interlocking route space but has no runtime that reads it.",
+      "An InterlockingRunner is constructed with an interlocking YAML path, stores it, and returns a hardcoded InterlockingResolution.",
+      "A TrainRunner keeps a literal train_id -> wagons map instead of reading the train definition.",
+      "Assessing an existing, unchanged consumer whose runtime transcribes the declaration.",
+      "A declared route_id appears nowhere in a runtime that does not load the declaration (unreachable route)."
+    ],
+    "doesNotFire": [
+      "The consumer declares no interlocking route space.",
+      "The runtime loads the declaration (possibly via a sibling loader module under the runtime selector) and resolves from it; it is not checked for route literals."
+    ]
+  },
+  "given": "A consumer declares guarded interlocking routes (interlocking YAML, train definitions)",
+  "when": "Its runtime under the runtime selector is written, changed or assessed — including when no runtime exists yet",
+  "then": "The consumer MUST have a runtime that reads the declaration it is given: an InterlockingRunner built with an interlocking YAML path loads that path and resolves from what it read; a TrainRunner takes wagon order from the train definition.",
+  "prefer": [
+    "Load the declaration (e.g. yaml.safe_load of the path's text) and resolve from the loaded data; loading may live in a sibling loader module.",
+    "Resolve through a route_by_id-style accessor over the loaded route space, not an inline filter (provenance scan reports inline filters as undecidable)."
+  ],
+  "avoid": [
+    "Transcription: storing the path and returning hardcoded resolution fields or a literal train_id -> wagons map that match the declaration today.",
+    "Treating passing text-level rules as proof the plan is executed."
+  ],
+  "unless": [
+    "The consumer declares no interlocking route space.",
+    "A runtime that loads the declaration is never checked for route literals."
+  ],
+  "why": "A transcribing runtime matches the plan when written, then diverges silently as the plan is edited while every literal check still passes; an absent runtime at least fails loudly. Reading the declaration makes the train YAML the runtime's source of truth.",
+  "evidence": [
+    "Some module under the runtime selector reads a file (yaml.safe_load, json.load, open(...), .read_text(...)) and the runner resolves from that data.",
+    "Fix shape from the source:\n  def _declaration(self):\n      return yaml.safe_load(Path(self._path).read_text(encoding=\"utf-8\")) or {}\n\n  def route_by_id(self, route_id):\n      for route in self._declaration().get(\"routes\") or []:\n          if route.get(\"route_id\") == route_id:\n              return _Route(route)",
+    "Divergence probe: introducing a declared route the runtime cannot resolve, a wagon sequence contradicting the runtime, or deleting the plan/ directory must be detected / break dispatch rather than letting the application keep dispatching."
+  ],
+  "verifier_detail": [
+    "loads_the_declaration: some module under the runtime selector reads a file — yaml.safe_load, json.load, open(...), .read_text(...). Checked across the whole runtime surface rather than per module, because a correct implementation may delegate loading to a sibling loader. A declared route space with no runtime surface at all violates the obligation to have a reading runtime.",
+    "transcription: a runtime whose resolution fields and wagon order are literals that happen to match the declaration; it agrees with the plan when written and cannot disagree detectably afterwards because nothing compares them at runtime.",
+    "unreachable_route: a declared route_id that appears nowhere in a runtime which does not load the declaration. Only ever evaluated against a transcribing runtime; a data-driven runtime serves every declared route by construction and mentions no route literals, so it must not be flagged (flagging the absent literal would punish the correct implementation for being correct).",
+    "Every other rule in the package closes a correspondence between literals in code and literals in the plan; none asks whether the code ever reads the plan — this rule is that check. A transcribing runtime satisfies every text-level rule while not executing the plan.",
+    "Bilateral binding's provenance scan traces a resolution kwarg back through a route_by_id-style accessor to the loaded route space; it cannot trace an inline filter and reports it as undecidable rather than passing silently.",
+    "Realized by scan_execution(); must be wired into the gated scan_root() for enforcement to run.",
+    "Severity 2."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active (source comment: rule was DRAFT because scan_execution() is not called by gated scan_root(); becomes active in the same change that wires the check into the gate).",
+    "Alias: BUN-RUNTIME-EXECUTES-001; introduced_in 0.1.0; implementation: validator coder.bun.runtime-executes-the-declaration.",
+    "Core design refs: afokapu/atdd#1248, afokapu/atdd#1251.",
+    "Provenance: found by running the package against a real consumer — the only way it could have been found. That consumer's InterlockingRunner stored interlocking_yaml_path and returned a hardcoded InterlockingResolution and its TrainRunner kept a literal train_id -> wagons map, yet it was fully compliant. Three divergences were introduced: a declared route the runtime cannot resolve -> nothing fired; a wagon sequence contradicting the runtime -> nothing fired; the entire plan/ directory deleted -> only bilateral binding fired, because the runtime's literals became undeclared. The application kept dispatching in all three cases — the definition of a plan that is not executable."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Disposition strict: atdd-bun fails on every finding; it has no advisory mode and no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "evidence",
+      "text": "Divergence probe phrased as a verification step (detected / breaks dispatch).",
+      "justification": "Restates the source's provenance experiment (S025–S032) as a reviewer check; no new obligation."
+    },
+    {
+      "field": "activation",
+      "text": "Explicit fires cases for a declared route space with no runtime and for assessing an unchanged consumer.",
+      "justification": "Makes the source's 'MUST have a runtime' (S006) observable; no new obligation."
+    },
+    {
+      "field": "coder_text_length",
+      "text": "Coder-facing text kept slightly above ~1,000 chars.",
+      "justification": "Losslessness of the statement, exceptions and reasoning required it; detail moved to verifier_detail where possible."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ],
+      "note": "title"
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "given",
+        "then",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "avoid[0]",
+        "avoid[1]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "verifier_detail[0]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[0]",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "verifier_detail[1]",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "verifier_detail[1]",
+        "why"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "verifier_detail[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "verifier_detail[3]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "audit",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "audit",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "audit",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "audit",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "audit",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "audit",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "audit",
+        "evidence[2]"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S040",
+      "dest": [
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S041",
+      "dest": [
+        "evidence[1]",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S042",
+      "dest": [
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S043",
+      "dest": [
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S044",
+      "dest": [
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S045",
+      "dest": [
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S046",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S047",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S048",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S049",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S050",
+      "dest": [
+        "unless[0]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S051",
+      "dest": [
+        "unless[1]",
+        "verifier_detail[2]",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S052",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S053",
+      "dest": [
+        "identity",
+        "verifier_detail[6]"
+      ]
+    },
+    {
+      "seg": "S054",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition"
+      ]
+    },
+    {
+      "seg": "S055",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S056",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S057",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S058",
+      "dest": [
+        "audit",
+        "verifier_detail[5]"
+      ]
+    }
+  ]
+}

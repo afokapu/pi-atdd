@@ -1,0 +1,229 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/planner-nodes/nodes/planner.decomposition.local-scope.convention.yaml",
+    "sha256": "9c81baa52c2972a4e8f9ef46576106ce17bd1950c00a9ff2162d0d3413d07f02"
+  },
+  "rule_id": "planner.decomposition.local-scope",
+  "kind": "rule",
+  "title": "Scope each planner run to one slice with per-invocation framing",
+  "activation": {
+    "facts": [
+      {
+        "fact": "operation",
+        "values": [
+          "plan",
+          "decompose"
+        ],
+        "observability": "observable_now",
+        "note": "Primary trigger: every planner decomposition invocation, known at dispatch from the role/operation. Applies to first runs with no existing plan/ and to runs whose task text has no recognizable keywords."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "plan/**"
+        ],
+        "observability": "observable_now",
+        "note": "Supporting signal only (plan artifacts read or written); not a necessary condition — a first run may have no plan/ yet."
+      },
+      {
+        "fact": "task_term",
+        "values": [
+          "slice",
+          "scope",
+          "decompose",
+          "wagon",
+          "plan"
+        ],
+        "observability": "observable_now",
+        "note": "Supporting signal only; not a necessary condition for activation."
+      },
+      {
+        "fact": "phase",
+        "values": [
+          "planning"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Needs an observer for run boundaries (session/run id) to tell this invocation apart from earlier planner runs."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "framing inherited from a prior run",
+          "excluded mechanism used"
+        ],
+        "observability": "llm_judged",
+        "note": "Inherited framing, atdd-agent asks, step-1 disk persistence and coach involvement are judged from the transcript; creation of plan/_meta.yaml is diff-observable."
+      }
+    ],
+    "fires": [
+      "Any planner invocation that decomposes a slice into wagons/WMBTs/acceptances.",
+      "A first planner run on a repo with no existing plan/ directory.",
+      "A planner run whose task text names the slice without words like 'slice', 'wagon' or 'decompose'.",
+      "A planner run after earlier runs have already written plan/ artifacts with different framing."
+    ],
+    "doesNotFire": [
+      "Coder or tester runs implementing an already-planned slice.",
+      "Editing source code with no planner decomposition invocation.",
+      "A non-planner role reading the repo graph for context."
+    ]
+  },
+  "given": "A planner invocation targets a scoped slice (plan/ may be empty or may hold artifacts from earlier runs).",
+  "when": "You frame and decompose the plan for this invocation.",
+  "then": "Plan only this invocation's scoped slice, with framing derived for this invocation.",
+  "prefer": [
+    "Treat framing as per-invocation: different runs have different framing.",
+    "When plan/ has existing artifacts, read them via the repo graph to compose with them."
+  ],
+  "avoid": [
+    "Inheriting a prior run's framing.",
+    "Any atdd agent ask (not in this protocol).",
+    "Any step-1 disk persistence (not in this protocol).",
+    "Creating or using plan/_meta.yaml (not in this protocol).",
+    "Any coach involvement (not in this protocol).",
+    "Widening the run beyond its scoped slice."
+  ],
+  "unless": [],
+  "why": "Each invocation targets a scoped slice and different runs have different framing, so framing must come from this run and the graph rather than be carried over from earlier runs.",
+  "evidence": [
+    "The run's plan output covers only the invoked slice.",
+    "When plan/ existed, the transcript shows it was read via the repo graph before composing.",
+    "No framing carried over from a prior run.",
+    "No atdd agent ask, no step-1 disk persistence, no plan/_meta.yaml, and no coach involvement anywhere in the run."
+  ],
+  "verifier_detail": [
+    "Term local_scope: one scoped slice per run; framing is per-invocation, read from the graph not inherited.",
+    "Term out_of_scope: excluded mechanisms: atdd-agent-ask, step-1 disk persistence, plan/_meta.yaml, coach involvement. These exclusions are unqualified (not limited to framing). plan/_meta.yaml in the diff is a mechanical finding; the others are judged from the transcript."
+  ],
+  "audit": [
+    "schema_version: 1.0.0",
+    "source kind: principle",
+    "status: active",
+    "term ids: local_scope, out_of_scope",
+    "graph: enables planner.decomposition.jtbd-vs-odi-grammar (scope the slice per invocation before framing the main job)"
+  ],
+  "splitSuggestion": [
+    {
+      "id": "planner.decomposition.compose-via-graph",
+      "then": "Read existing plan/ via the repo graph to compose, and do not inherit prior-run framing.",
+      "segments": [
+        "S006"
+      ]
+    },
+    {
+      "id": "planner.decomposition.excluded-mechanisms",
+      "then": "Use none of: atdd agent ask, step-1 disk persistence, plan/_meta.yaml, coach involvement.",
+      "segments": [
+        "S007",
+        "S011"
+      ]
+    }
+  ],
+  "sharedNodes": [],
+  "additions": [
+    {
+      "field": "avoid",
+      "text": "Widening the run beyond its scoped slice.",
+      "justification": "Direct corollary of 'each invocation targets a scoped slice'; stated as an anti-pattern for the planner."
+    },
+    {
+      "field": "activation",
+      "text": "fires/doesNotFire situations and activation facts",
+      "justification": "Source has no activation section; derived from 'each invocation' — applies to every planner decomposition invocation, including first runs."
+    },
+    {
+      "field": "split_suggestion",
+      "text": "Graph-based composition/non-inheritance (S006) and the excluded-mechanisms list (S007/S011) are independently testable; kept here in prefer/avoid/evidence with full force, and proposed as separate conventions in splitSuggestion.",
+      "justification": "One-obligation rule for then."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "given",
+        "then",
+        "prefer[0]",
+        "why",
+        "activation"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "prefer[1]",
+        "avoid[0]",
+        "evidence[1]",
+        "evidence[2]"
+      ],
+      "note": "Also proposed as separate convention in splitSuggestion."
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "avoid[1]",
+        "avoid[2]",
+        "avoid[3]",
+        "avoid[4]",
+        "evidence[3]"
+      ],
+      "note": "Exclusions kept unqualified."
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "verifier_detail[0]",
+        "then",
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[1]",
+        "avoid[1]",
+        "avoid[2]",
+        "avoid[3]",
+        "avoid[4]"
+      ]
+    }
+  ]
+}

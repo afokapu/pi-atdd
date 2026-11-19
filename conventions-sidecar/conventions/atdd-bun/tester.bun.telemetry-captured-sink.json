@@ -1,0 +1,319 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/tester.bun/tester.bun.telemetry-captured-sink.convention.yaml",
+    "sha256": "7f1156dc041fc44d4becd18f379cd1fb68b99cd1e888b9a8f6dee4201ad5337b"
+  },
+  "rule_id": "tester.bun.telemetry-captured-sink",
+  "kind": "rule",
+  "title": "Assert telemetry tests on a captured sink, not on a return value",
+  "activation": {
+    "facts": [
+      {
+        "fact": "file_kind",
+        "values": [
+          "test"
+        ],
+        "observability": "observable_now",
+        "note": "Bun test files."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "**/*.telemetry.test.*"
+        ],
+        "observability": "observable_now",
+        "note": "Telemetry colocation identifies a telemetry test."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "telemetry_test_identified_by_header_or_urn"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Needs a file-content observer for a `Telemetry:` header or a TELEMETRY/EVENT/METRIC URN kind segment (the bun_telemetry_test validator does this)."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "no_emission_assertion"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Detector finding: telemetry test lacks toHaveBeenCalled[With|Times] or an expectation on .emit/.emitted/.capture/.track/.record."
+      },
+      {
+        "fact": "language",
+        "values": [
+          "typescript",
+          "javascript"
+        ],
+        "observability": "observable_now",
+        "note": "Bun profile."
+      }
+    ],
+    "fires": [
+      "Writing or editing a *.telemetry.test.* file whose assertions only check the function's return value.",
+      "A test file with a `Telemetry:` header or TELEMETRY/EVENT/METRIC URN kind segment that never asserts on the emitter spy/mock/captured array."
+    ],
+    "doesNotFire": [
+      "A non-telemetry test file (no Telemetry: header, no TELEMETRY/EVENT/METRIC URN kind, not *.telemetry.test.*) — the tester profile's own rule governs it.",
+      "Repositories that have not adopted this rule family (inert until adoption).",
+      "A telemetry test that already asserts with toHaveBeenCalledWith on the captured emitter."
+    ]
+  },
+  "given": "A telemetry test: a test file with a `Telemetry:` header, a TELEMETRY/EVENT/METRIC URN kind segment, or *.telemetry.test.* colocation",
+  "when": "the test is written or changed",
+  "then": "The test asserts on the emission itself via the captured sink — `toHaveBeenCalled[With|Times]` or an expectation on `.emit` / `.emitted` / `.capture` / `.track` / `.record`.",
+  "prefer": [
+    "Capture the emitter (spy, mock, or captured array the emitter writes to — the thing whose content is the emission), inject it into the unit under test, and assert on it.",
+    "Assert the exact event identity and payload on the sink (e.g. toHaveBeenCalledWith(<event URN>, <payload>)), joining the captured-sink and exact-identity requirements."
+  ],
+  "avoid": [
+    "Asserting only on the function's return value — a return value is not a sink; it proves the function ran, not that the item fired.",
+    "Satisfying the detector with an emission-vocabulary expectation that does not inspect what the sink actually received."
+  ],
+  "unless": [
+    "The test is not telemetry-identified; only telemetry-identified tests are scanned and the tester profile's own rule governs the rest.",
+    "The rule family has not been adopted in the repository (inert until adoption, like every rule in this family)."
+  ],
+  "why": "Dashboards, alerts and downstream analytics are built on the emission; a return-value check proves the function ran, not that the event fired — only the sink saw it fire.",
+  "evidence": [
+    "The telemetry test file contains toHaveBeenCalled, toHaveBeenCalledWith or toHaveBeenCalledTimes, or an expect on .emit/.emitted/.capture/.track/.record.",
+    "The bun_telemetry_test validator reports no finding for the file."
+  ],
+  "verifier_detail": [
+    "Telemetry test identification: `Telemetry:` header, a TELEMETRY/EVENT/METRIC URN kind segment, or *.telemetry.test.* colocation; non-identified tests are not scanned.",
+    "Predicate is deliberately the emission-assertion vocabulary (toHaveBeenCalled[With|Times]; expectations on .emit / .emitted / .capture / .track / .record), not a data-flow analysis: it names what a test must contain, not what the runtime did.",
+    "Term captured_sink: the spy, mock or captured array the emitter writes to — the thing whose CONTENT is the emission. A return value is not a sink.",
+    "Source fix_hint ('Capture the emitter, assert on it:'):\n  const emit = mock(() => {});\n  acceptResponse({ id: \"r-1\" }, { emit });\n  expect(emit).toHaveBeenCalledWith(\"telemetry:event:be:commons:response-invocation-accepted\", { response_id: \"r-1\" });",
+    "Rule is inert until the repository adopts the family.",
+    "Severity 3; disposition strict."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active.",
+    "Aliases: TESTER-TELEMETRY-CAPTURED-SINK-001.",
+    "introduced_in 0.7.0.",
+    "implementation: validator, ref bun_telemetry_test.",
+    "Same obligation as tester.bun.telemetry-emit, carried into the telemetry profile and joined with the exact-identity requirement (graph: requires tester.bun.telemetry-emit).",
+    "Term ids: captured_sink, telemetry_test."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "strict: atdd-bun fails on every finding; it has no advisory mode and no ratchet baseline."
+    }
+  ],
+  "additions": [
+    {
+      "field": "avoid",
+      "text": "Satisfying the detector with an emission-vocabulary expectation that does not inspect what the sink actually received.",
+      "justification": "Metric-gaming guard: the vocabulary-based predicate (S017–S018) can be satisfied superficially; source intent (S012 'only the sink saw it fire') requires a real sink assertion."
+    },
+    {
+      "field": "prefer",
+      "text": "Generic wording of the fix_hint snippet in prefer; the exact project-specific snippet is kept verbatim in verifier_detail.",
+      "justification": "Keeps coder-facing text codebase-neutral without losing the source snippet."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "then",
+        "evidence[0]",
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "avoid[0]",
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "given",
+        "activation",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "prefer[1]",
+        "why",
+        "audit"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "why",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "why",
+        "avoid[0]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "why"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "verifier_detail[1]"
+      ],
+      "note": "sentence fragment continued in S017"
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "verifier_detail[1]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "prefer[0]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "prefer[1]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "unless[0]",
+        "activation",
+        "verifier_detail[0]"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "unless[1]",
+        "activation",
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "identity",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "identity",
+        "shared:policy.strict-disposition",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "audit",
+        "evidence[1]"
+      ]
+    }
+  ]
+}

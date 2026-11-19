@@ -1,0 +1,489 @@
+{
+  "schema": "pi-atdd/convention-sidecar/v1",
+  "source": {
+    "path": "vendor/atdd-bun/conventions/coder.bun/coder.bun.interlocking-does-not-carry-cargo.convention.yaml",
+    "sha256": "c8f906c4aa6709aab7dc91e719331fd1865c229708acd9838373712a777138b1"
+  },
+  "rule_id": "coder.bun.interlocking-does-not-carry-cargo",
+  "kind": "rule",
+  "title": "Keep Cargo out of the InterlockingRunner (Bun)",
+  "activation": {
+    "facts": [
+      {
+        "fact": "language",
+        "values": [
+          "typescript",
+          "javascript"
+        ],
+        "observability": "observable_now",
+        "note": "Bun stack realization."
+      },
+      {
+        "fact": "path_glob",
+        "values": [
+          "src/trains/**"
+        ],
+        "observability": "observable_now",
+        "note": "Modules where an InterlockingRunner may be defined."
+      },
+      {
+        "fact": "operation",
+        "values": [
+          "create",
+          "modify"
+        ],
+        "observability": "observable_now",
+        "note": "Editing a scanned module."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "module defines an InterlockingRunner"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Requires parsing the module to see that it defines an InterlockingRunner (the production TrainRunner module is excluded)."
+      },
+      {
+        "fact": "finding",
+        "values": [
+          "Cargo reference",
+          "cargo[...] = ... mutation",
+          "artifact_urn literal"
+        ],
+        "observability": "needs_new_observer",
+        "note": "Produced by the bun_interlocking_infrastructure family detector (checks/interlocking_no_cargo.mjs)."
+      },
+      {
+        "fact": "change",
+        "values": [
+          "routing decision depends on mid-train Cargo state",
+          "Cargo selects a train variant"
+        ],
+        "observability": "llm_judged",
+        "note": "Semantic routing/variant-selection intent is not fully captured by the token detector."
+      }
+    ],
+    "fires": [
+      "An InterlockingRunner module under src/trains/** references Cargo or assigns into a cargo mapping.",
+      "An InterlockingRunner caches artifact_urn -> artifact_data values or contains an artifact_urn string literal.",
+      "An InterlockingRunner chooses the next route from mid-train Cargo state.",
+      "Cargo contents are used to select a train variant."
+    ],
+    "doesNotFire": [
+      "The production TrainRunner module constructs Cargo and passes it between wagons.",
+      "An InterlockingRunner reads the initial action/inputs/state before execution.",
+      "An InterlockingRunner reads a completed TrainResult at a declared route boundary.",
+      "A comment inside an InterlockingRunner module mentions Cargo (comments are masked).",
+      "A wagon module src/<wagon>/wagon.ts changes its imports (governed by the split convention coder.bun.wagon-does-not-import-interlocking)."
+    ]
+  },
+  "given": "A Bun module under src/trains/** that defines an InterlockingRunner (not the production TrainRunner module)",
+  "when": "the module is created or changed",
+  "then": "Keep Cargo inside TrainRunner execution: the InterlockingRunner must not reference, mutate, store (artifact_urn -> artifact_data) or route on Cargo.",
+  "prefer": [
+    "InterlockingRunner reads only initial action/inputs/state before execution and a completed TrainResult at a declared route boundary.",
+    "Leave Cargo to TrainRunner, which passes it between wagons; wagons read and return artifact objects."
+  ],
+  "avoid": [
+    "Cargo references or `cargo[...] = ...` in an InterlockingRunner module.",
+    "Storing artifact_urn -> artifact_data runtime values in the interlocking.",
+    "Routing on mid-train Cargo state; letting Cargo select train variants."
+  ],
+  "unless": [
+    "The production TrainRunner module legitimately constructs and carries Cargo; it is not scanned for Cargo bleed."
+  ],
+  "why": "Cargo is the artifact data plane carried by TrainRunner between wagons inside a selected train; the cargo_boundary keeps it inside that execution, so the interlocking never routes on mid-train Cargo state nor lets Cargo select train variants, routing only on initial inputs and declared-boundary TrainResults.",
+  "evidence": [
+    "The bun_interlocking_infrastructure detector (checks/interlocking_no_cargo.mjs) reports no Cargo reference, cargo mapping mutation, or artifact_urn literal in any InterlockingRunner-defining module under src/trains/**.",
+    "The same detector reports no interlocking import in any src/<wagon>/wagon.ts (enforced via the split convention coder.bun.wagon-does-not-import-interlocking).",
+    "A reviewer confirms the InterlockingRunner's routing inputs are only the initial action/inputs/state and declared-boundary TrainResults, and that Cargo does not select train variants."
+  ],
+  "verifier_detail": [
+    "Scan each InterlockingRunner-defining module under src/trains/** and flag: a `Cargo` reference, a `cargo[...] = ...` mutation, or an `artifact_urn` literal.",
+    "Scan each src/<wagon>/wagon.ts and flag an import of interlocking code (wagons must import their own dependencies, never InterlockingRunner) — the obligation of the split convention coder.bun.wagon-does-not-import-interlocking, enforced by the same detector.",
+    "Mask comments before matching; a string `artifact_urn` literal is still detected.",
+    "Exclude the production TrainRunner module from the Cargo-bleed scan; only InterlockingRunner-defining modules are scanned for Cargo bleed.",
+    "Which modules are scanned and how Cargo touches are recognized is the per-stack detector's concern; this detector is a member of the bun_interlocking_infrastructure FAMILY (checks/interlocking_no_cargo.mjs).",
+    "Severity 4, disposition strict (as authored in this rule): a newly introduced Cargo touch (or a wagon importing interlocking) is not suppressible and fails CI."
+  ],
+  "audit": [
+    "schema_version 1.1.0; kind rule; status active; introduced_in 0.1.0.",
+    "implementation: {type: validator, ref: coder.bun.interlocking-does-not-carry-cargo}.",
+    "aliases: BUN-INTERLOCKING-NO-CARGO-001.",
+    "Bun-stack realization of the agnostic core obligation coder.train.interlocking-does-not-carry-cargo (core afokapu/atdd#1251); enforced by the JS detector in the atdd.workspace.bun implementation.",
+    "Summary: an agnostic \"Cargo boundary\" obligation rendered for the Bun application.",
+    "Core runtime spec afokapu/atdd#1251 — Cargo boundary.",
+    "core_design_refs: afokapu/atdd#1246, afokapu/atdd#1251.",
+    "Original name: Cargo stays inside TrainRunner execution; interlocking does not carry it and wagons stay clean (Bun).",
+    "Original statement also required: Bun wagons (src/<wagon>/wagon.ts) MUST NOT import interlocking code; forbidden list included 'wagons importing interlocking code'; fix_hint: 'Wagons import their own dependencies, never InterlockingRunner.' Carried operatively by split convention coder.bun.wagon-does-not-import-interlocking.",
+    "term cargo_boundary: the rule that Cargo (artifact data plane) stays inside TrainRunner execution; the InterlockingRunner must not reference/mutate Cargo or store artifact_urn values, and wagons must not import it."
+  ],
+  "splitSuggestion": [
+    {
+      "id": "coder.bun.wagon-does-not-import-interlocking",
+      "then": "A Bun wagon (src/<wagon>/wagon.ts) must not import InterlockingRunner or other interlocking code; it imports only its own dependencies.",
+      "activation": {
+        "facts": [
+          {
+            "fact": "language",
+            "values": [
+              "typescript",
+              "javascript"
+            ],
+            "observability": "observable_now",
+            "note": "Bun stack realization."
+          },
+          {
+            "fact": "path_glob",
+            "values": [
+              "src/*/wagon.ts"
+            ],
+            "observability": "observable_now",
+            "note": "Wagon modules."
+          },
+          {
+            "fact": "operation",
+            "values": [
+              "create",
+              "modify"
+            ],
+            "observability": "observable_now",
+            "note": "Editing a wagon module."
+          },
+          {
+            "fact": "finding",
+            "values": [
+              "wagon imports interlocking code"
+            ],
+            "observability": "needs_new_observer",
+            "note": "Produced by the bun_interlocking_infrastructure family detector (checks/interlocking_no_cargo.mjs)."
+          }
+        ],
+        "fires": [
+          "A src/<wagon>/wagon.ts is created or changed and imports InterlockingRunner or other interlocking code."
+        ],
+        "doesNotFire": [
+          "A wagon imports only its own dependencies and reads/returns artifact objects."
+        ]
+      },
+      "avoid": [
+        "Importing InterlockingRunner or other interlocking code from a wagon."
+      ],
+      "verifier_detail": [
+        "Scan each src/<wagon>/wagon.ts and flag an import of interlocking code; strict, severity 4: a newly introduced wagon import of interlocking is not suppressible and fails CI."
+      ],
+      "segments": [
+        "S007",
+        "S011",
+        "S016",
+        "S019",
+        "S020",
+        "S027",
+        "S029",
+        "S030",
+        "S039"
+      ]
+    }
+  ],
+  "sharedNodes": [
+    {
+      "id": "policy.strict-disposition",
+      "kind": "policy",
+      "text": "Strict disposition: a newly introduced violation is not suppressible and fails CI."
+    }
+  ],
+  "additions": [
+    {
+      "field": "split_suggestion",
+      "text": "The wagon-must-not-import-interlocking half of the cargo_boundary is split into its own operative convention coder.bun.wagon-does-not-import-interlocking with its own then, activation, avoid and verifier_detail; this rule's then is limited to the InterlockingRunner Cargo boundary.",
+      "justification": "Rule 2: one obligation per `then`; the wagon import prohibition is independently checkable on different files."
+    },
+    {
+      "field": "evidence",
+      "text": "Reviewer confirmation of routing inputs and that Cargo does not select train variants.",
+      "justification": "Mid-train Cargo routing and variant selection are not fully token-detectable; this makes the source's prohibitions checkable."
+    }
+  ],
+  "trace": [
+    {
+      "seg": "S001",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S002",
+      "dest": [
+        "identity"
+      ]
+    },
+    {
+      "seg": "S003",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S004",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S005",
+      "dest": [
+        "identity",
+        "audit"
+      ],
+      "note": "Title rewritten; original name kept in audit."
+    },
+    {
+      "seg": "S006",
+      "dest": [
+        "why",
+        "then"
+      ]
+    },
+    {
+      "seg": "S007",
+      "dest": [
+        "then",
+        "avoid[0]",
+        "avoid[1]",
+        "avoid[2]",
+        "given",
+        "verifier_detail[1]",
+        "audit"
+      ],
+      "note": "Wagon-import half operative in splitSuggestion coder.bun.wagon-does-not-import-interlocking (then/avoid)."
+    },
+    {
+      "seg": "S008",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S009",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S010",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S011",
+      "dest": [
+        "verifier_detail[0]",
+        "verifier_detail[1]",
+        "activation",
+        "evidence[0]",
+        "evidence[1]"
+      ]
+    },
+    {
+      "seg": "S012",
+      "dest": [
+        "verifier_detail[4]",
+        "evidence[0]"
+      ]
+    },
+    {
+      "seg": "S013",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S014",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S015",
+      "dest": [
+        "prefer[0]",
+        "activation",
+        "why"
+      ]
+    },
+    {
+      "seg": "S016",
+      "dest": [
+        "prefer[1]"
+      ]
+    },
+    {
+      "seg": "S017",
+      "dest": [
+        "structure"
+      ],
+      "note": "Heading for the forbidden list carried by then/avoid."
+    },
+    {
+      "seg": "S018",
+      "dest": [
+        "then",
+        "avoid[0]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S019",
+      "dest": [
+        "then",
+        "avoid[1]",
+        "avoid[2]",
+        "why",
+        "activation",
+        "audit"
+      ],
+      "note": "'wagons importing' operative in splitSuggestion coder.bun.wagon-does-not-import-interlocking (then/avoid) and in audit."
+    },
+    {
+      "seg": "S020",
+      "dest": [
+        "verifier_detail[1]",
+        "audit"
+      ],
+      "note": "Operative in splitSuggestion coder.bun.wagon-does-not-import-interlocking (then/avoid)."
+    },
+    {
+      "seg": "S021",
+      "dest": [
+        "verifier_detail[4]"
+      ]
+    },
+    {
+      "seg": "S022",
+      "dest": [
+        "verifier_detail[2]"
+      ]
+    },
+    {
+      "seg": "S023",
+      "dest": [
+        "then"
+      ]
+    },
+    {
+      "seg": "S024",
+      "dest": [
+        "prefer[0]"
+      ]
+    },
+    {
+      "seg": "S025",
+      "dest": [
+        "prefer[0]",
+        "avoid[0]",
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S026",
+      "dest": [
+        "avoid[1]"
+      ]
+    },
+    {
+      "seg": "S027",
+      "dest": [
+        "verifier_detail[1]",
+        "audit"
+      ],
+      "note": "Operative in splitSuggestion coder.bun.wagon-does-not-import-interlocking (then/avoid)."
+    },
+    {
+      "seg": "S028",
+      "dest": [
+        "structure"
+      ],
+      "note": "Lead-in fragment completed by S029/S030 in verifier_detail[5]."
+    },
+    {
+      "seg": "S029",
+      "dest": [
+        "verifier_detail[5]",
+        "shared:policy.strict-disposition"
+      ]
+    },
+    {
+      "seg": "S030",
+      "dest": [
+        "verifier_detail[5]",
+        "shared:policy.strict-disposition"
+      ]
+    },
+    {
+      "seg": "S031",
+      "dest": [
+        "unless[0]",
+        "verifier_detail[3]"
+      ]
+    },
+    {
+      "seg": "S032",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S033",
+      "dest": [
+        "identity",
+        "verifier_detail[5]"
+      ]
+    },
+    {
+      "seg": "S034",
+      "dest": [
+        "identity",
+        "verifier_detail[5]",
+        "shared:policy.strict-disposition"
+      ]
+    },
+    {
+      "seg": "S035",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S036",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S037",
+      "dest": [
+        "audit"
+      ]
+    },
+    {
+      "seg": "S038",
+      "dest": [
+        "audit",
+        "why"
+      ]
+    },
+    {
+      "seg": "S039",
+      "dest": [
+        "then",
+        "why",
+        "avoid[0]",
+        "avoid[1]",
+        "verifier_detail[1]",
+        "audit"
+      ],
+      "note": "InterlockingRunner half in then/avoid; 'wagons must not import it' half operative in splitSuggestion coder.bun.wagon-does-not-import-interlocking (then/avoid) and verifier_detail[1]; full term definition kept in audit."
+    }
+  ]
+}
