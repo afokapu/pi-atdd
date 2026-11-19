@@ -4,7 +4,7 @@
  * bypasses. Neither constitutes independent proof of compliance.
  */
 import { createHash } from "node:crypto";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { existsSync, lstatSync, realpathSync } from "node:fs";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadCatalog, loadConfig, type Catalog, type Selector } from "./catalog.ts";
@@ -12,6 +12,7 @@ import { ReasoningSession, type ContextObservation } from "./reasoning-context.t
 import { renderReasonedPage, type RenderedPage } from "./render-reasoning.ts";
 import { observeRepository, type RepositorySnapshot } from "./repository-observer.ts";
 import { shellWriteTargetModes } from "./shell-targets.ts";
+import { MODE_FILE, modeFromText, recordMode, repositoryRoot, resolveMode, type Mode, type Resolution } from "./mode.ts";
 
 function scopedPath(cwd:string,supplied:string):string|null {
   const abs=resolve(cwd,supplied), p=relative(cwd,abs);
@@ -35,6 +36,24 @@ function scopedPath(cwd:string,supplied:string):string|null {
   }catch{return null;}
   return p.replaceAll("\\","/");
 }
+/** PLT-93 AP-006: a target outside the repository, lexically and physically, is not ATDD's to govern. */
+function outsideRepository(cwd:string,supplied:string):boolean{
+  const root=repositoryRoot(cwd);
+  if(!root)return true;
+  const outside=(base:string,p:string)=>{const r=relative(base,p);return r===".."||r.startsWith(".."+sep)||isAbsolute(r);};
+  const abs=resolve(cwd,supplied);
+  if(!outside(root,abs))return false;
+  // Resolve the deepest existing ancestor so an outside symlink cannot point back into the repository.
+  let cursor=abs;const rest:string[]=[];
+  for(;;){
+    try{lstatSync(cursor);break;}catch{}
+    if(dirname(cursor)===cursor)break;
+    rest.unshift(basename(cursor));cursor=dirname(cursor);
+  }
+  try{return outside(realpathSync(root),join(realpathSync(cursor),...rest));}catch{return false;}
+}
+const MODE_CHOICES=["ATDD — remember for this repo","Plain — remember for this repo",
+  "ATDD — this session only","Plain — this session only"];
 export default function atdd(pi:ExtensionAPI):void {
   let cwdKey="", task="", serial=0;
   let catalog:Catalog|undefined,selectors:Selector[]=[];
@@ -48,6 +67,28 @@ export default function atdd(pi:ExtensionAPI):void {
   const pendingPostTool=new Map<string,Pending>();
   const key=(scope:string,id:string)=>scope+"\u0000"+id;
   const digest=(value:unknown)=>createHash("sha256").update(JSON.stringify(value)).digest("hex");
+  /** PLT-93 working mode for this session; undefined until resolved. */
+  let current:Resolution|undefined;
+  const active=(cwd:string)=>current?.mode==="atdd"&&repositoryRoot(cwd)!==null;
+  type Notify={cwd:string;ui:{notify:(message:string,type?:"info"|"warning"|"error")=>void}};
+  function setMode(ctx:Notify,mode:Mode,source:string):void{
+    const changed=current?.mode!==mode;
+    current={mode,source};
+    if(!changed)return;
+    reset(); // a mode switch starts from a fresh repository baseline
+    if(active(ctx.cwd))observedRepo=observeRepository(ctx.cwd).snapshot;
+    ctx.ui.notify("ATDD mode: "+mode+" ("+source+")","info");
+  }
+  async function ask(ctx:Notify&{ui:{select:(title:string,options:string[])=>Promise<string|undefined>}}):Promise<void>{
+    const choice=await ctx.ui.select("ATDD or plain for this repository?",MODE_CHOICES);
+    const mode:Mode=choice?.startsWith("Plain")?"plain":"atdd";
+    const remember=choice?.includes("remember")??false;
+    const root=repositoryRoot(ctx.cwd);
+    if(remember&&root){
+      try{recordMode(root,mode);}catch(e){ctx.ui.notify("ATDD mode not recorded: "+String(e),"warning");}
+    }
+    setMode(ctx,mode,!choice?"default, question dismissed":remember?MODE_FILE:"your answer");
+  }
 
   function reset():void{
     reasoning=undefined;delivered.clear();unresolvedPaths.clear();observationWarning=false;
@@ -104,29 +145,53 @@ export default function atdd(pi:ExtensionAPI):void {
   // ephemeral inference state. Reconstruct the last user task if available,
   // but never infer an authenticated role or revision from chat text.
   pi.on("session_start",(_event,ctx)=>{
+    current=undefined;
     if(ctx.isProjectTrusted())restoreFromBranch(ctx);
   });
   pi.on("session_tree",(_event,ctx)=>{
     if(ctx.isProjectTrusted())restoreFromBranch(ctx);
   });
   pi.registerCommand("atdd",{
-    description:"Inspect ATDD reasoning activation and remaining graph gaps",
-    handler:async(_args,ctx)=>{
-      if(!ctx.isProjectTrusted()){ctx.ui.notify("ATDD requires a trusted project","warning");return;}
-      try{
-        ensure(ctx.cwd);
-        ctx.ui.notify("ATDD: "+catalog!.rules.size+" pinned rules, "+
-          catalog!.unresolvedEdges.length+" external graph edges; inference is advisory","info");
-      }catch(e){ctx.ui.notify("ATDD graph invalid: "+String(e),"error");}
+    description:"ATDD or plain: /atdd on | off | status",
+    handler:async(args,ctx)=>{
+      const arg=(args??"").trim().toLowerCase();
+      if(arg==="on"||arg==="off"){setMode(ctx,arg==="on"?"atdd":"plain","/atdd "+arg);return;}
+      if(arg&&arg!=="status"){ctx.ui.notify("Usage: /atdd on | off | status","warning");return;}
+      const mode=current??resolveMode({cwd:ctx.cwd,env:process.env});
+      let line=mode.mode?"ATDD mode: "+mode.mode+" ("+mode.source+")":
+        "ATDD mode: undecided (an interactive session asks at the first task; other runs use atdd)";
+      if(!repositoryRoot(ctx.cwd))line+="; not in a repository, nothing is governed";
+      else if(mode.mode==="atdd"){
+        if(!ctx.isProjectTrusted())line+="; project not trusted, inactive";
+        else try{
+          ensure(ctx.cwd);
+          line+="; "+catalog!.rules.size+" pinned rules, "+catalog!.unresolvedEdges.length+
+            " external graph edges; inference is advisory";
+        }catch(e){ctx.ui.notify("ATDD graph invalid: "+String(e).split("\n")[0],"error");return;}
+      }
+      ctx.ui.notify(line,"info");
     },
   });
+  // Mode first (PLT-93): the user's words, then env/record/markers; only a TUI session asks.
   pi.on("before_agent_start",(event,ctx)=>{
     if(!ctx.isProjectTrusted())return;
+    const said=event.messageType==="user"?modeFromText(event.prompt??""):undefined;
+    if(said)setMode(ctx,said,"your message");
+    if(!current){
+      const resolved=resolveMode({cwd:ctx.cwd,env:process.env});
+      if(resolved.mode)current=resolved;
+      else if(ctx.mode==="tui"&&ctx.hasUI)return ask(ctx).then(()=>startRun(event,ctx));
+      else current={mode:"atdd",source:"default, non-interactive"};
+    }
+    return startRun(event,ctx);
+  });
+  function startRun(event:{messageType:string;prompt?:string},ctx:{cwd:string}){
     const newTask=event.messageType==="user";
     if(newTask){
       serial++;task=event.prompt||"unknown task";reset();
-      observedRepo=observeRepository(ctx.cwd).snapshot;
+      if(active(ctx.cwd))observedRepo=observeRepository(ctx.cwd).snapshot;
     }
+    if(!active(ctx.cwd))return;
     try{
       const result=observe(ctx.cwd,"task","pi-event","Pi before_agent_start");
       const newRules=newlyRelevant(result);
@@ -141,7 +206,7 @@ export default function atdd(pi:ExtensionAPI):void {
         content:"ATDD reasoning failed: "+String(e)+
           ". Unknown obligations are not waivers; repair graph before governed completion.",display:true}};
     }
-  });
+  }
   /** Same preflight for a governed path whether it is edited via edit/write or the shell. */
   function preflightPath(cwd:string,path:string,operation:"edit"|"create",provenance:string,
     budget:number,blockUnknown:boolean):{block:true;reason:string}|undefined{
@@ -167,7 +232,7 @@ export default function atdd(pi:ExtensionAPI):void {
     return undefined;
   }
   pi.on("tool_call",(event,ctx)=>{
-    if(!ctx.isProjectTrusted())return;
+    if(!ctx.isProjectTrusted()||!active(ctx.cwd))return;
     if(event.toolName==="bash"){
       // Shell writes get the same rule set as edit/write for every statically
       // visible in-repository target, before the command runs. Targets computed
@@ -202,7 +267,10 @@ export default function atdd(pi:ExtensionAPI):void {
     const input=event.input as {path?:unknown};
     if(typeof input.path!=="string")return {block:true,reason:"ATDD requires a file path for edits."};
     const path=scopedPath(ctx.cwd,input.path);
-    if(path===null)return {block:true,reason:"ATDD cannot govern edits outside the repository."};
+    if(path===null){
+      if(outsideRepository(ctx.cwd,input.path))return; // PLT-93 AP-006: not refused in either mode
+      return {block:true,reason:"ATDD cannot govern edits outside the repository."};
+    }
     try{
       return preflightPath(ctx.cwd,path,event.toolName==="write"?"create":"edit",
         "Pi pre-edit tool_call",12_000,true);
@@ -274,7 +342,7 @@ export default function atdd(pi:ExtensionAPI):void {
   // Primary channel: attach reconciliation to the tool result itself, so the
   // model reads it before it continues (Pi: tool_result can modify the result).
   pi.on("tool_result",(event,ctx)=>{
-    if(!ctx.isProjectTrusted())return;
+    if(!ctx.isProjectTrusted()||!active(ctx.cwd))return;
     let texts:string[];
     try{texts=drainPending(ctx.cwd);}catch{texts=[];}
     if(!READ_ONLY_TOOLS.has(event.toolName)){
@@ -287,7 +355,7 @@ export default function atdd(pi:ExtensionAPI):void {
   // Fallback: tools whose result was not reconciled above (e.g. ended without a
   // tool_result) are still observed and steered before the next model call.
   pi.on("tool_execution_end",(event,ctx)=>{
-    if(!ctx.isProjectTrusted())return;
+    if(!ctx.isProjectTrusted()||!active(ctx.cwd))return;
     if(READ_ONLY_TOOLS.has(event.toolName))return;
     if(event.toolCallId&&reconciledCalls.delete(event.toolCallId))return;
     for(const text of reconcile(ctx.cwd,event.toolName)){
