@@ -19,10 +19,10 @@ test("bundled canonical Bun and Flow snapshots resolve offline without consumer 
     assert.equal(catalog.unresolvedEdges.length, 44);
     const review = resolveContext(catalog, selectors, "Final behavioral review", [], "task");
     assert.equal(review.status, "matched");
-    assert.ok(review.matchingIds.includes("atdd-bun.review.behavioral-reconciliation"));
-    assert.ok(review.matchingIds.includes("atdd-bun.review.owner-inspectability"));
+    assert.ok(review.matchingIds.includes("reviewer.reconciliation.behavioral"));
+    assert.ok(review.matchingIds.includes("reviewer.inspectability.owner"));
     const workflow = resolveContext(catalog, selectors, "Jujutsu integration branch", [], "task");
-    assert.ok(workflow.matchingIds.includes("atdd-workflow.workflow.lifecycle"));
+    assert.ok(workflow.matchingIds.includes("coach.workflow.lifecycle"));
     const unmatched = resolveContext(catalog, selectors, "unrecognized-opaque-task", [], "task");
     assert.equal(unmatched.status, "unresolved");
   } finally { rmSync(cwd, { recursive: true, force: true }); }
@@ -40,7 +40,7 @@ test("additional conventions and cross-source dependency edges can be added offl
     ].join("\n"));
     writeFileSync(join(cwd, "extra/relationships.yaml"), [
       "schema_version: 1.0.0", "nodes:", "  - local.checkpoint", "edges:",
-      "  - source_ref: local.checkpoint", "    target_ref: atdd-flow.collaboration",
+      "  - source_ref: local.checkpoint", "    target_ref: coach.collaboration.accountable-delegation",
       "    type: requires", "    constraint: mandatory", "    control: internal", ""
     ].join("\n"));
     const extensionSha = digestSource(join(cwd, "extra"), "extension");
@@ -60,7 +60,7 @@ test("additional conventions and cross-source dependency edges can be added offl
     assert.equal(catalog.rules.size, 359);
     assert.equal(catalog.edges.length, 509);
     const context = resolveContext(catalog, selectors, "checkpoint-signal", [], "task");
-    assert.deepEqual(context.matchingIds, ["atdd-flow.collaboration", "local.checkpoint"]);
+    assert.deepEqual(context.matchingIds, ["coach.collaboration.accountable-delegation", "local.checkpoint"]);
     writeFileSync(file, readFileSync(file, "utf8") + "\n# drift\n");
     assert.throws(() => loadCatalog(sources, cwd), GraphError);
   } finally { rmSync(cwd, { recursive: true, force: true }); }

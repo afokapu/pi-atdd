@@ -20,6 +20,8 @@ export type Catalog = {
   rules: Map<string, Convention>; edges: Relation[];
   provenance: { id: string; digest: string; revision?: string; path: string }[];
   unresolvedEdges: Relation[];
+  /** PLT-87: pre-rename id -> current id, for every renamed rule present in this catalog. */
+  aliases: Map<string, string>;
 };
 export type Selector = {
   id: string; rules: string[]; operations?: string[];
@@ -85,6 +87,39 @@ const obj = (x: unknown): Record<string, unknown> => x && typeof x === "object" 
 const str = (x: unknown): string => typeof x === "string" ? x : "";
 const textList = (x: unknown): string[] => Array.isArray(x) && x.every(v => typeof v === "string") ? x : [];
 
+/** PLT-87 profile-first naming: `<profile>.<area>.<rule>`; `shared.*` reaches every profile. */
+export const PROFILES = ["planner", "tester", "coder", "reviewer", "coach", "shared"] as const;
+export type Profile = typeof PROFILES[number];
+export const CONVENTION_ID = /^(planner|tester|coder|reviewer|coach|shared)\.[a-z0-9-]+\.[a-z0-9-]+$/;
+/** Old (v0.2.0) id -> profile-first id, shipped with the package (conventions/aliases.json). */
+export function bundledAliases(): Map<string, string> {
+  const path = join(packageRoot, "conventions/aliases.json");
+  if (!existsSync(path)) return new Map();
+  const data = JSON.parse(readFileSync(path, "utf8")) as { aliases?: Record<string, string> };
+  return new Map(Object.entries(data.aliases ?? {}));
+}
+/** Resolves an old or current id to the id loaded in this catalog (unknown ids are returned unchanged). */
+export function canonicalRuleId(catalog: Pick<Catalog, "rules" | "aliases">, id: string): string {
+  return catalog.rules.has(id) ? id : catalog.aliases.get(id) ?? id;
+}
+/** Conventions delivered to a profile: its own family plus `shared.*`. */
+export function rulesForProfile(catalog: Pick<Catalog, "rules">, profile: Profile): string[] {
+  if (!PROFILES.includes(profile)) throw new GraphError("unknown profile " + profile);
+  return [...catalog.rules.keys()].filter(id => id.startsWith(profile + ".") || id.startsWith("shared.")).sort();
+}
+/** N-001 lint: id matches the scheme and the file is `conventions/<profile>/<area>/<id>.convention.yaml`. */
+export function namingViolations(catalog: Pick<Catalog, "rules">): string[] {
+  const out: string[] = [];
+  for (const [id, rule] of catalog.rules) {
+    if (!CONVENTION_ID.test(id)) { out.push(id + ": id does not match <profile>.<area>.<rule>"); continue; }
+    const [profile, area] = id.split(".");
+    const rel = rule.file.slice(rule.source.length + 1);
+    const want = "conventions/" + profile + "/" + area + "/" + id + ".convention.yaml";
+    if (rel !== want) out.push(id + ": file " + rel + " should be " + want);
+  }
+  return out.sort();
+}
+
 export function loadCatalog(sources: SourceSpec[], cwd: string): Catalog {
   if (!sources.length) throw new GraphError("at least one locked source is required");
   const rules = new Map<string, Convention>();
@@ -134,8 +169,16 @@ export function loadCatalog(sources: SourceSpec[], cwd: string): Catalog {
       edges.push({ source, target, type, constraint, control, reason: str(e.reason), sourceFile: src.id + "/relationships.yaml" });
     }
   }
+  const aliases = new Map<string, string>();
+  for (const [old, current] of bundledAliases())
+    if (old !== current && rules.has(current) && !rules.has(old)) aliases.set(old, current);
+  // Extension graphs may still name pre-rename ids; they resolve to the current rule.
+  for (const e of edges) {
+    e.source = canonicalRuleId({ rules, aliases }, e.source);
+    e.target = canonicalRuleId({ rules, aliases }, e.target);
+  }
   const unresolvedEdges = edges.filter(e => !rules.has(e.source) || !rules.has(e.target));
-  return { rules, edges, provenance, unresolvedEdges };
+  return { rules, edges, provenance, unresolvedEdges, aliases };
 }
 const WORD_CHAR = /[a-z0-9_]/;
 const TOKEN_TRIM = /^[\s()[\]{}"'`,;:<>]+|[\s()[\]{}"'`,;:<>.?!]+$/g;
@@ -207,7 +250,7 @@ export function validateSelectors(catalog: Catalog, selectors: Selector[]): void
     ids.add(item.id);
     if (!Array.isArray(item.rules) || !item.rules.length) throw new GraphError(item.id + ": missing rules");
     for (const rule of item.rules) {
-      if (!catalog.rules.has(rule)) throw new GraphError(item.id + ": unknown rule " + rule);
+      if (!catalog.rules.has(canonicalRuleId(catalog, rule))) throw new GraphError(item.id + ": unknown rule " + rule);
     }
     if (!item.always && !item.paths?.length && !item.terms?.length)
       throw new GraphError(item.id + ": selector has no activation predicate");
@@ -231,7 +274,7 @@ export function resolveContext(catalog: Catalog, selectors: Selector[], task: st
       ...(item.always ? ["always"] : []),
     ];
     if (!evidence.length) continue;
-    for (const id of item.rules) {
+    for (const id of item.rules.map(r => canonicalRuleId(catalog, r))) {
       selected.add(id);
       const rs = reasons.get(id) || new Set<string>();
       evidence.forEach(e => rs.add(item.id + ":" + e));
@@ -268,10 +311,10 @@ export function bundledSources(): SourceSpec[] {
   return [
     { id: "ATDD-Bun", path: join(packageRoot, "vendor/atdd-bun"), kind: "bun",
       revision: "5945d97e18310e7c862c08e73985400935d21346",
-      sha256: "b48f2ff3353d3455e05c49feb0a04e8e778c70ba2b929787f696bbd6ec6d561a" },
+      sha256: "8021c960e3389d832eb7ce1b8dd5c424ad60f38766dbe683cf25159ef8280d17" },
     { id: "ATDD-Flow", path: join(packageRoot, "vendor/atdd-flow"), kind: "flow",
       revision: "2a66019a5ecf2b7a9f999ebfa04d04c9f548f19a",
-      sha256: "0571b25f78330f68673916cfb810cd1f93c4f2296bd6019936d5d5a7db46e4e0" },
+      sha256: "61665ba225ffc6c0bed6952aa8f8c9d9c0e2f0d7df3982662a2cdf50eb327438" },
   ];
 }
 function selectorFile(file: string): Selector[] {

@@ -15,7 +15,7 @@ test("Pi package includes a bounded proof chain, canonical guidance and exact so
     const s=new ReasoningSession(catalog,cfg.selectors);
     const result=s.observe({scope:"review-one",task:"Final behavioral review",operation:"review",
       origin:"pi-event",provenance:"Pi before_agent_start"});
-    assert.ok(result.activations.some(a=>a.id==="atdd-bun.review.owner-inspectability"));
+    assert.ok(result.activations.some(a=>a.id==="reviewer.inspectability.owner"));
     const text=renderReasoned(result,undefined,12_000);
     assert.match(text,/Canonical source:/);
     assert.match(text,/Pinned provenance SHA-256: [a-f0-9]{64}/);

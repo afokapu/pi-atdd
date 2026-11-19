@@ -3,8 +3,8 @@
 // Reproduces the PLT-78 trial t10 miss: claude-opus-5-5 wrote
 // src/pricing/domain/quote.ts through a bash heredoc, the pre-edit hook never
 // fired, and the post-tool page (4,500 chars) emitted only
-// atdd-workflow.workflow.lifecycle (activated by the substring `integration/`),
-// never coder.bun.design-hierarchy-import.
+// coach.workflow.lifecycle (activated by the substring `integration/`),
+// never coder.architecture.hierarchy-import.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { execFileSync } from "node:child_process";
@@ -17,7 +17,7 @@ import { termMatches, digestSource, loadConfig, loadCatalog } from "../src/catal
 import { ReasoningSession } from "../src/reasoning-context.ts";
 import { relevance, renderReasonedPage } from "../src/render-reasoning.ts";
 
-const TARGET = "coder.bun.design-hierarchy-import";
+const TARGET = "coder.architecture.hierarchy-import";
 /** Verbatim PLT-78 T2-ARCH prompt (trial t10). */
 const T2_PROMPT = [
   "You are a coding agent working in this repository (a disposable checkout of a small TypeScript service; read README.md for its layering). Complete task T2-ARCH.",
@@ -139,14 +139,14 @@ test("selector terms match on word boundaries", () => {
   const x = sandbox();
   try {
     const page = x.start(T2_PROMPT)!;
-    assert.ok(!page.includes("Convention atdd-workflow.workflow.lifecycle —"), "`integration/` inside a source path is not an integration branch");
-    assert.ok(!page.includes("Convention coder.bun.phase-discipline —"), "`red` inside `configured` is not the RED phase");
+    assert.ok(!page.includes("Convention coach.workflow.lifecycle —"), "`integration/` inside a source path is not an integration branch");
+    assert.ok(!page.includes("Convention coder.phase.discipline —"), "`red` inside `configured` is not the RED phase");
   } finally { x.cleanup(); }
   const y = sandbox();
   try {
     const page = y.start("Rebase onto integration/feature-tax, then make the red test green")!;
-    assert.ok(page.includes("Convention atdd-workflow.workflow.lifecycle —"));
-    assert.ok(page.includes("Convention coder.bun.phase-discipline —"));
+    assert.ok(page.includes("Convention coach.workflow.lifecycle —"));
+    assert.ok(page.includes("Convention coder.phase.discipline —"));
   } finally { y.cleanup(); }
 });
 
@@ -208,7 +208,7 @@ test("review#1: every changed file is reconciled, none dropped past a count cap"
     for (const f of files) assert.match(text, new RegExp("Changed file " + f.replaceAll(".", "\\.") + ":\\n"), f);
     const pages = text.split("ATDD post-tool reconciliation. Changed file ").slice(1);
     assert.equal(pages.length, 9);
-    for (const page of pages) assert.match(page, /Convention coder\.bun\.design-hierarchy-import —/);
+    for (const page of pages) assert.match(page, /Convention coder\.architecture\.hierarchy-import —/);
   } finally { x.cleanup(); }
 });
 

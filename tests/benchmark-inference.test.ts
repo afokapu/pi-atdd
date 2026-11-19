@@ -21,7 +21,7 @@ test("pinned full corpus: incremental update agrees with cold replay and reports
         origin:"pi-event" as const,provenance:"controlled-edit"};
       const next={...old,path:"src/shop/infrastructure/service.ts"};
       const oldResults=hot.observe(old);
-      assert.ok(oldResults.activations.some(a=>a.id==="coder.bun.design-hierarchy-import"));
+      assert.ok(oldResults.activations.some(a=>a.id==="coder.architecture.hierarchy-import"));
       const start=performance.now();
       const incremental=hot.observe(next);
       const updateMs=performance.now()-start;
@@ -30,7 +30,7 @@ test("pinned full corpus: incremental update agrees with cold replay and reports
       const recomputed=fresh.observe(next);
       const coldMs=performance.now()-coldStart;
       assert.deepEqual(incremental.activations.map(a=>a.id),recomputed.activations.map(a=>a.id));
-      assert.ok(incremental.removed.includes("coder.bun.design-hierarchy-import"));
+      assert.ok(incremental.removed.includes("coder.architecture.hierarchy-import"));
       metrics.push({updateMs:Math.round(updateMs*100)/100,coldMs:Math.round(coldMs*100)/100,
         affected:incremental.stats.affected,scans:incremental.stats.scans,
         heapMiB:Math.round(process.memoryUsage().heapUsed/1024/1024)});

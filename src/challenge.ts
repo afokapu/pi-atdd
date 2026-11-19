@@ -6,7 +6,7 @@
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import type { Catalog } from "./catalog.ts";
+import { canonicalRuleId, type Catalog } from "./catalog.ts";
 
 export type EvidenceRef = {
   kind: "test" | "diff" | "runtime" | "benchmark";
@@ -46,7 +46,7 @@ function refs(input: EvidenceRef[]): EvidenceRef[] {
   });
 }
 export function proposeChallenge(catalog: Catalog, proposal: ChallengeRequest): ChallengeRecord {
-  const rule = catalog.rules.get(proposal.ruleId);
+  const rule = catalog.rules.get(canonicalRuleId(catalog, proposal.ruleId));
   if (!rule) throw new Error("unknown convention: " + proposal.ruleId);
   const origin = catalog.provenance.find(item => item.id === rule.source);
   if (!origin || origin.digest !== proposal.sourceDigest)
