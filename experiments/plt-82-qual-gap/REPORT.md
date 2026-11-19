@@ -116,6 +116,8 @@ All of this is qualitative, n = 1 per cell, from a single judge. It is not a sta
 
 ## Layout
 
+- `COMPARISON.md` — exhaustive table: cost, tokens, effort, hidden tests, traps, every rubric criterion, ranks, evaluator cost, VOID runs.
+
 - `fixture/` — the base.
 - `conventions/` — `conventions.md` and `selection.json`.
 - `prompts/` — the task, coder prompt, evaluator prompts and rendered prompts.
