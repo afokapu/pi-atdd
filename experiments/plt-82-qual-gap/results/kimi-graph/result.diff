@@ -1,0 +1,442 @@
+diff --git a/src/app.ts b/src/app.ts
+index e1b613b..d327357 100644
+--- a/src/app.ts
++++ b/src/app.ts
+@@ -3,6 +3,7 @@ import type { SessionStore } from "./http/auth.ts";
+ import { orderRoutes } from "./orders/routes/order-routes.ts";
+ import type { InMemoryOrderStore } from "./orders/integration/order-store.ts";
+ import type { InMemoryLoyaltyStore } from "./loyalty/integration/loyalty-store.ts";
++import { RedemptionService } from "./loyalty/application/redemption-service.ts";
+ 
+ export type AppDeps = {
+   orders: InMemoryOrderStore;
+@@ -15,6 +16,8 @@ export type AppDeps = {
+ /** Composition root: every route of the service on one router. */
+ export function createApp(deps: AppDeps): Router {
+   const router = new Router();
+-  orderRoutes(router, { orders: deps.orders, sessions: deps.sessions });
++  const now = deps.now ?? (() => new Date());
++  const redemptions = new RedemptionService(deps.loyalty, now);
++  orderRoutes(router, { orders: deps.orders, sessions: deps.sessions, redemptions, now });
+   return router;
+ }
+diff --git a/src/loyalty/application/redemption-service.ts b/src/loyalty/application/redemption-service.ts
+new file mode 100644
+index 0000000..3f90d43
+--- /dev/null
++++ b/src/loyalty/application/redemption-service.ts
+@@ -0,0 +1,108 @@
++/**
++ * Use case: pay (part of) an order with loyalty points.
++ * Composes the loyalty ledger (asynchronous) with pricing: points reduce the
++ * amount after discounts and before tax. Same idempotency key replays the
++ * stored result without consuming more; the same key with a different request
++ * is rejected. Per-customer serialization makes concurrent redemptions safe
++ * even though the ledger store round-trips through the event loop.
++ */
++import type { InMemoryLoyaltyStore } from "../integration/loyalty-store.ts";
++import { pointsValueCents, isExpired } from "../domain/points.ts";
++import { planRedemption, type PointsRedemption } from "../domain/redemption.ts";
++import { subtotal, taxOn } from "../../pricing/domain/quote.ts";
++import { discountCents } from "../../pricing/domain/discount.ts";
++import { getTaxRate } from "../../pricing/integration/tax-rates.ts";
++import type { Order } from "../../orders/domain/order.ts";
++
++/** The new quote after applying points: subtotal, discount, points, tax, total (cents). */
++export type PointsQuote = {
++  region: string;
++  subtotalCents: number;
++  discountCents: number;
++  pointsAppliedCents: number;
++  taxCents: number;
++  totalCents: number;
++};
++
++export type RedeemOutcome = { quote: PointsQuote; redemption: PointsRedemption };
++
++export class IdempotencyConflictError extends Error {}
++
++export class RedemptionService {
++  private idempotency = new Map<string, { fingerprint: string; outcome: RedeemOutcome }>();
++  private tails = new Map<string, Promise<void>>();
++  private readonly loyalty: InMemoryLoyaltyStore;
++  private readonly now: () => Date;
++
++  constructor(loyalty: InMemoryLoyaltyStore, now: () => Date) {
++    this.loyalty = loyalty;
++    this.now = now;
++  }
++
++  /** Apply points to an order. Safe to call concurrently for one customer. */
++  redeem(customerId: string, order: Order, points: number, idempotencyKey: string): Promise<RedeemOutcome> {
++    return this.withCustomerLock(customerId, () => this.redeemSerial(customerId, order, points, idempotencyKey));
++  }
++
++  private async redeemSerial(customerId: string, order: Order, points: number, idempotencyKey: string): Promise<RedeemOutcome> {
++    const fingerprint = order.id + "|" + points;
++    const idemKey = customerId + "|" + idempotencyKey;
++    const seen = this.idempotency.get(idemKey);
++    if (seen) {
++      if (seen.fingerprint !== fingerprint) throw new IdempotencyConflictError("idempotency key reused with a different request");
++      return seen.outcome; // replay: same result, nothing more consumed
++    }
++    const lots = await this.loyalty.lotsFor(customerId);
++    const subtotalCents = subtotal(order.lines);
++    const discount = discountCents(subtotalCents, order.discountCode);
++    const maxApplicable = subtotalCents - discount; // 1 point = 1 cent
++    const plan = planRedemption(lots, points, maxApplicable, this.now());
++    for (const alloc of plan.allocations) {
++      const lot = lots.find(l => l.id === alloc.lotId)!;
++      await this.loyalty.saveLot({ ...lot, points: lot.points - alloc.points });
++    }
++    const appliedCents = pointsValueCents(plan.points);
++    const outcome: RedeemOutcome = {
++      quote: quoteAfterPoints(order, subtotalCents, discount, appliedCents),
++      redemption: { idempotencyKey, points: plan.points, appliedCents, allocations: plan.allocations },
++    };
++    this.idempotency.set(idemKey, { fingerprint, outcome });
++    return outcome;
++  }
++
++  /** Cancellation: return each allocation's points to its original lot. */
++  async restoreForOrder(order: Order, at: Date): Promise<void> {
++    await this.withCustomerLock(order.customerId, async () => {
++      for (const redemption of order.redemptions ?? []) {
++        for (const alloc of redemption.allocations) {
++          const lot = await this.loyalty.getLot(alloc.lotId);
++          if (!lot || isExpired(lot, at)) continue; // lot expired by cancellation: points are forfeited
++          await this.loyalty.saveLot({ ...lot, points: lot.points + alloc.points });
++        }
++      }
++    });
++  }
++
++  /** Serialize all ledger operations of one customer onto a promise chain. */
++  private async withCustomerLock<T>(customerId: string, run: () => Promise<T>): Promise<T> {
++    const prev = this.tails.get(customerId) ?? Promise.resolve();
++    let release!: () => void;
++    const gate = new Promise<void>(resolve => { release = resolve; });
++    this.tails.set(customerId, prev.then(() => gate));
++    await prev;
++    try {
++      return await run();
++    } finally {
++      release();
++    }
++  }
++}
++
++/** Recompute the quote with points applied after discount, before tax; never below zero. */
++function quoteAfterPoints(order: Order, subtotalCents: number, discount: number, appliedCents: number): PointsQuote {
++  const afterDiscount = subtotalCents - discount;
++  const pointsAppliedCents = Math.min(appliedCents, afterDiscount);
++  const taxable = afterDiscount - pointsAppliedCents;
++  const taxCents = taxOn(taxable, getTaxRate(order.region));
++  return { region: order.region, subtotalCents, discountCents: discount, pointsAppliedCents, taxCents, totalCents: taxable + taxCents };
++}
+diff --git a/src/loyalty/domain/points.ts b/src/loyalty/domain/points.ts
+index ed40d38..5ae934f 100644
+--- a/src/loyalty/domain/points.ts
++++ b/src/loyalty/domain/points.ts
+@@ -18,3 +18,11 @@ export function basePoints(subtotalCents: number): number {
+ export function isExpired(lot: PointsLot, at: Date): boolean {
+   return lot.expiresAt.getTime() <= at.getTime();
+ }
++
++/** Conversion: 100 points = 1 EUR = 100 cents, so one point is worth one cent. */
++export const POINTS_PER_EURO = 100;
++
++/** Monetary value of points in integer cents. */
++export function pointsValueCents(points: number): number {
++  return Math.floor((points * 100) / POINTS_PER_EURO);
++}
+diff --git a/src/loyalty/domain/redemption.ts b/src/loyalty/domain/redemption.ts
+new file mode 100644
+index 0000000..26380ee
+--- /dev/null
++++ b/src/loyalty/domain/redemption.ts
+@@ -0,0 +1,51 @@
++/**
++ * Loyalty domain: redeeming points against an order.
++ * A redemption is planned against the customer's lots (earliest expiry first)
++ * and recorded on the order so cancellation can return points to their
++ * original lots with their original expiry.
++ */
++import { isExpired, type PointsLot } from "./points.ts";
++
++/** Points taken from one lot to fund a redemption. */
++export type RedemptionAllocation = {
++  lotId: string;
++  points: number;
++  /** The lot's expiry, remembered so cancellation restores into the same lot. */
++  expiresAt: Date;
++};
++
++/** Record of points applied to an order, kept for cancellation restores. */
++export type PointsRedemption = {
++  idempotencyKey: string;
++  /** Points actually applied (never more than requested, available, or applicable). */
++  points: number;
++  /** Monetary value of the applied points in cents (100 points = 1 EUR). */
++  appliedCents: number;
++  allocations: RedemptionAllocation[];
++};
++
++/**
++ * Choose which lots fund a redemption: non-expired lots only, earliest expiry
++ * first. Never takes more than requested or more than the applicable amount,
++ * so excess points stay unconsumed.
++ */
++export function planRedemption(
++  lots: PointsLot[],
++  requestedPoints: number,
++  maxApplicablePoints: number,
++  at: Date,
++): { points: number; allocations: RedemptionAllocation[] } {
++  const goal = Math.max(0, Math.min(requestedPoints, maxApplicablePoints));
++  const usable = lots
++    .filter(l => l.points > 0 && !isExpired(l, at))
++    .sort((a, b) => a.expiresAt.getTime() - b.expiresAt.getTime());
++  const allocations: RedemptionAllocation[] = [];
++  let remaining = goal;
++  for (const lot of usable) {
++    if (remaining <= 0) break;
++    const take = Math.min(lot.points, remaining);
++    allocations.push({ lotId: lot.id, points: take, expiresAt: lot.expiresAt });
++    remaining -= take;
++  }
++  return { points: goal - remaining, allocations };
++}
+diff --git a/src/orders/domain/order.ts b/src/orders/domain/order.ts
+index 7df1bcf..054e769 100644
+--- a/src/orders/domain/order.ts
++++ b/src/orders/domain/order.ts
+@@ -1,4 +1,5 @@
+ import type { Line } from "../../pricing/domain/quote.ts";
++import type { PointsRedemption } from "../../loyalty/domain/redemption.ts";
+ 
+ export type OrderStatus = "pending" | "shipped" | "cancelled";
+ export type Order = {
+@@ -8,6 +9,8 @@ export type Order = {
+   lines: Line[];
+   region: string;
+   discountCode?: string;
++  /** Points redemptions applied to this order (kept so cancellation can restore lots). */
++  redemptions?: PointsRedemption[];
+ };
+ 
+ export class OrderStateError extends Error {}
+diff --git a/src/orders/routes/order-routes.ts b/src/orders/routes/order-routes.ts
+index ce24555..0c24f85 100644
+--- a/src/orders/routes/order-routes.ts
++++ b/src/orders/routes/order-routes.ts
+@@ -1,3 +1,8 @@
++/**
++ * Customer-facing order API: read, quote, create, redeem points (LOY-002) and
++ * cancel orders. Handlers only translate HTTP to use cases; points logic lives
++ * in the loyalty application service, injected from the composition root.
++ */
+ import type { Router } from "../../http/router.ts";
+ import { withCustomer, type SessionStore } from "../../http/auth.ts";
+ import type { InMemoryOrderStore } from "../integration/order-store.ts";
+@@ -6,8 +11,14 @@ import { quoteForOrder } from "../../pricing/application/quote-service.ts";
+ import { UnknownDiscountCodeError } from "../../pricing/domain/discount.ts";
+ import { UnknownRegionError } from "../../pricing/integration/tax-rates.ts";
+ import type { Line } from "../../pricing/domain/quote.ts";
++import { IdempotencyConflictError, type RedemptionService } from "../../loyalty/application/redemption-service.ts";
+ 
+-export type OrderRouteDeps = { orders: InMemoryOrderStore; sessions: SessionStore };
++export type OrderRouteDeps = {
++  orders: InMemoryOrderStore;
++  sessions: SessionStore;
++  redemptions: RedemptionService;
++  now: () => Date;
++};
+ 
+ const isLine = (l: unknown): l is Line => {
+   const x = l as Line;
+@@ -48,11 +59,41 @@ export function orderRoutes(router: Router, deps: OrderRouteDeps): Router {
+     return { status: 201, body: order };
+   }));
+ 
+-  router.add("POST", "/orders/:id/cancel", withCustomer(deps.sessions, (_req, params, customer) => {
++  // LOY-002: pay part of a pending order with loyalty points.
++  router.add("POST", "/orders/:id/redeem", withCustomer(deps.sessions, async (req, params, customer) => {
++    const order = deps.orders.get(params.id!);
++    if (!order || order.customerId !== customer.id) return { status: 404, body: { error: "order not found" } };
++    const body = req.body as { points?: unknown; idempotencyKey?: unknown } | undefined;
++    if (!Number.isInteger(body?.points) || (body!.points as number) <= 0)
++      return { status: 400, body: { error: "points must be a positive integer" } };
++    if (typeof body?.idempotencyKey !== "string" || body.idempotencyKey.length === 0)
++      return { status: 400, body: { error: "idempotencyKey required" } };
++    const idempotencyKey = body.idempotencyKey;
++    // A replay after the order left "pending" still returns its stored result.
++    const existing = order.redemptions?.find(r => r.idempotencyKey === idempotencyKey);
++    if (order.status !== "pending" && !existing)
++      return { status: 409, body: { error: "order " + order.id + " is " + order.status } };
++    let outcome;
++    try {
++      outcome = await deps.redemptions.redeem(customer.id, order, body.points as number, idempotencyKey);
++    } catch (e) {
++      // Same key with a different body is rejected, even on a replayed order.
++      if (e instanceof IdempotencyConflictError) return { status: 409, body: { error: e.message } };
++      throw e;
++    }
++    if (!existing) {
++      deps.orders.save({ ...order, redemptions: [...(order.redemptions ?? []), outcome.redemption] });
++    }
++    return { status: 200, body: outcome.quote };
++  }));
++
++  router.add("POST", "/orders/:id/cancel", withCustomer(deps.sessions, async (_req, params, customer) => {
+     const order = deps.orders.get(params.id!);
+     if (!order || order.customerId !== customer.id) return { status: 404, body: { error: "order not found" } };
+     try {
+       const cancelled = cancel(order);
++      // LOY-002: give redeemed points back to their original lots (expired ones are forfeited).
++      if (order.redemptions?.length) await deps.redemptions.restoreForOrder(order, deps.now());
+       deps.orders.save(cancelled);
+       return { status: 200, body: cancelled };
+     } catch (e) {
+diff --git a/tests/loyalty/redeem-loyalty.acceptance.test.ts b/tests/loyalty/redeem-loyalty.acceptance.test.ts
+new file mode 100644
+index 0000000..d9dadeb
+--- /dev/null
++++ b/tests/loyalty/redeem-loyalty.acceptance.test.ts
+@@ -0,0 +1,136 @@
++/**
++ * Acceptance LOY-002
++ * Given a pending order owned by the signed-in customer
++ * When the customer sends POST /orders/:id/redeem with { points, idempotencyKey }
++ * Then points are consumed from non-expired lots (earliest expiry first),
++ *   the quote reflects points after discount and before tax, the same key
++ *   replays without consuming more, and cancelling the order restores the
++ *   points to their original lots (forfeiting lots expired by then).
++ */
++import { test } from "node:test";
++import assert from "node:assert/strict";
++import { app, asAlice, asBob, pendingOrder } from "../orders/helpers.ts";
++import type { PointsLot } from "../../src/loyalty/domain/points.ts";
++
++/** Alice holds 300 pts expiring 2026-12-01, 500 pts expiring 2026-12-31, and an expired lot. */
++const aliceLots = (): PointsLot[] => [
++  { id: "lot-1", customerId: "alice", points: 300, expiresAt: new Date("2026-12-01T00:00:00Z") },
++  { id: "lot-2", customerId: "alice", points: 500, expiresAt: new Date("2026-12-31T00:00:00Z") },
++  { id: "lot-x", customerId: "alice", points: 1000, expiresAt: new Date("2025-06-30T00:00:00Z") },
++];
++
++const redeem = (points: number, idempotencyKey: string) => ({
++  method: "POST" as const,
++  path: "/orders/o1/redeem",
++  headers: asAlice,
++  body: { points, idempotencyKey },
++});
++
++const lotPoints = async (loyalty: Awaited<ReturnType<typeof app>>["loyalty"]) =>
++  Object.fromEntries((await loyalty.lotsFor("alice")).map(l => [l.id, l.points]));
++
++test("LOY-002: points apply after discount and before tax, consumed earliest expiry first", async () => {
++  const { router, loyalty, orders } = app([pendingOrder({ discountCode: "SAVE10" })], aliceLots());
++  const res = await router.handle(redeem(400, "k1"));
++  assert.equal(res.status, 200);
++  // subtotal 10000, SAVE10 -> 1000 off, 400 pts = 400 cents, tax 19% of 8600.
++  assert.deepEqual(res.body, {
++    region: "DE", subtotalCents: 10000, discountCents: 1000,
++    pointsAppliedCents: 400, taxCents: 1634, totalCents: 10234,
++  });
++  // lot-x is expired and untouched; earliest-expiring lot-1 is drained first.
++  assert.deepEqual(await lotPoints(loyalty), { "lot-1": 0, "lot-2": 400, "lot-x": 1000 });
++  assert.equal(orders.get("o1")!.redemptions!.length, 1);
++});
++
++test("LOY-002: excess points are not consumed beyond the customer's balance", async () => {
++  const { router, loyalty } = app([pendingOrder({ discountCode: "SAVE10" })], aliceLots());
++  const res = await router.handle(redeem(2000, "k1"));
++  assert.equal(res.status, 200);
++  assert.equal((res.body as { pointsAppliedCents: number }).pointsAppliedCents, 800);
++  assert.deepEqual(await lotPoints(loyalty), { "lot-1": 0, "lot-2": 0, "lot-x": 1000 });
++});
++
++test("LOY-002: points never reduce the amount below zero", async () => {
++  const bigLot: PointsLot[] = [{ id: "lot-big", customerId: "alice", points: 20000, expiresAt: new Date("2027-01-01T00:00:00Z") }];
++  const { router, loyalty } = app([pendingOrder()], bigLot);
++  const res = await router.handle(redeem(20000, "k1"));
++  assert.equal(res.status, 200);
++  assert.deepEqual(res.body, {
++    region: "DE", subtotalCents: 10000, discountCents: 0,
++    pointsAppliedCents: 10000, taxCents: 0, totalCents: 0,
++  });
++  assert.deepEqual(await lotPoints(loyalty), { "lot-big": 10000 });
++});
++
++test("LOY-002: same idempotency key replays the same result without consuming more", async () => {
++  const { router, loyalty, orders } = app([pendingOrder({ discountCode: "SAVE10" })], aliceLots());
++  const first = await router.handle(redeem(400, "k1"));
++  const second = await router.handle(redeem(400, "k1"));
++  assert.deepEqual(second, first);
++  assert.deepEqual(await lotPoints(loyalty), { "lot-1": 0, "lot-2": 400, "lot-x": 1000 });
++  assert.equal(orders.get("o1")!.redemptions!.length, 1);
++});
++
++test("LOY-002: same key with a different body is rejected", async () => {
++  const { router, loyalty } = app([pendingOrder()], aliceLots());
++  await router.handle(redeem(400, "k1"));
++  const res = await router.handle(redeem(500, "k1"));
++  assert.equal(res.status, 409);
++  assert.deepEqual(await lotPoints(loyalty), { "lot-1": 0, "lot-2": 400, "lot-x": 1000 });
++});
++
++test("LOY-002: concurrent redemptions never spend the same points", async () => {
++  const { router, loyalty } = app([pendingOrder()], aliceLots());
++  const [r1, r2] = await Promise.all([router.handle(redeem(500, "k1")), router.handle(redeem(500, "k2"))]);
++  assert.equal(r1.status, 200);
++  assert.equal(r2.status, 200);
++  const applied = [r1, r2].map(r => (r.body as { pointsAppliedCents: number }).pointsAppliedCents);
++  assert.equal(applied[0]! + applied[1]!, 800); // together bounded by the 800 usable points
++  assert.deepEqual(await lotPoints(loyalty), { "lot-1": 0, "lot-2": 0, "lot-x": 1000 });
++});
++
++test("LOY-002: cancelling a redeemed order returns points to their original lots", async () => {
++  const { router, loyalty, orders } = app([pendingOrder({ discountCode: "SAVE10" })], aliceLots());
++  await router.handle(redeem(400, "k1"));
++  const res = await router.handle({ method: "POST", path: "/orders/o1/cancel", headers: asAlice });
++  assert.equal(res.status, 200);
++  assert.deepEqual(await lotPoints(loyalty), { "lot-1": 300, "lot-2": 500, "lot-x": 1000 });
++  assert.equal(orders.get("o1")!.status, "cancelled");
++});
++
++test("LOY-002: points whose lot expired by cancellation are forfeited", async () => {
++  let now = new Date("2026-11-19T12:00:00Z");
++  const { router, loyalty } = app([pendingOrder()], aliceLots(), () => now);
++  await router.handle(redeem(400, "k1")); // 300 from lot-1 (exp 2026-12-01), 100 from lot-2
++  now = new Date("2026-12-15T00:00:00Z"); // lot-1 has expired by cancellation time
++  const res = await router.handle({ method: "POST", path: "/orders/o1/cancel", headers: asAlice });
++  assert.equal(res.status, 200);
++  assert.deepEqual(await lotPoints(loyalty), { "lot-1": 0, "lot-2": 500, "lot-x": 1000 });
++});
++
++test("LOY-002: a replayed key still returns the stored result after cancellation", async () => {
++  const { router } = app([pendingOrder()], aliceLots());
++  await router.handle(redeem(400, "k1"));
++  await router.handle({ method: "POST", path: "/orders/o1/cancel", headers: asAlice });
++  const replay = await router.handle(redeem(400, "k1"));
++  assert.equal(replay.status, 200);
++  assert.equal((replay.body as { pointsAppliedCents: number }).pointsAppliedCents, 400);
++});
++
++test("LOY-002: rejects requests that are unauthenticated, foreign, not pending, or malformed", async () => {
++  const { router } = app([pendingOrder()], aliceLots());
++  const unauth = await router.handle({ method: "POST", path: "/orders/o1/redeem", headers: {}, body: { points: 100, idempotencyKey: "k" } });
++  assert.equal(unauth.status, 401);
++  const foreign = await router.handle({ method: "POST", path: "/orders/o1/redeem", headers: asBob, body: { points: 100, idempotencyKey: "k" } });
++  assert.equal(foreign.status, 404);
++  const { router: shippedRouter } = app([pendingOrder({ status: "shipped" })], aliceLots());
++  const shipped = await shippedRouter.handle(redeem(100, "k"));
++  assert.equal(shipped.status, 409);
++  const noKey = await router.handle({ method: "POST", path: "/orders/o1/redeem", headers: asAlice, body: { points: 100 } });
++  assert.equal(noKey.status, 400);
++  const zero = await router.handle(redeem(0, "k"));
++  assert.equal(zero.status, 400);
++  const fractional = await router.handle(redeem(10.5, "k"));
++  assert.equal(fractional.status, 400);
++});

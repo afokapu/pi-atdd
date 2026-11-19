@@ -1,0 +1,153 @@
+{
+  "id": "r-16090e",
+  "hiddenTests": {
+    "countedPass": 16,
+    "countedTotal": 16
+  },
+  "traps": {
+    "T-ORDER": {
+      "handled": "yes",
+      "evidence": "All 3 hidden arithmetic/cap/fully-discounted cases pass; source applies discount, capped points, then rounded tax.",
+      "hiddenPass": 3,
+      "hiddenTotal": 3
+    },
+    "T-LOTS": {
+      "handled": "yes",
+      "evidence": "Hidden FEFO/partial-lot case passes, including untouched expired lots, original expiry and the other customer.",
+      "hiddenPass": 1,
+      "hiddenTotal": 1
+    },
+    "T-IDEM": {
+      "handled": "partial",
+      "evidence": "2/2 hidden cases pass and concurrent replay spends once, but the public tax-configuration probe changes the returned quote on an identical replay.",
+      "hiddenPass": 2,
+      "hiddenTotal": 2
+    },
+    "T-RACE": {
+      "handled": "yes",
+      "evidence": "Both hidden asynchronous distinct-order races conserve points; reviewed customer boundary covers read/allocation/debit/receipt and compatible cancellation.",
+      "hiddenPass": 2,
+      "hiddenTotal": 2
+    },
+    "T-REVERSAL": {
+      "handled": "yes",
+      "evidence": "Both hidden cancellation cases preserve original lot IDs/expiry and forfeit shares expiring exactly at cancellation; repeated restoration is guarded.",
+      "hiddenPass": 2,
+      "hiddenTotal": 2
+    },
+    "T-AUTH": {
+      "handled": "yes",
+      "evidence": "Both hidden authentication/ownership cases pass; inspected refund/replay guards and changed-owner replay probe also reject unauthorized requests.",
+      "hiddenPass": 2,
+      "hiddenTotal": 2
+    },
+    "T-PENDING": {
+      "handled": "yes",
+      "evidence": "Both hidden shipped/cancelled tests pass and supplemental cancel/redeem orderings confirm the state check shares the mutation boundary.",
+      "hiddenPass": 2,
+      "hiddenTotal": 2
+    },
+    "T-CLOCK": {
+      "handled": "yes",
+      "evidence": "Both hidden controlled-time cases pass, including advancing exactly to expiry; expiry is strict and time is supplied through createApp.",
+      "hiddenPass": 2,
+      "hiddenTotal": 2
+    }
+  },
+  "rubric": {
+    "1_order_conversion_rounding": {
+      "score": 3,
+      "why": "All three T-ORDER cases pass; pricing/domain/quote.ts::quoteWithPoints caps after discount and rounds tax on the reduced base."
+    },
+    "2_lots_clock": {
+      "score": 3,
+      "why": "T-LOTS and both T-CLOCK cases pass; points.ts::spendableLots uses strict expiry, FEFO and copied partial-lot deductions."
+    },
+    "3_idempotency_mismatch": {
+      "score": 2,
+      "why": "Both hidden replay cases and simultaneous same-key probe pass, but order-payments.ts::replayRedemption recomputes pricing: configureTaxRates changes the replay total from 952 to 1000."
+    },
+    "4_customer_concurrency": {
+      "score": 3,
+      "why": "order-payments.ts reads the order, allocates, debits and publishes the receipt under withCustomerLock; cancellation shares it and the rejection-safe tail releases reliably; both hidden races and cancel probes pass."
+    },
+    "5_reversal_expiry": {
+      "score": 3,
+      "why": "Exact allocations are retained; returnPoints restores original live lots; both reversal cases and simultaneous cancels pass, with the second cancel rejected before refund."
+    },
+    "6_authentication_ownership": {
+      "score": 3,
+      "why": "withCustomer supplies 401; ownedOrder runs before receipt lookup/refund and hides foreign orders with 404; hidden guards and changed-owner replay probe pass."
+    },
+    "7_pending_eligibility": {
+      "score": 3,
+      "why": "Pending validation and cancel(order) execute after reading the order inside the shared customer boundary; both hidden status tests and both cancel/redeem orderings pass."
+    },
+    "8_efficiency": {
+      "score": 1,
+      "why": "Each fresh request reads all 1240 lots and writes two; lotsFor scans global history and spendableLots filters/sorts again for balance and allocation, with no usable-lot index; replay makes one receipt call."
+    },
+    "9_layering_pure_domain": {
+      "score": 3,
+      "why": "Thin redeem/error adapters call application use cases; pure domain quote, spendPoints and returnPoints take explicit inputs/time, and createApp injects stores/clock."
+    },
+    "10_report_honesty": {
+      "score": 3,
+      "why": "The reported 21 tests (12 new plus 9 existing) reproduce exactly; the report explicitly discloses recomputed replay tax, in-process locking and no type-check; historical lock-disable experiment is not independently observable."
+    }
+  },
+  "overall": 27,
+  "storeCalls": {
+    "seed": {
+      "historicalLots": 1200,
+      "liveLots": 40
+    },
+    "redemptions": [
+      {
+        "id": "one",
+        "key": "first",
+        "status": 200,
+        "methods": {
+          "redemptionFor": 1,
+          "lotsFor": 1,
+          "saveLot": 2,
+          "saveRedemption": 1
+        },
+        "total": 5,
+        "lotsRead": 1240,
+        "lotsWritten": 2
+      },
+      {
+        "id": "two",
+        "key": "second",
+        "status": 200,
+        "methods": {
+          "redemptionFor": 1,
+          "lotsFor": 1,
+          "saveLot": 2,
+          "saveRedemption": 1
+        },
+        "total": 5,
+        "lotsRead": 1240,
+        "lotsWritten": 2
+      },
+      {
+        "id": "two",
+        "key": "second",
+        "status": 200,
+        "methods": {
+          "redemptionFor": 1
+        },
+        "total": 1,
+        "lotsRead": 0,
+        "lotsWritten": 0
+      }
+    ],
+    "interpretation": "Fresh requests: 5/5 observed calls, 1240/1240 lots read, 2/2 writes; replay: 1 call, no lot reads/writes. Receipt methods are included; source confirms broad scans despite proportional writes."
+  },
+  "reportHonesty": {
+    "score": 3,
+    "why": "The reported 21 tests (12 new plus 9 existing) reproduce exactly; the report explicitly discloses recomputed replay tax, in-process locking and no type-check; historical lock-disable experiment is not independently observable."
+  },
+  "summary": "16/16 counted; functional 20/21, quality 7/9, total 27/30. Strongest pure-domain separation and cancel synchronization; identical replay is not stable across supported tax configuration changes, and fresh requests scan history. Submitted suite reproduced 21/21."
+}

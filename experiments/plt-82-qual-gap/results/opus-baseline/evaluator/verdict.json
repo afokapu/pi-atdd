@@ -1,0 +1,147 @@
+{
+  "id": "r-3581b3",
+  "hiddenTests": {
+    "countedPass": 16,
+    "countedTotal": 16
+  },
+  "traps": {
+    "T-ORDER": {
+      "handled": "yes",
+      "evidence": "All 3 hidden arithmetic/cap/fully-discounted cases pass; source applies discount, capped points, then rounded tax.",
+      "hiddenPass": 3,
+      "hiddenTotal": 3
+    },
+    "T-LOTS": {
+      "handled": "yes",
+      "evidence": "Hidden FEFO/partial-lot case passes, including untouched expired lots, original expiry and the other customer.",
+      "hiddenPass": 1,
+      "hiddenTotal": 1
+    },
+    "T-IDEM": {
+      "handled": "yes",
+      "evidence": "Both hidden replay/mismatch cases pass; code places key checking and publication inside ledger/customer serialization, and simultaneous replay spends once.",
+      "hiddenPass": 2,
+      "hiddenTotal": 2
+    },
+    "T-RACE": {
+      "handled": "yes",
+      "evidence": "Both hidden asynchronous distinct-order races conserve points; reviewed customer boundary covers read/allocation/debit/receipt and compatible cancellation.",
+      "hiddenPass": 2,
+      "hiddenTotal": 2
+    },
+    "T-REVERSAL": {
+      "handled": "yes",
+      "evidence": "Both hidden cancellation cases preserve original lot IDs/expiry and forfeit shares expiring exactly at cancellation; repeated restoration is guarded.",
+      "hiddenPass": 2,
+      "hiddenTotal": 2
+    },
+    "T-AUTH": {
+      "handled": "partial",
+      "evidence": "2/2 hidden guards pass; supplementary replay after changing order ownership through OrderStore.save still discloses the saved quote because getKey precedes authorization.",
+      "hiddenPass": 2,
+      "hiddenTotal": 2
+    },
+    "T-PENDING": {
+      "handled": "yes",
+      "evidence": "Both hidden shipped/cancelled tests pass and supplemental cancel/redeem orderings confirm the state check shares the mutation boundary.",
+      "hiddenPass": 2,
+      "hiddenTotal": 2
+    },
+    "T-CLOCK": {
+      "handled": "yes",
+      "evidence": "Both hidden controlled-time cases pass, including advancing exactly to expiry; expiry is strict and time is supplied through createApp.",
+      "hiddenPass": 2,
+      "hiddenTotal": 2
+    }
+  },
+  "rubric": {
+    "1_order_conversion_rounding": {
+      "score": 3,
+      "why": "All three T-ORDER cases pass; pricing/domain/quote.ts caps whole points after discount and rounds tax only on the remaining cents."
+    },
+    "2_lots_clock": {
+      "score": 3,
+      "why": "T-LOTS and both T-CLOCK cases pass; planConsumption filters strictly expired/empty lots, sorts by expiry and plans partial debits without mutation."
+    },
+    "3_idempotency_mismatch": {
+      "score": 3,
+      "why": "redeem-points.ts checks fingerprint and publishes a cloned response inside KeyedLock; hidden replay/mismatch, concurrent replay and changed-tax replay probes pass without another debit."
+    },
+    "4_customer_concurrency": {
+      "score": 3,
+      "why": "Customer KeyedLock surrounds order read, consumePoints, redemption/order saves and key publication; finally releases it; both hidden races and both cancel orderings pass."
+    },
+    "5_reversal_expiry": {
+      "score": 3,
+      "why": "ledger.ts restores original lot IDs/expiry, skips expired lots and records per-lot reversed progress; both hidden reversal tests and concurrent cancel probe pass."
+    },
+    "6_authentication_ownership": {
+      "score": 2,
+      "why": "Hidden guards pass and cancellation rechecks ownership, but redeem-points.ts returns getKey results before loading/authorizing the current order; changed-owner replay probe returns 200 rather than 403/404."
+    },
+    "7_pending_eligibility": {
+      "score": 3,
+      "why": "applyPoints and cancel run on fresh order reads inside the same customer lock; hidden shipped/cancelled tests and cancel/redeem probes reject new spending after cancellation."
+    },
+    "8_efficiency": {
+      "score": 1,
+      "why": "Each fresh redemption calls lotsFor once (1240 returned) and saveLot twice; consumePoints scans/copies full customer history with no usable index; replay makes no measured loyalty-store calls."
+    },
+    "9_layering_pure_domain": {
+      "score": 2,
+      "why": "Routes adapt HTTP and use cases orchestrate locking/storage with pure allocation/pricing, but ledger.ts retains refund/addition/forfeiture rules in application rather than a pure reversal plan."
+    },
+    "10_report_honesty": {
+      "score": 3,
+      "why": "Reported 21/21 tests with 12 new cases reproduce; code supports the described rollback/progress attempts and the report acknowledges non-atomic, single-process limits; historical mutation experiment remains unverified."
+    }
+  },
+  "overall": 26,
+  "storeCalls": {
+    "seed": {
+      "historicalLots": 1200,
+      "liveLots": 40
+    },
+    "redemptions": [
+      {
+        "id": "one",
+        "key": "first",
+        "status": 200,
+        "methods": {
+          "lotsFor": 1,
+          "saveLot": 2
+        },
+        "total": 3,
+        "lotsRead": 1240,
+        "lotsWritten": 2
+      },
+      {
+        "id": "two",
+        "key": "second",
+        "status": 200,
+        "methods": {
+          "lotsFor": 1,
+          "saveLot": 2
+        },
+        "total": 3,
+        "lotsRead": 1240,
+        "lotsWritten": 2
+      },
+      {
+        "id": "two",
+        "key": "second",
+        "status": 200,
+        "methods": {},
+        "total": 0,
+        "lotsRead": 0,
+        "lotsWritten": 0
+      }
+    ],
+    "interpretation": "Fresh requests: 3/3 loyalty-store calls, 1240/1240 lots read and 2/2 writes; replay: 0 measured loyalty calls. Separate synchronous redemption-store calls are outside the loyalty counter, not zero total application work."
+  },
+  "reportHonesty": {
+    "score": 3,
+    "why": "Reported 21/21 tests with 12 new cases reproduce; code supports the described rollback/progress attempts and the report acknowledges non-atomic, single-process limits; historical mutation experiment remains unverified."
+  },
+  "summary": "16/16 counted; functional 20/21, quality 6/9, total 26/30. Stable stored responses and well-bounded redeem/cancel locking with refund progress; replay bypasses current ownership authorization and every fresh debit scans history. Submitted suite reproduced 21/21."
+}

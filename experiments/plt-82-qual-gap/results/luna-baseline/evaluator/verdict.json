@@ -1,0 +1,150 @@
+{
+  "id": "r-3c1b09",
+  "hiddenTests": {
+    "countedPass": 14,
+    "countedTotal": 16
+  },
+  "traps": {
+    "T-ORDER": {
+      "handled": "partial",
+      "evidence": "1/3 hidden cases passes; points-remaining uses the uncapped request, so capped and fully discounted orders return inflated applied points and negative tax.",
+      "hiddenPass": 1,
+      "hiddenTotal": 3
+    },
+    "T-LOTS": {
+      "handled": "yes",
+      "evidence": "Hidden FEFO/partial-lot case passes, including untouched expired lots, original expiry and the other customer.",
+      "hiddenPass": 1,
+      "hiddenTotal": 1
+    },
+    "T-IDEM": {
+      "handled": "yes",
+      "evidence": "Both hidden replay/mismatch cases pass; code places key checking and publication inside ledger/customer serialization, and simultaneous replay spends once.",
+      "hiddenPass": 2,
+      "hiddenTotal": 2
+    },
+    "T-RACE": {
+      "handled": "partial",
+      "evidence": "2/2 hidden debit races pass, but receipt/order publication is outside atomic; simultaneous redeem/cancel resurrects the order, and capped requests also misreport actual debit.",
+      "hiddenPass": 2,
+      "hiddenTotal": 2
+    },
+    "T-REVERSAL": {
+      "handled": "partial",
+      "evidence": "2/2 hidden reversal cases pass, but a cancel racing initial redemption sees no attached receipt and misses restoration; the later stale order save erases cancellation.",
+      "hiddenPass": 2,
+      "hiddenTotal": 2
+    },
+    "T-AUTH": {
+      "handled": "yes",
+      "evidence": "Both hidden authentication/ownership cases pass; inspected refund/replay guards and changed-owner replay probe also reject unauthorized requests.",
+      "hiddenPass": 2,
+      "hiddenTotal": 2
+    },
+    "T-PENDING": {
+      "handled": "partial",
+      "evidence": "2/2 sequential status cases pass, but redeemThenCancel returns [200,200] and leaves status pending with balance 800 rather than a cancelled, refunded order.",
+      "hiddenPass": 2,
+      "hiddenTotal": 2
+    },
+    "T-CLOCK": {
+      "handled": "yes",
+      "evidence": "Both hidden controlled-time cases pass, including advancing exactly to expiry; expiry is strict and time is supplied through createApp.",
+      "hiddenPass": 2,
+      "hiddenTotal": 2
+    }
+  },
+  "rubric": {
+    "1_order_conversion_rounding": {
+      "score": 1,
+      "why": "Only 1/3 T-ORDER cases passes: store.redeem sets remaining=min(points,maximum) but applied=points-remaining, over-reporting capped consumption and producing negative tax (-57 and -19)."
+    },
+    "2_lots_clock": {
+      "score": 3,
+      "why": "T-LOTS and both T-CLOCK tests pass; store.redeem strictly filters expiry/customer/empty lots and sorts FEFO before partial direct deductions."
+    },
+    "3_idempotency_mismatch": {
+      "score": 3,
+      "why": "Atomic ledger section encloses key mismatch checks, allocation and a copied quote receipt; hidden replay/mismatch, simultaneous replay and tax-change replay probes pass; unrelated-order key scope is not penalized."
+    },
+    "4_customer_concurrency": {
+      "score": 2,
+      "why": "Both hidden debit races conserve points and the rejection-safe atomic queue releases, but order receipt/state saves occur outside it: redeemThenCancel returns success twice and resurrects pending state with points spent."
+    },
+    "5_reversal_expiry": {
+      "score": 2,
+      "why": "Both hidden reversal cases restore original live lots and removal of the receipt prevents repeat refunds, but the route can cancel before the redemption receipt is attached and miss the restoration."
+    },
+    "6_authentication_ownership": {
+      "score": 3,
+      "why": "Session and owner guards run before store redemption/restore and before cached-result disclosure; both hidden AUTH tests and changed-owner replay probe reject correctly."
+    },
+    "7_pending_eligibility": {
+      "score": 2,
+      "why": "Hidden shipped/cancelled tests pass sequentially; the route checks pending before the async ledger boundary and later saves its stale pending snapshot over a concurrent cancellation."
+    },
+    "8_efficiency": {
+      "score": 1,
+      "why": "Every fresh bulk redeem expands/scans all global lots and sorts usable entries with a global queue and no index; two observed method calls hide direct in-store reads/writes."
+    },
+    "9_layering_pure_domain": {
+      "score": 1,
+      "why": "No redemption application layer: routes compute pricing inputs and coordinate status/receipts while the integration store contains allocation, quote arithmetic and refund policy; domain was not extended with those rules."
+    },
+    "10_report_honesty": {
+      "score": 3,
+      "why": "The terse report matches the added endpoint/ledger serialization/refund code and npm test reproduces all 9 existing tests; no new test coverage is claimed, and historical manual checks are unavailable rather than assumed fabricated."
+    }
+  },
+  "overall": 21,
+  "storeCalls": {
+    "seed": {
+      "historicalLots": 1200,
+      "liveLots": 40
+    },
+    "redemptions": [
+      {
+        "id": "one",
+        "key": "first",
+        "status": 200,
+        "methods": {
+          "redeem": 1,
+          "atomic": 1
+        },
+        "total": 2,
+        "lotsRead": 0,
+        "lotsWritten": 0
+      },
+      {
+        "id": "two",
+        "key": "second",
+        "status": 200,
+        "methods": {
+          "redeem": 1,
+          "atomic": 1
+        },
+        "total": 2,
+        "lotsRead": 0,
+        "lotsWritten": 0
+      },
+      {
+        "id": "two",
+        "key": "second",
+        "status": 200,
+        "methods": {
+          "redeem": 1,
+          "atomic": 1
+        },
+        "total": 2,
+        "lotsRead": 0,
+        "lotsWritten": 0
+      }
+    ],
+    "interpretation": "Each fresh redemption and replay: redeem=1, atomic=1 (2 calls), base-API lotsRead/lotsWritten=0. Bulk source directly scans global lots and mutates them; zeros do not mean no reads/writes, while replay avoids that scan."
+  },
+  "reportHonesty": {
+    "score": 3,
+    "why": "The terse report matches the added endpoint/ledger serialization/refund code and npm test reproduces all 9 existing tests; no new test coverage is claimed, and historical manual checks are unavailable rather than assumed fabricated."
+  },
+  "summary": "14/16 counted; functional 16/21, quality 5/9, total 21/30. Capped pricing misreports applied points and yields negative tax; cancellation/order state also race the ledger queue. Global history scans and storage-centric business rules. Submitted suite reproduced only the 9 existing tests."
+}

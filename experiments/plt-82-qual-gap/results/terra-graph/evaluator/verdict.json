@@ -1,0 +1,38 @@
+{
+  "id": "r-4d5cd9",
+  "hiddenTests": { "countedPass": 16, "countedTotal": 16 },
+  "traps": {
+    "T-ORDER": { "handled": "yes", "hiddenPass": 3, "hiddenTotal": 3, "evidence": "All three hidden pricing cases pass; quoteForOrderWithPoints applies capped points after discount and rounds tax on the reduced base, including zero-cap orders." },
+    "T-LOTS": { "handled": "yes", "hiddenPass": 1, "hiddenTotal": 1, "evidence": "Hidden FEFO/partial-lot test passes; loyalty-store.ts::takeLots filters customer, positive balance and strict expiry before sorting by expiry." },
+    "T-IDEM": { "handled": "yes", "hiddenPass": 2, "hiddenTotal": 2, "evidence": "Both hidden cases, simultaneous replay and changed-tax replay pass; the service lock encloses saved-quote replay, ledger debit and order receipt publication." },
+    "T-RACE": { "handled": "partial", "hiddenPass": 2, "hiddenTotal": 2, "evidence": "Both hidden debit races and normal cancel/redeem orderings pass, but taxRemovedDuringIO in review-probes.json demonstrates a post-debit quote exception leaving balance 800/1000 and no order receipt; subsequent cancellation cannot refund it." },
+    "T-REVERSAL": { "handled": "yes", "hiddenPass": 2, "hiddenTotal": 2, "evidence": "Both hidden reversal cases restore original IDs/expiry and forfeit allocations expiring exactly at cancellation; service serialization and cancel(order) prevent repeat refunds of published redemptions." },
+    "T-AUTH": { "handled": "yes", "hiddenPass": 2, "hiddenTotal": 2, "evidence": "Both hidden guards pass; withCustomer supplies 401 and ownedOrder runs before debit, refund and replay; changed-owner replay is 404." },
+    "T-PENDING": { "handled": "yes", "hiddenPass": 2, "hiddenTotal": 2, "evidence": "Both hidden state tests pass; order eligibility and cancellation share the service critical section, and cancel-first replay probe rejects new redemption with 409." },
+    "T-CLOCK": { "handled": "yes", "hiddenPass": 2, "hiddenTotal": 2, "evidence": "Both hidden controlled-time tests pass, including exact expiry; createApp supplies deps.now and isExpired uses expiresAt <= at for debit and refund." }
+  },
+  "rubric": {
+    "1_order_conversion_rounding": { "score": 3, "why": "All three T-ORDER cases pass; pricing/application/quote-service.ts caps one-cent-per-point credit at subtotal minus discount, then uses rounded reduced-base tax." },
+    "2_lots_clock": { "score": 3, "why": "T-LOTS and both T-CLOCK cases pass; takeLots filters strictly live customer lots, sorts FEFO, deducts partial lots and retains original expiry snapshots." },
+    "3_idempotency_mismatch": { "score": 3, "why": "RedemptionService.exclusively encloses replay/mismatch checking, debit and cached quote publication; hidden cases and concurrent/changed-tax replay probes consume only once and return the original quote." },
+    "4_customer_concurrency": { "score": 2, "why": "Global service/ledger queues release in finally and conserve both hidden races, but redemption-service.ts quotes after awaited ledger.redeem; an operations tax change during I/O throws after consuming 200 with no attached receipt or cancellation recovery (review-probes.json)." },
+    "5_reversal_expiry": { "score": 3, "why": "Published redemptions retain exact uses; refund restores original lot IDs/expiry only while live, and the shared service lock plus domain cancellation state rejects repeated restoration; both hidden reversal cases and simultaneous cancels pass." },
+    "6_authentication_ownership": { "score": 3, "why": "withCustomer and ownedOrder precede every redemption/refund/replay; hidden AUTH cases pass and changed-owner replay returns 404 without another debit." },
+    "7_pending_eligibility": { "score": 3, "why": "Pending validation and cancel(order) run on fresh owned-order reads inside the same service queue; hidden non-pending tests and both normal cancel/redeem orderings preserve eligibility." },
+    "8_efficiency": { "score": 1, "why": "Each fresh takeLots expands/scans all global lot history and sorts usable entries without an index, under global contention; replay avoids ledger work, but three bulk-method calls hide the full scan/direct mutations." },
+    "9_layering_pure_domain": { "score": 2, "why": "Thin routes delegate to an application service with inward-facing ports wired in createApp, but allocation/refund policy stays in the integration store and points-pricing arithmetic stays in application rather than pure domain rules." },
+    "10_report_honesty": { "score": 3, "why": "The limited feature claims match the diff and the submitted test script reproduces 9/9 unchanged tests; no new tests are claimed, historical manual checks are unverified, and the newly found hidden failure is not evidence of knowing concealment." }
+  },
+  "overall": 26,
+  "storeCalls": {
+    "seed": { "historicalLots": 1200, "liveLots": 40 },
+    "redemptions": [
+      { "id": "one", "key": "first", "status": 200, "methods": { "redeem": 1, "exclusively": 1, "takeLots": 1 }, "total": 3, "lotsRead": 0, "lotsWritten": 0 },
+      { "id": "two", "key": "second", "status": 200, "methods": { "redeem": 1, "exclusively": 1, "takeLots": 1 }, "total": 3, "lotsRead": 0, "lotsWritten": 0 },
+      { "id": "two", "key": "second", "status": 200, "methods": {}, "total": 0, "lotsRead": 0, "lotsWritten": 0 }
+    ],
+    "interpretation": "The informational test passes, separately from acceptance. Fresh requests have 3/3 measured method calls; replay has 0 loyalty calls. Base-API lotsRead/lotsWritten zeros are blind spots, not zero work: takeLots directly scans all 1240 seeded global entries and mutates allocation lots (two per fresh request here). No usable-lot index; both service and ledger queues are global. Order-store work is outside this counter."
+  },
+  "reportHonesty": { "score": 3, "why": "Report accurately describes the endpoint, atomic ledger consumption, saved quote/audit and original-lot refund; its 9-test claim reproduces via the package test command's equivalent node invocation. Historical manual execution cannot be authenticated from these artifacts; no added coverage or indexed efficiency is claimed." },
+  "summary": "16/16 counted, plus the informational case passing; functional 20/21, quality 6/9, overall 26/30. Stable authorized replay and correctly synchronized normal cancellation, but a runtime tax change between debit and quote can strand consumed points outside the order receipt. Full-history scans/global locking and impure rule placement limit quality. Submitted suite reproduces 9/9 existing tests with no new cases. Supplementary probes are separate from the fixed acceptance count; the post-debit failure is scored under concurrency/commit consistency, not deducted again from normal reversal/idempotency."
+}

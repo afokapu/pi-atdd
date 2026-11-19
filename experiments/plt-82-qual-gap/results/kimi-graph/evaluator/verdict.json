@@ -1,0 +1,147 @@
+{
+  "id": "r-c15e3d",
+  "hiddenTests": {
+    "countedPass": 16,
+    "countedTotal": 16
+  },
+  "traps": {
+    "T-ORDER": {
+      "handled": "yes",
+      "evidence": "All 3 hidden arithmetic/cap/fully-discounted cases pass; source applies discount, capped points, then rounded tax.",
+      "hiddenPass": 3,
+      "hiddenTotal": 3
+    },
+    "T-LOTS": {
+      "handled": "yes",
+      "evidence": "Hidden FEFO/partial-lot case passes, including untouched expired lots, original expiry and the other customer.",
+      "hiddenPass": 1,
+      "hiddenTotal": 1
+    },
+    "T-IDEM": {
+      "handled": "yes",
+      "evidence": "Both hidden replay/mismatch cases pass; code places key checking and publication inside ledger/customer serialization, and simultaneous replay spends once.",
+      "hiddenPass": 2,
+      "hiddenTotal": 2
+    },
+    "T-RACE": {
+      "handled": "partial",
+      "evidence": "2/2 hidden debit races pass, but supplemental concurrent cancellations mint 200 points and redeem/cancel loses the cancelled state; receipt/state publication sits outside the lock.",
+      "hiddenPass": 2,
+      "hiddenTotal": 2
+    },
+    "T-REVERSAL": {
+      "handled": "partial",
+      "evidence": "2/2 hidden reversals pass, but two concurrent cancels both refund the same order: review-probes.json records balance 1200 from an initial 1000.",
+      "hiddenPass": 2,
+      "hiddenTotal": 2
+    },
+    "T-AUTH": {
+      "handled": "yes",
+      "evidence": "Both hidden authentication/ownership cases pass; inspected refund/replay guards and changed-owner replay probe also reject unauthorized requests.",
+      "hiddenPass": 2,
+      "hiddenTotal": 2
+    },
+    "T-PENDING": {
+      "handled": "partial",
+      "evidence": "2/2 sequential status checks pass, but redeemThenCancel succeeds twice and ends pending with a 200-point debit because the route saves a stale order.",
+      "hiddenPass": 2,
+      "hiddenTotal": 2
+    },
+    "T-CLOCK": {
+      "handled": "yes",
+      "evidence": "Both hidden controlled-time cases pass, including advancing exactly to expiry; expiry is strict and time is supplied through createApp.",
+      "hiddenPass": 2,
+      "hiddenTotal": 2
+    }
+  },
+  "rubric": {
+    "1_order_conversion_rounding": {
+      "score": 3,
+      "why": "All three T-ORDER cases pass; planRedemption caps consumption by requested/payable amounts and quoteAfterPoints rounds tax after discount and points."
+    },
+    "2_lots_clock": {
+      "score": 3,
+      "why": "T-LOTS and both T-CLOCK cases pass; pure planRedemption uses strict expiry, FEFO and exact partial allocations with unchanged source expiry."
+    },
+    "3_idempotency_mismatch": {
+      "score": 3,
+      "why": "Idempotency lookup/mismatch and stored outcome publication share the customer lock; hidden cases, simultaneous replay and changed-tax replay probe pass with one debit."
+    },
+    "4_customer_concurrency": {
+      "score": 1,
+      "why": "Both hidden debit races pass, but the lock ends before the route saves the order receipt and does not encompass cancel state: simultaneous cancels inflate balance 1000 -> 1200 and redeem/cancel can resurrect pending state."
+    },
+    "5_reversal_expiry": {
+      "score": 2,
+      "why": "Both hidden reversal tests restore live original lots, but restoreForOrder has no reversed marker and uses stale route snapshots; two concurrent cancels refund the same allocation twice."
+    },
+    "6_authentication_ownership": {
+      "score": 3,
+      "why": "withCustomer plus route ownership checks precede redemption/replay/refund; hidden AUTH cases and changed-owner replay probe reject without mutations."
+    },
+    "7_pending_eligibility": {
+      "score": 2,
+      "why": "Both hidden status cases reject sequentially, but route eligibility and order saves are outside the customer boundary; the redeem-then-cancel probe returns success twice while leaving the order pending and points spent."
+    },
+    "8_efficiency": {
+      "score": 0,
+      "why": "Each fresh request reads all 1240 lots and writes two, then performs lots.find over the history for every allocation; with many source lots this is quadratic history work, not indexed/allocation-proportional lookup."
+    },
+    "9_layering_pure_domain": {
+      "score": 2,
+      "why": "Pure planRedemption and an application service exist, but quoteAfterPoints/refund rules remain application logic and routes own eligibility plus receipt/state publication outside the use case."
+    },
+    "10_report_honesty": {
+      "score": 2,
+      "why": "The 19-pass npm result reproduces, but the report repeatedly miscounts 11 added test blocks (there are 10) and contradicts its own arithmetic; feature descriptions and disclosed GET/in-memory limitations are otherwise substantially accurate."
+    }
+  },
+  "overall": 21,
+  "storeCalls": {
+    "seed": {
+      "historicalLots": 1200,
+      "liveLots": 40
+    },
+    "redemptions": [
+      {
+        "id": "one",
+        "key": "first",
+        "status": 200,
+        "methods": {
+          "lotsFor": 1,
+          "saveLot": 2
+        },
+        "total": 3,
+        "lotsRead": 1240,
+        "lotsWritten": 2
+      },
+      {
+        "id": "two",
+        "key": "second",
+        "status": 200,
+        "methods": {
+          "lotsFor": 1,
+          "saveLot": 2
+        },
+        "total": 3,
+        "lotsRead": 1240,
+        "lotsWritten": 2
+      },
+      {
+        "id": "two",
+        "key": "second",
+        "status": 200,
+        "methods": {},
+        "total": 0,
+        "lotsRead": 0,
+        "lotsWritten": 0
+      }
+    ],
+    "interpretation": "Fresh requests: 3/3 calls, 1240/1240 returned lots and 2/2 writes; replay: no loyalty calls. The counter does not count repeated application-level lots.find scans, which cause the efficiency deduction."
+  },
+  "reportHonesty": {
+    "score": 2,
+    "why": "The 19-pass npm result reproduces, but the report repeatedly miscounts 11 added test blocks (there are 10) and contradicts its own arithmetic; feature descriptions and disclosed GET/in-memory limitations are otherwise substantially accurate."
+  },
+  "summary": "16/16 counted; functional 17/21, quality 4/9, total 21/30. Stored replay and pure allocation work, but receipt/order publication outside the lock permits cancellation resurrection and duplicate refunds; repeated history searches are inefficient. Submitted suite reproduced 19/19 (10 additions, not 11)."
+}

@@ -1,0 +1,149 @@
+{
+  "id": "r-d67a68",
+  "hiddenTests": {
+    "countedPass": 14,
+    "countedTotal": 16
+  },
+  "traps": {
+    "T-ORDER": {
+      "handled": "partial",
+      "evidence": "2/3 hidden cases pass; fully discounted redemption omits numeric pointsAppliedCents rather than returning zero, although arithmetic/debit are correctly zero.",
+      "hiddenPass": 2,
+      "hiddenTotal": 3
+    },
+    "T-LOTS": {
+      "handled": "yes",
+      "evidence": "Hidden FEFO/partial-lot case passes, including untouched expired lots, original expiry and the other customer.",
+      "hiddenPass": 1,
+      "hiddenTotal": 1
+    },
+    "T-IDEM": {
+      "handled": "yes",
+      "evidence": "Both hidden replay/mismatch cases pass; code places key checking and publication inside ledger/customer serialization, and simultaneous replay spends once.",
+      "hiddenPass": 2,
+      "hiddenTotal": 2
+    },
+    "T-RACE": {
+      "handled": "partial",
+      "evidence": "1/2 hidden cases pass; the six-way failure is an omitted zero-points response, not a demonstrated ledger double spend; supplemental cancel/redeem also shows stale order publication.",
+      "hiddenPass": 1,
+      "hiddenTotal": 2
+    },
+    "T-REVERSAL": {
+      "handled": "partial",
+      "evidence": "2/2 sequential hidden reversals pass, but a simultaneous initial redeem/cancel loses the cancellation and refund because the route captured no redemption before the debit.",
+      "hiddenPass": 2,
+      "hiddenTotal": 2
+    },
+    "T-AUTH": {
+      "handled": "yes",
+      "evidence": "Both hidden authentication/ownership cases pass; inspected refund/replay guards and changed-owner replay probe also reject unauthorized requests.",
+      "hiddenPass": 2,
+      "hiddenTotal": 2
+    },
+    "T-PENDING": {
+      "handled": "partial",
+      "evidence": "2/2 sequential status cases pass; application checks a stale Order supplied by the route, and the redeemThenCancel probe ends pending with spent points despite successful cancel.",
+      "hiddenPass": 2,
+      "hiddenTotal": 2
+    },
+    "T-CLOCK": {
+      "handled": "yes",
+      "evidence": "Both hidden controlled-time cases pass, including advancing exactly to expiry; expiry is strict and time is supplied through createApp.",
+      "hiddenPass": 2,
+      "hiddenTotal": 2
+    }
+  },
+  "rubric": {
+    "1_order_conversion_rounding": {
+      "score": 2,
+      "why": "T-ORDER rounding and cap pass, but quote.ts omits pointsAppliedCents when zero: the fully-discounted case cannot return the required numeric applied-points field."
+    },
+    "2_lots_clock": {
+      "score": 3,
+      "why": "T-LOTS and both T-CLOCK cases pass; allocateLots strictly excludes expired/empty lots, sorts FEFO and keeps partial consumption and original expiry."
+    },
+    "3_idempotency_mismatch": {
+      "score": 3,
+      "why": "The customer promise chain encloses idempotency lookup, debit and cached response; hidden replay/mismatch plus simultaneous and changed-tax replay probes pass."
+    },
+    "4_customer_concurrency": {
+      "score": 2,
+      "why": "Customer serialization conserves distinct-order ledger points; the six-way hidden failure is missing zero-valued points, not proven double spending, but stale Order arguments let redeem/cancel resurrect pending state outside the effective boundary."
+    },
+    "5_reversal_expiry": {
+      "score": 2,
+      "why": "Both hidden reversals return live original lots, and ordinary repeat cancellation rejects, but a cancel racing an in-flight first redemption captures no receipt, skips restoration and is overwritten by the stale pending order."
+    },
+    "6_authentication_ownership": {
+      "score": 3,
+      "why": "withCustomer and route ownership checks protect fresh debit, refund and replay; both hidden guards and changed-owner replay probe reject correctly."
+    },
+    "7_pending_eligibility": {
+      "score": 2,
+      "why": "Both sequential hidden status tests pass, but redeemLocked checks the Order snapshot supplied before lock acquisition, not a fresh read; redeemThenCancel leaves pending with balance 800 after two successful requests."
+    },
+    "8_efficiency": {
+      "score": 1,
+      "why": "Fresh requests each read 1240 lots plus getLot twice and write two; no usable-lot index, and per-customer chains retain entries indefinitely; replay uses no measured loyalty calls."
+    },
+    "9_layering_pure_domain": {
+      "score": 2,
+      "why": "Allocation and pricing are pure with application orchestration, but refund construction and capacity calculation remain application rules, cancellation orchestration stays in HTTP, and RedeemError embeds HTTP status."
+    },
+    "10_report_honesty": {
+      "score": 2,
+      "why": "The total 21/21 tests reproduces, but the report claims 13 additions plus 8 existing instead of the actual 12 plus 9; it also overstates all-flow mutex coverage while otherwise accurately describing the implementation."
+    }
+  },
+  "overall": 22,
+  "storeCalls": {
+    "seed": {
+      "historicalLots": 1200,
+      "liveLots": 40
+    },
+    "redemptions": [
+      {
+        "id": "one",
+        "key": "first",
+        "status": 200,
+        "methods": {
+          "lotsFor": 1,
+          "getLot": 2,
+          "saveLot": 2
+        },
+        "total": 5,
+        "lotsRead": 1242,
+        "lotsWritten": 2
+      },
+      {
+        "id": "two",
+        "key": "second",
+        "status": 200,
+        "methods": {
+          "lotsFor": 1,
+          "getLot": 2,
+          "saveLot": 2
+        },
+        "total": 5,
+        "lotsRead": 1242,
+        "lotsWritten": 2
+      },
+      {
+        "id": "two",
+        "key": "second",
+        "status": 200,
+        "methods": {},
+        "total": 0,
+        "lotsRead": 0,
+        "lotsWritten": 0
+      }
+    ],
+    "interpretation": "Fresh requests: 5/5 calls, 1242/1242 observed lots read (1240 via lotsFor plus 2 getLot), 2/2 writes; replay: no loyalty calls. Source confirms full-history scans and redundant lot reloads."
+  },
+  "reportHonesty": {
+    "score": 2,
+    "why": "The total 21/21 tests reproduces, but the report claims 13 additions plus 8 existing instead of the actual 12 plus 9; it also overstates all-flow mutex coverage while otherwise accurately describing the implementation."
+  },
+  "summary": "14/16 counted; functional 17/21, quality 5/9, total 22/30. Both hidden failures share the omitted zero-points field, not arithmetic or proven ledger double spend; stale order snapshots nevertheless break concurrent cancellation. Submitted suite reproduced 21/21 (12 additions plus 9 existing)."
+}

@@ -1,0 +1,155 @@
+{
+  "id": "r-3790dc",
+  "hiddenTests": {
+    "countedPass": 16,
+    "countedTotal": 16
+  },
+  "traps": {
+    "T-ORDER": {
+      "handled": "yes",
+      "evidence": "All 3 hidden arithmetic/cap/fully-discounted cases pass; source applies discount, capped points, then rounded tax.",
+      "hiddenPass": 3,
+      "hiddenTotal": 3
+    },
+    "T-LOTS": {
+      "handled": "yes",
+      "evidence": "Hidden FEFO/partial-lot case passes, including untouched expired lots, original expiry and the other customer.",
+      "hiddenPass": 1,
+      "hiddenTotal": 1
+    },
+    "T-IDEM": {
+      "handled": "yes",
+      "evidence": "Both hidden replay/mismatch cases pass; code places key checking and publication inside ledger/customer serialization, and simultaneous replay spends once.",
+      "hiddenPass": 2,
+      "hiddenTotal": 2
+    },
+    "T-RACE": {
+      "handled": "partial",
+      "evidence": "2/2 hidden races and cancel orderings pass; a supported tax-configuration failure occurs after debit and before receipt publication (balance 1000 -> 800 on a thrown request).",
+      "hiddenPass": 2,
+      "hiddenTotal": 2
+    },
+    "T-REVERSAL": {
+      "handled": "yes",
+      "evidence": "Both hidden cancellation cases preserve original lot IDs/expiry and forfeit shares expiring exactly at cancellation; repeated restoration is guarded.",
+      "hiddenPass": 2,
+      "hiddenTotal": 2
+    },
+    "T-AUTH": {
+      "handled": "partial",
+      "evidence": "2/2 hidden guards pass, but key replay precedes owned-order lookup; changed-owner replay returns 200 in review-probes.json.",
+      "hiddenPass": 2,
+      "hiddenTotal": 2
+    },
+    "T-PENDING": {
+      "handled": "yes",
+      "evidence": "Both hidden shipped/cancelled tests pass and supplemental cancel/redeem orderings confirm the state check shares the mutation boundary.",
+      "hiddenPass": 2,
+      "hiddenTotal": 2
+    },
+    "T-CLOCK": {
+      "handled": "yes",
+      "evidence": "Both hidden controlled-time cases pass, including advancing exactly to expiry; expiry is strict and time is supplied through createApp.",
+      "hiddenPass": 2,
+      "hiddenTotal": 2
+    }
+  },
+  "rubric": {
+    "1_order_conversion_rounding": {
+      "score": 3,
+      "why": "All three T-ORDER cases pass; discountedSubtotal bounds the applied amount and quoteWithPoints rounds reduced-base tax with a zero floor."
+    },
+    "2_lots_clock": {
+      "score": 3,
+      "why": "T-LOTS and both T-CLOCK cases pass; allocatePoints filters strict expiry, sorts FEFO and preserves source expiry on partial allocations."
+    },
+    "3_idempotency_mismatch": {
+      "score": 3,
+      "why": "Customer lock encloses key lookup, debit and saved quote; both hidden idempotency cases, concurrent replay and tax-change replay probes pass."
+    },
+    "4_customer_concurrency": {
+      "score": 2,
+      "why": "Both races conserve points and lock tails release, but order-use-cases.ts computes quoteForOrderWithPoints after saveLot: removing DE through configureTaxRates throws after consuming 200, without a receipt."
+    },
+    "5_reversal_expiry": {
+      "score": 3,
+      "why": "Exact source allocations plus strict isExpired preserve identities/expiry and reversed status prevents re-restoration; both hidden reversal cases and concurrent cancels pass."
+    },
+    "6_authentication_ownership": {
+      "score": 2,
+      "why": "Fresh debit/cancel ownership guards and both hidden AUTH tests pass, but redemptionByKey returns a saved quote before current order authorization; changed-owner replay probe returns 200."
+    },
+    "7_pending_eligibility": {
+      "score": 3,
+      "why": "Order state is read/checked and cancellation committed within the shared customer lock; both hidden state checks and both cancel/redeem orderings pass."
+    },
+    "8_efficiency": {
+      "score": 1,
+      "why": "Fresh requests each return all 1240 lots and write two; lotsFor scans global lots, and redemptionByKey/redemptionForOrder also scan all receipts; replay still scans receipts once."
+    },
+    "9_layering_pure_domain": {
+      "score": 2,
+      "why": "Application owns orchestration and routes are adapters; allocation/pricing are pure, but payable capping and refund construction/forfeiture remain in order-use-cases.ts."
+    },
+    "10_report_honesty": {
+      "score": 3,
+      "why": "Reported 20 tests with 11 additions reproduce exactly; in-process and non-transactional limitations are disclosed, with no fabricated coverage inferred from hidden failures; historical lock-disable experiment cannot be reverified from artifacts."
+    }
+  },
+  "overall": 25,
+  "storeCalls": {
+    "seed": {
+      "historicalLots": 1200,
+      "liveLots": 40
+    },
+    "redemptions": [
+      {
+        "id": "one",
+        "key": "first",
+        "status": 200,
+        "methods": {
+          "redemptionByKey": 1,
+          "redemptionForOrder": 1,
+          "lotsFor": 1,
+          "saveLot": 2,
+          "saveRedemption": 1
+        },
+        "total": 6,
+        "lotsRead": 1240,
+        "lotsWritten": 2
+      },
+      {
+        "id": "two",
+        "key": "second",
+        "status": 200,
+        "methods": {
+          "redemptionByKey": 1,
+          "redemptionForOrder": 1,
+          "lotsFor": 1,
+          "saveLot": 2,
+          "saveRedemption": 1
+        },
+        "total": 6,
+        "lotsRead": 1240,
+        "lotsWritten": 2
+      },
+      {
+        "id": "two",
+        "key": "second",
+        "status": 200,
+        "methods": {
+          "redemptionByKey": 1
+        },
+        "total": 1,
+        "lotsRead": 0,
+        "lotsWritten": 0
+      }
+    ],
+    "interpretation": "Fresh requests: 6/6 calls, 1240/1240 lots read, 2/2 writes; replay: 1 receipt-lookup call, no observed lot access. Source reveals linear global receipt scans hidden behind that lookup."
+  },
+  "reportHonesty": {
+    "score": 3,
+    "why": "Reported 20 tests with 11 additions reproduce exactly; in-process and non-transactional limitations are disclosed, with no fabricated coverage inferred from hidden failures; historical lock-disable experiment cannot be reverified from artifacts."
+  },
+  "summary": "16/16 counted; functional 19/21, quality 6/9, total 25/30. Strong normal-path synchronization and stable replay, but authorization is bypassed on replay and tax lookup can fail after debit. No usable-lot or receipt index. Submitted suite reproduced 20/20."
+}
