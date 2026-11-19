@@ -49,6 +49,11 @@ export function declaresAtdd(root: string): boolean {
   try { return statSync(join(root, "plan")).isDirectory(); } catch { return false; }
 }
 
+/** PLT-94 guard: switching to plain by intent needs the user's yes in these repositories. */
+export function guardsAtdd(root: string): boolean {
+  return declaresAtdd(root) || recordedMode(root) === "atdd";
+}
+
 /** Message → PI_ATDD_MODE → recorded choice → ATDD markers; null means undecided. */
 export function resolveMode(input: { cwd: string; text?: string; env?: NodeJS.ProcessEnv }): Resolution {
   const root = repositoryRoot(input.cwd);

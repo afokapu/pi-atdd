@@ -60,6 +60,7 @@ function sandbox() {
   const p = {
     on: (name: string, fn: Function) => { handlers.set(name, fn); },
     registerCommand: () => {},
+    registerTool: () => {},
     sendMessage: (message: { customType: string; content: string }) =>
       delivered.push({ channel: "message:" + message.customType, text: message.content }),
   };

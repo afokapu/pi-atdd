@@ -115,6 +115,7 @@ test("the actual TypeScript Pi adapter registers commands and activates rules be
     atdd({
       on(name: string, handler: Function) { handlers.set(name, handler); },
       registerCommand(name: string, cmd: unknown) { commands.set(name, cmd); },
+      registerTool() {},
     } as any);
     assert.equal(typeof handlers.get("before_agent_start"), "function");
     assert.equal(typeof handlers.get("tool_call"), "function");

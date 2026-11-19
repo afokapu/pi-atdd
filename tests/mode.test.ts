@@ -28,6 +28,7 @@ function session(cwd: string, opts: { interactive?: boolean; mode?: string; answ
   const p = {
     on: (name: string, fn: Function) => { handlers.set(name, fn); },
     registerCommand: (name: string, c: { handler: Function }) => { commands.set(name, c); },
+    registerTool: () => {},
     sendMessage: () => {},
   };
   atdd(p as any);
