@@ -102,20 +102,20 @@ test("independent supports survive retraction, but obsolete explanations disappe
       body: [atom("match","?scope","?selector"),atom("maps","?selector","?rule")] },
   ];
   const engine = new PositiveReasoner(rules);
-  engine.assert(fact("maps-a","maps","task","coder.bun.phase-discipline"));
-  engine.assert(fact("maps-b","maps","file","coder.bun.phase-discipline"));
+  engine.assert(fact("maps-a","maps","task","coder.phase.discipline"));
+  engine.assert(fact("maps-b","maps","file","coder.phase.discipline"));
   engine.assert(fact("hit-task","match","s","task"));
   engine.assert(fact("hit-file","match","s","file"));
-  const both = engine.query("active",["s","coder.bun.phase-discipline"]).proof!;
+  const both = engine.query("active",["s","coder.phase.discipline"]).proof!;
   assert.equal(both.derivations.length,2);
   assert.equal(both.derivations[0]?.premises.length,2);
   engine.retract("hit-task");
-  const one = engine.query("active",["s","coder.bun.phase-discipline"]).proof!;
+  const one = engine.query("active",["s","coder.phase.discipline"]).proof!;
   assert.equal(one.derivations.length,1);
   assert.ok(JSON.stringify(one).includes("hit-file"));
   assert.ok(!JSON.stringify(one).includes("hit-task"));
   engine.retract("hit-file");
-  assert.equal(engine.query("active",["s","coder.bun.phase-discipline"]).status,"unknown");
+  assert.equal(engine.query("active",["s","coder.phase.discipline"]).status,"unknown");
 });
 
 test("same ground fact asserted by two sources retains an explanation after one is removed", () => {

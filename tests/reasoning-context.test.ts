@@ -25,8 +25,8 @@ test("typed file layer and operation automatically derive existing Bun architect
   const a=setup();
   try{
     const first=a.session.observe(observation("task-1","Update order model","src/orders/domain/order.ts"));
-    assert.ok(first.activations.some(x=>x.id==="coder.bun.design-hierarchy-import"));
-    const activation=first.activations.find(x=>x.id==="coder.bun.design-hierarchy-import")!;
+    assert.ok(first.activations.some(x=>x.id==="coder.architecture.hierarchy-import"));
+    const activation=first.activations.find(x=>x.id==="coder.architecture.hierarchy-import")!;
     assert.ok(JSON.stringify(activation.proof).includes("file_layer"));
     assert.ok(JSON.stringify(activation.proof).includes("operation"));
     assert.ok(activation.reasons.some(x=>x.includes("layer:domain")));
@@ -45,14 +45,14 @@ test("review source rule derives mandated owner inspection from the Bun graph wi
     const r=a.session.observe({...observation("review-scope","Perform final behavioral review"),
       operation:"review" as const});
     assert.equal(r.status,"matched");
-    assert.ok(r.activations.some(x=>x.id==="atdd-bun.review.behavioral-reconciliation"));
-    const required=r.activations.find(x=>x.id==="atdd-bun.review.owner-inspectability")!;
-    assert.ok(required.requiredPath.some(e=>e.source==="atdd-bun.review.behavioral-reconciliation"
-      && e.target==="atdd-bun.review.owner-inspectability"));
+    assert.ok(r.activations.some(x=>x.id==="reviewer.reconciliation.behavioral"));
+    const required=r.activations.find(x=>x.id==="reviewer.inspectability.owner")!;
+    assert.ok(required.requiredPath.some(e=>e.source==="reviewer.reconciliation.behavioral"
+      && e.target==="reviewer.inspectability.owner"));
     assert.ok(JSON.stringify(required.proof).includes("pi-atdd.mandatory-prerequisites"));
     assert.ok(JSON.stringify(required.proof).includes("ATDD-Bun/relationships.yaml"));
     // This is a real canonical edge, not a generated relationship between the Flow nodes.
-    assert.ok(!required.requiredPath.some(e=>e.target==="atdd-workflow.workflow.lifecycle"));
+    assert.ok(!required.requiredPath.some(e=>e.target==="coach.workflow.lifecycle"));
   }finally{a.finish()}
 });
 
@@ -60,7 +60,7 @@ test("multiple selector supports: drop one reason, preserve the other, then retr
   const a=setup();
   try{
     const both=a.session.observe(observation("file-scope","Add authorization","src/accounts/routes/login.ts"));
-    const id="coder.bun.security-missing-auth";
+    const id="coder.security.missing-auth";
     const active=both.activations.find(x=>x.id===id)!;
     assert.ok(active);
     const serialized=JSON.stringify(active.proof);
@@ -91,18 +91,18 @@ test("phase and role are UNKNOWN unless supported by a trusted adapter, not clai
       operation:"edit",phase:"GREEN",actorRole:"driver",
       origin:"trusted-work-provider",provenance:"verified-linear-session-and-plan-rev-a",
     });
-    assert.ok(trusted.activations.some(x=>x.id==="coder.bun.phase-discipline"));
+    assert.ok(trusted.activations.some(x=>x.id==="coder.phase.discipline"));
     assert.ok(!trusted.unknownFacts.includes("phase"));
     assert.ok(!trusted.unknownFacts.includes("actor_role"));
     const removed=a.session.retractScope("phase");
-    assert.ok(removed.includes("coder.bun.phase-discipline"));
+    assert.ok(removed.includes("coder.phase.discipline"));
     assert.equal(a.session.engine.query("phase",["phase","GREEN"]).status,"unknown");
   }finally{a.finish()}
 });
 
 test("external mandatory dependency is explicitly INCOMPLETE, never invented or waived",()=>{
   const selectors:Selector[]=[{
-    id:"missing-edge",always:true, rules:["coder.bun.design-dependency-flow"],
+    id:"missing-edge",always:true, rules:["coder.architecture.dependency-flow"],
   }];
   const a=setup(selectors);
   try{
@@ -121,7 +121,7 @@ test("scope-specific retraction never removes an independent task's activation",
     const second=a.session.observe(observation("b","Add authentication","src/b/routes/edit.ts"));
     assert.ok(first.activations.length>0 && second.activations.length>0);
     a.session.retractScope("a");
-    assert.equal(a.session.engine.query("active",["a","coder.bun.security-missing-auth"]).status,"unknown");
-    assert.equal(a.session.engine.query("active",["b","coder.bun.security-missing-auth"]).status,"true");
+    assert.equal(a.session.engine.query("active",["a","coder.security.missing-auth"]).status,"unknown");
+    assert.equal(a.session.engine.query("active",["b","coder.security.missing-auth"]).status,"true");
   }finally{a.finish()}
 });

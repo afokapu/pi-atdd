@@ -22,16 +22,16 @@ assert.deepEqual(offline.edges.map(e => [e.source, e.type, e.target]),
 assert.equal(catalog.rules.size, 358, "Pinned Bun catalog has 356 rules and Flow has 2");
 assert.equal(catalog.edges.length, 508, "Pinned Bun graph has 508 authored relationships");
 for (const id of [
-  "coder.bun.phase-discipline", "atdd-bun.review.behavioral-reconciliation",
-  "atdd-bun.review.owner-inspectability", "atdd-flow.collaboration",
-  "atdd-workflow.workflow.lifecycle",
+  "coder.phase.discipline", "reviewer.reconciliation.behavioral",
+  "reviewer.inspectability.owner", "coach.collaboration.accountable-delegation",
+  "coach.workflow.lifecycle",
 ]) assert.ok(catalog.rules.has(id), "missing canonical rule " + id);
 const selectors: Selector[] = [
-  { id: "review", terms: ["behavioral review"], rules: ["atdd-bun.review.behavioral-reconciliation"] },
-  { id: "flow", terms: ["coordinator"], rules: ["atdd-workflow.workflow.lifecycle"] },
+  { id: "review", terms: ["behavioral review"], rules: ["reviewer.reconciliation.behavioral"] },
+  { id: "flow", terms: ["coordinator"], rules: ["coach.workflow.lifecycle"] },
 ];
 const ctx = resolveContext(catalog, selectors, "coordinator integration branch", [], "task");
-assert.ok(ctx.matchingIds.includes("atdd-workflow.workflow.lifecycle"));
+assert.ok(ctx.matchingIds.includes("coach.workflow.lifecycle"));
 console.log(JSON.stringify({
   status: "ok", bunRevision: sources[0]!.revision, flowRevision: sources[1]!.revision,
   conventions: catalog.rules.size, relationships: catalog.edges.length,

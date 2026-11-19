@@ -5,7 +5,7 @@
  * prerequisite; no inferred Flow↔Bun edges. Legacy text/path selectors emit
  * explicit evidence facts rather than acting as an undocumented oracle.
  */
-import { matchesGlob, termMatches, validateSelectors, type Catalog, type Convention, type Relation, type Selector } from "./catalog.ts";
+import { canonicalRuleId, matchesGlob, termMatches, validateSelectors, type Catalog, type Convention, type Relation, type Selector } from "./catalog.ts";
 import { PositiveReasoner, groundKey, type Fact, type Proof, type Rule, type Delta } from "./inference.ts";
 
 export type Phase = "RED" | "GREEN" | "REFACTOR" | "SMOKE";
@@ -65,19 +65,19 @@ const selectorRules: Rule[] = [
 /** These are explicitly adapter-authored applicability rules, not new canonical relationships. */
 function typedRules(catalog: Catalog): Rule[] {
   const typed: Rule[] = [];
-  if (catalog.rules.has("coder.bun.design-hierarchy-import")) typed.push({
+  if (catalog.rules.has("coder.architecture.hierarchy-import")) typed.push({
     id: "pi-atdd.typed-domain-dependency-flow",
     source: "pi-atdd/adapters/typed-path-facts-v1",
-    head: { predicate: "active", terms: ["?subject", "coder.bun.design-hierarchy-import"] },
+    head: { predicate: "active", terms: ["?subject", "coder.architecture.hierarchy-import"] },
     body: [
       { predicate: "file_layer", terms: ["?subject", "domain"] },
       { predicate: "operation", terms: ["?subject", "edit"] },
     ],
   });
-  if (catalog.rules.has("coder.bun.phase-discipline")) typed.push({
+  if (catalog.rules.has("coder.phase.discipline")) typed.push({
     id: "pi-atdd.typed-green-phase-discipline",
     source: "pi-atdd/adapters/trusted-phase-facts-v1",
-    head: { predicate: "active", terms: ["?subject", "coder.bun.phase-discipline"] },
+    head: { predicate: "active", terms: ["?subject", "coder.phase.discipline"] },
     body: [
       { predicate: "phase", terms: ["?subject", "GREEN"] },
       { predicate: "operation", terms: ["?subject", "edit"] },
@@ -134,7 +134,7 @@ export class ReasoningSession {
     this.catalog = catalog; this.selectors = selectors;
     this.engine = new PositiveReasoner([...selectorRules, ...typedRules(catalog)]);
     for (const selector of selectors) {
-      for (const ruleId of selector.rules) {
+      for (const ruleId of selector.rules.map(r => canonicalRuleId(catalog, r))) {
         if (!catalog.rules.has(ruleId)) throw new Error("selector references unknown convention " + ruleId);
         this.engine.assert(fact("selector:" + selector.id + ":" + ruleId, "selector_rule",
           [selector.id, ruleId], "pi-atdd/selector-registry", selector.id));

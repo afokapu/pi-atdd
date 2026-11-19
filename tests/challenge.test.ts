@@ -14,7 +14,7 @@ function setup() {
   const config=loadConfig(root), catalog=loadCatalog(config.sources,root);
   const origin=catalog.provenance.find(p=>p.id==="ATDD-Bun")!;
   const request:ChallengeRequest={
-    ruleId:"coder.bun.design-hierarchy-import",sourceDigest:origin.digest,
+    ruleId:"coder.architecture.hierarchy-import",sourceDigest:origin.digest,
     requester:"coder-run-1",counterexample:"A feature-slice implementation retains the dependency direction without layered filenames",
     proposedRealization:"Validate the actual import dependency graph rather than folder names",
     assumptions:["same dependency invariant"],evidence:[evidence],
