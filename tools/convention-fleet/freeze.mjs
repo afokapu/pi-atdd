@@ -40,7 +40,7 @@ for (const n of readdirSync(sharedDir)) {
 writeFileSync(join(OUT, "manifest.json"), JSON.stringify({
   schema: "pi-atdd/convention-sidecar-manifest/v1", issue: "PLT-81", frozenAt: new Date().toISOString(),
   canonicalCatalogLockSha256: sha256(readFileSync(join(VENDOR, "catalog.lock.json"))),
-  pipeline: { author: "anthropic/claude-opus-5-5 (thinking medium)", auditor: "openai-codex/gpt-6.1-sol (thinking medium)", reviewer: "kimi-coding/k3.1-pro (thinking medium)",
+  pipeline: { author: "pi-claude-cli/claude-opus-5-5 (thinking medium)", auditor: "openai-codex/gpt-6.1-sol (thinking medium)", reviewer: "kimi-coding/k3.1-pro (thinking medium)",
     note: "AI pipeline set up by the operator on the owner's delegation; no human review yet", promptSha256: promptSha },
   counts: { frozen: Object.keys(entries).length, excluded: Object.keys(excluded).length, shared: Object.keys(shared).length },
   entries, excluded, shared,

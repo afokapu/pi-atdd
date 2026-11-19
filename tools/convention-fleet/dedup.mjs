@@ -23,7 +23,7 @@ for (const [id, variants] of Object.entries(groups)) {
   const dir = join(OUT, id.replace(/[^\w.-]/g, "_")); mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, "variants.json"), JSON.stringify({ id, variants }, null, 2));
   if (existsSync(join(dir, "shared-audit.json"))) continue;
-  await runPi({ cwd: dir, provider: "anthropic", model: "claude-opus-5-5", thinking: "medium", tools: "read,write,ls", prompt: MERGE, out: join(dir, "merge.jsonl") });
+  await runPi({ cwd: dir, provider: "pi-claude-cli", model: "claude-opus-5-5", thinking: "medium", tools: "read,write,ls", prompt: MERGE, out: join(dir, "merge.jsonl") });
   await runPi({ cwd: dir, provider: "openai-codex", model: "gpt-6.1-sol", thinking: "medium", tools: "read,write,ls", prompt: AUDIT, out: join(dir, "audit.jsonl") });
   let v = null; try { v = JSON.parse(readFileSync(join(dir, "shared-audit.json"), "utf8")); } catch {}
   log(id + " variants=" + variants.length + " audit=" + (v?.verdict ?? "UNPARSED") + " $" + (usageOf(join(dir, "merge.jsonl")).cost + usageOf(join(dir, "audit.jsonl")).cost).toFixed(3));

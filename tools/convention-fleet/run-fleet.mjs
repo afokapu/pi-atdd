@@ -9,7 +9,7 @@ import { check } from "./check.mjs";
 const args = process.argv.slice(2);
 const opt = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
 const conc = Number(opt("--concurrency", 3)), maxRounds = Number(opt("--rounds", 2));
-const AUTHOR = { provider: "anthropic", model: "claude-opus-5-5", thinking: "medium", tools: "read,write,ls" };
+const AUTHOR = { provider: "pi-claude-cli", model: "claude-opus-5-5", thinking: "medium", tools: "read,write,ls" };
 const AUDITOR = { provider: "openai-codex", model: "gpt-6.1-sol", thinking: "medium", tools: "read,write,ls" };
 const list = args[0].startsWith("@") ? readFileSync(args[0].slice(1), "utf8").split(/\s+/).filter(Boolean) : args[0].split(",");
 const files = (d) => readdirSync(d).flatMap(n => { const p = join(d, n); return statSync(p).isDirectory() ? files(p) : [p]; });

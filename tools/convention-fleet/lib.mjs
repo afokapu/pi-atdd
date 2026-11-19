@@ -51,9 +51,13 @@ export function segment(yamlText) {
   return { doc, segments: segs };
 }
 
+// Owner directive (2026-11-19): Claude models run through the pi-claude-cli provider extension
+// (Claude subscription). The built-in "anthropic" provider is forbidden (per-token extra usage).
+export const CLAUDE_EXT = process.env.PI_CLAUDE_CLI_EXT || join(HOME, ".pi/agents/forge/npm/node_modules/@saccolabs/pi-claude-cli/index.ts");
 export function runPi({ cwd, provider, model, thinking, tools, prompt, out, timeoutMs = 20 * 60_000 }) {
+  if (provider === "anthropic") throw new Error("anthropic provider is forbidden; use pi-claude-cli");
   const args = ["--mode", "json", "--approve", "--no-session", "--no-mcp", "--no-skills", "--no-prompt-templates",
-    "--no-context-files", "--no-themes", "--no-extensions", "--tools", tools, "--provider", provider, "--model", model, "--thinking", thinking, "--", prompt];
+    "--no-context-files", "--no-themes", "--no-extensions", ...(provider === "pi-claude-cli" ? ["-e", CLAUDE_EXT] : []), "--tools", tools, "--provider", provider, "--model", model, "--thinking", thinking, "--", prompt];
   const env = { ...process.env, PI_TELEMETRY: "0", PI_SKIP_VERSION_CHECK: "1" };
   for (const k of ["PI_SESSION_FILE", "PI_SESSION_ID", "PI_MODEL", "PI_PROVIDER", "PI_REASONING_LEVEL", "PI_CODING_AGENT"]) delete env[k];
   return new Promise(done => {

@@ -62,7 +62,7 @@ async function one(id) {
     if (existsSync(join(dir, "split.json"))) renameSync(join(dir, "split.json"), join(dir, "split-prev.json"));
     rmSync(join(dir, "split-audit.json"), { force: true });
     const prompt = readFileSync(join(FLEET, "SPLITTER.md"), "utf8") + "\n\nAUDIENCE: " + audience(id) + "." + (feedback ? "\n\nREVISION ROUND " + r + ": previous split is split-prev.json; fix every item in feedback.json and write a complete new split.json." : "");
-    await runPi({ cwd: dir, provider: "anthropic", model: "claude-opus-5-5", thinking: "medium", tools: "read,write,ls", prompt, out: join(dir, "split-r" + r + ".jsonl") });
+    await runPi({ cwd: dir, provider: "pi-claude-cli", model: "claude-opus-5-5", thinking: "medium", tools: "read,write,ls", prompt, out: join(dir, "split-r" + r + ".jsonl") });
     const ua = usageOf(join(dir, "split-r" + r + ".jsonl"));
     const ck = splitCheck(dir); writeFileSync(join(dir, "split-check.json"), JSON.stringify(ck, null, 2));
     if (existsSync(join(dir, "split.json"))) copyFileSync(join(dir, "split.json"), join(dir, "split-r" + r + ".json"));
