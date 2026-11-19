@@ -1,0 +1,490 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "tester.interlocking.route-coverage",
+  "legacyId": "tester.bun.interlocking-route-coverage",
+  "core": {
+    "title": "Prove every admissible interlocking route with an e2e test",
+    "given": "An interlocking plan artifact declares admissible routes under `routes:`",
+    "when": "a declared route has no e2e test exercising it",
+    "then": "Write an e2e test that drives the route's guard-true inputs through the production route resolver, asserts the declared train was selected before execution, then executes that train through the production train executor.",
+    "prefer": [
+      "Read the route, its guard and the train it resolves to; choose guard-true inputs that distinguish it from alternative routes.",
+      "Place the test where the stack's e2e layout puts interlocking route tests.",
+      "Drive the production route resolver with those inputs; pass the selected train to the production train executor and execute it.",
+      "Also assert the route- or acceptance-specific execution outcome when one is declared."
+    ],
+    "avoid": [
+      "A route/train identifier literal added only so lexical coverage sees it.",
+      "A mock resolver or hand-built substitute for production route control.",
+      "A descriptive assertion restating the plan without exercising resolution.",
+      "Bypassing the production train executor after proving only selection."
+    ],
+    "unless": [
+      "The plan artifact declares no route space (registry index, generated projections).",
+      "The route is already referenced by its route identifier or resolved train identifier in an e2e test: not flagged, though a token-only test still fails review.",
+      "The e2e rendering belongs to another stack's own realization of this obligation."
+    ],
+    "why": "Each route is a production route-control branch; unexercised, it is a silent-green gap, and a bare token passes discovery while proving nothing. Strict: an admissible route without a covering e2e test blocks.",
+    "evidence": [
+      "The coverage check finds, for every declared route, at least one e2e test referencing its route identifier or resolved train identifier outside comments.",
+      "Reviewer confirms the case would fail if the route guard or route-to-train mapping regressed.",
+      "Reviewer confirms the production route resolver and train executor actually execute the selected path, and that selection of the declared train is asserted before the train is executed.",
+      "Reviewer confirms the discoverable route/train token corresponds to behavior the case genuinely proves."
+    ],
+    "verification": [
+      "The check parses each interlocking plan artifact, extracts its declared routes (route identifier, resolved train, category, guard reference), and scans the stack's e2e tests for references to each route by its route identifier or its resolved train identifier; references inside comments are masked and do not count.",
+      "A route counts as covered when at least one e2e test references its route identifier or resolved train identifier outside comments; that token is a discovery proxy, not the testing objective — the check does not judge whether a referencing test genuinely proves the route (that is the review judgment).",
+      "Any declared route with no covering e2e test is flagged, anchored at the route's declaration in the interlocking plan artifact that declares it.",
+      "Plan artifacts under the interlocking scope that declare no route space (registry index, generated projections) carry no admissible route space and are skipped; the exact classification of such files is owned by this rule's checker.",
+      "Per-stack discovery — which e2e layout is scanned and which tokens establish reference — is delegated to each stack's realization; other stacks render the same obligation in their own e2e layout.",
+      "Severity 1, disposition strict: the rule blocks on every finding — an admissible route with no covering e2e test blocks.",
+      "Terms: admissible_route = a single declared route entry of an interlocking plan artifact, carrying its route identifier, the train it resolves to, a category and a guard reference; the interlocking plan artifact is authoritative for the guarded route space, and the production route resolver resolves each route to exactly one train. silent_green_route_gap = an admissible route with no covering e2e test; its route-control branch is never executed, so CI passes while a guarded route-control path is entirely unproven."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "role",
+          "values": [
+            "plan_artifact (interlocking route space)",
+            "e2e_test"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "interlocking route added or changed",
+            "e2e route test added, changed or removed"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "declared interlocking route with no covering e2e test"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "task_term",
+          "values": [
+            "interlocking",
+            "route",
+            "route identifier",
+            "train identifier"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "task_has_acceptance",
+          "values": [
+            "test genuinely exercises route behavior rather than only containing a token",
+            "existing proof still proves the changed route"
+          ],
+          "observability": "llm_judged"
+        }
+      ],
+      "fires": [
+        "A new route is added to an interlocking plan artifact's route space and no e2e test references its route identifier or resolved train identifier.",
+        "A route's guard or train mapping changes and its existing e2e proof is absent or no longer proves the changed route (its guard-true inputs or asserted train no longer match).",
+        "The coverage check reports a declared route with no covering e2e test.",
+        "A covering e2e test is deleted, leaving a declared route uncovered.",
+        "A route's or train's identifier appears in an e2e test only inside a comment: comments are masked and do not establish coverage, so the route is still uncovered."
+      ],
+      "doesNotFire": [
+        "Plan artifacts under the interlocking scope that declare no route space (registry index, generated projections).",
+        "A route already referenced by its route identifier or resolved train identifier in an e2e test whose proof still exercises the route (not flagged by the check).",
+        "A route guard or train-mapping change whose existing e2e proof still drives and asserts the changed route correctly.",
+        "Another stack's e2e rendering of this obligation, which is owned by that stack's own realization."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roles.plan_artifact.path",
+      "meaning": "Where the interlocking plan artifacts that declare the guarded route space live.",
+      "bunValue": "plan/_trains/_interlockings/**/*.yaml"
+    },
+    {
+      "key": "roles.plan_artifact.kinds",
+      "meaning": "The plan-artifact kind that declares the guarded route space (`routes:`).",
+      "bunValue": "interlocking yaml (plan/_trains/_interlockings/**/*.yaml)"
+    },
+    {
+      "key": "roles.e2e_test.path",
+      "meaning": "Where the e2e tests scanned for route/train references live.",
+      "bunValue": "e2e/**/*.ts"
+    },
+    {
+      "key": "layout.e2e_location",
+      "meaning": "Where an e2e proof of one interlocking route is placed.",
+      "bunValue": "e2e/interlockings/<interlocking_slug>/<slug>.routes.test.ts"
+    },
+    {
+      "key": "idiom.route_resolver",
+      "meaning": "The stack's concrete construct for the core's 'production route resolver': the component that resolves a declared route to exactly one train.",
+      "bunValue": "new InterlockingRunner(...).resolveTrain(action, inputs)"
+    },
+    {
+      "key": "idiom.train_executor",
+      "meaning": "The stack's concrete construct for the core's 'production train executor': the component that executes the train a route resolved to.",
+      "bunValue": "TrainRunner"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "idiom.route_resolver",
+      "group": "idiom",
+      "meaning": "The stack's concrete construct for the core's 'production route resolver': the component that resolves a declared interlocking route to exactly one train.",
+      "bunValue": "new InterlockingRunner(...).resolveTrain(action, inputs)",
+      "whyNoExistingKey": "idiom.route_handler describes a boundary handler (HTTP route/endpoint); no existing key names the production guarded-route resolution construct that this core's obligation must drive."
+    },
+    {
+      "key": "idiom.train_executor",
+      "group": "idiom",
+      "meaning": "The stack's concrete construct for the core's 'production train executor': the component that executes the train a route resolved to.",
+      "bunValue": "TrainRunner",
+      "whyNoExistingKey": "No existing key names the executor of the resolved behavior unit; the nearest key, idiom.route_handler, is a boundary concern, not execution."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "activation.facts[1]",
+      "text": "language: typescript, bun — 'Bun-stack realization only; other stacks own their own rendering.'",
+      "reason": "Names this realization's language and runtime; the neutral core applies to any stack and carries no language fact."
+    },
+    {
+      "item": "activation.facts[3]",
+      "text": "finding: bun_interlocking_coverage: declared route with no covering e2e test",
+      "reason": "Detector and finding ids of this rule are realization details (notProfileKeys); the core names the finding generically."
+    },
+    {
+      "item": "prefer[1]",
+      "text": "Place it at e2e/interlockings/<interlocking_slug>/<slug>.routes.test.ts.",
+      "reason": "Concrete e2e path pattern of the Bun layout (carried per stack by layout.e2e_location); the exact reference placement stays with this realization."
+    },
+    {
+      "item": "prefer[2]",
+      "text": "Call `new InterlockingRunner(...).resolveTrain(action, inputs)`; pass the selected train to TrainRunner and execute it.",
+      "reason": "Exact API of the Bun production resolver/executor; the core states the obligation on the neutral constructs, mapped per stack by the proposed idiom keys."
+    },
+    {
+      "item": "unless[0]",
+      "text": "The YAML declares no `routes:` (registry index, generated projections).",
+      "reason": "Names the concrete registry-index and generated files of the Bun plan tree; the core keeps the generic no-route-space skip and defers exact classification to the checker."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "JS detector (member of the bun_interlocking_coverage FAMILY) parses each interlocking artifact under plan/_trains/_interlockings/**/*.yaml and extracts declared routes (routeId/trainId/category).",
+      "reason": "Names the detector, its family id, its implementation language and the concrete scan path; the core describes the parse-and-extract step generically."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "text": "flagged as a RAW violation anchored at the route's declaration line in the source interlocking YAML",
+      "reason": "'RAW violation' is this pipeline's finding-stage vocabulary; the core keeps the generic flag-and-anchor description."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "text": "Files under the interlocking scope with no `routes:` key (`_interlockings.yaml` registry index, generated projections) carry no admissible route space and are skipped.",
+      "reason": "Names the concrete skipped files of the Bun plan tree; exact classification of no-route-space files is owned by this rule's checker, so the core keeps only the deference."
+    },
+    {
+      "item": "verifier_detail[7]",
+      "text": "Terms: admissible_route = a single entry under `routes:` of an interlocking artifact (afokapu/atdd#1248) carrying routeId, resolved trainId, category and guard_ref; the interlocking YAML is authoritative for the guarded route space and the InterlockingRunner resolves each route to exactly one trainId (afokapu/atdd#1251). silent_green_route_gap = an admissible route with no covering e2e test; its interlocking branch is never executed so CI passes while a guarded route-control path is entirely unproven.",
+      "reason": "The verbatim terms name the Bun resolver construct (InterlockingRunner) and this realization's lineage refs; the core verification carries the neutralized definitions."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:roles.plan_artifact.kinds"
+      ],
+      "note": "`routes:` is kept as stack-neutral plan-artifact schema (the route-space lock is a core design); the interlocking artifact plays the plan_artifact role."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when",
+        "profile:roles.e2e_test.path"
+      ],
+      "note": "The e2e/**/*.ts glob is neutralized to the e2e-test role; the scanned scope comes from the profile."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "profile:idiom.route_resolver",
+        "profile:idiom.train_executor"
+      ],
+      "note": "InterlockingRunner/TrainRunner replaced by the production route resolver / train executor constructs; the exact Bun API stays in bunOnly (prefer[2])."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why",
+        "core:verification"
+      ],
+      "note": "The rationale is already neutral; the strict blocking sentence is mirrored as the disposition entry in verification."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]"
+      ],
+      "note": "Neutral as-is apart from trainId -> the train it resolves to."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]",
+        "profile:layout.e2e_location",
+        "bunOnly"
+      ],
+      "note": "Core keeps neutral placement guidance; the concrete path pattern is the Bun e2e layout."
+    },
+    {
+      "item": "prefer[2]",
+      "as": [
+        "core:prefer[2]",
+        "profile:idiom.route_resolver",
+        "profile:idiom.train_executor",
+        "bunOnly"
+      ],
+      "note": "Neutral resolver/executor guidance in the core; the exact call syntax is Bun API."
+    },
+    {
+      "item": "prefer[3]",
+      "as": [
+        "core:prefer[3]"
+      ],
+      "note": "Neutral as-is."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "routeId/trainId literals generalized to route/train identifier literals."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Neutral as-is."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]"
+      ],
+      "note": "Neutral as-is."
+    },
+    {
+      "item": "avoid[3]",
+      "as": [
+        "core:avoid[3]",
+        "profile:idiom.train_executor"
+      ],
+      "note": "TrainRunner neutralized to the production train executor."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]",
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Generic no-route-space skip kept in core; checker-owned classification deferred in verification; concrete file names are Bun plan-tree details."
+    },
+    {
+      "item": "unless[1]",
+      "as": [
+        "core:unless[1]"
+      ],
+      "note": "Exception and the token-only-still-fails-review caveat kept verbatim in neutral terms."
+    },
+    {
+      "item": "unless[2]",
+      "as": [
+        "core:unless[2]"
+      ],
+      "note": "Neutralized from 'non-Bun stack's own package' to another stack's own realization of this obligation."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "profile:roles.e2e_test.path"
+      ],
+      "note": "Detector -> coverage check; routeId/trainId -> route/train identifiers; scanned scope from the profile."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]"
+      ],
+      "note": "Neutral as-is."
+    },
+    {
+      "item": "evidence[2]",
+      "as": [
+        "core:evidence[2]",
+        "profile:idiom.route_resolver",
+        "profile:idiom.train_executor"
+      ],
+      "note": "Production runners named via the neutral resolver/executor constructs."
+    },
+    {
+      "item": "evidence[3]",
+      "as": [
+        "core:evidence[3]"
+      ],
+      "note": "Neutral as-is; the discovery-proxy caveat is also stated in verification (the check does not cover genuine proof)."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "profile:roles.plan_artifact.path",
+        "bunOnly"
+      ],
+      "note": "Generic parse-and-extract step in verification; detector family id, implementation language and scan path are realization details."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "profile:roles.e2e_test.path"
+      ],
+      "note": "Scan-and-mask step stated generically; comment masking needs no profile key because bun.json states no concrete marker."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification",
+        "profile:roles.e2e_test.path"
+      ],
+      "note": "The covered-when definition and the discovery-proxy-not-objective caveat go to verification."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Flagging and declaration anchoring kept generically; 'RAW violation' stage vocabulary is realization-specific."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Skip of no-route-space files kept with the checker-owned deference; the concrete skipped file names are Bun details."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "as": [
+        "core:verification",
+        "profile:roles.e2e_test.path"
+      ],
+      "note": "The per-stack discovery delegation principle is itself stack-neutral; the parenthetical Bun instance is this realization's example."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Per-rule severity and disposition are not profile keys; they stay with the rule's verification."
+    },
+    {
+      "item": "verifier_detail[7]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Neutralized term definitions go to verification; the verbatim string names InterlockingRunner and this realization's lineage refs."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roles.plan_artifact.path",
+        "profile:roles.e2e_test.path"
+      ],
+      "note": "The path_glob fact becomes the role fact over plan_artifact (interlocking route space) and e2e_test; the globs come from the profile."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "Language/runtime fact scopes this sidecar to the Bun stack; a stack-neutral core needs no such fact."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[1]"
+      ],
+      "note": "Change triggers are already neutral; needs_new_observer observability kept."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[2]",
+        "bunOnly"
+      ],
+      "note": "Generic finding fact in the core; the finding id is a realization detail."
+    },
+    {
+      "item": "activation.facts[4]",
+      "as": [
+        "core:activation.facts[0]"
+      ],
+      "note": "The e2e layer fact merges into the role fact (e2e_test) of the core."
+    },
+    {
+      "item": "activation.facts[5]",
+      "as": [
+        "core:activation.facts[3]",
+        "profile:idiom.route_resolver",
+        "profile:idiom.train_executor"
+      ],
+      "note": "Domain task terms kept; the runner-name terms map to the idiom keys per stack."
+    },
+    {
+      "item": "activation.facts[6]",
+      "as": [
+        "core:activation.facts[4]"
+      ],
+      "note": "The llm_judged review judgments are semantic and stay llm_judged in the core."
+    }
+  ],
+  "neutralityNotes": "The `routes:` key is kept in the core as stack-neutral plan-artifact schema: the guarded route space is a core design (route-space lock), not a Bun detail, and the plan_artifact role covers the artifact kind. The production runner names (InterlockingRunner, TrainRunner) have no stack-neutral equivalent in the closed vocabulary, so the core speaks of the production route resolver and train executor, two idiom keys are proposed for them, and the exact Bun call syntax stays bunOnly. Comment masking is kept as 'outside comments' without a profile key because bun.json states no concrete comment marker. Detector/validator/finding ids, the RAW-violation stage, the Bun language/runtime fact and the concrete skipped plan-tree files are bunOnly; per-rule severity 1 / strict disposition and the checker-owned exclusion deference live in core:verification, not in the profile. The distinction between a discoverable token and a genuine proof remains an llm_judged review judgment in every stack.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/tester.bun.interlocking-route-coverage.json",
+      "sha256": "04fc5a843652d7e6b7b4f74709bd85a5286553893000beab0a80aa2a6a0351b1"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 1,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

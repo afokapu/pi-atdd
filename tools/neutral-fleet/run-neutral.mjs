@@ -184,6 +184,18 @@ export async function recheck(id) {
   writeFileSync(join(dir, "result.json"), JSON.stringify(r, null, 2));
   log(id + " recheck audit=" + r.status + " usefulness=" + audit?.usefulness?.score);
 }
+// Re-run only the third-party review (e.g. after a network timeout) and refresh result.json's review field.
+export async function rereview(id) {
+  const dir = join(OUT, id), r = J(join(dir, "result.json"));
+  const src = readFileSync(new URL(import.meta.url), "utf8"), rp = eval(src.slice(src.indexOf("const rp = ") + 11, src.indexOf("`;", src.indexOf("const rp = ")) + 1));
+  rmSync(join(dir, "review-neutral.json"), { force: true });
+  await reviewSlot(() => pi(id + " reviewer (re-run)", { cwd: dir, provider: "kimi-coding", model: "k3.1-pro", thinking: "medium", tools: "read,write,ls", prompt: rp, out: join(dir, "review-neutral-rerun.jsonl") }));
+  let rv = null; try { rv = J(join(dir, "review-neutral.json")); } catch {}
+  r.review = rv && { faithful: rv.faithful, leaks: rv.leaks, pythonTransferScore: rv.pythonTransferScore, agreeWithAuditor: rv.agreeWithAuditor, rerun: true };
+  writeFileSync(join(dir, "result.json"), JSON.stringify(r, null, 2));
+  log(id + " re-review: faithful=" + rv?.faithful + " python=" + rv?.pythonTransferScore);
+}
+if (process.argv.includes("--rereview")) { for (const id of ids) await rereview(id); process.exit(0); }
 if (process.argv.includes("--recheck")) { for (const id of ids) await recheck(id); process.exit(0); }
 if (process.argv[1] === new URL(import.meta.url).pathname) {
   log("neutral start: " + ids.length + " deriver=" + DERIVER.id + " concurrency=" + conc + (FALLBACK ? " fallback=" + FALLBACK.id + " max " + FALLBACK_MAX : ""));

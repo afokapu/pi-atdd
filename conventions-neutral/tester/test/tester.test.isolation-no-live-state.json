@@ -1,0 +1,392 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "tester.test.isolation-no-live-state",
+  "legacyId": "tester.bun.test-isolation-no-live-state",
+  "core": {
+    "title": "Tests do not write to shared live state",
+    "given": "Any test code, where test context is defined by the profile as the union of two independent criteria — any code the stack's test runner executes, and any code inside the stack's test-declaration constructs — regardless of file name and regardless of whether the test is new or pre-existing",
+    "when": "The test mutates the shared process environment or writes to the filesystem, for any purpose",
+    "then": "The test MUST NOT mutate the shared process environment nor write to a filesystem path outside a test-owned temp/fixture location (shared live state: anything a later test also sees).",
+    "prefer": [
+      "Scope every write to a temp directory the test owns and cleans up.",
+      "Pass configuration explicitly instead of mutating the environment, e.g. construct the code under test with the test's settings handed in directly."
+    ],
+    "avoid": [
+      "Mutating the shared process environment from a test — it looks local but is global, and is the most common, least obviously wrong form of pollution.",
+      "Writing to repository or other shared filesystem paths that later tests also see."
+    ],
+    "unless": [
+      "The write targets a path scoped to a test-owned temp/fixture location (the profile's allowed write scopes).",
+      "The operation is a read; only the write family is in scope."
+    ],
+    "why": "A polluting test does not fail; it makes a DIFFERENT test fail later, often only under a different order, with the failure pointing at the victim rather than the culprit (displaced failure). That asymmetry is why this is the family's strict rule, matching core: finding one after the fact costs days.",
+    "evidence": [
+      "The stack's discipline check reports no mutations of the shared process environment (the profile's environment-mutation idiom) in test code.",
+      "The check reports no write-family filesystem calls whose literal path is outside the allowed test temp/fixture scopes.",
+      "Suite passes regardless of test order (no displaced failures)."
+    ],
+    "verification": [
+      "A static discipline check (validator) scans all test code — existing and changed — where test context is any code the stack's test runner executes or any code inside the stack's test-declaration constructs, whatever the file name. It flags mutations of the shared process environment (the profile's environment-mutation idiom) and write-family filesystem calls whose literal path is not scoped to the profile's allowed test temp/fixture locations.",
+      "Reads are never flagged; only the write family is in scope.",
+      "A computed (non-literal) path cannot be judged by the static check and is not reported (a check limitation, not a permission).",
+      "A diff-level change observer, when present, is only an optimization to surface new violations early; it does not restrict applicability — pre-existing tests are equally in scope.",
+      "Severity 4; disposition strict — the rule fails on every finding; there is no advisory mode and no ratchet baseline."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "test (any code the stack's test runner executes, or any code inside the stack's test-declaration constructs, regardless of file name and change status — the profile's test context)"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "test file by name pattern (non-exhaustive pre-filter; patterns from the profile)"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "shared-live-state mutation in test code (existing or changed)"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "shared-environment mutation in test code",
+            "write-family filesystem call in test code"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "Any test assigns to the shared process environment, for whatever purpose (configuration, feature flags, setup, or anything else).",
+        "Any test performs a write-family filesystem operation (write, append, directory creation, removal, etc.) with a literal path outside any test-owned temp/fixture location, for whatever purpose.",
+        "An existing (unchanged) test already contains such a mutation or write when the suite or file is checked.",
+        "Code in scope through either test-context criterion — executed by the test runner or inside the stack's test constructs — is in scope even when its file name matches none of the profile's pre-filter patterns; the patterns are a fast path, not the scope."
+      ],
+      "doesNotFire": [
+        "A test only reads files or reads the environment.",
+        "A test writes to a path scoped to a test-owned temp/fixture location (the profile's allowed write scopes).",
+        "A test writes using a computed (non-literal) path — the static check cannot judge it and does not report it (a check limitation, not a permission).",
+        "Production (non-test) code sets environment variables or writes files."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "tooling.test_runner",
+      "meaning": "The identity of the stack's test runner; its execution is one of the two independent criteria (with test-construct code) that define test context.",
+      "bunValue": "Bun test runner"
+    },
+    {
+      "key": "idiom.test_context",
+      "meaning": "What counts as test code in this stack: the union of any code the test runner executes and any code inside the stack's test-declaration constructs, independent of file name and change status.",
+      "bunValue": "any file the Bun test runner executes, or code inside test/describe/it blocks"
+    },
+    {
+      "key": "idiom.environment_mutation",
+      "meaning": "The stack's concrete idiom for mutating the shared process environment — the assignment form the check flags and the core forbids in test code.",
+      "bunValue": "`process.env.X =` assignments"
+    },
+    {
+      "key": "idiom.test_write_scopes",
+      "meaning": "Path markers that identify test-owned temp/fixture locations; writes scoped to them are the rule's allowed exception, every other write target is shared live state.",
+      "bunValue": "tmpdir, /tmp, import.meta.dir, __fixtures__, .tmp"
+    },
+    {
+      "key": "suffix.unit_test",
+      "meaning": "Non-exhaustive name-pattern pre-filter for unit test files (a fast path only; the profile's test context governs scope).",
+      "bunValue": "**/*.test.*, **/*.spec.*, **/__tests__/**, **/test/**, **/tests/**"
+    },
+    {
+      "key": "suffix.acceptance_test",
+      "meaning": "Same pre-filter for acceptance test files; the Bun realization applies one pattern set to all test kinds without distinguishing them.",
+      "bunValue": "**/*.test.*, **/*.spec.*, **/__tests__/**, **/test/**, **/tests/**"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "idiom.test_context",
+      "group": "idiom",
+      "meaning": "What counts as test code in this stack: the union of any code the test runner executes and any code inside the stack's test-declaration constructs, independent of file name and change status.",
+      "bunValue": "any file the Bun test runner executes, or code inside test/describe/it blocks",
+      "whyNoExistingKey": "tooling.test_runner names the runner but not which code counts as test code; suffix.* keys are only name patterns (non-exhaustive by this rule's own admission); roles.assignment governs file-to-role assignment in general and cannot express code-level test constructs appearing in any file. The core's test-context concept needs its own key."
+    },
+    {
+      "key": "idiom.environment_mutation",
+      "group": "idiom",
+      "meaning": "The stack's concrete idiom for mutating the shared process environment, which the core forbids in test code and the check flags.",
+      "bunValue": "`process.env.X =` assignments",
+      "whyNoExistingKey": "No existing key describes the shared mutable process environment or how code mutates it; idiom.runtime_globals lists framework globals forbidden to inner roles, which is a different concept."
+    },
+    {
+      "key": "idiom.test_write_scopes",
+      "group": "idiom",
+      "meaning": "Path markers (matched as substrings or globs) that identify test-owned temp/fixture locations where a test may write; writes scoped to them are allowed, every other write target counts as shared live state.",
+      "bunValue": "tmpdir, /tmp, import.meta.dir, __fixtures__, .tmp",
+      "whyNoExistingKey": "No existing key names writable test-scoped locations: layout.test_location says where test files are placed and idiom.runtime_globals lists forbidden framework globals; neither expresses the temp/fixture write scopes this rule's unless-clause needs."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "activation.facts[0]",
+      "text": "A test-context observer (runner config / test-block detection) covering any file the Bun test runner executes and code inside test/describe/it blocks, for full coverage regardless of file name.",
+      "reason": "The observer mechanics and the Bun test-block syntax (test/describe/it) are realization details; the neutral union-of-criteria definition lives in the core and the profile key idiom.test_context."
+    },
+    {
+      "item": "activation.facts[2]",
+      "text": "language values: typescript, javascript — Bun realization; Python sibling patterns do not apply.",
+      "reason": "Pure realization context identifying which sibling stacks' patterns apply; it adds no obligation. tooling.languages describes languages of production source and is not the test-language scope; the core needs no language."
+    },
+    {
+      "item": "activation.facts[3]",
+      "text": "Finding id `bun_tester_discipline_detector:test-isolation-no-live-state`: `process.env.X =` assignments and write-family fs calls with a literal path outside allowed temp/fixture scopes.",
+      "reason": "Detector and finding ids of this rule are realization details; the core names the finding category generically."
+    },
+    {
+      "item": "prefer[1]",
+      "text": "`const db = connect({ url: testUrl }); // explicit, scoped`",
+      "reason": "Concrete code sample in the stack's language; the core keeps the preference role-level and bun.json remains the reference example."
+    },
+    {
+      "item": "avoid[0]",
+      "text": "`process.env.DATABASE_URL = \"postgres://live\"; // leaks into every later test`",
+      "reason": "Concrete code sample; the mutation idiom itself is carried by the profile key idiom.environment_mutation, and the sample stays only in the realization."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "bun_tester_discipline_detector reports no `process.env.X =` assignments in test code.",
+      "reason": "Names this rule's detector; the core evidence describes the check generically and takes the mutation idiom from idiom.environment_mutation."
+    },
+    {
+      "item": "evidence[1]",
+      "text": "bun_tester_discipline_detector reports no write-family fs calls whose literal path is outside the allowed temp/fixture scopes.",
+      "reason": "Names this rule's detector and its concrete filesystem API surface; the core evidence describes the check generically."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "Detector: bun_tester_discipline_detector (type: validator). Flags `process.env.X =` assignments and write-family `fs` calls whose literal path is not scoped to `tmpdir` / `/tmp` / `import.meta.dir` / `__fixtures__` / `.tmp`.",
+      "reason": "Detector id and type are realization details; the environment-mutation idiom is carried by idiom.environment_mutation, the allowed markers by idiom.test_write_scopes, and the concrete write-family fs call set is this detector's pattern."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "text": "Allowed path markers (substring match): `tmpdir`, `/tmp`, `import.meta.dir`, `__fixtures__`, `.tmp`.",
+      "reason": "The marker list is carried by the profile key idiom.test_write_scopes; the substring-match mechanics are this detector's behavior."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:tooling.test_runner",
+        "profile:idiom.test_context"
+      ],
+      "note": "'in a Bun stack' dropped. Test context is the union of runner-executed code (runner identity from tooling.test_runner) and code inside the stack's test constructs (idiom.test_context) — both criteria, any file name, new or existing. Fix: previous round narrowed test context to runner execution alone."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when",
+        "profile:idiom.environment_mutation"
+      ],
+      "note": "Generalized to 'the shared process environment'; the concrete assignment idiom (`process.env.X =`) is profiled as idiom.environment_mutation rather than left only in the realization."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then"
+      ],
+      "note": "Single obligation kept in neutral terms; a temp directory generalized to a test-owned temp/fixture location whose exact scopes come from idiom.test_write_scopes; the shared-live-state definition kept."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Already stack-neutral; kept verbatim, including the displaced-failure reasoning and the strict-rule rationale."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]"
+      ],
+      "note": "Already neutral; kept verbatim."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]",
+        "bunOnly"
+      ],
+      "note": "Preference generalized (pass configuration explicitly); the concrete code sample stays in the realization as the reference example."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]",
+        "profile:idiom.environment_mutation",
+        "bunOnly"
+      ],
+      "note": "Generalized to mutating the shared process environment; the 'looks local but is global' emphasis and most-common-form note kept. The mutation idiom is profiled (idiom.environment_mutation); only the concrete code sample is realization."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Already neutral; kept verbatim."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]",
+        "profile:idiom.test_write_scopes"
+      ],
+      "note": "Exception kept; the concrete allowed markers become the proposed profile key idiom.test_write_scopes."
+    },
+    {
+      "item": "unless[1]",
+      "as": [
+        "core:unless[1]"
+      ],
+      "note": "Already neutral; kept verbatim (reads out of scope)."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "profile:idiom.environment_mutation",
+        "bunOnly"
+      ],
+      "note": "Generalized to 'the discipline check reports no shared-environment mutations in test code'; the mutation idiom comes from the profile; detector id and concrete pattern are realization."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]",
+        "bunOnly"
+      ],
+      "note": "Generalized to write-family calls outside the allowed test scopes; detector id and fs-call specifics are realization."
+    },
+    {
+      "item": "evidence[2]",
+      "as": [
+        "core:evidence[2]"
+      ],
+      "note": "Already neutral; kept verbatim (order-independence behavioral check)."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "profile:idiom.environment_mutation",
+        "profile:idiom.test_write_scopes",
+        "profile:idiom.test_context",
+        "bunOnly"
+      ],
+      "note": "Generic check description goes to core:verification, now scanning both test-context criteria (runner-executed code and test-construct code). The environment-mutation idiom and allowed markers are profiled; the detector id/type and the concrete write-family fs call set are realization."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "profile:idiom.test_write_scopes",
+        "bunOnly"
+      ],
+      "note": "Marker list carried by the proposed profile key; the substring-match mechanics are this detector's behavior."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Check scope (reads never flagged) kept generically; mirrors unless[1]."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Non-literal path limitation kept generically, including 'limitation, not a permission'."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Per-rule severity and disposition are rule-level facts, not profile keys; strict disposition (fail on every finding, no advisory mode, no ratchet) stated generically."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:tooling.test_runner",
+        "profile:idiom.test_context",
+        "bunOnly"
+      ],
+      "note": "file_kind test with needs_new_observer kept; the core fact now covers both criteria (runner-executed code and test-construct code). Runner identity comes from tooling.test_runner and the test-context union from idiom.test_context; only the observer mechanics and Bun block syntax are realization."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:suffix.unit_test",
+        "profile:suffix.acceptance_test"
+      ],
+      "note": "Re-typed from path_glob to file_kind (closed core fact vocabulary); the glob values become profile suffix patterns; non-exhaustiveness preserved in core fires."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "Language scoping is realization context only (which sibling stacks' patterns apply); it adds no obligation. Fix: previous round misused tooling.languages, whose vocabulary meaning is languages of production source, as the test-language scope; no profile key is needed because the core needs no language."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[2]",
+        "bunOnly"
+      ],
+      "note": "Generalized to a finding of shared-live-state mutation in test code (existing or changed); the detector/finding id and concrete patterns are realization."
+    },
+    {
+      "item": "activation.facts[4]",
+      "as": [
+        "core:activation.facts[3]",
+        "core:verification"
+      ],
+      "note": "Change fact generalized (shared-environment mutation / write-family filesystem call in test code); its note — an optimization that does not restrict applicability — is kept in core:verification."
+    }
+  ],
+  "neutralityNotes": "Test context is defined as a union of two profile-supplied criteria (runner-executed code via tooling.test_runner, and code inside the stack's test constructs via the proposed idiom.test_context), fixing the previous round's runner-only narrowing. The concrete shared-environment mutation idiom is now a profile requirement (proposed idiom.environment_mutation) instead of a purely Bun-only detector detail. The language fact stays in bunOnly as realization context: tooling.languages means production-source languages and would be misused as the test-language scope, and the core needs no language. Still realization-specific: detector/finding ids, the concrete write-family fs call set (the neutral 'write-family filesystem call' is generic; the API surface is the detector's pattern), the substring-match mechanics of the allowed markers, and the concrete code samples. Severity and disposition stay in core verification per the notProfileKeys policy. The Bun path_glob fact was re-typed to file_kind because the core activation fact vocabulary is closed.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/tester.bun.test-isolation-no-live-state.json",
+      "sha256": "054a539860daccc70aa9a29dfe1ecb95567aa3de91aeb4a22b353b963de495fb"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

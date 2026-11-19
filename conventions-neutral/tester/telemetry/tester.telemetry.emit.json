@@ -1,0 +1,306 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "tester.telemetry.emit",
+  "legacyId": "tester.bun.telemetry-emit",
+  "core": {
+    "title": "Telemetry tests assert on emission",
+    "given": "A test identified as a telemetry test — by its URN carrying one of the profile's telemetry kind segments, or by matching the profile's telemetry-test filename pattern (colocation alone identifies the test, even without a URN kind segment)",
+    "when": "the test exists in the suite (every telemetry-identified test, new, changed or unchanged, is scanned)",
+    "then": "The test MUST contain an emission assertion: an assertion that the emitter was called or that the event was emitted, in one of the profile's emission-assertion idioms.",
+    "prefer": [
+      "Inject a spy or captured emitter and assert the emission: pass a test double for the emitter into the unit under test, exercise the unit, and assert that the expected event was emitted with its payload."
+    ],
+    "avoid": [
+      "Asserting only the return value in a telemetry test: it proves the function ran, not that the event fired."
+    ],
+    "unless": [
+      "Only telemetry-identified tests are in scope; tests identified by neither the telemetry URN kind segments nor the telemetry-test filename pattern are not scanned."
+    ],
+    "why": "The event is the entire point of a telemetry test: dashboards, alerts and downstream analytics are built on the emission, not on the return value.",
+    "evidence": [
+      "Every telemetry-identified test (telemetry URN kind segment or telemetry filename pattern) contains at least one emission assertion; the stack's telemetry-discipline check reports no findings."
+    ],
+    "verification": [
+      "Telemetry-test identification: a telemetry URN kind segment OR the profile's telemetry-test filename pattern; either signal is sufficient on its own — filename colocation is accepted alongside the URN without a kind segment.",
+      "The check tests only for the presence of one of the profile's emission-assertion idioms in an identified telemetry test; it does not evaluate the substance of the assertion.",
+      "Scope: only telemetry-identified tests are scanned — all of them, regardless of whether they changed; only those with no emission assertion are flagged. Non-test source files that emit telemetry are not covered.",
+      "Severity 3; disposition strict: the check fails on every finding, with no advisory mode and no ratchet baseline."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "test"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "telemetry_test"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "task_term",
+          "values": [
+            "telemetry",
+            "event",
+            "metric"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "telemetry test without emission assertion"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "A test whose designation marks it as a telemetry test (telemetry kind segment on its URN, or telemetry filename colocation) only asserts on the unit's return value.",
+        "A telemetry-identified test file contains a test with no assertion that the emitter was called or that the event was emitted, even though its designation comes from the filename alone.",
+        "An existing, unchanged telemetry-identified test without an emission assertion is found when the suite is scanned."
+      ],
+      "doesNotFire": [
+        "A test with no telemetry designation in a file not matching the telemetry-test filename pattern (not telemetry-identified, not scanned).",
+        "A telemetry test that asserts the emitter was called with the expected event and payload.",
+        "Non-test source files that emit telemetry."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "suffix.unit_test",
+      "meaning": "How the stack recognizes a test file — the file kind this rule scans.",
+      "bunValue": "*.test.* (Bun test files)"
+    },
+    {
+      "key": "suffix.telemetry_test",
+      "meaning": "Filename pattern that marks a test file as a telemetry test by colocation; identification by colocation alone, without a URN kind segment.",
+      "bunValue": "**/*.telemetry.test.*"
+    },
+    {
+      "key": "urn.telemetry_kinds",
+      "meaning": "URN kind segments by which a test identifies itself as a telemetry test.",
+      "bunValue": "-TELEMETRY-, -EVENT-, -METRIC-"
+    },
+    {
+      "key": "idiom.emission_assertion",
+      "meaning": "The stack's assertion idioms that count as an emission assertion (spy/mock call matchers on the emitter, or expectations on emit-style methods).",
+      "bunValue": "toHaveBeenCalled / toHaveBeenCalledWith / toHaveBeenCalledTimes on the emitter, or an expectation on .emit / .emitted / .capture / .track / .record"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "suffix.telemetry_test",
+      "group": "suffix",
+      "meaning": "Name pattern that marks a test file as a telemetry test by filename colocation (identification by colocation alone).",
+      "bunValue": "**/*.telemetry.test.*",
+      "whyNoExistingKey": "suffix.<file_kind> is parametric only over the general file kinds (source, unit_test, acceptance_test, e2e_test, markup, plan_artifact, config); none covers a specialized telemetry-test file kind."
+    },
+    {
+      "key": "urn.telemetry_kinds",
+      "group": "urn",
+      "meaning": "URN kind segments by which a test identifies itself as a telemetry test.",
+      "bunValue": "-TELEMETRY-, -EVENT-, -METRIC-",
+      "whyNoExistingKey": "urn.<artifact> and urn.binding.<artifact> describe URN shapes and bindings for the listed artifact kinds (component, acceptance, ...); no key describes kind segments carried on a test's URN."
+    },
+    {
+      "key": "idiom.emission_assertion",
+      "group": "idiom",
+      "meaning": "The stack's assertion idioms that count as an emission assertion (spy/mock call matchers on the emitter, or expectations on emit-style methods).",
+      "bunValue": "toHaveBeenCalled / toHaveBeenCalledWith / toHaveBeenCalledTimes on the emitter, or an expectation on .emit / .emitted / .capture / .track / .record",
+      "whyNoExistingKey": "The idiom group has no key for test-assertion constructs; existing idiom keys describe source, markup and boundary idioms only."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "prefer[0]",
+      "text": "const emit = mock(() => {}); placeOrder({ sku: \"x\" }, { emit }); expect(emit).toHaveBeenCalledWith(\"order_placed\", { sku: \"x\" });",
+      "reason": "Concrete spy constructor, matcher names and call shape of the Bun test runner; the core keeps the role-level guidance and bun.json stays the worked reference example."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "bun_tester_discipline_detector reports no finding.",
+      "reason": "Validator id of this rule's realization; the core names the check generically."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "Filename matching *.telemetry.test.* (e.g. *.telemetry.test.ts); this is the one rule in the tester family where colocation is accepted alongside the URN, mirroring the Convex sibling.",
+      "reason": "The concrete extension example and the cross-stack (Convex) provenance remark are realization bookkeeping; the neutral 'either signal suffices' scope is kept in core:verification and the pattern itself comes from the profile."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "text": "Note: the statement lists .record; the emission_assertion term definition lists only .emit/.emitted/.capture/.track — accept .record per the statement.",
+      "reason": "Source-reconciliation bookkeeping internal to the ATDD-Bun rewrite; the profile value already includes .record, so it carries no separate neutral obligation."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "text": "implemented by validator bun_tester_discipline_detector.",
+      "reason": "Validator ids of this one rule are realization details; severity and strict disposition stay in core:verification."
+    },
+    {
+      "item": "activation.facts[3]",
+      "text": "Produced by bun_tester_discipline_detector scanning telemetry-identified tests for emission-assertion patterns.",
+      "reason": "Detector id is a realization detail; the neutral finding and its needs_new_observer observability stay in the core."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:urn.telemetry_kinds",
+        "profile:suffix.telemetry_test"
+      ],
+      "note": "The two identification signals are profile data; the core Given names them neutrally, including that colocation alone suffices."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Already neutral: suite-wide scan, blind to new/changed/unchanged."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "profile:idiom.emission_assertion"
+      ],
+      "note": "The obligation (assert the emission) is neutral; which assertion forms count comes from the profile idiom."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Verbatim; contains no stack names."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]",
+        "bunOnly"
+      ],
+      "note": "Role-level guidance in the core; the concrete code sample is the Bun worked example."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]",
+        "profile:urn.telemetry_kinds",
+        "profile:suffix.telemetry_test"
+      ],
+      "note": "Scope exclusion restated neutrally over the same two profile keys as given."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ],
+      "note": "Neutral evidence statement in the core; the detector id is bunOnly."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "profile:urn.telemetry_kinds",
+        "profile:suffix.telemetry_test",
+        "bunOnly"
+      ],
+      "note": "Identification logic ('either signal suffices') goes to core:verification; concrete values to the profile; the .ts example and Convex-sibling remark are bunOnly."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "profile:idiom.emission_assertion",
+        "bunOnly"
+      ],
+      "note": "Accepted patterns come from the profile idiom; the check's presence-only nature is core:verification; the statement-vs-term reconciliation note is bunOnly."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Scope (all telemetry-identified tests regardless of change; flag only those without an emission assertion) is stack-neutral."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Severity 3 and strict disposition (per rule, not profile) go to core:verification; the validator id is bunOnly."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:suffix.unit_test"
+      ],
+      "note": "Neutral file_kind fact 'test'; how a test file is recognized in Bun comes from the profile."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:suffix.telemetry_test"
+      ],
+      "note": "path_glob is not a neutral fact name, so it is re-expressed as file_kind 'telemetry_test'; the concrete glob lives in the profile."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[2]",
+        "profile:urn.telemetry_kinds"
+      ],
+      "note": "Neutral task_term concepts telemetry/event/metric with needs_new_observer (a URN observer over test source is needed); concrete segments from the profile."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[3]",
+        "bunOnly"
+      ],
+      "note": "The finding text is neutral; the producing detector id and its mechanics are bunOnly."
+    }
+  ],
+  "neutralityNotes": "The obligation itself is fully neutral (a telemetry-designated test must assert the emission, not only the return value). Three concrete inputs had no existing vocabulary key and are proposed: the telemetry-test filename pattern (suffix.telemetry_test), the telemetry URN kind segments (urn.telemetry_kinds) and the emission-assertion idioms (idiom.emission_assertion); without these keys the core cannot state how a telemetry test is identified or which assertions satisfy it. activation.facts[1] was re-expressed from the non-neutral fact name path_glob to file_kind 'telemetry_test', whose concrete pattern comes from the profile. Concrete matcher/spy API examples, the .ts extension example, the Convex-sibling provenance remark and the detector/validator id remain bunOnly; per-rule severity 3 and strict disposition are kept in core:verification rather than the profile.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/tester.bun.telemetry-emit.json",
+      "sha256": "cb83dbf67e84c1a8cd105c56d09218002db04e52287ee44e6fdd171b6dcac54f"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 1,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

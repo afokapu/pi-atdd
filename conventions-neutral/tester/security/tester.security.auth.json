@@ -1,0 +1,302 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "tester.security.auth",
+  "legacyId": "tester.bun.security-auth",
+  "core": {
+    "title": "Security tests assert on denial",
+    "given": "A test whose bound URN carries a security kind segment — SEC, RLS or AUTH (the URN binding declared in the file, not the filename, is authoritative).",
+    "when": "Writing, changing or reviewing that security test.",
+    "then": "Prove the refusal named by the security acceptance: for the unauthorized or under-privileged stimulus it describes, assert the denial signal produced by the bound protected operation (e.g. an authentication or authorisation failure status such as 401 or 403, a permission error, a rejection, or a thrown error).",
+    "prefer": [
+      "Construct the missing, invalid or insufficient authorization state the acceptance describes; exercise the real protected boundary.",
+      "Required witness when the acceptance protects a mutation or other side effect: also assert that the protected state/action remains unchanged — a denial status returned after performing the mutation is still a security failure.",
+      "A happy-path case is optional and welcome, but cannot replace the denial case."
+    ],
+    "avoid": [
+      "A happy-path permission case as the only security proof.",
+      "An unrelated or generic denial assertion not produced by the bound protected operation, added merely to satisfy the automated check.",
+      "Mocking away the authorization decision the acceptance must prove.",
+      "For a protected mutation/side effect, asserting only the denial status without checking that the effect did not occur."
+    ],
+    "unless": [],
+    "why": "A happy-path-only security test is a silent green gap: it passes CI and counts as covering the security acceptance while proving nothing about the denial path, the only path the acceptance is about.",
+    "evidence": [
+      "The test body contains an expectation tied to a denial signal on the protected operation named by the security acceptance.",
+      "The case would turn red if authorization were accidentally removed.",
+      "Where the acceptance protects a mutation or side effect (mandatory there), the test shows a denied request cannot still perform the protected effect."
+    ],
+    "verification": [
+      "Scope: only tests whose URN carries a security kind segment (SEC, RLS or AUTH) are checked; identification is by the URN bound in the file, not by filename — the URN binding is authoritative (its concrete syntax comes from the profile).",
+      "Scope: every such security test, regardless of whether it was changed in the current diff or of lifecycle phase.",
+      "Pass condition: any one of the realization's listed denial signals, asserted as an expectation, satisfies the automated check; the concrete signal list (denial status codes, unauthorised/forbidden/denied/permission wording, rejection or throw assertions) is realization detail.",
+      "Automated check behaviour: it identifies security tests by URN and flags those whose body contains no denial assertion. Binding of the denial to the acceptance's protected operation, and the protected-effect witness, are not detected mechanically — they are reviewer-judged.",
+      "The automated finding is non-gating for review: the acceptance-bound review (protected-operation binding and protected-effect witness) applies to every security test even when the automated check reports nothing.",
+      "Severity 4; disposition strict."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "test"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "task_term",
+          "values": [
+            "SEC",
+            "RLS",
+            "AUTH"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "A test whose URN carries a -SEC- kind segment and whose body only asserts a successful response (e.g. 200) (automated check and review).",
+        "A test with an -AUTH- or -RLS- URN kind segment whose expectations contain none of the realization's listed denial signals (automated check and review).",
+        "A security-URN test that asserts the denial on an unrelated operation rather than on the bound protected operation (acceptance-bound review only; the automated check passes it).",
+        "A security-URN test for a protected mutation that asserts the denial but never checks that the mutation did not happen (acceptance-bound review only).",
+        "An existing, unchanged security-URN test examined during an audit or review."
+      ],
+      "doesNotFire": [
+        "A test whose URN kind segment is not SEC, RLS or AUTH, even if its filename contains 'auth' or 'security'.",
+        "A SEC/RLS/AUTH test whose denial case asserts the refusal of the bound protected operation (and, for a protected side effect, that it did not occur), with or without an extra happy-path case.",
+        "Production (non-test) code."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "urn.binding.acceptance",
+      "meaning": "How a test file binds itself to the acceptance URN from whose kind segment (SEC, RLS, AUTH) it is identified as a security test; the binding declared in the file is authoritative over the filename.",
+      "bunValue": "the URN kind segment (-SEC-, -RLS-, -AUTH-) is read from the test header; the header, not the filename, is authoritative"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "activation.facts[0]",
+      "text": "language: [typescript, javascript], observable_now — 'Bun test runner realization.'",
+      "reason": "A realization-specific language gate on which files this detector scans (the languages of the stack's test files). The closed vocabulary's tooling.languages covers production-source languages only, so no existing key carries this meaning, and the neutral core does not gate on language; the gate re-enters on instantiation as this bunOnly fact."
+    },
+    {
+      "item": "prefer[3]",
+      "text": "`const res = await fetch(\"/orders\", { method: \"POST\" });   // anonymous` then `expect(res.status).toBe(403);` (status only; for a protected mutation add the unchanged-state check above).",
+      "reason": "Concrete code in the runtime's fetch API and the test runner's expect matcher; the core keeps examples role-level, and bun.json itself is delivered as the worked reference example."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "text": "an expectation tied to 401, 403, unauthorised, forbidden, denied, permission, `.rejects` or `toThrow`",
+      "reason": "The concrete denial-signal token list — including the test-runner matcher APIs `.rejects` and `toThrow` — is the Bun detector's scan list; the core defers to \"the realization's listed denial signals\"."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "text": "Implementation: validator bun_tester_discipline_detector.",
+      "reason": "Validator/detector ids of this one rule are realization details; the core's verification describes the check generically."
+    },
+    {
+      "item": "activation.facts[3]",
+      "text": "finding: bun_tester_discipline_detector:security-auth (needs_new_observer; NON-GATING — detector activation only: a security-URN test with no listed denial signal)",
+      "reason": "The finding id names this stack's detector; the neutral semantics (non-gating; the acceptance-bound review applies even when the check reports nothing) are kept in core verification."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:urn.binding.acceptance"
+      ],
+      "note": "'Bun test' becomes 'test'; 'URN header' resolves through the profile's URN binding syntax. The obligation itself — the URN, not the filename, is authoritative — is neutral."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then"
+      ],
+      "note": "'Bun' dropped; the enumerated denial signals become generic examples (401/403 kept only as protocol-level examples); the matcher-level signal list stays in the realization."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Neutral as-is; 'CI' is generic."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]"
+      ],
+      "note": "Neutral as-is; 'protected boundary' is role-level."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]"
+      ],
+      "note": "'returning 403 after performing the mutation' generalized to 'a denial status returned after performing the mutation'; the required-witness force is preserved."
+    },
+    {
+      "item": "prefer[2]",
+      "as": [
+        "core:prefer[2]"
+      ],
+      "note": "Neutral as-is."
+    },
+    {
+      "item": "prefer[3]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "Concrete code example (runtime fetch + test-runner expect); its semantic annotation (status only; mutation needs the unchanged-state check) is already carried by core:prefer[1] and core:avoid[3]."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Neutral as-is."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "'generic 403' becomes 'generic denial assertion'; 'the detector' becomes 'the automated check'."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]"
+      ],
+      "note": "Neutral as-is."
+    },
+    {
+      "item": "avoid[3]",
+      "as": [
+        "core:avoid[3]"
+      ],
+      "note": "Neutral as-is."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]"
+      ],
+      "note": "Neutral as-is."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]"
+      ],
+      "note": "Neutral as-is."
+    },
+    {
+      "item": "evidence[2]",
+      "as": [
+        "core:evidence[2]"
+      ],
+      "note": "Neutral as-is."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "profile:urn.binding.acceptance"
+      ],
+      "note": "Generic scope: only URN-identified security tests are scanned, URN over filename. The concrete binding mechanism ('header') is the profile key."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Generic pass condition (any one listed denial signal satisfies the check) goes to core verification; the concrete token list incl. `.rejects`/`toThrow` is realization detail."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Generic: the mechanical check flags absence of a denial assertion; acceptance binding and the protected-effect witness are reviewer-judged."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Per-rule severity 4 and disposition strict belong to core verification, not to the profile."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "Validator id of this rule is a realization detail; the core describes the check generically."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "Realization-specific language gate (typescript/javascript, 'Bun test runner realization'). The vocabulary's tooling.languages is scoped to production-source languages and does not carry this meaning; the neutral core does not gate on language, so the fact is preserved as bunOnly and restored on instantiation rather than routed through a profile key."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[0]"
+      ],
+      "note": "'test' is a neutral file-kind name; the concrete recognition of test files is the stack's own profile concern."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[1]"
+      ],
+      "note": "Task terms SEC/RLS/AUTH are ATDD URN vocabulary, hence neutral; the gating fact and its needs_new_observer status are kept. The scope note (applies regardless of diff or lifecycle phase) is kept in core verification."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "The non-gating semantics (review applies to all security tests even when the detector reports nothing) go to core verification; the finding id itself is realization detail."
+    }
+  ],
+  "neutralityNotes": "The concrete denial-signal token list (401, 403, unauthorised, forbidden, denied, permission, and the `.rejects`/`toThrow` matcher APIs) could not be made neutral: it is the Bun detector's scan list, so the core says 'the realization's listed denial signals' and defers the enumeration to the realization; 401/403 survive in `then` and `fires` only as protocol-level examples, never as stack names. Identifying a security test by URN kind segment (SEC/RLS/AUTH) is ATDD-level and stays in the core; the concrete binding syntax (the header comment) enters only through the profile key urn.binding.acceptance. Language gating (typescript/javascript) is a realization-specific fact of this detector: the closed vocabulary's tooling.languages covers production-source languages only, so the Bun language fact is preserved as a bunOnly activation fact (the neutral core does not gate on language) rather than routed through a mismatched or newly proposed key. Detector, validator and finding ids of this rule are bunOnly, and severity 4 / disposition strict are carried in core verification, per the closed vocabulary's notProfileKeys. No vocabulary key was missing, so proposedKeys is empty.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/tester.bun.security-auth.json",
+      "sha256": "3a4cc75f864015e7fbf5572e67cddd1792c2846a5c52044767e6f9654e6f56c3"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

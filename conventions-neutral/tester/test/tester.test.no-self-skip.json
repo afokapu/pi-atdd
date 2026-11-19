@@ -1,0 +1,325 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "tester.test.no-self-skip",
+  "legacyId": "tester.bun.test-no-self-skip",
+  "core": {
+    "title": "Do not let a test disable itself; exclude it at the runner level instead",
+    "given": "A test case exists in a test suite.",
+    "when": "the test is disabled from inside its own source — a skip-, todo- or expected-failure-style modifier, or an early return guarded on an environment check",
+    "then": "Remove the self-disabling so the test actually runs (or delete the test); if it must not run somewhere, exclude it in the runner's configuration instead.",
+    "prefer": [
+      "Remove the modifier and let the test run, or delete the test.",
+      "Exclude via a runner config filter: visible in configuration, not invisible in a green suite."
+    ],
+    "avoid": [
+      "A skip- or todo-style modifier on a test case.",
+      "An early return guarded on an environment value inside a test body: same fault in disguise, more common, silent exactly where nobody watches.",
+      "An expected-failure marker used as a disabler. Unresolved source conflict: one clause forbids it, another treats expected-failure markers as accepted RED-phase markers. Escalate, don't decide."
+    ],
+    "unless": [
+      "Skip in a fixture/helper that is not itself a test case.",
+      "Runner-level exclusion (config filter), the supported way not to run a test."
+    ],
+    "why": "A skipped test reports GREEN: the suite passes, the gate sees no failure, and the acceptance is recorded as covered by a test that did not run.",
+    "evidence": [
+      "The convention check reports no finding of a self-disabled test or a guarded early return for the test files in scope.",
+      "Any environment-specific non-execution is expressed as a runner configuration filter visible in config, not inside the test body."
+    ],
+    "verification": [
+      "Strict disposition: the check fails on every finding; it has no advisory mode and no ratchet baseline. Severity 3.",
+      "Scope: only test cases. Self-disabling constructs inside fixtures or helpers that are not themselves test cases are out of scope, and runner-level configuration exclusions are not findings.",
+      "The check detects, structurally, self-disabling modifiers on test cases and environment-guarded early returns inside test bodies; a stack realization detects its own constructs for its own test-framework idioms. Stack scope and any changed-file filtering are implementation scope of the check, not limits on the obligation, which applies to any test case in any test file, whatever the language or test framework, changed or not, whether or not the file carries an assigned test-role.",
+      "An expected-failure marker used as a disabler is an unresolved source conflict (one clause forbids it, another accepts such markers as RED-phase markers): the check must surface those cases for authoritative resolution rather than silently pass or fail them."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "test"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "self_disabled_test",
+            "guarded_early_return"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "A test case carries a skip-style modifier (the test is marked skipped).",
+        "A test case is marked todo / not-yet-implemented.",
+        "An expected-failure marker is used as a disabler.",
+        "A live test (for example a smoke test) begins with an early return guarded on an environment value, so it silently passes when the value is absent.",
+        "An existing, unchanged test file already contains a self-disabling construct or a guarded early return."
+      ],
+      "doesNotFire": [
+        "A skip-style construct or guarded early return inside a fixture or helper that is not itself a test case.",
+        "A test excluded from a run via the runner's configuration filter."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "tooling.test_runner",
+      "meaning": "Which test runner the stack uses, and therefore whose run configuration is the visible place to exclude a test that must not run in some environment (the remedy the core prescribes instead of in-body self-disabling).",
+      "bunValue": "bun:test"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "given",
+      "text": "A test case (it / test / describe) exists in a test suite",
+      "reason": "The '(it / test / describe)' call forms are bun:test syntax for naming a test case; the core says only 'a test case exists in a test suite', with no role enumeration so that every test case stays in scope."
+    },
+    {
+      "item": "when",
+      "text": "a `.skip` / `.todo` / `.failing` modifier or an early `return` guarded on an environment check",
+      "reason": "The literal modifier names are bun:test constructs; the core speaks of skip-, todo- and expected-failure-style modifiers and an early return guarded on an environment check (environment only, matching the source scope)."
+    },
+    {
+      "item": "avoid[0]",
+      "text": "`.skip` / `.todo` on it / test / describe.",
+      "reason": "Concrete bun:test modifier and call syntax; the core states the neutral form 'a skip- or todo-style modifier on a test case'."
+    },
+    {
+      "item": "avoid[1]",
+      "text": "`if (!process.env.X) return` in a test body: same fault in disguise, more common, silent exactly where nobody watches.",
+      "reason": "`process.env` is a runtime-specific environment accessor; the core speaks of an early return guarded on an environment value."
+    },
+    {
+      "item": "avoid[2]",
+      "text": "`.failing` as a disabler. Source conflict: statement forbids it; self_skip term exempts `.fails`/`.failing` as core RED markers. Escalate, don't decide.",
+      "reason": "Names literal bun:test modifiers and the source's statement/term structure; the core keeps the unresolved conflict in generic expected-failure terms."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "The detector reports no self_skip or guarded_bail finding for the test files in scope.",
+      "reason": "Names this rule's detector and finding ids, which are realization details; the core phrases the evidence as the generic check outcome."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "self_skip (term definition): `.skip` or `.todo` on it / test / describe (it.skip, test.skip, describe.skip, *.todo).",
+      "reason": "Term id and literal bun:test syntax; the core's verification describes the finding generically (a skip/todo-style modifier on a test case)."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "text": "`.failing` — UNRESOLVED source conflict, both claims preserved: (a) statement: a test MUST NOT disable itself with `.skip` / `.todo` / `.failing`; summary: flags it.skip/test.skip/describe.skip (and `.todo` / `.failing`). (b) term self_skip: deliberately excludes `.fails` / `.failing`, which core's RED vocabulary lists as accepted markers. This rewrite does not choose; the verifier must surface `.failing` cases for authoritative resolution rather than silently pass or fail them.",
+      "reason": "Literal `.failing`/`.fails` names and references to the source's statement/summary/term self_skip; the escalation duty itself is carried neutrally in core:verification."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "text": "guarded_bail: a guarded `if (…process.env…) return` bail-out inside a test (e.g. `if (!process.env.DATABASE_URL) return;` at the top of a live smoke).",
+      "reason": "Term id and runtime-specific `process.env` syntax; the core describes a structurally detected environment-guarded early return."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "text": "Stack-neutral obligation; the current detector is Bun-specific over `bun:test` modifiers, realized by bun_tester_discipline_detector (implementation type: validator). Bun scope and any changed-file filtering are implementation scope of the detector, not limits on the obligation.",
+      "reason": "Detector/validator ids and the Bun scope are realization details of this one rule; the core's verification keeps only the generic statement that check scope is implementation scope, not a limit on the obligation."
+    },
+    {
+      "item": "activation.facts[1]",
+      "text": "finding: [self_skip, guarded_bail] — 'AST-level detection of skip/todo-style modifiers on test cases and of an env-guarded early return inside a test body; currently realized for bun:test by bun_tester_discipline_detector.'",
+      "reason": "Finding ids of this rule and the bun:test detector reference are realization details; the core uses neutral finding values (self_disabled_test, guarded_early_return) with the same observability."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "bunOnly"
+      ],
+      "note": "Core keeps 'a test case exists in a test suite' — the source's scope of every test case, deliberately without a role enumeration so no test file escapes; the '(it / test / describe)' call names are bun:test syntax (bunOnly)."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when",
+        "bunOnly"
+      ],
+      "note": "Core states the neutral forms (skip/todo/expected-failure modifier, early return guarded on an environment check — environment only, no broader configuration-check reading added); the literal `.skip`/`.todo`/`.failing` names are Bun realization details."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "profile:tooling.test_runner"
+      ],
+      "note": "Kept verbatim — already stack-neutral; 'the runner's configuration' is concretized by the profile's test runner."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Already stack-neutral; kept verbatim."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]"
+      ],
+      "note": "Neutral as written; kept verbatim."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]",
+        "profile:tooling.test_runner"
+      ],
+      "note": "Neutral as written; which runner and which config filter is profile data."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]",
+        "bunOnly"
+      ],
+      "note": "Core: 'a skip- or todo-style modifier on a test case'; the literal bun:test syntax stays in the Bun realization."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]",
+        "bunOnly"
+      ],
+      "note": "Core: early return guarded on an environment value; the `process.env` literal is Bun/runtime-specific."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]",
+        "bunOnly"
+      ],
+      "note": "The unresolved conflict is preserved neutrally (expected-failure marker, escalate, don't decide); literal `.failing`/`.fails` names and statement/term references are Bun realization details; the escalation duty is also enforced via core:verification (from verifier_detail[1])."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]"
+      ],
+      "note": "Neutral as written; kept verbatim."
+    },
+    {
+      "item": "unless[1]",
+      "as": [
+        "core:unless[1]",
+        "profile:tooling.test_runner"
+      ],
+      "note": "Neutral as written; the concrete runner and its config filter come from the profile."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ],
+      "note": "Core phrases the same evidence as the generic check outcome; the detector name and finding ids (self_skip, guarded_bail) are realization details."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]",
+        "profile:tooling.test_runner"
+      ],
+      "note": "Neutral as written, kept verbatim; the runner configuration is concretized by the profile."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "The generic meaning (a skip/todo-style modifier on a test case is the finding) feeds core:verification; the term id and literal syntax are bunOnly."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "The escalation duty (surface for authoritative resolution, never silently pass or fail) maps to core:verification; the literal modifier names and source-segment references are bunOnly."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "The guarded-early-return finding feeds core:verification generically; the guarded_bail id and `process.env` example are bunOnly."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Scope and non-findings (only test cases; fixtures/helpers out of scope; runner-level config exclusions are not findings) are fully neutral."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "'Stack-neutral obligation; check scope is implementation scope, not a limit on the obligation' maps to core:verification; detector/validator ids and the Bun scope are bunOnly."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Severity 3 and strict disposition are per-rule facts, never profile keys; carried in the core's verification."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Rationale for runner-level exclusion (visible in configuration, not hidden in the test body); fully neutral."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]"
+      ],
+      "note": "Kept as the generic file kind 'test' — any test case in any test file, exactly the source scope. This is not a Bun-specific category, so it is not bunOnly; enumerating test roles instead would narrow the obligation to files that carry an assigned role, which the Bun realization does not guarantee. The fact's own note ('Bun-specific detection is implementation scope') is a realization pointer already carried by verifier_detail[4] and preserved in bun.json."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]",
+        "bunOnly"
+      ],
+      "note": "Same fact and observability with neutral values (self_disabled_test, guarded_early_return); the ids self_skip/guarded_bail and the bun:test detector note are bunOnly."
+    }
+  ],
+  "neutralityNotes": "The obligation itself is stack-neutral and the core carries it in full, including the unresolved expected-failure-marker conflict (escalate, don't decide) and the strict disposition. Round-2 corrections: (1) core.when now prohibits early returns guarded on an environment check only — bun.json never extends the guarded-return prohibition to arbitrary configuration checks, so no broader reading is added; (2) activation keeps the source's generic file-kind scope ('test' = any test case in any test file) instead of enumerating the roles unit_test/acceptance_test/e2e_test, because bun.json supplies no role assignment that guarantees every test file receives one of those roles — an enumerated-role predicate would let unassigned or other test files escape the obligation; core:verification states explicitly that the obligation is not limited by language, test framework, changed-file filtering or role assignment, and given likewise carries no role enumeration. What could not be made neutral, and stayed in the Bun realization: the literal test-framework modifier names (`.skip`, `.todo`, `.failing`, `.fails`), the `it`/`test`/`describe` call forms, the `process.env` environment-guard syntax, and this rule's detector/term/finding ids (bun_tester_discipline_detector, self_skip, guarded_bail) — the core's verification names the check generically, per the notProfileKeys policy. The activation fires/doesNotFire examples were neutralized the same way; their concrete Bun literals are preserved in bun.json itself, which is delivered as the reference example. Which files count as test files is treated as detection scope of the check (implementation scope, per the source itself), and bun.json states no suffix or path values, so no suffix/roles profile key is required. The only profile datum the core needs is the stack's test runner (tooling.test_runner, an existing key), which names where the visible configuration-level exclusion lives; no new vocabulary key was necessary.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/tester.bun.test-no-self-skip.json",
+      "sha256": "927c0453a721cfd422724e4ff5471c6921e0541aaf4e240e4751eccc59e17a8b"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

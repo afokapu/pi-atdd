@@ -1,0 +1,318 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "tester.telemetry.required-item-coverage",
+  "legacyId": "tester.bun.telemetry-required-item-coverage",
+  "core": {
+    "title": "Bind every required telemetry item to a test via a telemetry binding",
+    "given": "An acceptance with required telemetry lists a concrete telemetry item identifier that the tracking plan contains (a required item)",
+    "when": "Required items, the tracking plan, or test files' telemetry bindings are added, changed or removed",
+    "then": "Ensure at least one test file binds each required item via its telemetry binding.",
+    "prefer": [
+      "Add a telemetry test whose bindings name both the acceptance and the required telemetry item (binding syntax from the profile), and whose body proves the item is emitted."
+    ],
+    "avoid": [
+      "Leaving a required item planned and implemented but untested.",
+      "Adding a telemetry binding to a test that does not exercise the item just to close the gap."
+    ],
+    "unless": [
+      "Diagnostic logs and internal spans an acceptance does not require need no dedicated test — only required items are covered by this closure.",
+      "Inert until the repository adopts this rule family."
+    ],
+    "why": "Evidence leg of the traceability tripod (planned, implemented, tested): the coder rule binds the implementation, this binds the proof. A required item no test covers is a plan nobody can rely on.",
+    "evidence": [
+      "For every required item (acceptance-required identifier present in the tracking plan) at least one test file carries a telemetry binding naming it.",
+      "The convention check for this rule reports no uncovered required items."
+    ],
+    "verification": [
+      "Compute required items as the intersection of acceptance-required telemetry identifiers with tracking-plan items; collect test bindings from every telemetry binding in any test file (no filename pattern or task reference required); the set difference — required items without a binding — is the finding set.",
+      "Report each uncovered required item at the tracking-plan item's own file.",
+      "A required identifier that cannot be resolved in the tracking plan belongs to the acceptance-decision rule and is not double-reported here.",
+      "The check runs only where the repository has adopted this rule family; the rule is inert before adoption.",
+      "Severity 2; disposition strict: the check fails on every finding (no advisory mode, no ratchet baseline)."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "acceptance_decision",
+            "tracking_plan",
+            "test"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "required_telemetry_item_added_or_changed",
+            "telemetry_binding_removed",
+            "test_file_deleted"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "required_telemetry_item_without_test_binding"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "telemetry_adopted"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "An acceptance with required telemetry lists an item that exists in the tracking plan, and no test file anywhere carries a telemetry binding naming it.",
+        "An acceptance newly requires a tracking-plan item (or the item is added to the plan) and no test binds it.",
+        "After a test is deleted or its telemetry binding removed, an adopted, still-required, resolvable item has no remaining test binding."
+      ],
+      "doesNotFire": [
+        "A diagnostic log or internal span that no acceptance requires has no dedicated test.",
+        "A required item cannot be resolved in the tracking plan (reported by the acceptance-decision rule instead).",
+        "A telemetry binding is removed but another test file still binds the same required item.",
+        "The repository has not adopted the telemetry rule family."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "urn.telemetry_item",
+      "meaning": "How one telemetry item is identified: the concrete telemetry URN carried by its tracking-plan entry. Acceptance decisions, tracking-plan entries and test bindings all refer to an item by this exact identifier, so the obligation covers every required URN of that form; no narrower grammar is imposed (the single metric URN shown in the fix hint is realization example data only).",
+      "bunValue": "<telemetry-urn>"
+    },
+    {
+      "key": "urn.binding.telemetry_item",
+      "meaning": "The syntax by which a test file binds itself to a telemetry item — the telemetry binding this rule's obligation is expressed in.",
+      "bunValue": "// Telemetry: <telemetry-urn>"
+    },
+    {
+      "key": "urn.binding.acceptance",
+      "meaning": "The syntax by which a test binds itself to the acceptance it proves, named alongside the telemetry binding in the preferred telemetry test.",
+      "bunValue": "// Acceptance: <acc-id>"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "urn.telemetry_item",
+      "group": "urn",
+      "meaning": "The identifier of one telemetry item in the tracking plan, so a checker can match acceptance-required items, plan entries and test bindings by exact identifier. It is an identifier contract, not a restrictive grammar: every telemetry URN the tracking plan declares is covered.",
+      "bunValue": "<telemetry-urn>",
+      "whyNoExistingKey": "The urn group's artifact params (component, acceptance, smoke_acceptance, train, wmbt, wagon, feature, journey) include no telemetry item, so urn.<artifact> cannot express this identifier."
+    },
+    {
+      "key": "urn.binding.telemetry_item",
+      "group": "urn",
+      "meaning": "The syntax by which a test file binds itself to a telemetry item (Bun: a `// Telemetry:` header comment).",
+      "bunValue": "// Telemetry: <telemetry-urn>",
+      "whyNoExistingKey": "urn.binding.<artifact> exists but its artifact params contain no telemetry item, so the binding syntax for telemetry items has no expressible key."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "evidence[1]",
+      "text": "The bun_telemetry_test validator reports no uncovered required items.",
+      "reason": "Names this rule's concrete validator id, a realization detail; the core names the check generically."
+    },
+    {
+      "item": "activation.facts[2]",
+      "text": "Set difference (required items − `// Telemetry:` header bindings across all test files) computed by the bun_telemetry_test validator.",
+      "reason": "The fact's note names this rule's Bun validator id and the concrete `// Telemetry:` header syntax; the core keeps the neutral finding fact and describes the set-difference check generically in verification."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "text": "Fix hint from source ('Give the item its proof:'): `// tests/.../accept-response.telemetry.test.ts` / `// Acceptance: acc:commons:E001-UNIT-001` / `// Telemetry: telemetry:metric:be:commons:response-invocation-accepted:duration`.",
+      "reason": "Concrete file path and project-specific acceptance and telemetry URNs; the neutral rendering already lives in core:prefer[0], with the binding forms supplied by the profile keys. The concrete telemetry URN here is a single illustrative instance of urn.telemetry_item, not its grammar."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:urn.telemetry_item"
+      ],
+      "note": "Kept verbatim except 'concrete URN' becomes 'concrete telemetry item identifier'; what such an identifier is comes from the profile's exact-identifier contract (any telemetry URN of the tracking plan), so every required URN stays in scope."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when",
+        "profile:urn.binding.telemetry_item"
+      ],
+      "note": "Test files' `// Telemetry:` headers become telemetry bindings; the binding syntax is profile-supplied."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "profile:urn.binding.telemetry_item"
+      ],
+      "note": "The one obligation, unchanged except the header form is replaced by the profile's telemetry binding syntax."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Already stack-neutral; kept verbatim."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]",
+        "profile:urn.binding.acceptance",
+        "profile:urn.binding.telemetry_item"
+      ],
+      "note": "Neutral rendering with placeholders; the concrete header forms are the profile keys' Bun values (bun.json stays the reference example)."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Already stack-neutral; kept verbatim."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]",
+        "profile:urn.binding.telemetry_item"
+      ],
+      "note": "Same anti-gaming obligation; '`// Telemetry:` header' becomes 'telemetry binding', whose syntax is profile-supplied."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]"
+      ],
+      "note": "Already stack-neutral; kept verbatim (scope: only required items)."
+    },
+    {
+      "item": "unless[1]",
+      "as": [
+        "core:unless[1]",
+        "core:activation.facts[3]"
+      ],
+      "note": "Adoption gate, kept verbatim; also carried as activation fact and as a verification entry."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "profile:urn.telemetry_item"
+      ],
+      "note": "Same evidence; header naming becomes binding naming, and the identifier referenced is the profile's exact telemetry URN."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]",
+        "bunOnly"
+      ],
+      "note": "Core states it via the generic convention check; the validator id bun_telemetry_test is realization-only."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:given",
+        "core:verification"
+      ],
+      "note": "Definition of required_item (acceptance-required disposition, resolvable in the tracking plan) is folded into given and into the verification computation; text is already neutral."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Collection sources and set difference, neutralized: header bindings become telemetry bindings in any test file."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Reporting location at the tracking-plan item's own file is role-level; kept."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Scope exclusion (unresolvable required URNs belong to the acceptance-decision rule); also reflected in doesNotFire."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "bunOnly",
+        "profile:urn.telemetry_item",
+        "profile:urn.binding.telemetry_item",
+        "profile:urn.binding.acceptance"
+      ],
+      "note": "The concrete fix hint is Bun/project-specific (bunOnly); its headers instantiate the binding keys' Bun values, and its telemetry URN is one illustrative instance of the urn.telemetry_item identifier contract — realization example data, not the profile value."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Per-rule severity 2 and strict disposition are not profile keys; the shared strict-disposition policy (fail on every finding, no advisory mode, no ratchet baseline) is folded into the verification entry."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]"
+      ],
+      "note": "File kinds acceptance_decision, tracking_plan, test are role-level; the note's header syntax is covered by the profile key."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]"
+      ],
+      "note": "Diff-level change triggers kept; 'telemetry_header_removed' is neutralized to 'telemetry_binding_removed' (a header is Bun's binding idiom)."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[2]",
+        "bunOnly"
+      ],
+      "note": "The finding fact is neutral; the note's bun_telemetry_test reference is realization-only (see bunOnly)."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[3]"
+      ],
+      "note": "Adoption-state detection requirement, already stack-neutral."
+    }
+  ],
+  "neutralityNotes": "The obligation itself is fully neutral: every acceptance-required, plan-resolvable telemetry item must be bound by at least one test's telemetry binding. Two concrete things the core needs have no existing vocabulary key and are proposed: the telemetry item identifier contract (urn.telemetry_item) and its binding syntax (urn.binding.telemetry_item); urn.binding.acceptance already exists. urn.telemetry_item's Bun value is bun.json's own placeholder <telemetry-urn> — an exact-identifier contract covering every telemetry URN in the tracking plan — since bun.json states no general URN grammar and the fix hint's telemetry:metric:... URN is a single illustrative instance kept only as realization example data (verifier_detail[4], bunOnly). 'Tracking plan' and 'acceptance decision' are treated as role-level plan-artifact kinds (file_kind facts), not paths, so no layout/roots key is required. The activation fact value telemetry_header_removed was renamed telemetry_binding_removed (a header is Bun's binding idiom). The validator id bun_telemetry_test, the shared strict-disposition policy wording, and the project-specific fix hint (file path and concrete URNs) remain bunOnly; severity 2 and strict disposition live in core:verification, not in the profile.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/tester.bun.telemetry-required-item-coverage.json",
+      "sha256": "eab68a10401765b4991fff48d075428c6e3adb6ad40bb7275bb5aab314a21a67"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 3,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

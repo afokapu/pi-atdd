@@ -1,0 +1,14 @@
+Title: Tests do not write to shared live state
+Given: Any test code in a Bun stack (new or existing, any file name)
+When: The test mutates `process.env` or writes to the filesystem, for any purpose
+Then: The test MUST NOT mutate `process.env` nor write to a filesystem path outside a temp directory (shared live state: anything a later test also sees).
+Prefer:
+- Scope every write to a temp directory the test owns and cleans up.
+- Pass configuration explicitly instead of mutating the environment, e.g. `const db = connect({ url: testUrl }); // explicit, scoped`.
+Avoid:
+- Mutating `process.env` in a test, e.g. `process.env.DATABASE_URL = "postgres://live"; // leaks into every later test` — it looks local but is global, and is the most common, least obviously wrong form of pollution.
+- Writing to repository or other shared filesystem paths that later tests also see.
+Unless:
+- The path contains `tmpdir`, `/tmp`, `import.meta.dir`, `__fixtures__` or `.tmp` (test-scoped, allowed).
+- The operation is a read; only the write family is in scope.
+Why: A polluting test does not fail; it makes a DIFFERENT test fail later, often only under a different order, with the failure pointing at the victim rather than the culprit (displaced failure). That asymmetry is why this is the family's strict rule, matching core: finding one after the fact costs days.

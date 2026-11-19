@@ -1,0 +1,371 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "tester.responsive.journey-coverage",
+  "legacyId": "tester.htmx.responsive-journey-coverage",
+  "core": {
+    "title": "Give every exposed frontend journey a responsive browser spec",
+    "given": "A journey whose entrypoint is exposed and whose surfaces include frontend (or declare none) exists in the plan",
+    "when": "the journey set is declared, changed or evaluated (including plan-only changes and already-declared journeys)",
+    "then": "That journey MUST have a browser spec (recognized as defined in verification) bound to it by the stack's journey binding (profile: urn.binding.journey) and carrying the stack's responsive test URN (profile: urn.responsive_test).",
+    "prefer": [
+      "Add a responsive browser spec for the journey, placed per the stack's e2e location (profile: layout.e2e_location) and bound with the stack's journey binding (profile: urn.binding.journey).",
+      "Add the responsive browser spec as soon as the plan declares a new exposed frontend journey."
+    ],
+    "avoid": [
+      "Counting a unit test that merely mentions a journey URN in a string as responsive coverage.",
+      "Assuming a misnamed spec escapes judgement: any test file whose header comments carry a journey recognition marker (profile: urn.journey_markers) is judged as a browser spec, even when its name does not match the stack's e2e test kind (profile: suffix.e2e_test).",
+      "Writing responsive browser specs for internal journeys or journeys whose surfaces exclude frontend just to raise coverage."
+    ],
+    "unless": [
+      "The journey is internal, or its exposed entrypoint surfaces exclude frontend — there is no screen to fit, so it is out of scope.",
+      "Vendored and generated trees (the stack's excluded trees, profile: roots.excluded) are never scanned."
+    ],
+    "why": "Every screen a user can reach should be proven to fit from mobile to desktop; exposed journeys are exactly those screens, and new ones appear here as soon as the plan declares them.",
+    "evidence": [
+      "For each exposed journey with surfaces including frontend (or none declared), a browser spec exists whose header carries the stack's journey binding (profile: urn.binding.journey) and the stack's responsive test URN (profile: urn.responsive_test).",
+      "The stack's convention check for this rule reports no uncovered exposed journey."
+    ],
+    "verification": [
+      "A browser spec is recognized as: a file of the stack's e2e test kind (profile: suffix.e2e_test) run by the stack's test runner (profile: tooling.test_runner), OR any test file whose header comments carry a journey recognition marker from the stack's full marker set (profile: urn.journey_markers), so a misnamed one is still judged.",
+      "Recognition and qualifying coverage are distinct: recognition markers (profile: urn.journey_markers) only classify a file as a browser spec; qualifying coverage additionally requires the spec's header to carry the stack's journey binding (profile: urn.binding.journey) and the stack's responsive test URN (profile: urn.responsive_test), independently of which branch recognized the file as a browser spec. A file recognized only through an alternative recognition marker does not by itself satisfy coverage.",
+      "A unit test that merely mentions a journey URN in a string is not a browser spec.",
+      "Scope: journeys with an exposed entrypoint whose surfaces include frontend or declare no surfaces; skip internal journeys and those whose surfaces exclude frontend. Evaluate every in-scope journey, not only those touched by the change; a journey is covered if any qualifying bound responsive spec remains.",
+      "Never scan the stack's vendored and generated trees (profile: roots.excluded).",
+      "Severity 3; disposition strict.",
+      "Path hints (the e2e file kind and the e2e root, profiles: suffix.e2e_test, roots.e2e) are non-exhaustive: matching a path is observable, but plan/journey declarations and misnamed marker-bearing test files can have arbitrary names, so globs neither define scope nor exhaustively locate inputs.",
+      "Activation and checking need a semantic plan/journey observer that reads each journey's entrypoint exposure and surfaces wherever the declaration lives (not by filename), plus a spec-binding observer that maps journey bindings (profile: urn.binding.journey), recognition markers (profile: urn.journey_markers) and responsive test URNs (profile: urn.responsive_test) in test-file headers across all test files. The rule fires for plan-only changes and for pre-existing uncovered journeys, not only when specs are edited, and the check evaluates all in-scope journeys against all remaining qualifying specs."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "change",
+          "values": [
+            "journey declared, changed or evaluated in the plan with an exposed entrypoint",
+            "journey entrypoint exposure or surfaces changed",
+            "responsive browser spec or journey binding (profile: urn.binding.journey) added/removed/renamed"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "exposed frontend journey without a bound responsive browser spec"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "files of the stack's e2e test kind (profile: suffix.e2e_test)",
+            "files under the stack's e2e root (profile: roots.e2e)"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "task_term",
+          "values": [
+            "journey",
+            "responsive",
+            "e2e",
+            "browser spec",
+            "viewport",
+            "mobile",
+            "desktop"
+          ],
+          "observability": "observable_now"
+        }
+      ],
+      "fires": [
+        "The plan (even in a plan-only change) declares a journey with an exposed entrypoint and surfaces including frontend, and no test file anywhere carries the stack's journey binding (profile: urn.binding.journey) together with the stack's responsive test URN (profile: urn.responsive_test) for it.",
+        "An existing exposed journey that declares no surfaces has no bound responsive browser spec, even though no spec was edited in this change.",
+        "A responsive spec for an exposed frontend journey is deleted or its journey binding (profile: urn.binding.journey) is removed, and no other qualifying responsive spec remains bound to that journey.",
+        "For an exposed frontend journey, the only bound responsive spec is a misnamed test file (not of the stack's e2e test kind, profile: suffix.e2e_test) whose header comments carry a journey recognition marker (profile: urn.journey_markers); it is judged as a browser spec and counts (or fails) as that journey's coverage."
+      ],
+      "doesNotFire": [
+        "An internal journey (entrypoint not exposed).",
+        "An exposed journey whose entrypoint surfaces exclude frontend.",
+        "Files under the stack's excluded (vendored and generated) trees (profile: roots.excluded).",
+        "A responsive spec is deleted but another qualifying responsive browser spec remains bound to the same journey.",
+        "A test file is recognised as a browser spec but is not bound to any in-scope (exposed, frontend-surfaced) journey; spec classification alone is not this rule's scope."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "suffix.e2e_test",
+      "meaning": "The file-name patterns that identify the stack's e2e (browser) spec files, which count as browser specs by kind.",
+      "bunValue": "*.e2e.ts"
+    },
+    {
+      "key": "tooling.test_runner",
+      "meaning": "The stack's test runner; for this rule, the runner that executes the e2e browser specs — a file of the stack's e2e test kind run by it is a browser spec.",
+      "bunValue": "Playwright (verifier_detail[0]: \"a `*.e2e.ts` file run by Playwright\")"
+    },
+    {
+      "key": "urn.binding.journey",
+      "meaning": "The syntax by which a test file binds itself to a journey; in Bun it is a header comment, and together with the responsive test URN it must sit in the spec's header to qualify as that journey's coverage.",
+      "bunValue": "// Journey: <journey id>"
+    },
+    {
+      "key": "urn.journey_markers",
+      "meaning": "The stack's full set of header-comment journey markers by which any test file is recognized (judged) as a browser spec, including misnamed files; a superset of urn.binding.journey used for recognition only — an alternative marker alone does not provide the binding required for coverage.",
+      "bunValue": "// Train:, // Journey:, // URN: test:train:…, // URN: test:journey:…"
+    },
+    {
+      "key": "urn.responsive_test",
+      "meaning": "The test URN a journey's responsive browser spec must carry in its header; this rule pins no further shape for it.",
+      "bunValue": "RESP test URN (bun.json requires only \"carrying a RESP test URN\"; it prescribes no shape)"
+    },
+    {
+      "key": "layout.e2e_location",
+      "meaning": "Where a journey's responsive browser spec is placed.",
+      "bunValue": "e2e/<journey>.responsive.e2e.ts"
+    },
+    {
+      "key": "roots.e2e",
+      "meaning": "The root tree of e2e (browser) specs; used only as a non-exhaustive activation hint.",
+      "bunValue": "e2e/ (hint glob e2e/**)"
+    },
+    {
+      "key": "roots.excluded",
+      "meaning": "Vendored and generated trees that are never scanned.",
+      "bunValue": "node_modules, dist, build, _generated"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "urn.journey_markers",
+      "group": "urn",
+      "meaning": "The stack's full set of header-comment journey markers by which any test file is recognized (judged) as a browser spec, including misnamed files; a superset of urn.binding.journey used for recognition only — an alternative marker alone does not provide the binding required for coverage.",
+      "bunValue": "// Train:, // Journey:, // URN: test:train:…, // URN: test:journey:…",
+      "whyNoExistingKey": "urn.binding.<artifact> documents only the syntax that binds a file to one artifact. bun.json additionally uses a broader set of journey markers purely to classify test files as browser specs (verifier_detail[0]); conflating the two either weakens the rule (an alternate marker would satisfy coverage) or strengthens it (recognition would require the exact binding), so recognition needs its own key."
+    },
+    {
+      "key": "urn.responsive_test",
+      "group": "urn",
+      "meaning": "The test URN a journey's responsive (browser) spec must carry in its header; this rule pins no further shape for it.",
+      "bunValue": "RESP test URN (bun.json requires only \"carrying a RESP test URN\"; it prescribes no shape)",
+      "whyNoExistingKey": "urn.<artifact> documents the URN shape of an artifact (e.g. urn.journey is the URN of the journey artifact itself). No key represents the URN of a journey's responsive test, and bun.json prescribes no shape beyond 'RESP test URN' — assigning it to urn.journey would invent the unsupported test:journey:… restriction."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "evidence[1]",
+      "text": "htmx_e2e_detector reports no uncovered exposed journey.",
+      "reason": "htmx_e2e_detector is the detector/validator id of this rule's Bun realization; per notProfileKeys, detector ids stay with the realization and the core names the check generically."
+    },
+    {
+      "item": "activation.facts[1]",
+      "text": "htmx_e2e_detector: exposed frontend journey without a bound RESP browser spec",
+      "reason": "The finding id names the Bun detector; the core keeps the neutral finding text and leaves the detector id to the realization."
+    }
+  ],
+  "classification": [
+    {
+      "item": "title",
+      "as": [
+        "core:title"
+      ],
+      "note": "RESP expanded to 'responsive browser spec'; no stack names in the core title."
+    },
+    {
+      "item": "given",
+      "as": [
+        "core:given"
+      ],
+      "note": "Exposed entrypoint and surfaces are stack-neutral plan-model semantics; unchanged."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Already neutral; unchanged."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "profile:urn.binding.journey",
+        "profile:urn.responsive_test"
+      ],
+      "note": "The mandatory journey binding and the responsive test URN come from the profile as two distinct requirements; the recognition of a file as a browser spec is defined in verification, not in the obligation. Like bun.json's own then (which does not say 'header'), the header placement of the binding and URN is imposed by evidence and qualifying-coverage verification, mirroring bun.json's split between then and evidence[0]."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Conceptual rationale; unchanged."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]",
+        "profile:layout.e2e_location",
+        "profile:urn.binding.journey"
+      ],
+      "note": "Concrete path e2e/<journey>.responsive.e2e.ts and binding syntax supplied by the profile."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]"
+      ],
+      "note": "Already role-level; RESP rendered as 'responsive browser spec'."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Unit test is a role; bun.json's generic 'a journey URN in a string' wording is kept verbatim (not narrowed to the responsive test URN), since bun.json rejects counting any journey-URN mention in a string."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]",
+        "profile:urn.journey_markers",
+        "profile:suffix.e2e_test"
+      ],
+      "note": "'Misnamed' means not of the stack's e2e kind; 'journey marker' is the recognition marker set (superset of the binding), not the binding itself."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]"
+      ],
+      "note": "Metric-gaming guard; already neutral."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]"
+      ],
+      "note": "Plan-model scope exception; unchanged."
+    },
+    {
+      "item": "unless[1]",
+      "as": [
+        "core:unless[1]",
+        "profile:roots.excluded"
+      ],
+      "note": "The concrete vendored/generated trees are the stack-wide excluded list from the profile."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "profile:urn.binding.journey",
+        "profile:urn.responsive_test"
+      ],
+      "note": "Binding and responsive test URN come from the profile as distinct requirements, and bun.json's header placement ('a browser spec exists whose header has // Journey: … and a RESP test URN') is kept as a core requirement of the evidence, independent of the recognition branch."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]",
+        "bunOnly"
+      ],
+      "note": "Core states the check generically; the detector id htmx_e2e_detector stays in bunOnly."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "profile:suffix.e2e_test",
+        "profile:tooling.test_runner",
+        "profile:urn.journey_markers"
+      ],
+      "note": "The browser_spec term definition: e2e kind + test runner from the profile for the first alternative, and the recognition marker set (all four markers, superset of the binding) for the misnamed-file alternative; classification is kept distinct from the binding required for coverage."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Generic negative definition kept verbatim in scope ('a journey URN in a string', not only the responsive test URN); also mirrored in avoid[0]."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Scope quantifier: every in-scope journey, covered if any qualifying bound spec remains; stack-neutral. Qualifying coverage itself is defined in the recognition-versus-coverage verification entry, which keeps bun.json evidence[0]'s header placement."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification",
+        "profile:roots.excluded"
+      ],
+      "note": "Never-scan rule; the tree list is the profile's excluded list."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Per-rule severity and disposition stay with the rule, not the profile."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "core:verification",
+        "profile:urn.binding.journey"
+      ],
+      "note": "Change fact neutralized (the added/removed/renamed binding is the journey binding via profile); its observer note (semantic plan/journey observer, fires for plan-only changes) moved into core verification."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]",
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Neutral finding text in the core; the detector id is bunOnly; the 'evaluate all in-scope journeys against all remaining qualifying specs' note is kept in verification."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[2]",
+        "core:verification",
+        "profile:suffix.e2e_test",
+        "profile:roots.e2e"
+      ],
+      "note": "path_glob hint rendered as a file_kind fact via profile keys; the hint-only caveat (globs neither define scope nor locate all inputs; excluded trees never scanned) kept in verification."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[3]"
+      ],
+      "note": "Task terms are neutral hints; 'RESP' rendered as 'responsive'/'browser spec'."
+    }
+  ],
+  "neutralityNotes": "RESP is ATDD-Bun's abbreviation for a responsive browser spec; the core spells it out ('responsive browser spec' / 'responsive test URN'), which changes no obligation. Plan-model terms (journey, exposed entrypoint, surfaces including frontend, internal journey) are treated as stack-neutral ATDD plan semantics: bun.json itself says the journey declaration is read wherever it lives, not by filename, so no profile key is needed for journey declaration and the required plan/journey and spec-binding observers are declared needs_new_observer and described in core verification. Header placement is preserved exactly: bun.json evidence[0] requires the journey binding and the RESP test URN in the browser spec's header, so core evidence[0] and the qualifying-coverage verification entry require both in the spec's header independently of which branch recognized the file as a browser spec ('header' is a stack-neutral file concept, and bun.json's then, like the core's, does not itself say 'header'). The unit-test anti-pattern keeps bun.json's generic wording — a unit test that merely mentions a journey URN in a string is not coverage — not narrowed to the responsive test URN. Browser-spec recognition and qualifying coverage remain deliberately separate: recognition uses the stack's full journey marker set (urn.journey_markers, all four Bun alternatives preserved), while coverage requires the journey binding (urn.binding.journey, only // Journey: <journey id>) plus a responsive test URN (urn.responsive_test) whose shape bun.json does not pin, so no shape is asserted. The e2e runner is taken from the existing tooling.test_runner key rather than a new one. Detector/validator/finding ids (htmx_e2e_detector) and the audit alias stay with the Bun realization (bunOnly). 'Misnamed' (avoid[1], fires[3]) means a test file not matching the stack's e2e test kind, expressed via profile suffix.e2e_test. Two keys were missing from the closed vocabulary (journey recognition markers; the responsive test URN) and are proposed in the urn group.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/tester.htmx.responsive-journey-coverage.json",
+      "sha256": "585f9df50d75efa2bd9714f5ce6c2cab8300b1e62a222231a36b845a38c3da2b"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 3,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

@@ -1,0 +1,351 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "tester.test.carries-urn-identity",
+  "legacyId": "tester.bun.test-carries-urn-identity",
+  "core": {
+    "title": "Declare a test URN header in every test file",
+    "given": "Any unit or acceptance test file (new or existing), identified by the profile's test-file name patterns, outside the trees the profile marks as never scanned",
+    "when": "it is in the test-file scan scope",
+    "then": "Its leading comment block, above the first line of real code (imports included), carries the test URN, declared with the profile's test-URN binding syntax and matching the profile's test URN shape.",
+    "prefer": [
+      "Add the test URN header above the imports, inside the file's leading comment block, using the profile's test-URN binding syntax; companion fields (acceptance URN, phase, layer) may share the same block.",
+      "Bind via the header, keeping the file layout; files covering several acceptances need no rename."
+    ],
+    "avoid": [
+      "A URN below the imports or code — it reads as missing.",
+      "A URN value that does not match the profile's test URN shape.",
+      "Encoding acceptance ids in filenames instead of the header; filenames are never parsed."
+    ],
+    "unless": [
+      "Not a test file (source files are the coder convention's business).",
+      "In a tree the profile marks as never scanned."
+    ],
+    "why": "The test URN is the coverage gate's foundation: without it the gate cannot attribute the test or report coverage, and marks the acceptance uncovered while the test passes. Header, not filename, because wagon-level files cover several acceptances; a filename rule would force renaming the suite.",
+    "evidence": [
+      "The test-URN check reports no missing/invalid URN finding for the test file.",
+      "A reviewer sees the test URN, in the profile's shape, in the leading comment block before the first import/code line."
+    ],
+    "verification": [
+      "The check parses each in-scope test file's leading comment block, using the stack's comment syntax from the profile, for the test-URN binding and requires a value matching the profile's test URN shape.",
+      "The header region ends at the first line of real code, so a URN below the imports is treated as missing.",
+      "Identity is never derived from the filename; the header is authoritative.",
+      "Scan scope: every test file of the profile's test kinds (not only changed ones); trees the profile marks as never scanned are excluded. roots.excluded is one stack-wide list, and the exact exclusion classification stays with the stack's checker, to which the realization defers.",
+      "Severity 2; disposition strict — the enforcing runner fails on every finding, with no advisory mode and no ratchet baseline."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "unit_test",
+            "acceptance_test"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "missing test URN header",
+            "test URN with wrong scheme",
+            "test URN below the first code line"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "A new test file is created without a test URN line in its leading comment block.",
+        "An existing, unchanged test file in the scan scope has its URN comment placed below the imports, after the first line of real code.",
+        "A test file's leading comment block has a URN field whose value does not match the profile's test URN shape.",
+        "A wagon-level test file covering several acceptances is relied on for coverage but has no URN header."
+      ],
+      "doesNotFire": [
+        "A non-test source file — that is the coder convention's business.",
+        "A test file inside a tree the profile marks as never scanned (vendored or build trees).",
+        "A test file whose filename does not encode an acceptance id but whose header carries a valid test URN."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "suffix.unit_test",
+      "meaning": "The name patterns that identify a unit test file, so the core's 'test file' scope can be resolved per stack.",
+      "bunValue": "**/*.test.*, **/*.spec.*"
+    },
+    {
+      "key": "suffix.acceptance_test",
+      "meaning": "The name patterns that identify an acceptance test file, so the core's 'test file' scope can be resolved per stack.",
+      "bunValue": "**/*.test.*, **/*.spec.*"
+    },
+    {
+      "key": "roots.scan",
+      "meaning": "Which trees the repository-wide test-file scan covers.",
+      "bunValue": "all *.test.* / *.spec.* files (not only changed ones); vendored and build directories are never scanned"
+    },
+    {
+      "key": "roots.excluded",
+      "meaning": "Vendored and generated trees that are never scanned, so 'outside the never-scanned trees' resolves per stack.",
+      "bunValue": "vendored and build directories are never scanned (exact classification owned by the checker)"
+    },
+    {
+      "key": "idiom.comment_marker",
+      "meaning": "The line-comment syntax the check uses to parse the leading comment block of a test file.",
+      "bunValue": "Bun line comments //"
+    },
+    {
+      "key": "urn.test",
+      "meaning": "The URN shape a test file's identity URN must match.",
+      "bunValue": "test:{wagon}:{feature}:{ACCEPTANCE-ID}"
+    },
+    {
+      "key": "urn.binding.test",
+      "meaning": "The syntax by which a test file declares its test URN in its leading comment block.",
+      "bunValue": "// URN: test:{wagon}:{feature}:{ACCEPTANCE-ID} in the leading comment block"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "urn.test",
+      "group": "urn",
+      "meaning": "URN shape of a test file's identity URN (the test scheme).",
+      "bunValue": "test:{wagon}:{feature}:{ACCEPTANCE-ID}",
+      "whyNoExistingKey": "urn.<artifact>'s closed artifact params (component, acceptance, smoke_acceptance, train, wmbt, wagon, feature, journey) include no test artifact, and no other key describes a test URN shape."
+    },
+    {
+      "key": "urn.binding.test",
+      "group": "urn",
+      "meaning": "The syntax by which a test file declares its test URN in its leading comment block.",
+      "bunValue": "// URN: test:{wagon}:{feature}:{ACCEPTANCE-ID} in the leading comment block",
+      "whyNoExistingKey": "urn.binding.<artifact> shares the same closed artifact params, which exclude the test artifact; no existing binding key covers the test URN header line."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "prefer[0]",
+      "text": "Add the header above the imports:\n// URN: test:orders:checkout:E001-SMOKE-001-renders-row\n// Acceptance: acc:orders:E001-SMOKE-001-renders-row\n// Phase: SMOKE\n// Layer: integration",
+      "reason": "Concrete reference example with the stack's line-comment syntax, concrete URNs and companion header fields; the core keeps only role-level guidance and the realization stays the worked example."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "bun_tester_discipline_detector reports no missing/invalid URN finding for the test file.",
+      "reason": "Names this rule's detector id; the core states the evidence against the generic test-URN check."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "text": "Stack-neutral obligation with a Bun-specific line-comment detector; realized by `bun_tester_discipline_detector` (implementation type: validator).",
+      "reason": "Detector id and implementation type are realization details of this one rule; the core's verification names the check generically."
+    },
+    {
+      "item": "activation.facts[2]",
+      "text": "finding values missing_test_urn, urn_not_test_scheme, urn_below_first_code_line, produced by bun_tester_discipline_detector parsing the leading comment block of each scanned test file.",
+      "reason": "Finding ids of this rule's detector are realization details; the core keeps a neutral finding fact describing the finding kinds."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:suffix.unit_test",
+        "profile:suffix.acceptance_test",
+        "profile:roots.excluded"
+      ],
+      "note": "Neutralized to test-role files outside never-scanned trees; the test-file name patterns and never-scanned trees come from the profile."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when",
+        "profile:roots.scan"
+      ],
+      "note": "Already neutral; the scan scope is profile data and its detail (all files, not only changed) is in core:verification."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "profile:urn.test",
+        "profile:urn.binding.test",
+        "profile:idiom.comment_marker"
+      ],
+      "note": "One obligation; the URN shape, binding syntax and comment marker are profile-supplied; 'above the first real code line (imports included)' stays in the core."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Already stack-neutral; kept as written."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]",
+        "bunOnly"
+      ],
+      "note": "Neutral guidance (header above the imports, inside the leading comment block) in the core; the concrete commented example is realization detail."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]"
+      ],
+      "note": "Neutral as written; 'wagon-level' is method vocabulary, not a stack fact."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Neutral as written."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]",
+        "profile:urn.test"
+      ],
+      "note": "The test-scheme requirement is the profile's test URN shape; the core phrases it via the shape."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]"
+      ],
+      "note": "Neutral as written; header authority also appears in core:verification."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]"
+      ],
+      "note": "Neutralized to 'the coder convention's business' — a method-level split, not a stack fact."
+    },
+    {
+      "item": "unless[1]",
+      "as": [
+        "core:unless[1]",
+        "profile:roots.excluded"
+      ],
+      "note": "'Vendored or build directory' is the profile's never-scanned list; the core defers the exact classification to the stack's checker."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ],
+      "note": "Neutral evidence (check reports no finding) plus the detector id as realization detail."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]",
+        "profile:urn.test"
+      ],
+      "note": "Neutral reviewer inspection; the concrete URN shape comes from the profile."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "profile:idiom.comment_marker",
+        "profile:urn.test"
+      ],
+      "note": "Generic check description in core:verification; the comment syntax and URN format are profile values."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Neutral header-region rule; kept in verification and already embedded in then/avoid[0]."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Header authority is stack-neutral; kept in verification."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification",
+        "profile:suffix.unit_test",
+        "profile:suffix.acceptance_test",
+        "profile:roots.excluded",
+        "profile:roots.scan"
+      ],
+      "note": "Scan scope (all test files, not only changed; never-scanned trees excluded) is generic verification; the concrete name patterns and exclusion trees are profile values."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "Detector id, implementation type and the realization note have no stack-neutral equivalent."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "as": [
+        "core:why"
+      ],
+      "note": "Restates the coverage-gate rationale already carried by the core's why."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Per-rule severity and disposition are rule data, not profile keys; kept in core:verification."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:suffix.unit_test",
+        "profile:suffix.acceptance_test"
+      ],
+      "note": "The path_glob fact becomes the core's file_kind fact; the glob values are profile suffix data."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[0]"
+      ],
+      "note": "Merges into the core's single file_kind fact (only test files in scope, regardless of change state)."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[1]",
+        "bunOnly"
+      ],
+      "note": "Neutral finding kinds in the core's finding fact; the exact finding ids and producing detector are bunOnly."
+    }
+  ],
+  "neutralityNotes": "The obligation is stack-neutral (the leading comment block, above the first line of real code, carries the test URN; the header, never the filename, is authoritative). Two profile keys are missing from the closed vocabulary and are proposed: urn.test (test URN shape) and urn.binding.test (header binding syntax), because the urn group's artifact params include no test artifact. The line-comment marker is a profile value; the concrete header example, the detector/validator/finding ids and the rule alias are realization detail (bunOnly); severity and disposition stay in core:verification, and the never-scanned trees resolve through the single stack-wide roots.excluded list with the exact exclusion classification kept by the stack's checker, matching the realization's deference. 'Wagon' and the coder/tester convention split are method-level vocabulary, not stack facts, so they remain in the core.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/tester.bun.test-carries-urn-identity.json",
+      "sha256": "0d5c8a3d7362582509ff4b95d3baabe925e777543633da5e5eaa9259a87e2b3e"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

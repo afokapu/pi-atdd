@@ -1,0 +1,368 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "tester.e2e.spec-naming",
+  "legacyId": "tester.htmx.e2e-spec-naming",
+  "core": {
+    "title": "Name e2e specs with the stack's e2e-test name pattern",
+    "given": "A file is recognised as an end-to-end spec by content: it imports the stack's e2e test framework and declares tests (how the e2e-test role is assigned comes from the profile).",
+    "when": "The file is created, renamed or edited (including an existing arbitrarily named file gaining a test declaration), or the tree is scanned.",
+    "then": "Name it with the stack's e2e-test name pattern (from the profile), whatever its prior name or extension.",
+    "prefer": [
+      "Rename a misnamed e2e spec to the e2e-test pattern and point the e2e runner's file selection at that pattern.",
+      "Keep the two runners apart: the unit/acceptance test runner runs unit, acceptance and smoke tests; the e2e runner runs only browser specs; neither picks up the other's files."
+    ],
+    "avoid": [
+      "Naming an e2e spec with a unit- or acceptance-test name pattern — the unit/acceptance test runner collects it and runs it with the wrong runner.",
+      "Hiding a misnamed e2e spec from the unit/acceptance test runner with an ad-hoc filter instead of renaming it."
+    ],
+    "unless": [
+      "Vendored and generated trees are never scanned.",
+      "Files that are not recognised as e2e specs (no e2e-framework import and test declarations) are out of scope.",
+      "The e2e runner's configuration file (its name pattern from the profile), and fixture modules that only extend the test-declaration surface without declaring tests, are out of scope."
+    ],
+    "why": "The unit/acceptance test runner collects files by its own unit- and acceptance-test name patterns, so an e2e spec named that way runs under the wrong runner and fails, or worse is skipped by a filter nobody remembers.",
+    "evidence": [
+      "Every non-excluded file recognised as an e2e spec matches the e2e-test name pattern, whatever its prior name or extension.",
+      "The e2e runner's file selection targets the e2e-test pattern and the unit/acceptance test runner collects no browser spec."
+    ],
+    "verification": [
+      "Severity 3; disposition strict.",
+      "The check establishes that a file is an e2e spec from its content — e2e-framework import plus test declarations, per the profile's e2e-test role assignment — and inspects the content of every non-excluded file without pre-filtering by current name or extension, so a misnamed input is still detected; path or extension alone cannot establish the fact, and a content observer is required.",
+      "Independently of change events, a full-tree content scan also catches pre-existing violations that no current change touched.",
+      "This check owns its exact exclusion classification rather than deferring to the stack-wide excluded-roots list: vendored and generated trees are never scanned, and the e2e runner's configuration file (per the profile's config name pattern) and fixture modules that only extend the test-declaration surface without declaring tests are skipped; the exclusions scope the check only and never narrow which file names or extensions are otherwise inspected.",
+      "A test file bound to a train or journey artifact through the stack's header binding syntax is still judged as an e2e spec when misnamed, but that binding is identification context only, not an independent naming trigger — the naming obligation still requires the e2e-framework import and test declarations; a unit test that merely mentions such a URN inside a string is not an e2e spec."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "imports_e2e_framework+declares_tests"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "file_created",
+            "file_renamed",
+            "file_edited",
+            "e2e_framework_import_added",
+            "test_declaration_added"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "A newly created file recognised as an e2e spec is named with a unit- or acceptance-test pattern instead of the stack's e2e-test pattern.",
+        "An existing helper file that already imports the e2e framework is edited to add a test declaration and keeps a name outside the e2e-test pattern.",
+        "A test file bound to a train or journey artifact that imports the e2e framework and declares tests is named with a unit- or acceptance-test pattern instead of the e2e-test pattern.",
+        "An e2e spec whose name matches one of the e2e-test pattern's allowed variants is checked and passes."
+      ],
+      "doesNotFire": [
+        "A file under a vendored or generated tree.",
+        "A unit or acceptance test that does not import the e2e framework, even if its header carries a train or journey binding.",
+        "The e2e runner's configuration file, or a fixture module that only extends the test-declaration surface and declares no tests.",
+        "A unit test that merely mentions a train or journey URN inside a string."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roles.assignment",
+      "meaning": "How a file is assigned the e2e-test role by content, and that a file without that assignment is out of scope for this rule, not a violation.",
+      "bunValue": "imports `@playwright/test` AND declares `test(...)` or `test.describe(...)`; a file without both is out of scope"
+    },
+    {
+      "key": "suffix.e2e_test",
+      "meaning": "The e2e-test file-name patterns an e2e spec must match (including allowed variants).",
+      "bunValue": "`*.e2e.ts` (`.e2e.js`, `.e2e.mjs`, `.e2e.tsx` variants allowed)"
+    },
+    {
+      "key": "suffix.unit_test",
+      "meaning": "The unit-test name pattern the unit/acceptance test runner auto-collects; an e2e spec must not carry it.",
+      "bunValue": "`*.test.*` (a name `bun test` collects)"
+    },
+    {
+      "key": "suffix.acceptance_test",
+      "meaning": "The acceptance-test name pattern the unit/acceptance test runner auto-collects; an e2e spec must not carry it.",
+      "bunValue": "`*.spec.*` (a name `bun test` collects)"
+    },
+    {
+      "key": "suffix.config",
+      "meaning": "The name pattern of the e2e runner's configuration file, which this check skips.",
+      "bunValue": "`playwright.config.*`"
+    },
+    {
+      "key": "tooling.test_runner",
+      "meaning": "The unit/acceptance test runner that auto-collects test files by name pattern and would run a misnamed e2e spec under the wrong runner.",
+      "bunValue": "`bun test` (runs unit, acceptance and smoke tests)"
+    },
+    {
+      "key": "urn.binding.train",
+      "meaning": "The header syntax by which a test file binds itself to a train artifact (identification context for judging a misnamed spec).",
+      "bunValue": "`// Train:`, `// URN: test:train:…`"
+    },
+    {
+      "key": "urn.binding.journey",
+      "meaning": "The header syntax by which a test file binds itself to a journey artifact (identification context for judging a misnamed spec).",
+      "bunValue": "`// Journey:`, `// URN: test:journey:…`"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "prefer[0]",
+      "text": "Rename `login.spec.ts` to `login.e2e.ts` and point Playwright's `testMatch` at `**/*.e2e.ts`.",
+      "reason": "The concrete rename example and the e2e runner's concrete selection setting (Playwright's `testMatch` targeting `**/*.e2e.ts`) are realization details: the profile supplies the accepted naming variants (suffix.e2e_test), not this runner-selection target, so the exact recommendation is preserved here."
+    },
+    {
+      "item": "evidence[1]",
+      "text": "Playwright's `testMatch` targets `**/*.e2e.ts` and `bun test` collects no browser spec.",
+      "reason": "The concrete evidence names the runner's selection target `**/*.e2e.ts`, a realization configuration separate from the allowed filename variants; restored here so the Bun evidence is not weakened."
+    },
+    {
+      "item": "unless[0]",
+      "text": "Vendored and generated trees (`node_modules`, `dist`, `build`, `_generated`) are never scanned.",
+      "reason": "This check owns its exact exclusion classification; the concrete tree list is stack-specific, and the core's verification keeps the role-level exclusion without redefining the stack-wide excluded-roots list."
+    },
+    {
+      "item": "unless[2]",
+      "text": "fixture modules that only extend `test` declare no tests and are out of scope",
+      "reason": "The concrete test-extension construct (`test` extension) belongs to this stack's e2e framework; the core keeps the role-level 'extend the test-declaration surface without declaring tests'. The configuration file name `playwright.config.*` is carried by suffix.config."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "Detector `htmx_e2e_detector`; required name `*.e2e.ts` with `.js`, `.mjs`, `.tsx` variants accepted.",
+      "reason": "Detector/validator ids of this rule are realization details (not profile keys); the concrete required name is carried by suffix.e2e_test, and the core states the check generically."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "text": "Term id `browser_spec`; the wording 'a `*.e2e.ts` file run by Playwright'.",
+      "reason": "The term identifier and the runner-specific wording belong to this realization; the core keeps the identification context generic and takes the concrete suffix from suffix.e2e_test."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "text": "Skip `node_modules`, `dist`, `build`, `_generated`, `playwright.config.*`, and fixture modules that only extend `test` without declaring tests.",
+      "reason": "This check's exact skip list is stack-specific: the trees are listed in bunOnly (unless[0]) and the configuration file name comes from suffix.config; the core's verification keeps the deference to the check's own classification."
+    },
+    {
+      "item": "activation.facts[2]",
+      "text": "Exclusion globs `!**/node_modules/**`, `!**/dist/**`, `!**/build/**`, `!**/_generated/**`, `!**/playwright.config.*` (exclusions only; these never narrow which file names or extensions are inspected otherwise).",
+      "reason": "The exact glob list of this check is a realization detail; the core keeps the role-level scope and the never-narrow caveat in verification."
+    },
+    {
+      "item": "activation.facts[3]",
+      "text": "language fact: `typescript`, `javascript` — 'Bun/htmx browser tester stack; @playwright/test imports occur in TS/JS sources.'",
+      "reason": "The language scope of this e2e content detector need not coincide with the profile's production-source languages (tooling.languages documents those), so the detector's language scope is retained explicitly in the realization rather than through a profile key."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:roles.assignment"
+      ],
+      "note": "Neutralised to 'recognised as an e2e spec by content'; the concrete import-and-declaration recognition that assigns the e2e_test role instantiates through roles.assignment."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Already stack-neutral: create/rename/edit/scan."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "profile:suffix.e2e_test"
+      ],
+      "note": "One obligation: match the e2e-test name pattern; the pattern itself (and its allowed variants) is profile data."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why",
+        "profile:tooling.test_runner",
+        "profile:suffix.unit_test",
+        "profile:suffix.acceptance_test"
+      ],
+      "note": "The wrong-runner collision is neutral; the collecting runner instantiates via tooling.test_runner and the collected name patterns via the existing suffix role keys."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]",
+        "bunOnly"
+      ],
+      "note": "Neutral counterpart: rename to the e2e-test pattern and point the e2e runner's selection at it; the concrete Playwright testMatch example and its `**/*.e2e.ts` target are preserved in bunOnly."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]",
+        "profile:tooling.test_runner"
+      ],
+      "note": "Role-level already: unit/acceptance runner vs e2e runner, neither collects the other's files; the concrete runner name comes from the profile."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]",
+        "profile:suffix.unit_test",
+        "profile:suffix.acceptance_test"
+      ],
+      "note": "Neutral: naming an e2e spec with a unit- or acceptance-test pattern; the concrete collected patterns (`*.spec.*`, `*.test.*`) instantiate through the existing suffix role keys."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Neutral: ad-hoc filter instead of renaming."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]",
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Role-level: vendored/generated trees are never scanned, and this check owns the exact classification (kept in verification); the concrete tree list stays in the realization rather than redefining the stack-wide roots.excluded key."
+    },
+    {
+      "item": "unless[1]",
+      "as": [
+        "core:unless[1]",
+        "profile:roles.assignment"
+      ],
+      "note": "Neutral: files without the e2e_test role assignment (no e2e-framework import and test declarations) are out of scope, not violations."
+    },
+    {
+      "item": "unless[2]",
+      "as": [
+        "core:unless[2]",
+        "profile:suffix.config",
+        "bunOnly"
+      ],
+      "note": "Role-level: the e2e runner's configuration file and declaration-free fixture modules are out of scope; the concrete configuration-file name pattern `playwright.config.*` is carried by suffix.config, and the stack's test-extension construct wording is bunOnly."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "profile:suffix.e2e_test"
+      ],
+      "note": "Neutral: every non-excluded e2e spec matches the pattern; the pattern list instantiates from the profile."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]",
+        "profile:tooling.test_runner",
+        "bunOnly"
+      ],
+      "note": "Neutral: e2e runner selection targets the e2e pattern, unit runner collects no browser spec; the concrete Playwright testMatch target `**/*.e2e.ts` is restored in bunOnly."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "profile:suffix.e2e_test",
+        "bunOnly"
+      ],
+      "note": "Content-based recognition, no name/extension pre-filter and full-scope inspection go to core verification; the required name pattern instantiates from suffix.e2e_test; the detector id is bunOnly."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "profile:urn.binding.train",
+        "profile:urn.binding.journey",
+        "bunOnly"
+      ],
+      "note": "Identification context (not an independent trigger) is kept generically in core verification; the header binding syntaxes instantiate through the urn.binding keys; the term id and Playwright wording are bunOnly."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Neutral as-is: a unit test that merely mentions a journey URN in a string is not an e2e spec."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification",
+        "profile:suffix.config",
+        "bunOnly"
+      ],
+      "note": "The check's own exact skip list is stated in core verification at role level; the configuration-file name pattern comes from suffix.config; the concrete tree list and construct wording are bunOnly."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Severity and disposition are per-rule, carried in core verification (not profile keys)."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "core:verification",
+        "profile:roles.assignment"
+      ],
+      "note": "Becomes the neutral file_kind fact (content-level, needs a new observer, no name pre-filter — also stated in verification); the concrete recognition idiom instantiates from roles.assignment."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]",
+        "core:verification"
+      ],
+      "note": "Change fact kept with neutral values (e2e_framework_import_added for the stack-specific import event); the full-tree scan catching pre-existing violations goes to verification."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Path-glob exclusions are this check's scan scope, not a neutral trigger fact; the core states the role-level exclusion and the never-narrow caveat in verification, and the exact globs stay in the realization."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "The detector's language scope (typescript, javascript) is retained explicitly in the realization: tooling.languages documents production-source languages, which need not coincide with this content check's scope."
+    }
+  ],
+  "neutralityNotes": "The obligation itself is fully neutral: an e2e spec must carry the stack's e2e-test name pattern so the unit/acceptance runner never collects it. Everything concrete instantiates from existing profile keys: the e2e-test role assignment by content (roles.assignment), the e2e-test name patterns (suffix.e2e_test), the unit- and acceptance-test patterns the runner auto-collects (suffix.unit_test, suffix.acceptance_test), the e2e runner's configuration-file name (suffix.config), the unit/acceptance runner (tooling.test_runner), and train/journey header bindings (urn.binding.train, urn.binding.journey). Per the audit, three things deliberately do NOT go through the profile: (1) this check owns its exact exclusion classification, so the concrete tree and config skips stay in core verification at role level plus bunOnly, not in the stack-wide roots.excluded key; (2) the detector's language scope is retained in the realization because tooling.languages documents production-source languages; (3) the e2e runner's selection target (Playwright's testMatch at `**/*.e2e.ts`) is a realization configuration distinct from the accepted filename variants and is preserved in bunOnly. Remaining realization details in bunOnly: detector and term ids (htmx_e2e_detector, browser_spec), the exact skip globs, and the stack's test-extension construct. Severity and disposition stay in core verification per the not-profile-keys rule.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/tester.htmx.e2e-spec-naming.json",
+      "sha256": "acef96e4916b21998e267fb8af4044f8af460a9eed2a6c033875018595752367"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

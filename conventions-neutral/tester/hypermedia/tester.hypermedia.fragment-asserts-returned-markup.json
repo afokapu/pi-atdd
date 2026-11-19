@@ -1,0 +1,334 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "tester.hypermedia.fragment-asserts-returned-markup",
+  "legacyId": "tester.htmx.fragment-asserts-returned-markup",
+  "core": {
+    "title": "Assert on the returned markup fragment, not just the status",
+    "given": "In a test within a markup-fragment hypermedia stack (a stack-level membership fact: the application serves markup fragments; not a per-endpoint response-contract test), a test case performs an actual HTTP request against the served application (not a direct unit call of the boundary handler) and asserts on the response status or success flag",
+    "when": "the tester writes or changes that test case",
+    "then": "The test case MUST also assert on the response body; reaching the body in any form — reading it, parsing it, or asserting on its content with a markup/content matcher — satisfies the rule.",
+    "prefer": [
+      "Assert on the returned fragment, not just the status line: keep the status assertion, then reach the body and assert on the markup it returns — for example on the element id that a later fragment swap targets.",
+      "When the response is a markup fragment, make the body assertion check the fragment contract — the declarative markup attributes, the element ids later swaps (including out-of-band swaps) target, and the structure — as in the reference example."
+    ],
+    "avoid": [
+      "Status-only tests: asserting on the response status or success flag and stopping — proves the route exists and nothing about what the user will see."
+    ],
+    "unless": [
+      "The case does not perform an HTTP request (out of scope).",
+      "The case never asserts on status (out of scope). Note: asserting on the response's success flag counts as a status assertion, so a success-flag-only case is in scope."
+    ],
+    "why": "In a payload API the contract is the payload, and status plus a parsed field is a complete test; in a hypermedia stack the contract is the markup (the declarative attributes, the element ids later swaps target, the structure) swapped into the live DOM. A status-only test misses a refactor dropping an id that a sibling fragment's out-of-band swap needs, which fails silently at runtime.",
+    "evidence": [
+      "Every in-scope test case that performs an HTTP request and asserts on status or the success flag also reaches the body by reading it, parsing it, or a markup/content matcher.",
+      "The stack's tester-discipline check reports zero findings for the changed test files."
+    ],
+    "verification": [
+      "Flag a test case that performs an actual HTTP request, asserts on the response status or success flag, and never reaches the response body (by reading it, parsing it, or asserting on its content).",
+      "Reaching the body in any form — reading it, parsing it, or a content/markup matcher on the returned markup — satisfies the rule.",
+      "Skip test cases that perform no HTTP request, including direct unit calls of a boundary handler that return a response object; skip cases that never assert on status (a success-flag assertion counts as a status assertion).",
+      "Severity 3; disposition strict: the check fails on every finding; there is no advisory mode and no ratchet baseline.",
+      "Scope: only test files of stacks that realize this rule (paradigmatically, markup-fragment hypermedia stacks) — a stack-level membership fact determined by the realization, not a per-endpoint response-contract test. Within an in-scope stack, the check covers every test case that performs an HTTP request and asserts on status or the success flag, regardless of the individual endpoint's response contract; no payload-endpoint exclusion is added."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "test"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "hypermedia_stack_test"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "operation",
+          "values": [
+            "actual_http_request_in_test_case"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "status_asserted_body_never_reached"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "In a hypermedia-stack test file, a test case performs an HTTP request against the served application, asserts on the response status, and ends without reaching the body.",
+        "In a hypermedia-stack test file, a test case performs an HTTP request and asserts only on the response's success flag, with no body read, parse, or markup/content assertion on the response."
+      ],
+      "doesNotFire": [
+        "A test case that performs no HTTP request, including a direct unit call of a boundary handler that returns a response object and asserts its status.",
+        "A test case that performs an HTTP request but never asserts on status or the success flag.",
+        "A test case that asserts on status or the success flag and also reaches the body by reading it, parsing it, or a markup/content matcher.",
+        "Test suites outside the realizing markup-fragment stack (this rule has no counterpart in the tester extensions of other stacks) — a stack-level exclusion, not a per-endpoint one."
+      ]
+    }
+  },
+  "profileRequirements": [],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "prefer[0]",
+      "text": "Assert on the fragment, not just the status line:\n  expect(res.status).toBe(200);\n  const html = await res.text();\n  expect(html).toContain('id=\"order-1\"');   // the id a later oob swap targets",
+      "reason": "Concrete test-runner/response assertion idioms (expect/toBe, .text(), toContain) are the Bun realization of 'reach the body and assert on the markup'; the core keeps the role-level preference and bun.json remains the reference example."
+    },
+    {
+      "item": "prefer[1]",
+      "text": "For htmx fragments, make the body assertion check the fragment contract (hx-attributes, ids later oob swaps target, structure), as in the example above.",
+      "reason": "htmx's attribute vocabulary (hx-*, out-of-band swap ids) is the stack's concrete realization of the neutral 'declarative markup attributes and later swap targets'."
+    },
+    {
+      "item": "why",
+      "text": "A status-only test misses a refactor dropping an id a sibling's hx-swap-oob needs, which fails silently at runtime (see coder.htmx.swap-oob-carries-id).",
+      "reason": "Names the htmx attribute (hx-swap-oob) and a Bun-side companion rule id; the neutral core describes the silent runtime failure generically without the legacy cross-reference."
+    },
+    {
+      "item": "evidence[1]",
+      "text": "htmx_tester_detector reports zero findings for the changed test files.",
+      "reason": "Detector/validator ids of this one rule are realization details; the core's evidence names the check generically (the stack's tester-discipline check)."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "Flag a test case that fetches, asserts on `status`/`ok`, and never reaches `.text()` / `.json()` / a `toContain` / `toMatch` / markup assertion.",
+      "reason": "The exact request idiom (fetch) and the exact body-reaching constructs the detector recognises are runner/framework idioms; the core verification states them generically."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "text": "Reaching the body in any form — `.text()`, `.json()`, a markup matcher — satisfies the rule.",
+      "reason": "The enumerated satisfaction forms are the stack's response-idiom realization; the core says 'read it, parse it, or match its content'."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "text": "Term fragment_contract: the returned markup itself — hx-attributes, the element ids later out-of-band swaps target, and the structure. In htmx this IS the interface, where a JSON API has a payload.",
+      "reason": "The htmx attribute names and the htmx-vs-JSON framing are the Bun realization of the neutral markup-contract argument; the neutral version lives in core.why and core.prefer[1]."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "text": "Scope: Bun/htmx stack test files only.",
+      "reason": "Names the Bun/htmx stack; the core scopes by stack-level membership in stacks that realize the rule (paradigmatically markup-fragment stacks) and explicitly adds no per-endpoint response-contract exclusion."
+    },
+    {
+      "item": "activation.facts[1]",
+      "text": "fact language, values [typescript, javascript], observable_now — Bun test files are TS/JS; language alone does NOT establish the stack.",
+      "reason": "The test-file language gate is a Bun activation prerequisite carried entirely by the realization: tooling.languages documents production-source languages and is not used for it, and language alone does not establish stack membership."
+    },
+    {
+      "item": "activation.facts[2]",
+      "text": "fact file_kind, values [bun_htmx_stack_test], needs_new_observer — the repository/test belongs to the Bun/htmx stack (e.g. test runner is bun:test and the app serves htmx fragments).",
+      "reason": "Stack identity and its concrete marks (test runner bun:test, app serves htmx fragments) are realization data; the core keeps only the paradigm-level membership fact (hypermedia_stack_test) and each realization determines membership itself."
+    },
+    {
+      "item": "activation.facts[4]",
+      "text": "Detector finding (htmx_tester_detector): case asserts on status or ok and never reaches .text()/.json()/toContain/toMatch/markup assertion.",
+      "reason": "The detector id and the concrete constructs it recognises are realization details; the core keeps the neutral finding fact (status asserted, body never reached)."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given"
+      ],
+      "note": "Neutralized: 'Bun/htmx stack test' -> a test within a markup-fragment hypermedia stack, stated as a stack-level membership fact (the application serves markup fragments), never a per-endpoint response-contract condition; 'ok' -> success flag; 'direct handler call' -> direct unit call of the boundary handler."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then"
+      ],
+      "note": "One obligation kept; the enumerated satisfaction forms (.text(), .json(), markup matcher) are the realization's idioms and are carried by bunOnly under verifier_detail[1]."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why",
+        "bunOnly"
+      ],
+      "note": "The payload-vs-markup contract argument is neutral and kept; the htmx attribute name and the legacy cross-rule id stay bunOnly."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]",
+        "bunOnly"
+      ],
+      "note": "Core keeps the role-level preference (assert status, then reach the body and assert on the markup); the concrete code example is the Bun reference and is not repeated."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]",
+        "bunOnly"
+      ],
+      "note": "Neutralized: htmx fragment -> markup fragment; hx-attributes -> declarative markup attributes; oob swap kept as the paradigm-level 'out-of-band swap'. The 'when the response is a markup fragment' condition is advisory content about what to assert on, mirroring 'For htmx fragments' — not a scope condition."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Neutralized: 'expect(res.status).toBe(200) or res.ok' -> asserting on the response status or success flag; 'route' retained (boundary role)."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]"
+      ],
+      "note": "Already neutral; scope exclusion, no exception dropped."
+    },
+    {
+      "item": "unless[1]",
+      "as": [
+        "core:unless[1]"
+      ],
+      "note": "'res.ok counts as a status assertion' neutralized to 'the response's success flag counts as a status assertion'."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]"
+      ],
+      "note": "Neutralized: Bun/htmx -> in-scope (markup-fragment stack) tests; .text()/.json()/toContain/toMatch -> read, parse, or markup/content matcher."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]",
+        "bunOnly"
+      ],
+      "note": "Generic 'tester-discipline check reports zero findings' in the core; the detector id htmx_tester_detector is bunOnly."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Generic flag condition in core verification, conditioned only on HTTP request + status/success assertion + body never reached (no endpoint-contract condition); fetch and the concrete body-reaching constructs are bunOnly."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Generic satisfaction rule in core verification; the enumerated constructs are bunOnly so the Bun obligation is reconstructed exactly."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Neutralized: 'handler unit calls returning a Response' -> direct unit calls of a boundary handler returning a response object; ok -> success flag."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:avoid[0]",
+        "core:verification"
+      ],
+      "note": "Term status_only_test neutralizes to 'status-only test' (status or success flag, never reaching the body); restates avoid[0]."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:why",
+        "core:prefer[1]",
+        "bunOnly"
+      ],
+      "note": "The markup-contract argument feeds why and prefer[1]; the htmx attribute names and 'In htmx this IS the interface' framing are bunOnly."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Severity and disposition are per-rule, not profile keys: strict (fails on every finding; no advisory mode, no ratchet baseline) recorded in core verification."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Stack-level scope (test files of stacks that realize this rule; within such a stack every qualifying case is covered regardless of the endpoint's response contract, with no payload-endpoint exclusion) in core verification; the Bun/htmx stack name is bunOnly."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]"
+      ],
+      "note": "file_kind=test is neutral and observable now; how test files are recognised is each realization's file-kind machinery."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "The Bun test-file language gate (typescript/javascript; language alone does not establish the stack) is realization data. Not a profile key: tooling.languages documents production-source languages, so it is not used here (round-2 fix)."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[1]",
+        "bunOnly"
+      ],
+      "note": "Neutralized to file_kind=hypermedia_stack_test (stack-level membership: the application serves markup fragments), needs_new_observer; each realization determines membership by its own marks (in Bun: bun:test runner + htmx fragments). No profile key is used for membership, per the vocabulary's closed meanings (round-2 fix)."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[2]"
+      ],
+      "note": "Neutral as-is: an actual HTTP request in the test case; 'fetch' generalized to an HTTP request against the served application; direct boundary-handler unit calls explicitly do not satisfy it."
+    },
+    {
+      "item": "activation.facts[4]",
+      "as": [
+        "core:activation.facts[3]",
+        "bunOnly"
+      ],
+      "note": "The finding (status asserted, body never reached) is kept neutrally; the detector id and its concrete construct list are bunOnly."
+    }
+  ],
+  "neutralityNotes": "Round-2 fixes: (1) Scope is now purely stack-level, matching bun.json's Bun/htmx stack-membership scoping. A stack is in scope when it realizes this rule (paradigmatically, a markup-fragment hypermedia stack); within an in-scope stack the check covers every test case that performs an HTTP request and asserts on status or the success flag, regardless of the individual endpoint's response contract — the previous per-endpoint markup requirement (in fires) and payload-API exclusion (in verification) are removed. (2) idiom.markup_kinds is no longer referenced: its documented meaning is artifact kinds that carry declarative request/gate constructs, which this core never needs. (3) The Bun test-file language gate is carried entirely by the realization (bunOnly, activation.facts[1]); tooling.languages keeps its production-source meaning. Stack membership (in Bun: test runner bun:test and the app serves htmx fragments) is realization data, so no new profile key is proposed and profileRequirements is empty — the obligation itself is fully neutral. The concrete forms of reaching the body (.text(), .json(), toContain, toMatch, markup assertion), the status/success assertion idioms, and the detector/validator ids (htmx_tester_detector) are realization details in bunOnly; the core states them generically as 'read the body, parse it, or match its content'. 'res.ok' is generalized to 'success flag'; the finding name status_asserted_body_never_reached names no stack and is kept in the neutral core. The legacy cross-reference coder.htmx.swap-oob-carries-id stays bunOnly. Severity 3 and the strict disposition are in core verification, not the profile, per the closed vocabulary.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/tester.htmx.fragment-asserts-returned-markup.json",
+      "sha256": "722451b7d0e116125fef78ccb207370c2f9067d093a324f75ada96380084615e"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}
