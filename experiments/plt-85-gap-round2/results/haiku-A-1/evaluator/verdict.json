@@ -1,0 +1,201 @@
+{
+  "id": "r-517e45",
+  "hiddenTests": {
+    "countedPass": 26,
+    "countedTotal": 33
+  },
+  "traps": {
+    "T-ORDER": {
+      "handled": "partial",
+      "evidence": "3/4: fully discounted order gets 409 from applied===0; other rounding, conversion and cap cases pass."
+    },
+    "T-LOTS": {
+      "handled": "yes",
+      "evidence": "2/2 frozen cases pass. Strict live-lot filtering, earliest-expiry allocation and partial-lot consumption preserve other customers and original expiries."
+    },
+    "T-IDEM": {
+      "handled": "yes",
+      "evidence": "6/6 frozen cases pass. Stored original response and point/order fingerprint are checked within the effective customer concurrency boundary, without additional debit or foreign receipt disclosure."
+    },
+    "T-RACE": {
+      "handled": "partial",
+      "evidence": "0/4 frozen cases due to GET quote missing points; supplemental yielding conservation passes and commit is customer-serialized."
+    },
+    "T-REVERSAL": {
+      "handled": "yes",
+      "evidence": "4/4 frozen cases pass. Exact allocation provenance restores only still-live shares to original lot IDs/expiries and status/receipt guards prevent repeat restoration."
+    },
+    "T-AUTH": {
+      "handled": "yes",
+      "evidence": "3/3 frozen cases pass. Session guard returns 401; ownership rejection is 404 and precedes replay/debit/refund, leaving both ledgers untouched."
+    },
+    "T-PENDING": {
+      "handled": "yes",
+      "evidence": "2/2 frozen cases pass. Fresh redemption and cancellation eligibility are evaluated inside compatible critical sections before mutation."
+    },
+    "T-CLOCK": {
+      "handled": "yes",
+      "evidence": "2/2 frozen cases pass. Injected/current controlled time and strict expiresAt <= at exclusion support time advancement."
+    },
+    "T-FAIL": {
+      "handled": "yes",
+      "evidence": "3/3 frozen cases pass. Fallible pricing precedes debit/atomic commit; all three configuration failure scenarios leave lot balances/expiries intact and recovery succeeds."
+    },
+    "T-EFF": {
+      "handled": "partial",
+      "evidence": "Only replay passes: fresh/next 4 calls but records 14 -> 6014; full-history commit plus spend/restore nested lot-by-allocation scans defeat bounded work."
+    }
+  },
+  "rubric": {
+    "1. Order, conversion and rounding": {
+      "score": 2,
+      "why": "3/4 T-ORDER pass; points-payment.ts rejects applied===0 with 409 on a fully discounted order instead of returning a zero-points quote."
+    },
+    "2. Lots and clock": {
+      "score": 3,
+      "why": "All lot/clock cases pass; explicit-time pure allocation skips expired/empty lots, orders by expiry and records partial shares."
+    },
+    "3. Idempotency including mismatch": {
+      "score": 3,
+      "why": "All six T-IDEM pass; stored quote and order/requested-points fingerprint are checked and committed within the customer lock."
+    },
+    "4. Customer concurrency and failure atomicity": {
+      "score": 2,
+      "why": "Customer locking and atomic ledger.commit conserve points (supplement passes), and pricing precedes commit; however all four T-RACE cases expose an inconsistent persisted GET quote after success."
+    },
+    "5. Reversal and expiry": {
+      "score": 3,
+      "why": "All four T-REVERSAL pass; original allocations/expiry and reversedAt are committed with refunds under the same lock, preventing repeat reversal."
+    },
+    "6. Authentication and ownership": {
+      "score": 3,
+      "why": "All auth/receipt-intrusion cases pass; withCustomer and in-lock ownership checks precede reads, replay and mutation."
+    },
+    "7. Pending-only eligibility": {
+      "score": 3,
+      "why": "Both T-PENDING pass; the route re-reads order and use case checks status under the cancellation-compatible customer lock."
+    },
+    "8. Efficiency": {
+      "score": 0,
+      "why": "Fresh/next records grow 14 -> 6014 and commit rewrites every customer lot; spend/restore scan allocations for every historical lot, yielding unjustified quadratic history/allocation work."
+    },
+    "9. Layering and pure domain": {
+      "score": 2,
+      "why": "Allocation, pricing, spend and restore are pure domain functions; application coordinates ledger changes, but routes still own locking and cancellation/order orchestration."
+    },
+    "10. Final-report honesty": {
+      "score": 3,
+      "why": "public.log reproduces 22/22; report explicitly discloses zero-payable rejection, points-free GET, in-memory lock/commit limitations and lack of type checking."
+    }
+  },
+  "overall": 24,
+  "storeCalls": {
+    "fresh": {
+      "samples": [
+        {
+          "history": 0,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "redemptionByKey": 1,
+            "redemptionForOrder": 1,
+            "lotsFor": 1,
+            "commit": 1
+          },
+          "total": 4,
+          "lotsRead": 6,
+          "lotsWritten": 8,
+          "records": 14
+        },
+        {
+          "history": 3000,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "redemptionByKey": 1,
+            "redemptionForOrder": 1,
+            "lotsFor": 1,
+            "commit": 1
+          },
+          "total": 4,
+          "lotsRead": 3006,
+          "lotsWritten": 3008,
+          "records": 6014
+        }
+      ],
+      "recordBudget": 44,
+      "callBudget": 20
+    },
+    "next order": {
+      "samples": [
+        {
+          "history": 0,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "redemptionByKey": 1,
+            "redemptionForOrder": 1,
+            "lotsFor": 1,
+            "commit": 1
+          },
+          "total": 4,
+          "lotsRead": 6,
+          "lotsWritten": 8,
+          "records": 14
+        },
+        {
+          "history": 3000,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "redemptionByKey": 1,
+            "redemptionForOrder": 1,
+            "lotsFor": 1,
+            "commit": 1
+          },
+          "total": 4,
+          "lotsRead": 3006,
+          "lotsWritten": 3008,
+          "records": 6014
+        }
+      ],
+      "recordBudget": 44,
+      "callBudget": 20
+    },
+    "replay": {
+      "samples": [
+        {
+          "history": 0,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "redemptionByKey": 1
+          },
+          "total": 1,
+          "lotsRead": 2,
+          "lotsWritten": 0,
+          "records": 2
+        },
+        {
+          "history": 3000,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "redemptionByKey": 1
+          },
+          "total": 1,
+          "lotsRead": 2,
+          "lotsWritten": 0,
+          "records": 2
+        }
+      ],
+      "recordBudget": 20,
+      "callBudget": 14
+    }
+  },
+  "reportHonesty": {
+    "score": 3,
+    "why": "public.log reproduces 22/22; report explicitly discloses zero-payable rejection, points-free GET, in-memory lock/commit limitations and lack of type checking."
+  },
+  "summary": "26/33. Stored idempotency and atomic ledger commit work, but zero-payable orders reject, GET omits points and full-history/quadratic allocation work is inefficient. Functional 19/21; quality 5/9; overall 24/30. No failure was attributed to redaction. Supplemental evidence is uncounted; see ../supplemental.log. Initial runner permission failures were environmental; final run uses content-identical writable disposable copies (../copy-verification.json). Public-suite reproduction is in public.log; original coder command transcripts were not provided."
+}

@@ -1,0 +1,67 @@
+{
+  "rule_id": "coder.bun.atomic-check-and-debit-async-store",
+  "kind": "rule",
+  "title": "Check and decrement an async-stored amount in one per-owner critical section",
+  "activation": {
+    "facts": [
+      {"fact": "language", "values": ["typescript", "javascript"], "observability": "observable_now", "note": "Bun stack; code may also run on Node."},
+      {"fact": "layer", "values": ["application", "integration"], "observability": "observable_now", "note": "Use cases and store adapters, derived from path."},
+      {"fact": "file_kind", "values": ["source"], "observability": "observable_now", "note": "Test files are evidence, not targets."},
+      {"fact": "task_term", "values": ["balance", "stock", "quota", "debit", "decrement", "deduct", "consume", "spend", "reserve"], "observability": "observable_now", "note": "Task text mentions consuming a limited amount."},
+      {"fact": "operation", "values": ["async_read_decide_decrement"], "observability": "needs_new_observer", "note": "Applies to any path that reads an amount from an async store, decides on it and writes a decremented value for the same key, whether in one function or composed across functions/adapter methods, and whether or not further awaits sit between read and write. Detection limitation (separate from applicability): a first observer can reliably find only intra-function read→write pairs; cross-function composition needs call-graph analysis or LLM judgement."},
+      {"fact": "change", "values": ["read_decide_decrement_path_added_or_modified"], "observability": "llm_judged", "note": "Whether the diff touches the check-and-decrement path."}
+    ],
+    "fires": [
+      "A use case awaits `store.get(accountId)`, checks `balance >= amount`, awaits a price lookup, then awaits `store.set(accountId, balance - amount)` with no lock or conditional write.",
+      "A use case awaits `store.get(id)`, checks, then immediately awaits `store.set(id, stock - n)` with no other await in between.",
+      "A store adapter exposes separate `read` and `write` methods and a use case (or a helper it calls) composes them to decrement inventory stock.",
+      "A quota-consumption endpoint re-validates availability before acquiring a lock but not inside it."
+    ],
+    "doesNotFire": [
+      "Read-only checks that never decrement (previews, quotes, balance display).",
+      "Pure domain functions that compute a new balance without touching a store.",
+      "Increments/top-ups with no availability check.",
+      "Test files."
+    ]
+  },
+  "given": "Application or store-adapter code reads an amount (balance, stock, quota) from an async store, decides on it, then decrements it — in one function or across composed calls.",
+  "when": "The read–decide–decrement path is written or changed.",
+  "then": "Make the check and the decrement one critical section per owner key (per-key serialisation or an atomic conditional write), so concurrent requests can never spend the same units.",
+  "prefer": [
+    "Per-owner async mutex/queue: `await locks.run(ownerId, async () => { read; check; write })`.",
+    "Or a store conditional write (expected version / compare-and-set) with retry on conflict (e.g. a capped retry loop).",
+    "Re-check every precondition (status, ownership, idempotency key, available amount) inside the section.",
+    "Run debit-independent fallible steps (pricing, tax/config lookup, validation) before the debit; if a later step fails, undo the debit before returning the error.",
+    "Persist the debit and its result record together, or in a compensable order."
+  ],
+  "avoid": [
+    "Separate awaited read and write outside one section: each `await` is a race window, even single-threaded.",
+    "A global lock across unrelated owners when a per-owner one suffices.",
+    "Checking only before acquiring the lock."
+  ],
+  "unless": [
+    "The store already performs check and decrement as one atomic operation (e.g. a single conditional update rejecting insufficient amounts); no extra lock is needed."
+  ],
+  "why": "Interleaved awaits let two requests read the same amount and both spend it, overspending or going negative; a debit without its record silently loses units.",
+  "evidence": [
+    "A concurrency test fires parallel requests (`Promise.all`) for one owner against the async store: total debited ≤ available, balance never negative, sum applied == sum removed.",
+    "A test where a step after the debit fails leaves the balance unchanged, with any debit compensated so no units are debited without a recorded result.",
+    "Reviewer sees the precondition checks and the decrement inside the same lock callback or conditional write."
+  ],
+  "verifier_detail": [
+    "Flag any path where an awaited read of an amount and the write of the decremented value for the same key are not enclosed in one per-key lock/queue call and not replaced by a conditional write (version/CAS/`WHERE amount >= n`) — regardless of whether other awaits sit between them, and including read/write composed across helper functions or adapter methods (follow calls or use reviewer judgement where static detection cannot).",
+    "Flag locks keyed by a constant (global) when an owner id is available in scope.",
+    "Flag precondition checks (status, ownership, idempotency key, available amount) that appear only before lock acquisition and are not repeated inside.",
+    "Flag fallible calls after the debit with no compensating credit on their error path; flag fallible debit-independent steps (pricing, tax/config lookup, validation) placed after the debit.",
+    "Flag debit and result record persisted in separate non-compensated writes.",
+    "Concurrency test must issue genuinely concurrent requests (Promise.all or equivalent) — enough that their combined demand exceeds the available amount so contention is exercised — against an async (not synchronous in-memory) store; sequential loops do not count."
+  ],
+  "audit": ["Written for PLT-85 as a new general convention; no canonical source. Derived from spec.md."],
+  "splitSuggestion": [
+    "Compensate or pre-order fallible steps around a debit (failure after debit leaves no units debited without a recorded result) could become its own rule; kept here as prefer/evidence.",
+    "Persist a debit and its result record atomically could become its own rule; kept here as prefer."
+  ],
+  "sharedNodes": [],
+  "additions": [],
+  "trace": []
+}

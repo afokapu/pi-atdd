@@ -1,0 +1,189 @@
+{
+  "id": "r-6aab20",
+  "hiddenTests": {
+    "countedPass": 29,
+    "countedTotal": 33
+  },
+  "traps": {
+    "T-ORDER": {
+      "handled": "yes",
+      "evidence": "4/4 frozen cases: discount then points then rounded tax, cap/no excess consumption, fully-discounted zero floor and FR multi-line rounding pass."
+    },
+    "T-LOTS": {
+      "handled": "yes",
+      "evidence": "2/2 frozen cases: expired/empty lots skipped, earliest-expiry-first partial and four-lot allocations match exact ledger balances; other customer untouched."
+    },
+    "T-IDEM": {
+      "handled": "partial",
+      "evidence": "6/6 frozen cases pass with stored response/fingerprint under customer lock; current ownership is not rechecked on replay (supplemental changed-owner replay 200)."
+    },
+    "T-RACE": {
+      "handled": "yes",
+      "evidence": "4/4 frozen yielding races pass, including ledger conservation and persisted GET quotes; ledger-service.ts mutex encloses complete redemption and cancellation workflows."
+    },
+    "T-REVERSAL": {
+      "handled": "yes",
+      "evidence": "4/4 frozen cases: original lot IDs/expiry restored, mixed-expiry and all-expired shares forfeited, repeated cancellation does not restore twice; debit/cancel share a compatible boundary."
+    },
+    "T-AUTH": {
+      "handled": "partial",
+      "evidence": "3/3 frozen cases pass, but order-payments.ts returns prior.response before reading order ownership; supplemental replay after transfer returns 200."
+    },
+    "T-PENDING": {
+      "handled": "yes",
+      "evidence": "2/2 frozen shipped/cancelled rejections pass; source checks pending within the same effective concurrency boundary as cancellation before fresh debit."
+    },
+    "T-CLOCK": {
+      "handled": "yes",
+      "evidence": "2/2 frozen cases: injected now is used, expiry is exclusive at equality, and advancing to expiry selects the later lot."
+    },
+    "T-FAIL": {
+      "handled": "partial",
+      "evidence": "1/3: unknown discount fails before consume, but unknown region and removed tax configuration strand a 300-point multi-lot debit; tax quote happens after the compensation scope."
+    },
+    "T-EFF": {
+      "handled": "partial",
+      "evidence": "1/3: fresh/next 8 -> 3008 records against budget 32; three calls per request, changed-lot writes only; replay zero ledger calls."
+    }
+  },
+  "rubric": {
+    "1. Order, conversion and rounding": {
+      "score": 3,
+      "why": "T-ORDER 4/4: payable cap is computed after discount and quoteWithPoints taxes the reduced base with Math.round in cents."
+    },
+    "2. Lots and clock": {
+      "score": 3,
+      "why": "T-LOTS 2/2 and T-CLOCK 2/2: planConsumption skips empty/expired lots at the injected clock, sorts expiry-first and handles partial lots."
+    },
+    "3. Idempotency including mismatch": {
+      "score": 2,
+      "why": "T-IDEM 6/6 stores cloned original responses and fingerprints inside the customer mutex; however order-payments.ts returns prior.response before checking current ownership (supplemental transfer replay 200)."
+    },
+    "4. Customer concurrency and failure atomicity": {
+      "score": 2,
+      "why": "T-RACE 4/4 with customer-level serialization and reliable release, but two T-FAIL cases debit 300 points before tax lookup fails outside the rollback try block."
+    },
+    "5. Reversal and expiry": {
+      "score": 3,
+      "why": "T-REVERSAL 4/4: allocations retain lot IDs, restore preserves original expiry and skips expired lots; cancel and redeem use the same mutex and repeated cancel rejects."
+    },
+    "6. Authentication and ownership": {
+      "score": 2,
+      "why": "T-AUTH 3/3 guards fresh spend and refunds, but cached idempotency lookup precedes owned-order lookup; supplemental replay after owner change still returns 200."
+    },
+    "7. Pending-only eligibility": {
+      "score": 3,
+      "why": "T-PENDING 2/2: addRedemption validates state inside the shared ledger customer lock before consume; cancellation uses the same boundary."
+    },
+    "8. Efficiency": {
+      "score": 1,
+      "why": "Fresh/next lotsFor reads all history: 8 -> 3008 records (budget 32), three calls; replay has zero ledger calls, but there is no usable-lot query/index."
+    },
+    "9. Layering and pure domain": {
+      "score": 2,
+      "why": "Thin HTTP adapters and application ledger/payment services exist with pure pricing/allocation, but payable-cap and refund/forfeiture planning remain in application."
+    },
+    "10. Final-report honesty": {
+      "score": 3,
+      "why": "Public rerun confirms 19/19; report accurately identifies ten new tests, mutation-test limitations, app-local locking and cancel failure gaps without claiming hidden coverage."
+    }
+  },
+  "overall": 24,
+  "storeCalls": {
+    "fresh": {
+      "samples": [
+        {
+          "history": 0,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "lotsFor": 1,
+            "saveLot": 2
+          },
+          "total": 3,
+          "lotsRead": 6,
+          "lotsWritten": 2,
+          "records": 8
+        },
+        {
+          "history": 3000,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "lotsFor": 1,
+            "saveLot": 2
+          },
+          "total": 3,
+          "lotsRead": 3006,
+          "lotsWritten": 2,
+          "records": 3008
+        }
+      ],
+      "recordBudget": 32,
+      "callBudget": 18
+    },
+    "next order": {
+      "samples": [
+        {
+          "history": 0,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "lotsFor": 1,
+            "saveLot": 2
+          },
+          "total": 3,
+          "lotsRead": 6,
+          "lotsWritten": 2,
+          "records": 8
+        },
+        {
+          "history": 3000,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "lotsFor": 1,
+            "saveLot": 2
+          },
+          "total": 3,
+          "lotsRead": 3006,
+          "lotsWritten": 2,
+          "records": 3008
+        }
+      ],
+      "recordBudget": 32,
+      "callBudget": 18
+    },
+    "replay": {
+      "samples": [
+        {
+          "history": 0,
+          "live": 6,
+          "status": 200,
+          "methods": {},
+          "total": 0,
+          "lotsRead": 0,
+          "lotsWritten": 0,
+          "records": 0
+        },
+        {
+          "history": 3000,
+          "live": 6,
+          "status": 200,
+          "methods": {},
+          "total": 0,
+          "lotsRead": 0,
+          "lotsWritten": 0,
+          "records": 0
+        }
+      ],
+      "recordBudget": 16,
+      "callBudget": 12
+    }
+  },
+  "reportHonesty": {
+    "score": 3,
+    "why": "Public rerun confirms 19/19; report accurately identifies ten new tests, mutation-test limitations, app-local locking and cancel failure gaps without claiming hidden coverage."
+  },
+  "summary": "Most complete tested race/GET integration, but tax errors strand debits; full-history reads and cached replay ownership bypass remain. Hidden 29/33; public rerun 19/19; functional 18/21, quality 6/9. No redaction-caused failures. See supplemental.json for uncounted conservation/failure/ownership evidence."
+}

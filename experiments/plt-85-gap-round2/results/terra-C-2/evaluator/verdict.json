@@ -1,0 +1,206 @@
+{
+  "id": "r-4e064f",
+  "hiddenTests": {
+    "countedPass": 27,
+    "countedTotal": 33
+  },
+  "traps": {
+    "T-ORDER": {
+      "handled": "yes",
+      "evidence": "4/4 counted pass; 4/4 T-ORDER pass; pure quoteWithPoints applies discount then capped points then rounded tax, with actual allocations matching the quote."
+    },
+    "T-LOTS": {
+      "handled": "yes",
+      "evidence": "2/2 counted pass; 4/4 lot/clock cases pass; validLotsFor filters strictly live/nonempty lots and sorts expiry, and allocation correctly consumes partial lots."
+    },
+    "T-IDEM": {
+      "handled": "yes",
+      "evidence": "6/6 counted pass; order stores cloned quote/requested points/allocations, replay authorizes first and executes inside withCustomerLock."
+    },
+    "T-RACE": {
+      "handled": "partial",
+      "evidence": "0/4 counted race tests fail because unchanged GET /quote omits redemption; customer-level read/debit/record lock conserves points in source and supplemental 400+100/500 probe."
+    },
+    "T-REVERSAL": {
+      "handled": "yes",
+      "evidence": "4/4 reversal cases pass; restoreLots reads original allocation IDs, checks cancellation-time expiry and same customer, and repeated cancel is blocked under the same lock."
+    },
+    "T-AUTH": {
+      "handled": "yes",
+      "evidence": "3/3 T-AUTH and foreign-key replay pass; ownedOrder precedes every replay/debit/refund, and ownership-change probe returns 404."
+    },
+    "T-PENDING": {
+      "handled": "yes",
+      "evidence": "2/2 T-PENDING pass; state checks are inside withCustomerLock and cancelled orders cannot gain a fresh redemption."
+    },
+    "T-CLOCK": {
+      "handled": "yes",
+      "evidence": "2/2 counted pass: controlled 2042 current time and advancing exactly to expiry both exclude expired lots; 4/4 lot/clock cases pass; validLotsFor filters strictly live/nonempty lots and sorts expiry, and allocation correctly consumes partial lots."
+    },
+    "T-FAIL": {
+      "handled": "partial",
+      "evidence": "3/3 pricing failure cases pass with both quotes before saveLots; no rollback if bulk lot writes or subsequent order publication fails."
+    },
+    "T-EFF": {
+      "handled": "partial",
+      "evidence": "Fresh records 16 -> 3016 and next 15 -> 3015 at 6 calls fail; replay 1 call/0 records passes. Customer index/filter exists but customerLots makes a full-history copy first."
+    }
+  },
+  "rubric": {
+    "1. Order, conversion and rounding": {
+      "score": 3,
+      "why": "4/4 T-ORDER pass; pure quoteWithPoints applies discount then capped points then rounded tax, with actual allocations matching the quote."
+    },
+    "2. Lots and clock": {
+      "score": 3,
+      "why": "4/4 lot/clock cases pass; validLotsFor filters strictly live/nonempty lots and sorts expiry, and allocation correctly consumes partial lots."
+    },
+    "3. Idempotency including mismatch": {
+      "score": 3,
+      "why": "6/6 T-IDEM pass; cloned immutable quote and request fingerprint live on the order, with ownership/lookup/publication under the same customer lock."
+    },
+    "4. Customer concurrency and failure atomicity": {
+      "score": 2,
+      "why": "Customer lock spans guards, usable-lot query, debit and order publication and is shared with cancel; all pricing failures pass, but saveLots followed by orders.save has no compensation."
+    },
+    "5. Reversal and expiry": {
+      "score": 3,
+      "why": "4/4 reversal cases pass; restoreLots reads original allocation IDs, checks cancellation-time expiry and same customer, and repeated cancel is blocked under the same lock."
+    },
+    "6. Authentication and ownership": {
+      "score": 3,
+      "why": "3/3 T-AUTH and foreign-key replay pass; ownedOrder precedes every replay/debit/refund, and ownership-change probe returns 404."
+    },
+    "7. Pending-only eligibility": {
+      "score": 3,
+      "why": "2/2 T-PENDING pass; state checks are inside withCustomerLock and cancelled orders cannot gain a fresh redemption."
+    },
+    "8. Efficiency": {
+      "score": 2,
+      "why": "Customer index and filtered validLotsFor query, changed-lot batch writes and cheap replay merit 2; query still calls customerLots to copy all history, failing fresh/next record budgets."
+    },
+    "9. Layering and pure domain": {
+      "score": 2,
+      "why": "Routes are adapters and application uses ports, but allocate/availablePoints/restore expiry business rules remain in loyalty-redemption.ts and expiry ordering in integration rather than pure domain."
+    },
+    "10. Final-report honesty": {
+      "score": 3,
+      "why": "Report precisely claims a customer index and batch methods (not an expiry index/bounded query), which exist; public 9/9 reproduce and no added acceptance-suite claim is made."
+    }
+  },
+  "overall": 27,
+  "storeCalls": {
+    "fresh": {
+      "samples": [
+        {
+          "history": 0,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "withCustomerLock": 1,
+            "validLotsFor": 1,
+            "customerLots": 1,
+            "saveLots": 1,
+            "put": 2
+          },
+          "total": 6,
+          "lotsRead": 12,
+          "lotsWritten": 4,
+          "records": 16
+        },
+        {
+          "history": 3000,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "withCustomerLock": 1,
+            "validLotsFor": 1,
+            "customerLots": 1,
+            "saveLots": 1,
+            "put": 2
+          },
+          "total": 6,
+          "lotsRead": 3012,
+          "lotsWritten": 4,
+          "records": 3016
+        }
+      ],
+      "recordBudget": 48,
+      "callBudget": 24
+    },
+    "next order": {
+      "samples": [
+        {
+          "history": 0,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "withCustomerLock": 1,
+            "validLotsFor": 1,
+            "customerLots": 1,
+            "saveLots": 1,
+            "put": 2
+          },
+          "total": 6,
+          "lotsRead": 11,
+          "lotsWritten": 4,
+          "records": 15
+        },
+        {
+          "history": 3000,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "withCustomerLock": 1,
+            "validLotsFor": 1,
+            "customerLots": 1,
+            "saveLots": 1,
+            "put": 2
+          },
+          "total": 6,
+          "lotsRead": 3011,
+          "lotsWritten": 4,
+          "records": 3015
+        }
+      ],
+      "recordBudget": 46,
+      "callBudget": 24
+    },
+    "replay": {
+      "samples": [
+        {
+          "history": 0,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "withCustomerLock": 1
+          },
+          "total": 1,
+          "lotsRead": 0,
+          "lotsWritten": 0,
+          "records": 0
+        },
+        {
+          "history": 3000,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "withCustomerLock": 1
+          },
+          "total": 1,
+          "lotsRead": 0,
+          "lotsWritten": 0,
+          "records": 0
+        }
+      ],
+      "recordBudget": 16,
+      "callBudget": 14
+    },
+    "review": "Fresh records 16 -> 3016 and next 15 -> 3015 at 6 calls fail; replay 1 call/0 records passes. Customer index/filter exists but customerLots makes a full-history copy first."
+  },
+  "reportHonesty": {
+    "score": 3,
+    "why": "Report precisely claims a customer index and batch methods (not an expiry index/bounded query), which exist; public 9/9 reproduce and no added acceptance-suite claim is made."
+  },
+  "summary": "Stored receipts, guards, reversal and customer lock are sound in ordinary operation; GET quote ignores points and usable query still copies history, with business rules left outside pure domain. Functional 20/21; quality 7/9.  Initial direct runner attempt failed on immutable copied-directory permissions; scored run uses a content-identical writable staging copy under this verdict directory. No redaction-caused test failure found. Supplemental probes are separate from the frozen 33 counted cases."
+}

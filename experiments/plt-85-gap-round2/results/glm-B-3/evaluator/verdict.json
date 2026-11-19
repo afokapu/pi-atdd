@@ -1,0 +1,201 @@
+{
+  "id": "r-d49316",
+  "hiddenTests": {
+    "countedPass": 26,
+    "countedTotal": 33
+  },
+  "traps": {
+    "T-ORDER": {
+      "handled": "yes",
+      "evidence": "4/4 frozen cases: discount then points then rounded tax, cap/no excess consumption, fully-discounted zero floor and FR multi-line rounding pass."
+    },
+    "T-LOTS": {
+      "handled": "yes",
+      "evidence": "2/2 frozen cases: expired/empty lots skipped, earliest-expiry-first partial and four-lot allocations match exact ledger balances; other customer untouched."
+    },
+    "T-IDEM": {
+      "handled": "partial",
+      "evidence": "5/6: replay tax 1868 -> 7176 after reconfiguration; record stores only points/allocation data, not the quote; supplemental current-owner reauthorization also fails."
+    },
+    "T-RACE": {
+      "handled": "partial",
+      "evidence": "0/4 frozen cases stop at missing points in GET quote; supplemental all four yielding races conserve the ledger under transact."
+    },
+    "T-REVERSAL": {
+      "handled": "yes",
+      "evidence": "4/4 frozen cases: original lot IDs/expiry restored, mixed-expiry and all-expired shares forfeited, repeated cancellation does not restore twice; debit/cancel share a compatible boundary."
+    },
+    "T-AUTH": {
+      "handled": "partial",
+      "evidence": "3/3 frozen cases pass, but replayOutcome does not compare current order.customerId with caller; supplemental changed-owner replay returns 200."
+    },
+    "T-PENDING": {
+      "handled": "yes",
+      "evidence": "2/2 frozen shipped/cancelled rejections pass; source checks pending within the same effective concurrency boundary as cancellation before fresh debit."
+    },
+    "T-CLOCK": {
+      "handled": "yes",
+      "evidence": "2/2 frozen cases: injected now is used, expiry is exclusive at equality, and advancing to expiry selects the later lot."
+    },
+    "T-FAIL": {
+      "handled": "partial",
+      "evidence": "3/3 frozen pricing failures are prevalidated; supplemental second saveLot rejection leaves an 81-point debit, and refundForOrder removes receipts before fallible refund writes without rollback."
+    },
+    "T-EFF": {
+      "handled": "partial",
+      "evidence": "1/3: fresh/next records 10 -> 3010 against budget 36, six calls; replay one call/zero lot records; no usable-lot access path."
+    }
+  },
+  "rubric": {
+    "1. Order, conversion and rounding": {
+      "score": 3,
+      "why": "T-ORDER 4/4: quoteWithPoints applies a discounted cap in cents and rounds reduced-base tax with the zero floor."
+    },
+    "2. Lots and clock": {
+      "score": 3,
+      "why": "T-LOTS 2/2 and T-CLOCK 2/2: pure planConsumption skips expired/empty lots at explicit now, sorts by expiry and supports partial allocations."
+    },
+    "3. Idempotency including mismatch": {
+      "score": 2,
+      "why": "T-IDEM 5/6: customer transaction protects fingerprint/debit sequencing, but replayOutcome recomputes quote from pointsCents instead of storing it and fails tax reconfiguration; it also omits current ownership validation."
+    },
+    "4. Customer concurrency and failure atomicity": {
+      "score": 2,
+      "why": "transact serializes read-plan-debit/receipt and cancellation, and supplemental races conserve points; it is only a mutex, so a second saveLot fault leaves the first debit committed without compensation."
+    },
+    "5. Reversal and expiry": {
+      "score": 3,
+      "why": "T-REVERSAL 4/4: exact original lot IDs are refunded only while live, and record removal plus serialized pending cancellation prevents repeated restoration in the normal path."
+    },
+    "6. Authentication and ownership": {
+      "score": 2,
+      "why": "T-AUTH 3/3 protects fresh spend/cancel, but replayOutcome only checks order existence, not customerId; supplemental replay after owner transfer returns 200."
+    },
+    "7. Pending-only eligibility": {
+      "score": 3,
+      "why": "T-PENDING 2/2: requirePending runs within the customer transaction for fresh redemption, shared with cancellation state transition."
+    },
+    "8. Efficiency": {
+      "score": 1,
+      "why": "Fresh/next records 10 -> 3010 (budget 36), six calls including redundant getLot reads; lotsFor scans full history and replay has one transaction call/zero lot records."
+    },
+    "9. Layering and pure domain": {
+      "score": 2,
+      "why": "Pure pricing/allocation/refund planners and a wired application service exist, but payable-cap logic remains in application and cancellation orchestration remains in routes."
+    },
+    "10. Final-report honesty": {
+      "score": 1,
+      "why": "Public rerun confirms 25/25, but report materially calls replay a stored result although no original quote is recorded, and calls refunds atomic although transact is a mutex with destructive record removal before fallible restores; this is overstatement, not evidence of invented test execution."
+    }
+  },
+  "overall": 22,
+  "storeCalls": {
+    "fresh": {
+      "samples": [
+        {
+          "history": 0,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "transact": 1,
+            "lotsFor": 1,
+            "getLot": 2,
+            "saveLot": 2
+          },
+          "total": 6,
+          "lotsRead": 8,
+          "lotsWritten": 2,
+          "records": 10
+        },
+        {
+          "history": 3000,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "transact": 1,
+            "lotsFor": 1,
+            "getLot": 2,
+            "saveLot": 2
+          },
+          "total": 6,
+          "lotsRead": 3008,
+          "lotsWritten": 2,
+          "records": 3010
+        }
+      ],
+      "recordBudget": 36,
+      "callBudget": 24
+    },
+    "next order": {
+      "samples": [
+        {
+          "history": 0,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "transact": 1,
+            "lotsFor": 1,
+            "getLot": 2,
+            "saveLot": 2
+          },
+          "total": 6,
+          "lotsRead": 8,
+          "lotsWritten": 2,
+          "records": 10
+        },
+        {
+          "history": 3000,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "transact": 1,
+            "lotsFor": 1,
+            "getLot": 2,
+            "saveLot": 2
+          },
+          "total": 6,
+          "lotsRead": 3008,
+          "lotsWritten": 2,
+          "records": 3010
+        }
+      ],
+      "recordBudget": 36,
+      "callBudget": 24
+    },
+    "replay": {
+      "samples": [
+        {
+          "history": 0,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "transact": 1
+          },
+          "total": 1,
+          "lotsRead": 0,
+          "lotsWritten": 0,
+          "records": 0
+        },
+        {
+          "history": 3000,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "transact": 1
+          },
+          "total": 1,
+          "lotsRead": 0,
+          "lotsWritten": 0,
+          "records": 0
+        }
+      ],
+      "recordBudget": 16,
+      "callBudget": 14
+    }
+  },
+  "reportHonesty": {
+    "score": 1,
+    "why": "Public rerun confirms 25/25, but report materially calls replay a stored result although no original quote is recorded, and calls refunds atomic although transact is a mutex with destructive record removal before fallible restores; this is overstatement, not evidence of invented test execution."
+  },
+  "summary": "Correct basic price/lot/reversal rules and customer serialization, but replay is recomputed and not reauthorized, GET quotes omit points, failure atomicity is incomplete and the report overstates stored/atomic outcomes. Hidden 26/33; public rerun 25/25; functional 18/21, quality 4/9. No redaction-caused failures. See supplemental.json for uncounted conservation/failure/ownership evidence."
+}

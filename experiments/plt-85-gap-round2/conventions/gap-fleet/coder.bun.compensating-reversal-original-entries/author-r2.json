@@ -1,0 +1,64 @@
+{
+  "rule_id": "coder.bun.compensating-reversal-original-entries",
+  "kind": "rule",
+  "title": "Reverse multi-entry consumption by restoring the recorded allocations to their original entries",
+  "activation": {
+    "facts": [
+      {"fact": "language", "values": ["typescript"], "observability": "observable_now", "note": "Bun conventions catalog; code may run on Node."},
+      {"fact": "layer", "values": ["application", "integration", "domain"], "observability": "observable_now", "note": "Consumption/reversal use cases, their store adapters and pure allocation logic."},
+      {"fact": "file_kind", "values": ["source"], "observability": "observable_now", "note": "Tests are evidence, not the target."},
+      {"fact": "task_term", "values": ["cancel", "refund", "void", "reverse", "undo", "compensate", "batch", "bucket", "allocation", "expiry", "cost basis"], "observability": "observable_now", "note": "Task text names an undo of an operation drawing from entries with their own attributes."},
+      {"fact": "operation", "values": ["multi_entry_consumption", "consumption_reversal"], "observability": "llm_judged", "note": "Whether code draws one amount from several source entries (each with validity window, cost basis, etc.) or undoes such a draw needs semantic judgment; a future observer could flag loops that decrement several entries inside one operation."}
+    ],
+    "fires": [
+      "A cancel/refund use case for a booking paid from several prepaid balance buckets, each with its own validity end date.",
+      "Voiding a stock issue that drew from several inventory batches with different cost bases.",
+      "Changing the consumption code so it splits a draw across entries (the allocation record must be added then)."
+    ],
+    "doesNotFire": [
+      "Undoing a change to a single fungible balance with no per-entry attributes.",
+      "A read-only report of entry balances.",
+      "Test-only changes."
+    ]
+  },
+  "given": "An operation consumes an amount from several source entries (buckets, batches) that carry their own attributes (validity end, cost basis), and it can be cancelled, refunded or voided.",
+  "when": "Implementing or changing that consumption or its reversal.",
+  "then": "Persist with the consuming operation one allocation (entryId, amount) per entry drawn, and reverse by restoring exactly those amounts to those same entries, applying the rules in force at the injected clock's reversal time.",
+  "prefer": [
+    "Store `allocations: {entryId, amount}[]` durably with the operation at consumption time (same record, or related rows in one transaction).",
+    "Reverse from the stored allocations: `if (isValid(entry, clock.now())) entry.remaining += a.amount; else forfeited.push(a)`; return `{ restored, forfeited }`.",
+    "Restore under the same lock/transaction discipline as consumption, guarded so it applies once (e.g. a reversed status checked and set in that section)."
+  ],
+  "avoid": [
+    "Rebuilding allocations from current balances or replaying FIFO at reversal time.",
+    "Issuing a new generic credit with fresh validity or cost basis, even when an original entry is gone.",
+    "`Date.now()`/`new Date()` or the consumption timestamp for validity checks.",
+    "Restoring outside the consumption's critical section, or restoring twice."
+  ],
+  "unless": [
+    "A single fungible balance with no per-entry attributes needs no allocation list."
+  ],
+  "why": "Current state cannot tell which entries were drawn, and a fresh credit erases validity or cost basis; restoring the recorded allocations under today's rules is the only exact reversal.",
+  "evidence": [
+    "A test consumes across at least two entries, reverses, and asserts each entry's remaining amount is back to its pre-consumption value with the same entry id and unchanged attributes (validity end, cost basis) and that no new entries were created.",
+    "A test advances the injected clock past one entry's validity end before reversing and asserts that entry's portion is not restored, the others are, and the outcome reports restored vs forfeited amounts.",
+    "A test reverses the same operation twice (including concurrently where the stack allows) and asserts amounts are restored exactly once.",
+    "Reviewer sees the allocation list durably captured and associated with the consuming operation at consumption time (same record or transactionally related records), and the reversal reading only that list."
+  ],
+  "verifier_detail": [
+    "Allocation record: per drawn entry, the entry id and amount, stored with (or keyed to) the consuming operation at consumption time, atomically with the consumption; its absence on a multi-entry draw is a violation.",
+    "Reversal code that queries current entry balances/order to decide what to restore (instead of reading stored allocations) is a violation.",
+    "Reversal that inserts a new entry/credit rather than incrementing the original entries is always a violation. If an original entry no longer exists or is no longer valid at reversal time, its amount is forfeited per domain policy and reported as forfeited; no replacement credit is created.",
+    "Time-dependent checks in reversal must use the injected clock dependency; direct `Date.now()`, `new Date()` or use of the operation's consumption timestamp is flagged.",
+    "Outcome must distinguish restored and forfeited amounts (per entry); forfeiting follows the domain policy for entries no longer valid at reversal time.",
+    "Idempotency: a second (or concurrent) reversal must not restore amounts again. Mechanism is free (e.g. a reversed status, a unique reversal record, a version check); what a repeat call returns is not prescribed by this rule.",
+    "Critical section: reversal uses the same locking/transaction discipline (per-account lock, serializable transaction, optimistic version check) as the consumption."
+  ],
+  "audit": [
+    "Written for PLT-85 as a new general convention from spec.md; no canonical source YAML. Revision round 2: removed replacement-credit exception, relaxed same-write evidence to durable/transactional capture, made idempotency mechanism an example."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [],
+  "trace": []
+}

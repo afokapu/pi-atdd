@@ -1,0 +1,67 @@
+{
+  "rule_id": "coder.bun.money-integer-minor-units-adjustment-order",
+  "kind": "rule",
+  "title": "Compute payable amounts in integer minor units, reductions before tax",
+  "activation": {
+    "facts": [
+      {"fact": "language", "values": ["typescript"], "observability": "observable_now", "note": "Bun conventions catalog; code may run on Node."},
+      {"fact": "file_kind", "values": ["source"], "observability": "observable_now", "note": "Tests are the evidence, not the subject."},
+      {"fact": "layer", "values": ["domain", "application", "routes"], "observability": "observable_now", "note": "Domain is where the calculation belongs; application/routes fire when money arithmetic appears there instead."},
+      {"fact": "task_term", "values": ["price", "total", "subtotal", "discount", "voucher", "credit", "tax", "VAT", "invoice", "checkout", "balance", "wallet", "amount due"], "observability": "observable_now", "note": "Task text mentions pricing, adjustments or tax."},
+      {"fact": "change", "values": ["added", "modified"], "observability": "observable_now", "note": "Code computing a payable amount is written or changed."},
+      {"fact": "operation", "values": ["monetary_arithmetic"], "observability": "needs_new_observer", "note": "Content observer: arithmetic (+ - * /, Math.round/floor/ceil, toFixed, parseFloat) on identifiers named like price/amount/total/discount/credit/tax/balance, or decimal literals in such expressions."},
+      {"fact": "finding", "values": ["adjustment_order_or_rounding_unclear"], "observability": "llm_judged", "note": "Whether reductions precede tax, rounding happens once per derived amount, and credits are consumed only up to the offset amount needs semantic judgement."}
+    ],
+    "fires": [
+      "A checkout/invoice function multiplies a decimal price by a tax rate and then subtracts a discount.",
+      "A use case applies a wallet or account-balance credit to an amount due and debits the full credit even when it exceeds the amount.",
+      "A route handler computes subtotal, discount and tax inline with floats and `toFixed(2)`.",
+      "A percentage voucher is converted to money and rounded at several intermediate steps."
+    ],
+    "doesNotFire": [
+      "Displaying/formatting an already-computed integer amount for the UI.",
+      "Non-monetary arithmetic (stock counts, quotas, durations).",
+      "Test files that assert on the calculation's outputs.",
+      "Passing an amount computed elsewhere through unchanged (persisting or forwarding it)."
+    ]
+  },
+  "given": "Code computes a payable amount from a base price, reductions (discounts, credits, stored value used as payment) and tax.",
+  "when": "That calculation is written or changed.",
+  "then": "Compute it in integer minor units, applying reductions before tax and taxing the reduced base, with exactly one explicit rounding step per derived amount.",
+  "prefer": [
+    "One pure domain function with explicit inputs returning every part: `price({subtotal, discount, credit, taxBps}) => {subtotal, discount, creditUsed, taxable, tax, total}`.",
+    "Order: discount, then credit/stored value, then `tax = Math.round(taxable * taxBps / 10_000)` once.",
+    "Convert other units (%, stored-value units) to minor units once, with a named integer rounding rule.",
+    "Clamp at 0 and consume only what offsets: `creditUsed = Math.min(credit, remaining)`; the rest stays untouched."
+  ],
+  "avoid": [
+    "Floats for money (`19.99`, `toFixed`, `* 1.2`) or re-rounding intermediate values.",
+    "Taxing the pre-reduction price; computing parts inside the route.",
+    "Negative totals; debiting or discarding a credit's unused excess."
+  ],
+  "unless": [
+    "The domain explicitly defines another order (tax-inclusive prices, credit applied after tax): implement and document that order, still in integer minor units."
+  ],
+  "why": "Float money and ad-hoc ordering yield off-by-a-cent totals, tax on money never charged and lost credit; one ordered integer computation is reproducible and testable.",
+  "evidence": [
+    "Unit tests of the pure function cover boundaries: reduction equal to the base, reduction larger than the base (total 0, excess credit not consumed), rounding half cases for tax and percentage conversion, and zero inputs.",
+    "Tests assert every returned component (subtotal, each reduction, taxable, tax, total), proving the order, not only the total.",
+    "Reviewer sees no floating-point money arithmetic and exactly one rounding call per derived amount; the route only parses input, calls the function and serialises the result."
+  ],
+  "verifier_detail": [
+    "Flag decimal literals, `parseFloat`, `toFixed`, or `/ 100` followed by further arithmetic on money-named identifiers in domain/application/routes source.",
+    "Flag more than one Math.round/floor/ceil on the same derived amount's data path, and rounding applied before the final step of a derived amount.",
+    "Flag tax computed from a value that has not had all reductions subtracted (unless a documented domain-specific order exists in code comments or docs).",
+    "Flag credit/stored-value consumption that uses the full credit rather than `min(credit, remaining)`, or totals that are not clamped at zero.",
+    "Flag money arithmetic spread across a route handler rather than a pure domain function with explicit rate/amount inputs.",
+    "Rates should be integers (e.g. hundredths of a percent, as in taxBps) or converted once; integer products must stay within Number.MAX_SAFE_INTEGER (use bigint if amounts can exceed it)."
+  ],
+  "audit": [
+    "Written for PLT-85 as a new general convention from spec.md; no canonical source YAML.",
+    "Supporting knowledge (pure domain function, returning all components, clamping and partial consumption, boundary tests) placed in prefer/avoid/evidence as supporting moves of the single obligation."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [],
+  "trace": []
+}

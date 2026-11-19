@@ -1,0 +1,210 @@
+{
+  "id": "r-7c9b86",
+  "hiddenTests": {
+    "countedPass": 27,
+    "countedTotal": 33
+  },
+  "traps": {
+    "T-ORDER": {
+      "handled": "yes",
+      "evidence": "4/4 counted pass; 4/4 T-ORDER pass; base discount cap then allocated cents then pure tax calculation produce correct integer-cent quotes and zero floors."
+    },
+    "T-LOTS": {
+      "handled": "yes",
+      "evidence": "2/2 counted pass; 4/4 lot/clock cases pass; allocatePoints takes explicit time, skips strict-expired/empty lots and consumes earliest-expiry partial lots."
+    },
+    "T-IDEM": {
+      "handled": "partial",
+      "evidence": "6/6 counted pass with saved response and fingerprint inside customer mutex, but getResponse returns before owned-order reauthorization; supplemental ownership-change replay returns 200."
+    },
+    "T-RACE": {
+      "handled": "partial",
+      "evidence": "0/4 counted race cases fail at GET quote ignoring points; source customer mutex and supplemental 400+100/500 probe show conserved actual debits."
+    },
+    "T-REVERSAL": {
+      "handled": "yes",
+      "evidence": "4/4 reversal cases pass; original allocation IDs and expiry checks restore only live shares, with cancellation status checked inside the compatible lock preventing repetition."
+    },
+    "T-AUTH": {
+      "handled": "partial",
+      "evidence": "3/3 ordinary auth cases and bob receipt test pass via customer scope, but replay bypasses current ownership and supplemental former-owner replay returns 200."
+    },
+    "T-PENDING": {
+      "handled": "yes",
+      "evidence": "2/2 pending tests pass; assertPending and cancel state validation run within the same customer mutex before new mutation."
+    },
+    "T-CLOCK": {
+      "handled": "yes",
+      "evidence": "2/2 counted pass: controlled 2042 current time and advancing exactly to expiry both exclude expired lots; 4/4 lot/clock cases pass; allocatePoints takes explicit time, skips strict-expired/empty lots and consumes earliest-expiry partial lots."
+    },
+    "T-FAIL": {
+      "handled": "partial",
+      "evidence": "3/3 pricing failures pass from pre-debit base quote; subsequent saveLot/addRedemption/saveResponse failures or post-debit repricing are not compensated."
+    },
+    "T-EFF": {
+      "handled": "partial",
+      "evidence": "Fresh/next records 8 -> 3008 at 7 calls fail; replay 1 call/0 records passes. Full-history reads remain despite allocation-proportional writes."
+    }
+  },
+  "rubric": {
+    "1. Order, conversion and rounding": {
+      "score": 3,
+      "why": "4/4 T-ORDER pass; base discount cap then allocated cents then pure tax calculation produce correct integer-cent quotes and zero floors."
+    },
+    "2. Lots and clock": {
+      "score": 3,
+      "why": "4/4 lot/clock cases pass; allocatePoints takes explicit time, skips strict-expired/empty lots and consumes earliest-expiry partial lots."
+    },
+    "3. Idempotency including mismatch": {
+      "score": 2,
+      "why": "6/6 T-IDEM pass with stored result/fingerprint under KeyedMutex, but response lookup precedes current owned-order authorization; ownership-change probe returns cached 200."
+    },
+    "4. Customer concurrency and failure atomicity": {
+      "score": 2,
+      "why": "Shared customer mutex encloses read-plan-write/receipt publication/cancel; 3/3 pricing failures pass, but lot/addRedemption/saveResponse writes lack compensation and GET state is inconsistent."
+    },
+    "5. Reversal and expiry": {
+      "score": 3,
+      "why": "4/4 reversal cases pass; original allocation IDs and expiry checks restore only live shares, with cancellation status checked inside the compatible lock preventing repetition."
+    },
+    "6. Authentication and ownership": {
+      "score": 2,
+      "why": "Ordinary 3/3 auth and foreign-customer receipt tests pass, but cached replay skips owned-order guard; a former owner still gets a 200 quote after ownership changes."
+    },
+    "7. Pending-only eligibility": {
+      "score": 3,
+      "why": "2/2 pending tests pass; assertPending and cancel state validation run within the same customer mutex before new mutation."
+    },
+    "8. Efficiency": {
+      "score": 1,
+      "why": "Fresh/next read lotsFor then filter/sort all customer history; records grow 8 -> 3008, while only changed lots are saved and replay is bounded."
+    },
+    "9. Layering and pure domain": {
+      "score": 2,
+      "why": "Application coordinates storage and pure allocation/pricing exist, but refund expiry decisions and cap arithmetic remain in application and route constructs locks/time wiring rather than createApp."
+    },
+    "10. Final-report honesty": {
+      "score": 3,
+      "why": "19/19 public tests reproduce; report candidly discloses stale GET quote, separate non-atomic writes, process-local locking and no typecheck, matching the diff."
+    }
+  },
+  "overall": 24,
+  "storeCalls": {
+    "fresh": {
+      "samples": [
+        {
+          "history": 0,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "getResponse": 1,
+            "getRedemption": 1,
+            "lotsFor": 1,
+            "saveLot": 2,
+            "addRedemption": 1,
+            "saveResponse": 1
+          },
+          "total": 7,
+          "lotsRead": 6,
+          "lotsWritten": 2,
+          "records": 8
+        },
+        {
+          "history": 3000,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "getResponse": 1,
+            "getRedemption": 1,
+            "lotsFor": 1,
+            "saveLot": 2,
+            "addRedemption": 1,
+            "saveResponse": 1
+          },
+          "total": 7,
+          "lotsRead": 3006,
+          "lotsWritten": 2,
+          "records": 3008
+        }
+      ],
+      "recordBudget": 32,
+      "callBudget": 26
+    },
+    "next order": {
+      "samples": [
+        {
+          "history": 0,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "getResponse": 1,
+            "getRedemption": 1,
+            "lotsFor": 1,
+            "saveLot": 2,
+            "addRedemption": 1,
+            "saveResponse": 1
+          },
+          "total": 7,
+          "lotsRead": 6,
+          "lotsWritten": 2,
+          "records": 8
+        },
+        {
+          "history": 3000,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "getResponse": 1,
+            "getRedemption": 1,
+            "lotsFor": 1,
+            "saveLot": 2,
+            "addRedemption": 1,
+            "saveResponse": 1
+          },
+          "total": 7,
+          "lotsRead": 3006,
+          "lotsWritten": 2,
+          "records": 3008
+        }
+      ],
+      "recordBudget": 32,
+      "callBudget": 26
+    },
+    "replay": {
+      "samples": [
+        {
+          "history": 0,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "getResponse": 1
+          },
+          "total": 1,
+          "lotsRead": 0,
+          "lotsWritten": 0,
+          "records": 0
+        },
+        {
+          "history": 3000,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "getResponse": 1
+          },
+          "total": 1,
+          "lotsRead": 0,
+          "lotsWritten": 0,
+          "records": 0
+        }
+      ],
+      "recordBudget": 16,
+      "callBudget": 14
+    },
+    "review": "Fresh/next records 8 -> 3008 at 7 calls fail; replay 1 call/0 records passes. Full-history reads remain despite allocation-proportional writes."
+  },
+  "reportHonesty": {
+    "score": 3,
+    "why": "19/19 public tests reproduce; report candidly discloses stale GET quote, separate non-atomic writes, process-local locking and no typecheck, matching the diff."
+  },
+  "summary": "Stored idempotency/customer serialization largely work, but cached ownership is not rechecked, GET ignores points, history is scanned and later write failures lack rollback; report candidly names most limitations. Functional 18/21; quality 6/9.  Initial direct runner attempt failed on immutable copied-directory permissions; scored run uses a content-identical writable staging copy under this verdict directory. No redaction-caused test failure found. Supplemental probes are separate from the frozen 33 counted cases."
+}

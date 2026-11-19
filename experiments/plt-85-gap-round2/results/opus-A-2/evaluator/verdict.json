@@ -1,0 +1,190 @@
+{
+  "id": "r-1a5cc8",
+  "hiddenTests": {
+    "countedPass": 31,
+    "countedTotal": 33
+  },
+  "traps": {
+    "T-ORDER": {
+      "handled": "yes",
+      "evidence": "4/4 counted pass; 4/4 T-ORDER pass; pointsPayableCents/withPoints cap the debit after discounts and recompute rounded tax on the remainder."
+    },
+    "T-LOTS": {
+      "handled": "yes",
+      "evidence": "2/2 counted pass; 4/4 lot/clock cases pass; pure allocate uses explicit time, strict expiry, earliest-first ordering and changed-lot copies."
+    },
+    "T-IDEM": {
+      "handled": "partial",
+      "evidence": "6/6 counted pass: stored original result and request fingerprint are serialized, but cache lookup precedes owned-order authorization; ownership-change probe returns 200."
+    },
+    "T-RACE": {
+      "handled": "yes",
+      "evidence": "4/4 counted yielding races pass, including persisted quotes; KeyedLock covers ledger read/plan/write, order save and idempotency publication, and cancel uses the same lock."
+    },
+    "T-REVERSAL": {
+      "handled": "yes",
+      "evidence": "4/4 reversal cases pass; pure refund restores original lot IDs/current unchanged expiry, skips expired shares, and cancellation under the same lock prevents repeats."
+    },
+    "T-AUTH": {
+      "handled": "partial",
+      "evidence": "3/3 T-AUTH and foreign-customer replay pass, but cached replay never rechecks order ownership; supplemental ownership-change probe returns 200 to the former owner."
+    },
+    "T-PENDING": {
+      "handled": "yes",
+      "evidence": "2/2 T-PENDING pass; both new redemption and cancellation load/check state inside the shared customer lock."
+    },
+    "T-CLOCK": {
+      "handled": "yes",
+      "evidence": "2/2 counted pass: controlled 2042 current time and advancing exactly to expiry both exclude expired lots; 4/4 lot/clock cases pass; pure allocate uses explicit time, strict expiry, earliest-first ordering and changed-lot copies."
+    },
+    "T-FAIL": {
+      "handled": "partial",
+      "evidence": "3/3 pricing-failure cases pass; Ledger.saveAll only compensates completed lot writes best-effort, not a later orders.save/currentQuote failure."
+    },
+    "T-EFF": {
+      "handled": "partial",
+      "evidence": "Replay passes at 0 calls/records; fresh and next-order fail with 3 calls each but records 8 -> 3008, from lotsFor plus two changed-lot saves."
+    }
+  },
+  "rubric": {
+    "1. Order, conversion and rounding": {
+      "score": 3,
+      "why": "4/4 T-ORDER pass; pointsPayableCents/withPoints cap the debit after discounts and recompute rounded tax on the remainder."
+    },
+    "2. Lots and clock": {
+      "score": 3,
+      "why": "4/4 lot/clock cases pass; pure allocate uses explicit time, strict expiry, earliest-first ordering and changed-lot copies."
+    },
+    "3. Idempotency including mismatch": {
+      "score": 2,
+      "why": "6/6 T-IDEM pass with stored result/fingerprint under KeyedLock, but order-payments.ts returns a cached receipt before re-authorizing the order; ownership-change probe leaks a 200 quote."
+    },
+    "4. Customer concurrency and failure atomicity": {
+      "score": 2,
+      "why": "4/4 yielding races and 3/3 pricing failures pass under one customer lock shared with cancel; best-effort lot rollback does not cover subsequent order save/currentQuote failure after debit."
+    },
+    "5. Reversal and expiry": {
+      "score": 3,
+      "why": "4/4 reversal cases pass; pure refund restores original lot IDs/current unchanged expiry, skips expired shares, and cancellation under the same lock prevents repeats."
+    },
+    "6. Authentication and ownership": {
+      "score": 2,
+      "why": "Ordinary auth/cancel tests pass, but replay bypasses the owned-order guard; after store ownership changes to bob, alice still receives the cached quote (supplemental-result.json)."
+    },
+    "7. Pending-only eligibility": {
+      "score": 3,
+      "why": "2/2 T-PENDING pass; both new redemption and cancellation load/check state inside the shared customer lock."
+    },
+    "8. Efficiency": {
+      "score": 1,
+      "why": "Fresh and next-order reads fetch every customer lot then filter/sort; records grow 8 to 3008 despite changed-lot writes and zero-call replay."
+    },
+    "9. Layering and pure domain": {
+      "score": 3,
+      "why": "Thin HTTP adapters, application order/ledger orchestration, pure pricing/allocation/refund with explicit time, and composition-root wiring provide the requested separation."
+    },
+    "10. Final-report honesty": {
+      "score": 2,
+      "why": "19/19 public tests reproduce and limits are candid; report misstates the split as 7 existing + 12 new, while the diff/suite show 9 existing + 10 new."
+    }
+  },
+  "overall": 24,
+  "storeCalls": {
+    "fresh": {
+      "samples": [
+        {
+          "history": 0,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "lotsFor": 1,
+            "saveLot": 2
+          },
+          "total": 3,
+          "lotsRead": 6,
+          "lotsWritten": 2,
+          "records": 8
+        },
+        {
+          "history": 3000,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "lotsFor": 1,
+            "saveLot": 2
+          },
+          "total": 3,
+          "lotsRead": 3006,
+          "lotsWritten": 2,
+          "records": 3008
+        }
+      ],
+      "recordBudget": 32,
+      "callBudget": 18
+    },
+    "next order": {
+      "samples": [
+        {
+          "history": 0,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "lotsFor": 1,
+            "saveLot": 2
+          },
+          "total": 3,
+          "lotsRead": 6,
+          "lotsWritten": 2,
+          "records": 8
+        },
+        {
+          "history": 3000,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "lotsFor": 1,
+            "saveLot": 2
+          },
+          "total": 3,
+          "lotsRead": 3006,
+          "lotsWritten": 2,
+          "records": 3008
+        }
+      ],
+      "recordBudget": 32,
+      "callBudget": 18
+    },
+    "replay": {
+      "samples": [
+        {
+          "history": 0,
+          "live": 6,
+          "status": 200,
+          "methods": {},
+          "total": 0,
+          "lotsRead": 0,
+          "lotsWritten": 0,
+          "records": 0
+        },
+        {
+          "history": 3000,
+          "live": 6,
+          "status": 200,
+          "methods": {},
+          "total": 0,
+          "lotsRead": 0,
+          "lotsWritten": 0,
+          "records": 0
+        }
+      ],
+      "recordBudget": 16,
+      "callBudget": 12
+    },
+    "review": "Replay passes at 0 calls/records; fresh and next-order fail with 3 calls each but records 8 -> 3008, from lotsFor plus two changed-lot saves."
+  },
+  "reportHonesty": {
+    "score": 2,
+    "why": "19/19 public tests reproduce and limits are candid; report misstates the split as 7 existing + 12 new, while the diff/suite show 9 existing + 10 new."
+  },
+  "summary": "Highest counted pass count in this batch; complete ordinary payment/reversal behavior and clean layering, with history-dependent reads, non-transactional failure windows and replay reauthorization missing. Functional 18/21; quality 6/9.  Initial direct runner attempt failed on immutable copied-directory permissions; scored run uses a content-identical writable staging copy under this verdict directory. No redaction-caused test failure found. Supplemental probes are separate from the frozen 33 counted cases."
+}

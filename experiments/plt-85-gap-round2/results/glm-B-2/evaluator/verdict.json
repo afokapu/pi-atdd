@@ -1,0 +1,190 @@
+{
+  "id": "r-2d7791",
+  "hiddenTests": {
+    "countedPass": 26,
+    "countedTotal": 33
+  },
+  "traps": {
+    "T-ORDER": {
+      "handled": "yes",
+      "evidence": "4/4 counted pass; 4/4 T-ORDER pass; planSpend and quoteWithPoints cap by amount/balance, floor at zero and round tax after discount/points."
+    },
+    "T-LOTS": {
+      "handled": "yes",
+      "evidence": "2/2 counted pass; 4/4 lot/clock cases pass; planSpend/planRefund use explicit time, strict expiry, expiry-sorted allocation and original lots."
+    },
+    "T-IDEM": {
+      "handled": "partial",
+      "evidence": "5/6 counted pass; cached original quote and locked recheck work, but another customer gets 409 rather than ownership denial, and current ownership is not rechecked for cached replay."
+    },
+    "T-RACE": {
+      "handled": "partial",
+      "evidence": "0/4 counted race tests fail at GET /quote missing points; supplemental probe reports 400+100 for 500 actually removed, supporting conservation under the customer queue."
+    },
+    "T-REVERSAL": {
+      "handled": "yes",
+      "evidence": "4/4 reversal cases pass; deductions restore original lots through planRefund, refunded flags and compatible customer serialization prevent repeated restoration."
+    },
+    "T-AUTH": {
+      "handled": "partial",
+      "evidence": "3/3 T-AUTH pass; owner-receipt intrusion fails T-IDEM because replayOrConflict returns 409 before owned-order check; transferred-order probe also discloses cached quote to former owner."
+    },
+    "T-PENDING": {
+      "handled": "yes",
+      "evidence": "2/2 T-PENDING pass; applyRedemption reloads and checks pending under the customer lock, and cancel status change is under that same boundary."
+    },
+    "T-CLOCK": {
+      "handled": "yes",
+      "evidence": "2/2 counted pass: controlled 2042 current time and advancing exactly to expiry both exclude expired lots; 4/4 lot/clock cases pass; planSpend/planRefund use explicit time, strict expiry, expiry-sorted allocation and original lots."
+    },
+    "T-FAIL": {
+      "handled": "partial",
+      "evidence": "3/3 configured pricing failures pass via pre-debit base quote; subsequent lot/receipt failures or the second pricing call after awaited debit have no compensation."
+    },
+    "T-EFF": {
+      "handled": "partial",
+      "evidence": "Fresh and next order fail at 8 -> 3008 records (3 calls each); receipt-only replay passes with no loyalty calls. Lots and redemption-history scans remain unindexed."
+    }
+  },
+  "rubric": {
+    "1. Order, conversion and rounding": {
+      "score": 3,
+      "why": "4/4 T-ORDER pass; planSpend and quoteWithPoints cap by amount/balance, floor at zero and round tax after discount/points."
+    },
+    "2. Lots and clock": {
+      "score": 3,
+      "why": "4/4 lot/clock cases pass; planSpend/planRefund use explicit time, strict expiry, expiry-sorted allocation and original lots."
+    },
+    "3. Idempotency including mismatch": {
+      "score": 2,
+      "why": "5/6 T-IDEM pass; saved quote and inner locked lookup prevent duplicate execution, but outer lookup bypasses ownership and returns 409 rather than 403/404 to another customer."
+    },
+    "4. Customer concurrency and failure atomicity": {
+      "score": 2,
+      "why": "Customer locked read-plan-write conserves points in supplemental probe, but four counted races expose stale GET quotes and separate debit/quote/receipt awaits lack compensation."
+    },
+    "5. Reversal and expiry": {
+      "score": 3,
+      "why": "4/4 reversal cases pass; deductions restore original lots through planRefund, refunded flags and compatible customer serialization prevent repeated restoration."
+    },
+    "6. Authentication and ownership": {
+      "score": 2,
+      "why": "Ordinary 3 auth cases pass, but receipt lookup precedes authorization: foreign receipt requests return 409, and ownership-change replay returns a 200 quote to the former owner."
+    },
+    "7. Pending-only eligibility": {
+      "score": 3,
+      "why": "2/2 T-PENDING pass; applyRedemption reloads and checks pending under the customer lock, and cancel status change is under that same boundary."
+    },
+    "8. Efficiency": {
+      "score": 1,
+      "why": "lotsFor copies all customer history for every fresh order and domain sorts it; fresh/next records 8 -> 3008, with cheap replay but no usable-lot index."
+    },
+    "9. Layering and pure domain": {
+      "score": 2,
+      "why": "Pricing/spend/refund rules are pure and routes delegate, but application results embed HTTP status codes and the service, rather than composition root, supplies fallback system time."
+    },
+    "10. Final-report honesty": {
+      "score": 3,
+      "why": "28/28 public tests reproduce; report accurately lists changes and discloses intentionally stale GET quotes and absent cross-store transactionality; historical tsc/mutation commands are not independently available."
+    }
+  },
+  "overall": 24,
+  "storeCalls": {
+    "fresh": {
+      "samples": [
+        {
+          "history": 0,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "lotsFor": 1,
+            "saveLot": 2
+          },
+          "total": 3,
+          "lotsRead": 6,
+          "lotsWritten": 2,
+          "records": 8
+        },
+        {
+          "history": 3000,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "lotsFor": 1,
+            "saveLot": 2
+          },
+          "total": 3,
+          "lotsRead": 3006,
+          "lotsWritten": 2,
+          "records": 3008
+        }
+      ],
+      "recordBudget": 32,
+      "callBudget": 18
+    },
+    "next order": {
+      "samples": [
+        {
+          "history": 0,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "lotsFor": 1,
+            "saveLot": 2
+          },
+          "total": 3,
+          "lotsRead": 6,
+          "lotsWritten": 2,
+          "records": 8
+        },
+        {
+          "history": 3000,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "lotsFor": 1,
+            "saveLot": 2
+          },
+          "total": 3,
+          "lotsRead": 3006,
+          "lotsWritten": 2,
+          "records": 3008
+        }
+      ],
+      "recordBudget": 32,
+      "callBudget": 18
+    },
+    "replay": {
+      "samples": [
+        {
+          "history": 0,
+          "live": 6,
+          "status": 200,
+          "methods": {},
+          "total": 0,
+          "lotsRead": 0,
+          "lotsWritten": 0,
+          "records": 0
+        },
+        {
+          "history": 3000,
+          "live": 6,
+          "status": 200,
+          "methods": {},
+          "total": 0,
+          "lotsRead": 0,
+          "lotsWritten": 0,
+          "records": 0
+        }
+      ],
+      "recordBudget": 16,
+      "callBudget": 12
+    },
+    "review": "Fresh and next order fail at 8 -> 3008 records (3 calls each); receipt-only replay passes with no loyalty calls. Lots and redemption-history scans remain unindexed."
+  },
+  "reportHonesty": {
+    "score": 3,
+    "why": "28/28 public tests reproduce; report accurately lists changes and discloses intentionally stale GET quotes and absent cross-store transactionality; historical tsc/mutation commands are not independently available."
+  },
+  "summary": "Stored idempotency and customer serialization are substantially implemented, but replay ownership ordering, stale GET pricing, broad history reads and uncompensated write failures remain. Functional 18/21; quality 6/9.  Initial direct runner attempt failed on immutable copied-directory permissions; scored run uses a content-identical writable staging copy under this verdict directory. No redaction-caused test failure found. Supplemental probes are separate from the frozen 33 counted cases."
+}

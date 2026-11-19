@@ -1,0 +1,99 @@
+{
+  "schema": "pi-atdd/plt-85/run/v1",
+  "runId": "haiku-B-2",
+  "provider": "pi-claude-cli",
+  "model": "claude-haiku-5-5",
+  "thinking": "medium",
+  "arm": "B",
+  "condition": "catalog",
+  "baseRevision": "4b404362e66414b4a53699f9c0122374cfc435c8",
+  "resultRevision": "a3cc70978a2af629ef2dbf6e1e8b03582cd12fee",
+  "startedAt": "2026-11-19T08:00:05.614Z",
+  "changed": [
+    "M\tsrc/app.ts",
+    "A\tsrc/loyalty/application/ledger.ts",
+    "M\tsrc/loyalty/domain/points.ts",
+    "A\tsrc/orders/application/cancel-order.ts",
+    "A\tsrc/orders/application/owned-order.ts",
+    "A\tsrc/orders/application/redeem-points.ts",
+    "M\tsrc/orders/domain/order.ts",
+    "M\tsrc/orders/integration/order-store.ts",
+    "A\tsrc/orders/routes/order-errors.ts",
+    "M\tsrc/orders/routes/order-routes.ts",
+    "A\tsrc/orders/routes/redeem-route.ts",
+    "M\tsrc/pricing/application/quote-service.ts",
+    "M\tsrc/pricing/domain/quote.ts",
+    "A\ttests/orders/redeem-order.acceptance.test.ts"
+  ],
+  "jjStatusBeforeSnapshot": "Working copy changes:\nM src/app.ts\nA src/loyalty/application/ledger.ts\nM src/loyalty/domain/points.ts\nA src/orders/application/cancel-order.ts\nA src/orders/application/owned-order.ts\nA src/orders/application/redeem-points.ts\nM src/orders/domain/order.ts\nM src/orders/integration/order-store.ts\nA src/orders/routes/order-errors.ts\nM src/orders/routes/order-routes.ts\nA src/orders/routes/redeem-route.ts\nM src/pricing/application/quote-service.ts\nM src/pricing/domain/quote.ts\nA tests/orders/redeem-order.acceptance.test.ts\nWorking copy  (@) : sottxoqk 4f7ff32e (no description set)\nParent commit (@-): tppvsqpq 4b404362 base | base: PLT-82 orders-service (points lots, async loyalty store); no redemption",
+  "run": {
+    "exit": 0,
+    "signal": null,
+    "timedOut": false,
+    "wallMs": 170528,
+    "provider": "pi-claude-cli",
+    "model": "claude-haiku-5-5",
+    "thinking": "medium",
+    "promptSha256": "7aa2e96f56821380766be9b742b6e2d7993a100fc89c65772e09e8e5280f154f",
+    "appendSystemPrompt": {
+      "sha256": "da51d395374f161ff8939ec9826dd36e349049c7f48fe92baf5ae53dc0ae1aec"
+    },
+    "argv": [
+      "--mode",
+      "json",
+      "--approve",
+      "--no-session",
+      "--no-mcp",
+      "--no-skills",
+      "--no-prompt-templates",
+      "--no-context-files",
+      "--no-themes",
+      "--no-extensions",
+      "-e",
+      "~/.pi/agents/forge/npm/node_modules/@saccolabs/pi-claude-cli/index.ts",
+      "--append-system-prompt",
+      "~/forge-evidence/pi-atdd/plt-85/conventions.md",
+      "--provider",
+      "pi-claude-cli",
+      "--model",
+      "claude-haiku-5-5",
+      "--thinking",
+      "medium",
+      "--",
+      "<prompt>"
+    ]
+  },
+  "quotaSuspect": false,
+  "metrics": {
+    "turns": 9,
+    "toolExecuted": 21,
+    "toolErrors": 0,
+    "byTool": {
+      "bash": 5,
+      "write": 10,
+      "edit": 6
+    },
+    "usage": {
+      "input": 18,
+      "output": 40163,
+      "cacheRead": 353412,
+      "cacheWrite": 69145,
+      "cost": 0.03744642
+    },
+    "stopReasons": [
+      "toolUse",
+      "toolUse",
+      "toolUse",
+      "toolUse",
+      "toolUse",
+      "toolUse",
+      "toolUse",
+      "toolUse",
+      "stop"
+    ],
+    "errorMessages": []
+  },
+  "finalReport": "`POST /orders/:id/redeem` is implemented and the full suite passes (21 tests, 12 of them new). I left the changes uncommitted in the working tree.\n\n**What changed**\n\n- **Pricing:** `quoteWithPoints` in `src/pricing/domain/quote.ts` applies points after discount and before tax, capped so the taxable amount never goes below zero. The existing `quote()` now delegates to it, so the `GET …/quote` output is unchanged.\n- **Lots:** `allocatePoints` and `restorable` in `src/loyalty/domain/points.ts` use non-expired lots, earliest expiry first. Each allocation records its lot id, points taken and expiry.\n- **Redeem:** `src/orders/application/redeem-points.ts` and `src/orders/routes/redeem-route.ts`. The redemption is stored on the order, which gives idempotency (replay of the same key and body, 409 for a different body) and the data a cancel needs.\n- **Cancel:** `src/orders/application/cancel-order.ts` returns points to their original lots and expiry. Lots that have expired by cancel time forfeit their points. The cancel route now calls this use case.\n- **Concurrency:** `src/loyalty/application/ledger.ts` has a per-customer lock. Redeem and cancel both run under it.\n- **Wiring:** `src/app.ts` passes `loyalty` and `now` to the order routes.\n- **Store:** `src/orders/integration/order-store.ts` deep-copies orders with `structuredClone`, so a stored redemption cannot be changed by mutation.\n\n**Verification**\n\n- I wrote `tests/orders/redeem-order.acceptance.test.ts`. It covers the earliest-expiry-first order, the exact cent arithmetic, excess points, expired lots, idempotent replay, key reuse with a different body, concurrent redemptions, a second key on the same order, cancel restoring original lots and expiry, forfeiture after expiry, ownership, shipped orders and invalid bodies.\n- I removed the lock for one run and the concurrency test failed, so it does exercise the lock. The lock is back in place and the suite is green.\n\n**Not done / unsure**\n\n- **Idempotency scope:** keys are scoped to the order, not the customer. Reusing a key on a different order is not treated as a conflict.\n- **One redemption per order:** a second redemption under a new key on the same order returns 409. I chose this rather than letting a redemption be replaced.\n- **Quote endpoint:** `GET /orders/:id/quote` still ignores redemptions, so it does not show points on a redeemed order. The redeem response does show them.\n- **Error shapes:** the new and cancel error responses now include `error_code`. Cancel's 409 changed from `{error}` to `{error, error_code}`.\n- **Order JSON:** orders now carry a `redemption` field in their JSON.\n- **Atomicity:** the in-memory stores have no transactions. If a lot write fails partway through a redemption, earlier debits are not rolled back. The lock is also process-local.\n- **Not run:** there is no `tsc` in the repo, so the code is untyped-checked (the tests run through Node type stripping). I did not run the project's ATDD/Bun detectors, and I did not check the comment-ratio or complexity rules.",
+  "blindId": "r-afbc49",
+  "batch": "batch-2"
+}

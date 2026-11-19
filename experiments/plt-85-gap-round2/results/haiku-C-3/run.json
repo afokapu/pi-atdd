@@ -1,0 +1,97 @@
+{
+  "schema": "pi-atdd/plt-85/run/v1",
+  "runId": "haiku-C-3",
+  "provider": "pi-claude-cli",
+  "model": "claude-haiku-5-5",
+  "thinking": "medium",
+  "arm": "C",
+  "condition": "catalog+gap",
+  "baseRevision": "4b404362e66414b4a53699f9c0122374cfc435c8",
+  "resultRevision": "ee079d2a6fc67d4d9d2dcfbe707b3919885269d0",
+  "startedAt": "2026-11-19T08:02:55.444Z",
+  "changed": [
+    "M\tsrc/app.ts",
+    "A\tsrc/common/keyed-lock.ts",
+    "M\tsrc/loyalty/domain/points.ts",
+    "M\tsrc/loyalty/integration/loyalty-store.ts",
+    "A\tsrc/orders/application/order-payments.ts",
+    "M\tsrc/orders/domain/order.ts",
+    "M\tsrc/orders/routes/order-routes.ts",
+    "M\tsrc/pricing/application/quote-service.ts",
+    "M\tsrc/pricing/domain/quote.ts",
+    "A\ttests/orders/redeem-order.test.ts"
+  ],
+  "jjStatusBeforeSnapshot": "Working copy changes:\nM src/app.ts\nA src/common/keyed-lock.ts\nM src/loyalty/domain/points.ts\nM src/loyalty/integration/loyalty-store.ts\nA src/orders/application/order-payments.ts\nM src/orders/domain/order.ts\nM src/orders/routes/order-routes.ts\nM src/pricing/application/quote-service.ts\nM src/pricing/domain/quote.ts\nA tests/orders/redeem-order.test.ts\nWorking copy  (@) : vzsoyxtq 6071297c (no description set)\nParent commit (@-): tppvsqpq 4b404362 base | base: PLT-82 orders-service (points lots, async loyalty store); no redemption",
+  "run": {
+    "exit": 0,
+    "signal": null,
+    "timedOut": false,
+    "wallMs": 189048,
+    "provider": "pi-claude-cli",
+    "model": "claude-haiku-5-5",
+    "thinking": "medium",
+    "promptSha256": "7aa2e96f56821380766be9b742b6e2d7993a100fc89c65772e09e8e5280f154f",
+    "appendSystemPrompt": {
+      "sha256": "f351995a247a60e0d0ad5ccb0ef09f35b01c616a570d7efc04118f727eccea87"
+    },
+    "argv": [
+      "--mode",
+      "json",
+      "--approve",
+      "--no-session",
+      "--no-mcp",
+      "--no-skills",
+      "--no-prompt-templates",
+      "--no-context-files",
+      "--no-themes",
+      "--no-extensions",
+      "-e",
+      "~/.pi/agents/forge/npm/node_modules/@saccolabs/pi-claude-cli/index.ts",
+      "--append-system-prompt",
+      "~/forge-evidence/pi-atdd/plt-85/conventions-c.md",
+      "--provider",
+      "pi-claude-cli",
+      "--model",
+      "claude-haiku-5-5",
+      "--thinking",
+      "medium",
+      "--",
+      "<prompt>"
+    ]
+  },
+  "quotaSuspect": false,
+  "metrics": {
+    "turns": 11,
+    "toolExecuted": 16,
+    "toolErrors": 0,
+    "byTool": {
+      "bash": 5,
+      "edit": 7,
+      "write": 4
+    },
+    "usage": {
+      "input": 22,
+      "output": 45447,
+      "cacheRead": 537201,
+      "cacheWrite": 77936,
+      "cost": 0.04368491
+    },
+    "stopReasons": [
+      "toolUse",
+      "toolUse",
+      "toolUse",
+      "toolUse",
+      "toolUse",
+      "toolUse",
+      "toolUse",
+      "toolUse",
+      "toolUse",
+      "toolUse",
+      "stop"
+    ],
+    "errorMessages": []
+  },
+  "finalReport": "LOY-002 is implemented. The full suite passes (24 tests, 15 new), and I did not commit anything.\n\n**What changed**\n\n- **Redeem route:** `POST /orders/:id/redeem` in `src/orders/routes/order-routes.ts`. Body `{ points, idempotencyKey }` (points a positive integer, key a non-empty string). Returns 200 with `{ region, subtotalCents, discountCents, pointsCents, taxCents, totalCents }`.\n- **Pricing:** `quoteWithPoints` in `src/pricing/domain/quote.ts` applies discount, then points (capped at the remaining amount), then tax. The existing `GET /quote` shape is unchanged.\n- **Ledger:** `src/loyalty/domain/points.ts` has earliest-expiry-first allocation and the restore/forfeit split. `src/loyalty/integration/loyalty-store.ts` stores redemption records (allocations, quote, reversed flag).\n- **Use cases:** `src/orders/application/order-payments.ts` holds redeem and cancel. Both run under a per-customer lock (`src/common/keyed-lock.ts`), created once in `src/app.ts`.\n- **Cancel:** now async. Cancelling a redeemed order restores points to their original lots and expiry, and forfeits points whose lot has expired.\n- **Tests:** `tests/orders/redeem-order.test.ts`.\n\n**Verification**\n\n- `npm test`: 24 pass, 0 fail.\n- I temporarily removed the lock: the concurrency test then accepted 4 redemptions of 300 points from a 1000-point balance. With the lock restored it accepts 3. The lock is what prevents the overspend.\n\n**Decisions you may want to change**\n\n- One redemption per order. A second redemption with a new key returns 409.\n- Points applied are `min(requested, amount)`. If the balance is below that, the request is rejected with 409 `INSUFFICIENT_POINTS`. Nothing is partially applied.\n- Idempotency is scoped per customer. A replay returns the stored quote, even if the order was cancelled later. A key reused with another order or another point count returns 422.\n- Errors carry an `error_code` field in addition to `error`.\n- `createApp` now honours the `now` option, which it previously ignored.\n\n**Not done or unsure**\n\n- The order record itself is not changed by redemption, so `GET /orders/:id/quote` still shows the pre-points total.\n- There is no type-check: the repo has no TypeScript dependency. Node only strips types at run time.\n- Multi-lot writes are not compensated. If a ledger write fails midway, the earlier writes stay. The in-memory store cannot fail on the validated values, but a real database could. Reversal has the same gap: a partial restore followed by a failure could double-restore on retry.\n- The lock only serialises calls within one process.\n- The cancel route now returns `error_code` on its errors as well.",
+  "blindId": "r-c4da81",
+  "batch": "batch-3"
+}

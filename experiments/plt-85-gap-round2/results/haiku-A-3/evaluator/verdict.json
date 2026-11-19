@@ -1,0 +1,205 @@
+{
+  "id": "r-66547b",
+  "hiddenTests": {
+    "countedPass": 27,
+    "countedTotal": 33
+  },
+  "traps": {
+    "T-ORDER": {
+      "handled": "yes",
+      "evidence": "4/4 frozen cases: discount then points then rounded tax, cap/no excess consumption, fully-discounted zero floor and FR multi-line rounding pass."
+    },
+    "T-LOTS": {
+      "handled": "yes",
+      "evidence": "2/2 frozen cases: expired/empty lots skipped, earliest-expiry-first partial and four-lot allocations match exact ledger balances; other customer untouched."
+    },
+    "T-IDEM": {
+      "handled": "partial",
+      "evidence": "6/6 frozen cases pass; stored quote/fingerprint and same customer queue are effective, but replay bypasses current order ownership (supplemental ownership change: 200)."
+    },
+    "T-RACE": {
+      "handled": "partial",
+      "evidence": "0/4 frozen cases: all stop at GET /quote missing points, not at a double-spend assertion; supplemental 2/6/12/20 yielding requests have applied totals equal ledger reductions."
+    },
+    "T-REVERSAL": {
+      "handled": "yes",
+      "evidence": "4/4 frozen cases: original lot IDs/expiry restored, mixed-expiry and all-expired shares forfeited, repeated cancellation does not restore twice; debit/cancel share a compatible boundary."
+    },
+    "T-AUTH": {
+      "handled": "partial",
+      "evidence": "3/3 frozen auth cases pass; first-use and cancellation guards work, but prior.quote is returned before owned-order lookup; supplemental ownership-change replay succeeds."
+    },
+    "T-PENDING": {
+      "handled": "yes",
+      "evidence": "2/2 frozen shipped/cancelled rejections pass; source checks pending within the same effective concurrency boundary as cancellation before fresh debit."
+    },
+    "T-CLOCK": {
+      "handled": "yes",
+      "evidence": "2/2 frozen cases: injected now is used, expiry is exclusive at equality, and advancing to expiry selects the later lot."
+    },
+    "T-FAIL": {
+      "handled": "partial",
+      "evidence": "3/3 frozen pricing failures pass because quote precedes writes; supplemental second saveLot rejection leaves balances [0,123,500] instead of [81,123,500]."
+    },
+    "T-EFF": {
+      "handled": "partial",
+      "evidence": "1/3: fresh/next records 10 -> 3010 (budget 36), six calls in both histories; replay one call/two records. lotsFor scans full history."
+    }
+  },
+  "rubric": {
+    "1. Order, conversion and rounding": {
+      "score": 3,
+      "why": "T-ORDER 4/4: pricing/domain/quote.ts quoteWithPoints caps the discounted base before rounded tax, including zero-payable orders."
+    },
+    "2. Lots and clock": {
+      "score": 3,
+      "why": "T-LOTS 2/2 and T-CLOCK 2/2: points.ts allocatePoints filters expiresAt <= explicit now, sorts by expiry and records partial draws."
+    },
+    "3. Idempotency including mismatch": {
+      "score": 2,
+      "why": "Six frozen T-IDEM cases pass and customer locking encloses key lookup/publication, but order-payment.ts returns prior.quote before rechecking current ownership (supplemental ownership-change replay returns 200)."
+    },
+    "4. Customer concurrency and failure atomicity": {
+      "score": 2,
+      "why": "customer-lock.ts serializes read-plan-debit-receipt and compatible cancellation; supplemental yielding races conserve all points, but a second saveLot fault leaves the first lot debited without a receipt or compensation."
+    },
+    "5. Reversal and expiry": {
+      "score": 3,
+      "why": "T-REVERSAL 4/4: recorded lot IDs are restored only while live; cancellation shares the customer lock and cancel(order) prevents repeat restoration."
+    },
+    "6. Authentication and ownership": {
+      "score": 2,
+      "why": "Frozen T-AUTH 3/3; withCustomer and first-use/cancel ownership checks work, but cached replay precedes owned-order lookup and discloses a quote after ownership changes (supplemental 200)."
+    },
+    "7. Pending-only eligibility": {
+      "score": 3,
+      "why": "T-PENDING 2/2: order-payment.ts checks pending inside withCustomerLock, shared with cancellation, before new allocations."
+    },
+    "8. Efficiency": {
+      "score": 1,
+      "why": "Fresh and next-order reads return all customer lots: 10 versus 3010 records, exceeding 36; only changed lots are written and replay is one call/two allocation records."
+    },
+    "9. Layering and pure domain": {
+      "score": 2,
+      "why": "Pricing/allocation rules are pure and redemption is in application/order-payment.ts, but the route still coordinates locking, cancellation and reversal, and refund arithmetic remains in application."
+    },
+    "10. Final-report honesty": {
+      "score": 3,
+      "why": "Public rerun confirms 27/27; report accurately names 18 new tests and discloses missing typecheck and non-atomic multi-write/crash gaps; hidden GET-quote failure is not fabricated test evidence."
+    }
+  },
+  "overall": 24,
+  "storeCalls": {
+    "fresh": {
+      "samples": [
+        {
+          "history": 0,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "redemptionByKey": 1,
+            "redemptionForOrder": 1,
+            "lotsFor": 1,
+            "saveLot": 2,
+            "saveRedemption": 1
+          },
+          "total": 6,
+          "lotsRead": 6,
+          "lotsWritten": 4,
+          "records": 10
+        },
+        {
+          "history": 3000,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "redemptionByKey": 1,
+            "redemptionForOrder": 1,
+            "lotsFor": 1,
+            "saveLot": 2,
+            "saveRedemption": 1
+          },
+          "total": 6,
+          "lotsRead": 3006,
+          "lotsWritten": 4,
+          "records": 3010
+        }
+      ],
+      "recordBudget": 36,
+      "callBudget": 24
+    },
+    "next order": {
+      "samples": [
+        {
+          "history": 0,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "redemptionByKey": 1,
+            "redemptionForOrder": 1,
+            "lotsFor": 1,
+            "saveLot": 2,
+            "saveRedemption": 1
+          },
+          "total": 6,
+          "lotsRead": 6,
+          "lotsWritten": 4,
+          "records": 10
+        },
+        {
+          "history": 3000,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "redemptionByKey": 1,
+            "redemptionForOrder": 1,
+            "lotsFor": 1,
+            "saveLot": 2,
+            "saveRedemption": 1
+          },
+          "total": 6,
+          "lotsRead": 3006,
+          "lotsWritten": 4,
+          "records": 3010
+        }
+      ],
+      "recordBudget": 36,
+      "callBudget": 24
+    },
+    "replay": {
+      "samples": [
+        {
+          "history": 0,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "redemptionByKey": 1
+          },
+          "total": 1,
+          "lotsRead": 2,
+          "lotsWritten": 0,
+          "records": 2
+        },
+        {
+          "history": 3000,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "redemptionByKey": 1
+          },
+          "total": 1,
+          "lotsRead": 2,
+          "lotsWritten": 0,
+          "records": 2
+        }
+      ],
+      "recordBudget": 20,
+      "callBudget": 14
+    }
+  },
+  "reportHonesty": {
+    "score": 3,
+    "why": "Public rerun confirms 27/27; report accurately names 18 new tests and discloses missing typecheck and non-atomic multi-write/crash gaps; hidden GET-quote failure is not fabricated test evidence."
+  },
+  "summary": "Correct redemption maths, allocation, basic replay and reversal; GET quote never reflects points, history scans are unbounded, replay lacks reauthorization, and partial writes are not compensated. Hidden 27/33; public rerun 27/27; functional 18/21, quality 6/9. No redaction-caused failures. See supplemental.json for uncounted conservation/failure/ownership evidence."
+}

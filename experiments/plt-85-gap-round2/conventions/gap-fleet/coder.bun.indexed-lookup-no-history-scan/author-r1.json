@@ -1,0 +1,64 @@
+{
+  "rule_id": "coder.bun.indexed-lookup-no-history-scan",
+  "kind": "rule",
+  "title": "Fetch an owner's needed subset by indexed query, write back only changed records",
+  "activation": {
+    "facts": [
+      {"fact": "language", "values": ["typescript"], "observability": "observable_now", "note": "Bun conventions catalog; code may run on Node."},
+      {"fact": "layer", "values": ["application", "routes", "integration"], "observability": "observable_now", "note": "Read/write happens in a use case or handler; the fix often lands in the store/adapter."},
+      {"fact": "file_kind", "values": ["source"], "observability": "observable_now", "note": "Test files excluded."},
+      {"fact": "task_term", "values": ["active", "valid", "open", "current", "expire", "balance", "history", "per owner"], "observability": "observable_now", "note": "Hints the task reads a filtered subset of an owner's records."},
+      {"fact": "operation", "values": ["full_collection_read_in_request_path", "in_memory_filter_after_store_read", "store_call_in_loop", "bulk_rewrite_of_owner_records"], "observability": "needs_new_observer", "note": "Static observer must flag `all()`/`list()`/unscoped reads followed by `.filter`/`.sort` in application/route code, awaited store calls inside loops, and save-all/replace-collection writes."},
+      {"fact": "finding", "values": ["store_calls_grow_with_history"], "observability": "llm_judged", "note": "Whether the read set is bounded by records actually used is judged by a reviewer or by a large-history test."}
+    ],
+    "fires": [
+      "A use case loads every record of an owner (or the whole collection) and filters to the currently valid ones in memory.",
+      "A handler sorts an owner's full history in application code to pick the oldest still-open entries.",
+      "A use case loops over ids and awaits one store `get` per id.",
+      "After changing two records, the code saves the owner's entire record list or the whole collection."
+    ],
+    "doesNotFire": [
+      "A store method that already queries by owner with filter/ordering in the adapter, called once per request.",
+      "Explicit full-history operations: export, audit report, migration, backfill.",
+      "Test fixtures that seed large histories.",
+      "Pure domain functions operating on an already-bounded list passed in."
+    ]
+  },
+  "given": "A use case or route handler needs a small filtered subset of one owner's records (e.g. currently valid balance entries, open invoices, active bookings) from a store that also keeps that owner's full history.",
+  "when": "It reads those records and persists the resulting changes.",
+  "then": "Fetch only the needed subset via a keyed store query (owner + filter + ordering pushed into the store/adapter) and write back only the changed records, so store calls and records touched per request do not grow with the owner's history.",
+  "prefer": [
+    "If missing, add a narrow adapter method, e.g. `findValidByOwner(ownerId: string, at: Date): Promise<Entry[]>` ordered by a key, backed by an index or per-owner structure.",
+    "Persist by id: `update(id, patch)` or `updateMany(changed)` for modified records only.",
+    "Batch lookups: `getByIds(ids)` in one call."
+  ],
+  "avoid": [
+    "`(await store.all()).filter(r => r.ownerId === id && r.open).sort(...)` in application code.",
+    "Rewriting the whole collection or every owner record after a few changed.",
+    "N+1: `for (const id of ids) await store.get(id)`.",
+    "Caching or call-count tricks that pass a test while still scanning history."
+  ],
+  "unless": [
+    "The operation's output is the full history itself (export, audit report, migration, backfill)."
+  ],
+  "why": "Request cost must track the records actually used, not the owner's age; scans of growing history become latency and memory failures for long-lived owners.",
+  "evidence": [
+    "A test seeds a large history (e.g. thousands of inactive/expired records for one owner) and asserts store calls and records read/written per request are bounded by the records actually used, unchanged as the history grows.",
+    "Reviewer sees no full-collection or full-owner read in the request path, no in-memory filter/sort of history in the application layer, no store call inside a loop, and writes keyed by id."
+  ],
+  "verifier_detail": [
+    "Flag in application/route code: calls to unscoped store reads (`all`, `list`, `findAll`, `getAll`, owner-wide `findByOwner` without filter) followed by `.filter`/`.sort`/`.find` on the result.",
+    "Flag awaited store/adapter calls inside `for`/`forEach`/`map` loops over records or ids (N+1).",
+    "Flag writes that replace the whole collection or all owner records (`saveAll`, `replaceAll`, writing the full array back) when only a subset changed.",
+    "Check that a new query method lives in the store/adapter (integration layer) and is backed by an index, keyed map, or per-owner structure, not by a linear scan inside the adapter.",
+    "Large-history test threshold: store calls per request constant (O(1) in history size); records touched <= records used plus a small constant.",
+    "Exempt: test files; explicit full-history operations whose output is the history."
+  ],
+  "audit": [
+    "Written for PLT-85 as a new general convention; no canonical source YAML. Derived from spec.md."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [],
+  "trace": []
+}

@@ -1,0 +1,63 @@
+{
+  "rule_id": "coder.bun.idempotent-replay-stored-result",
+  "kind": "rule",
+  "title": "Replay idempotent requests from the stored result, after re-authorising",
+  "activation": {
+    "facts": [
+      {"fact": "language", "values": ["typescript", "javascript"], "observability": "observable_now", "note": "Bun conventions catalog; code may run on Node."},
+      {"fact": "layer", "values": ["routes", "application", "integration"], "observability": "observable_now", "note": "Key is read in routes, replay decided in the use case, key record persisted by the store adapter."},
+      {"fact": "file_kind", "values": ["source"], "observability": "observable_now", "note": "Tests are evidence, not activation."},
+      {"fact": "task_term", "values": ["idempotency key", "Idempotency-Key", "idempotent", "retry-safe", "duplicate request"], "observability": "observable_now", "note": "Task text names idempotent handling of a mutating operation."},
+      {"fact": "operation", "values": ["mutating_operation_reads_idempotency_key"], "observability": "needs_new_observer", "note": "A content observer must detect a POST/PUT/PATCH/DELETE handler or use case that reads an idempotency key (header, body field or parameter)."},
+      {"fact": "finding", "values": ["replay_recomputes_or_skips_auth_or_unscoped"], "observability": "llm_judged", "note": "Whether replay returns the stored response, re-authorises, scopes the key and claims it atomically requires reading the control flow."}
+    ],
+    "fires": [
+      "A POST handler accepts an Idempotency-Key header to debit an account balance or create an invoice.",
+      "A use case that reserves inventory stock or a booking takes a client-supplied request id meant to de-duplicate retries.",
+      "Existing replay code is changed, e.g. to rebuild the response from current state or to look keys up before authentication."
+    ],
+    "doesNotFire": [
+      "Read-only GET/HEAD handlers.",
+      "Operations idempotent by construction with no client key (e.g. PUT replacing a resource with the full given state).",
+      "Server-internal de-duplication of messages with no client-facing response (e.g. consumer offset tracking)."
+    ]
+  },
+  "given": "A mutating operation accepts a client-supplied idempotency key.",
+  "when": "A request arrives whose key is already recorded in the same caller/resource scope.",
+  "then": "After authorising the caller exactly as for a first request, return the stored original response verbatim if the payload fingerprint matches, else reject with a 4xx and change nothing — never re-execute side effects or recompute the result.",
+  "prefer": [
+    "Persist per (scope, key) a fingerprint of the normalised payload plus the full original response (status, body), in the same transaction as the side effect.",
+    "Order: authenticate/authorise → look up (scope, key) → compare fingerprint → replay stored response, or 409/422.",
+    "Claim the key inside the side effect's critical section (unique constraint, insert-if-absent, row lock) so concurrent duplicates cannot both run."
+  ],
+  "avoid": [
+    "Treating a known key as a credential or skipping auth on replay.",
+    "Rebuilding the replay response from current prices, configuration or state.",
+    "Looking keys up by key string alone, globally (cross-tenant collisions).",
+    "Check-then-act: reading the key outside the transaction that performs the write."
+  ],
+  "unless": [],
+  "why": "Clients retry after timeouts; a replay must yield exactly the first outcome without doubling effects, and a guessed or leaked key must not grant access or another caller's response.",
+  "evidence": [
+    "Test: replay with same key and payload causes no extra side effect and returns a body identical to the first response.",
+    "Test: same key with a different payload returns 4xx and leaves state unchanged.",
+    "Test: replay of a recorded key by a different caller is rejected exactly as that caller's first request would be (no stored response leaked).",
+    "Test: after a configuration/price change, replay returns the stored original result, not a recomputed one.",
+    "Test or review: two concurrent requests with the same key result in a single side effect."
+  ],
+  "verifier_detail": [
+    "Key record is keyed by (caller or resource scope, key), never by key string alone.",
+    "Record holds a fingerprint (hash) of the normalised payload and the full response; it is written in the same atomic step as the side effect.",
+    "Authorisation runs before the key lookup on every request; a stored response is never returned before auth succeeds.",
+    "Replay path performs no writes and does not call pricing/configuration/state readers to rebuild the response.",
+    "Mismatch path returns 4xx (409 Conflict or 422 Unprocessable) and performs no writes.",
+    "Concurrency: claim is enforced by unique constraint, conditional insert or lock within the same transaction; a separate read-then-write is a finding."
+  ],
+  "audit": [
+    "Written for PLT-85 as a new general convention from spec.md; no canonical source YAML."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [],
+  "trace": []
+}

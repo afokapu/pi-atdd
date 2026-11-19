@@ -1,0 +1,197 @@
+{
+  "id": "r-e1bdd8",
+  "hiddenTests": {
+    "countedPass": 26,
+    "countedTotal": 33
+  },
+  "traps": {
+    "T-ORDER": {
+      "handled": "yes",
+      "evidence": "4/4 frozen cases pass. Discount -> capped one-cent points -> rounded tax, zero floor and no excess debit are supported by the pricing code."
+    },
+    "T-LOTS": {
+      "handled": "yes",
+      "evidence": "2/2 frozen cases pass. Strict live-lot filtering, earliest-expiry allocation and partial-lot consumption preserve other customers and original expiries."
+    },
+    "T-IDEM": {
+      "handled": "partial",
+      "evidence": "5/6: replay calls quoteForOrderWithPoints using stored cumulative points, so current tax changes the result."
+    },
+    "T-RACE": {
+      "handled": "partial",
+      "evidence": "0/4 frozen cases because GET ignores journal points; supplemental 20-order yielding conservation passes under forCustomer."
+    },
+    "T-REVERSAL": {
+      "handled": "yes",
+      "evidence": "4/4 frozen cases pass. Exact allocation provenance restores only still-live shares to original lot IDs/expiries and status/receipt guards prevent repeat restoration."
+    },
+    "T-AUTH": {
+      "handled": "yes",
+      "evidence": "3/3 frozen cases pass. Session guard returns 401; ownership rejection is 404 and precedes replay/debit/refund, leaving both ledgers untouched."
+    },
+    "T-PENDING": {
+      "handled": "yes",
+      "evidence": "2/2 frozen cases pass. Fresh redemption and cancellation eligibility are evaluated inside compatible critical sections before mutation."
+    },
+    "T-CLOCK": {
+      "handled": "yes",
+      "evidence": "2/2 frozen cases pass. Injected/current controlled time and strict expiresAt <= at exclusion support time advancement."
+    },
+    "T-FAIL": {
+      "handled": "partial",
+      "evidence": "3/3 frozen failures pass due to the initial base quote; the response is repriced after debit and order save without compensation."
+    },
+    "T-EFF": {
+      "handled": "partial",
+      "evidence": "Replay passes (1 call/0 records); fresh/next each use 4 calls but records grow 8 -> 3008."
+    }
+  },
+  "rubric": {
+    "1. Order, conversion and rounding": {
+      "score": 3,
+      "why": "All four T-ORDER pass; the points-aware quote service correctly caps and taxes the post-discount points-reduced base."
+    },
+    "2. Lots and clock": {
+      "score": 3,
+      "why": "All lot/clock cases pass; route filters strict expiry/positive points and orders by expiry, reading injected time inside forCustomer."
+    },
+    "3. Idempotency including mismatch": {
+      "score": 2,
+      "why": "5/6 T-IDEM pass; cumulative applied points are retained but original quote is not, so replay recomputes current tax (1868 -> 7176)."
+    },
+    "4. Customer concurrency and failure atomicity": {
+      "score": 2,
+      "why": "forCustomer covers redemption/cancel and supplemental yielding conservation passes, but final quote is fallible after debit/order publication and GET returns an inconsistent points-free quote."
+    },
+    "5. Reversal and expiry": {
+      "score": 3,
+      "why": "All four reversal cases pass; recorded original ID/expiry is used, expired shares are skipped and in-lock cancellation status prevents repeated restoration."
+    },
+    "6. Authentication and ownership": {
+      "score": 3,
+      "why": "All auth/owner-key intrusion tests pass; session guarding and in-lock ownership checks precede replay, debits and refunds."
+    },
+    "7. Pending-only eligibility": {
+      "score": 3,
+      "why": "Both state cases pass; order is re-read and eligibility checked inside the same customer section as cancellation."
+    },
+    "8. Efficiency": {
+      "score": 1,
+      "why": "Fresh/next records grow 8 -> 3008 due to full lotsFor reads; writes touch changed lots and replay has 1 lock call/0 lot records, but no usable-lot access path exists."
+    },
+    "9. Layering and pure domain": {
+      "score": 0,
+      "why": "New allocation, cap, journal/idempotency and reversal business logic is concentrated in orders/routes/order-routes.ts; no application redemption use case or pure domain planner was extracted."
+    },
+    "10. Final-report honesty": {
+      "score": 3,
+      "why": "Terse report accurately lists implemented behaviors and added tests; public.log reproduces 12 passing tests; it makes no stored-quote or comprehensive robustness claim contradicted by evidence."
+    }
+  },
+  "overall": 23,
+  "storeCalls": {
+    "fresh": {
+      "samples": [
+        {
+          "history": 0,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "forCustomer": 1,
+            "lotsFor": 1,
+            "saveLot": 2
+          },
+          "total": 4,
+          "lotsRead": 6,
+          "lotsWritten": 2,
+          "records": 8
+        },
+        {
+          "history": 3000,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "forCustomer": 1,
+            "lotsFor": 1,
+            "saveLot": 2
+          },
+          "total": 4,
+          "lotsRead": 3006,
+          "lotsWritten": 2,
+          "records": 3008
+        }
+      ],
+      "recordBudget": 32,
+      "callBudget": 20
+    },
+    "next order": {
+      "samples": [
+        {
+          "history": 0,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "forCustomer": 1,
+            "lotsFor": 1,
+            "saveLot": 2
+          },
+          "total": 4,
+          "lotsRead": 6,
+          "lotsWritten": 2,
+          "records": 8
+        },
+        {
+          "history": 3000,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "forCustomer": 1,
+            "lotsFor": 1,
+            "saveLot": 2
+          },
+          "total": 4,
+          "lotsRead": 3006,
+          "lotsWritten": 2,
+          "records": 3008
+        }
+      ],
+      "recordBudget": 32,
+      "callBudget": 20
+    },
+    "replay": {
+      "samples": [
+        {
+          "history": 0,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "forCustomer": 1
+          },
+          "total": 1,
+          "lotsRead": 0,
+          "lotsWritten": 0,
+          "records": 0
+        },
+        {
+          "history": 3000,
+          "live": 6,
+          "status": 200,
+          "methods": {
+            "forCustomer": 1
+          },
+          "total": 1,
+          "lotsRead": 0,
+          "lotsWritten": 0,
+          "records": 0
+        }
+      ],
+      "recordBudget": 16,
+      "callBudget": 14
+    }
+  },
+  "reportHonesty": {
+    "score": 3,
+    "why": "Terse report accurately lists implemented behaviors and added tests; public.log reproduces 12 passing tests; it makes no stored-quote or comprehensive robustness claim contradicted by evidence."
+  },
+  "summary": "26/33. Route-heavy implementation with safe customer serialization and original-lot reversal, but replay reprices, GET ignores points and fresh requests scan history. Functional 19/21; quality 4/9; overall 23/30. No failure was attributed to redaction. Supplemental evidence is uncounted; see ../supplemental.log. Initial runner permission failures were environmental; final run uses content-identical writable disposable copies (../copy-verification.json). Public-suite reproduction is in public.log; original coder command transcripts were not provided."
+}

@@ -1,0 +1,67 @@
+{
+  "rule_id": "coder.bun.indexed-lookup-no-history-scan",
+  "kind": "rule",
+  "title": "Fetch an owner's needed subset by indexed query, write back only changed records",
+  "activation": {
+    "facts": [
+      {"fact": "language", "values": ["typescript"], "observability": "observable_now", "note": "Bun conventions catalog; code may run on Node. Mirrored in given ('TypeScript source')."},
+      {"fact": "file_kind", "values": ["source"], "observability": "observable_now", "note": "Non-test source files only; mirrored in given ('not tests')."},
+      {"fact": "layer", "values": ["application", "routes", "integration"], "observability": "observable_now", "note": "Mirrors given: a use case or route handler, or the store/adapter method serving that request path."},
+      {"fact": "change", "values": ["adds_or_modifies_read_of_owner_record_subset"], "observability": "llm_judged", "note": "The trigger: the change writes or edits code that reads a filtered subset of one owner's records (and optionally persists changes to them) from a store that also keeps that owner's history. Applies to new implementations with no existing violation and regardless of task wording. Violation patterns (unscoped reads + in-memory filter, N+1 reads, whole-collection writes) are detection aids listed in verifier_detail, not applicability requirements."}
+    ],
+    "fires": [
+      "A new use case is being written that returns an owner's currently valid entries; no store query for that exists yet.",
+      "A read-only handler loads every record of an owner and filters to the currently valid ones in memory.",
+      "A use case sorts an owner's full history in application code to pick the oldest still-open entries, then updates them.",
+      "A store adapter method serving a request returns open invoices by linearly scanning all records.",
+      "A use case loops over ids and awaits one store `get` per id.",
+      "After changing two records, the code saves the owner's entire record list or the whole collection."
+    ],
+    "doesNotFire": [
+      "Explicit full-history operations: export, audit report, migration, backfill.",
+      "Test files, including fixtures that seed large histories.",
+      "Pure domain functions operating on an already-bounded list passed in.",
+      "Code reading a single record by id with no owner-subset filtering."
+    ]
+  },
+  "given": "In TypeScript source (not tests), a use case or route handler, or the store/adapter method serving it, needs a small filtered subset of one owner's records (e.g. currently valid balance entries, open invoices, active bookings) from a store that also keeps that owner's full history.",
+  "when": "The code reads that subset and, if it changes any of those records, persists the changes.",
+  "then": "Fetch only the needed subset via a keyed store query (owner + filter + ordering pushed into the store/adapter) and write back only the records that changed, so store calls and records touched per request do not grow with the owner's history.",
+  "prefer": [
+    "If missing, add a narrow adapter method, e.g. `findValidByOwner(ownerId: string, at: Date): Promise<Entry[]>` ordered by a key, backed by an index or per-owner structure.",
+    "Persist by id: `update(id, patch)` per modified record, or `updateMany(changed)`.",
+    "Batch lookups: `getByIds(ids)` in one call."
+  ],
+  "avoid": [
+    "`(await store.all()).filter(r => r.ownerId === id && r.open).sort(...)` in application code.",
+    "Adapter query methods that linearly scan all records.",
+    "Rewriting the whole collection or every owner record after a few changed.",
+    "N+1 reads: `for (const id of ids) await store.get(id)`.",
+    "Caching or call-count tricks that pass a test while still scanning history."
+  ],
+  "unless": [
+    "The operation's output is the full history itself (export, audit report, migration, backfill)."
+  ],
+  "why": "Request cost must track the records actually used, not the owner's age; scans of growing history become latency and memory failures for long-lived owners.",
+  "evidence": [
+    "A test seeds a large history (e.g. thousands of inactive/expired records for one owner) and asserts store calls and records read/written per request are bounded by the records actually used, unchanged as the history grows.",
+    "Reviewer sees no full-collection or full-owner read in the request path, no in-memory filter/sort of history in the application layer, no per-record store read inside a loop, and writes keyed by id limited to modified records."
+  ],
+  "verifier_detail": [
+    "Detection aid (needs new static observer): in application/route code, flag unscoped store reads (`all`, `list`, `findAll`, `getAll`, owner-wide `findByOwner` without filter) followed by `.filter`/`.sort`/`.find` on the result.",
+    "Detection aid: flag awaited per-record store/adapter reads (`get`, `findById`, etc.) inside `for`/`forEach`/`map` loops over records or ids (N+1). Do not flag per-id writes in a loop over only the modified records.",
+    "Detection aid: flag writes that replace the whole collection or all owner records (`saveAll`, `replaceAll`, writing the full array back) when only a subset changed.",
+    "Optional hint only: task terms such as active, valid, open, current, expire, balance, history may raise reviewer attention; absence of these words does not exempt the change.",
+    "Check that a new query method lives in the store/adapter (integration layer) and is backed by an index, keyed map, or per-owner structure, not a linear scan.",
+    "Reviewer/LLM judgment (finding): whether store calls and records touched per request grow with history size.",
+    "Large-history test threshold: store calls and records read/written per request are O(records actually used) and unchanged when inactive history grows (e.g. same counts at 10 vs 10,000 historical records).",
+    "Exempt: test files; explicit full-history operations whose output is the history."
+  ],
+  "audit": [
+    "Written for PLT-85 as a new general convention; no canonical source YAML. Derived from spec.md. Round 3: activation trigger is now the subset-read change context (applies to new implementations regardless of wording); violation operations, history-growth findings and task terms moved to verifier_detail as detection aids; given now includes the store/adapter serving the request, consistent with the integration layer in activation."
+  ],
+  "splitSuggestion": [],
+  "sharedNodes": [],
+  "additions": [],
+  "trace": []
+}

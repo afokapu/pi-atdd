@@ -1,0 +1,101 @@
+{
+  "schema": "pi-atdd/plt-85/run/v1",
+  "runId": "haiku-B-3",
+  "provider": "pi-claude-cli",
+  "model": "claude-haiku-5-5",
+  "thinking": "medium",
+  "arm": "B",
+  "condition": "catalog",
+  "baseRevision": "4b404362e66414b4a53699f9c0122374cfc435c8",
+  "resultRevision": "a8cb3cc518a0f202a6f5710965fb5ae2a0617f89",
+  "startedAt": "2026-11-19T08:05:32.229Z",
+  "changed": [
+    "M\tsrc/app.ts",
+    "A\tsrc/loyalty/application/ledger-lock.ts",
+    "A\tsrc/loyalty/application/redemption-service.ts",
+    "M\tsrc/loyalty/domain/points.ts",
+    "M\tsrc/loyalty/integration/loyalty-store.ts",
+    "M\tsrc/orders/routes/order-routes.ts",
+    "M\tsrc/pricing/application/quote-service.ts",
+    "M\tsrc/pricing/domain/quote.ts",
+    "A\ttests/loyalty/redeem-points.acceptance.test.ts"
+  ],
+  "jjStatusBeforeSnapshot": "Working copy changes:\nM src/app.ts\nA src/loyalty/application/ledger-lock.ts\nA src/loyalty/application/redemption-service.ts\nM src/loyalty/domain/points.ts\nM src/loyalty/integration/loyalty-store.ts\nM src/orders/routes/order-routes.ts\nM src/pricing/application/quote-service.ts\nM src/pricing/domain/quote.ts\nA tests/loyalty/redeem-points.acceptance.test.ts\nWorking copy  (@) : luvvlozs 2ac6f5a4 (no description set)\nParent commit (@-): tppvsqpq 4b404362 base | base: PLT-82 orders-service (points lots, async loyalty store); no redemption",
+  "run": {
+    "exit": 0,
+    "signal": null,
+    "timedOut": false,
+    "wallMs": 187450,
+    "provider": "pi-claude-cli",
+    "model": "claude-haiku-5-5",
+    "thinking": "medium",
+    "promptSha256": "7aa2e96f56821380766be9b742b6e2d7993a100fc89c65772e09e8e5280f154f",
+    "appendSystemPrompt": {
+      "sha256": "da51d395374f161ff8939ec9826dd36e349049c7f48fe92baf5ae53dc0ae1aec"
+    },
+    "argv": [
+      "--mode",
+      "json",
+      "--approve",
+      "--no-session",
+      "--no-mcp",
+      "--no-skills",
+      "--no-prompt-templates",
+      "--no-context-files",
+      "--no-themes",
+      "--no-extensions",
+      "-e",
+      "~/.pi/agents/forge/npm/node_modules/@saccolabs/pi-claude-cli/index.ts",
+      "--append-system-prompt",
+      "~/forge-evidence/pi-atdd/plt-85/conventions.md",
+      "--provider",
+      "pi-claude-cli",
+      "--model",
+      "claude-haiku-5-5",
+      "--thinking",
+      "medium",
+      "--",
+      "<prompt>"
+    ]
+  },
+  "quotaSuspect": false,
+  "metrics": {
+    "turns": 16,
+    "toolExecuted": 23,
+    "toolErrors": 0,
+    "byTool": {
+      "bash": 11,
+      "write": 7,
+      "edit": 5
+    },
+    "usage": {
+      "input": 32,
+      "output": 42239,
+      "cacheRead": 797042,
+      "cacheWrite": 72036,
+      "cost": 0.04350032000000001
+    },
+    "stopReasons": [
+      "toolUse",
+      "toolUse",
+      "toolUse",
+      "toolUse",
+      "toolUse",
+      "toolUse",
+      "toolUse",
+      "toolUse",
+      "toolUse",
+      "toolUse",
+      "toolUse",
+      "toolUse",
+      "toolUse",
+      "toolUse",
+      "toolUse",
+      "stop"
+    ],
+    "errorMessages": []
+  },
+  "finalReport": "LOY-002 is implemented: `POST /orders/:id/redeem` works, and cancelling a redeemed order returns the points. All 22 tests pass (9 existing plus 13 new).\n\n**What changed**\n- `src/loyalty/domain/points.ts`: points-to-cents conversion (1 point = 1 cent), usable lots filtered and sorted by expiry, `spendPoints` (earliest expiry first) and `returnPoints` (forfeits lots that have expired).\n- `src/pricing/domain/quote.ts` and `quote-service.ts`: `quoteWithPoints` applies points after discount and before tax, capped so the taxable amount never goes below zero. The existing `quote()` is unchanged, so the GET quote response is unchanged.\n- `src/loyalty/integration/loyalty-store.ts`: redemption records (idempotency key, request fingerprint, allocations, stored quote, status), with async lookup by key and by order.\n- `src/loyalty/application/ledger-lock.ts`: per-customer queue. `redemption-service.ts` holds `redeemPoints` (idempotent replay, pending-only, one active redemption per order) and `reverseRedemption`.\n- `src/orders/routes/order-routes.ts`: new redeem route. Cancel and redeem both run under the customer lock. Cancel reverses the redemption before saving the order as cancelled.\n- `src/app.ts`: passes the loyalty store and clock through `createApp`. The signature is unchanged.\n- `tests/loyalty/redeem-points.acceptance.test.ts`: covers each requirement, plus a concurrency test.\n\n**How I verified it**\n- `npm test`: 22 pass, 0 fail.\n- I ran two concurrent redemptions for 800 points each against an 800-point lot without the lock, and both were applied. The concurrency test therefore fails without the lock.\n- Comment ratio on the touched files is at or above 10%, checked with a rough line count. I did not run the project's `bun_*` detectors, and there is no `tsc` in the repo, so type checking was not run.\n\n**Decisions I made that you may want to change**\n- Only one active redemption per order. A second one with a different key returns 409 `ORDER_ALREADY_REDEEMED`.\n- Idempotency keys are scoped per customer. Reusing a key for another order counts as a different body and returns 409 `IDEMPOTENCY_KEY_REUSED`.\n- A replayed key returns the stored quote even if the order has since been cancelled.\n- Error bodies use `error_code` in UPPER_SNAKE_CASE, in line with the project's error conventions.\n\n**Not done or uncertain**\n- The lock is in-process only. Several instances would need a database-level guarantee, such as a conditional update on the lot.\n- The writes to several lots are not atomic. A failure part-way through would leave partial state, which is acceptable for the in-memory store but not for a real ledger.\n- Pre-existing files I did not touch (e.g. `router.ts`, `auth.ts`) may still be below the 10% comment floor.\n- The seed data is unchanged, so there is no demo redemption path beyond the tests.",
+  "blindId": "r-99d6a5",
+  "batch": "batch-3"
+}
