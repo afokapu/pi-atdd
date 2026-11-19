@@ -2,6 +2,7 @@
 // Acceptance: acc:pi-atdd:PLT-87-N-002
 // Acceptance: acc:pi-atdd:PLT-87-N-003
 // Acceptance: acc:pi-atdd:PLT-87-N-004
+// Acceptance: acc:pi-atdd:PLT-87-N-005
 // Profile-first convention ids: lint, lossless alias map, profile selection, same activation.
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -124,5 +125,35 @@ test("old ids in project selectors and challenges still resolve to the renamed r
     const r = session.observe({ scope: "s", task: "final review", operation: "review", origin: "pi-event", provenance: "t" });
     assert.deepEqual(r.activations.map(a => a.id).sort(), ["reviewer.inspectability.owner", "reviewer.reconciliation.behavioral"]);
     assert.equal(b.catalog.unresolvedEdges.length, 44, "external upstream refs are not captured by renamed ids");
+  } finally { b.done(); }
+});
+
+test("N-005 shared.convention.propose is authored in the PLT-81 format, audited PASS and delivered to every profile", () => {
+  const b = bundled();
+  try {
+    const id = "shared.convention.propose";
+    const rule = b.catalog.rules.get(id)!;
+    assert.ok(rule, "loaded from the package-authored source");
+    assert.equal(rule.source, "pi-atdd");
+    for (const p of PROFILES) assert.ok(rulesForProfile(b.catalog, p).includes(id), p);
+    // the rules PLT-87 requires it to carry
+    const text = readFileSync(join(ROOT, rule.file.replace(/^pi-atdd\//, "catalog/pi-atdd/")), "utf8");
+    for (const must of [/never creates, edits, disables or deletes an active convention/, /concrete evidence/,
+      /names the profile and area/, /never\s+applied to the task in which it was raised/, /experiments enter through the same path/i,
+      /coach collects/, /independent auditor/, /owner approves or declines/, /declined, with the reason/])
+      assert.match(text.replace(/\s+/g, " "), new RegExp(must.source.replace(/\\s\+/g, " "), must.flags), must.source);
+    // PLT-81 sidecar: pinned to the source, PASS, one obligation, every segment traced
+    const manifest = JSON.parse(readFileSync(join(ROOT, "conventions-sidecar/manifest.json"), "utf8"));
+    const e = manifest.entries[id];
+    assert.equal(e.auditVerdict, "PASS");
+    assert.equal(sha(readFileSync(join(ROOT, e.sourcePath))), e.sourceSha256);
+    assert.match(e.authoredBy.author, /^pi-claude-cli\/claude-opus-5-5/);
+    assert.match(e.authoredBy.auditor, /^openai-codex\/gpt-6\.1-sol/);
+    const side = JSON.parse(readFileSync(join(ROOT, "conventions-sidecar", e.file), "utf8"));
+    assert.equal(side.rule_id, id);
+    assert.ok(side.then && side.trace.length > 0 && side.activation.fires.length && side.activation.doesNotFire.length);
+    // the bundled selector activates it from task wording
+    const ctx = resolveContext(b.catalog, b.selectors, "file a convention proposal for this misfiring convention", [], "task");
+    assert.ok(ctx.matchingIds.includes(id));
   } finally { b.done(); }
 });

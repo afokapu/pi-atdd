@@ -315,6 +315,9 @@ export function bundledSources(): SourceSpec[] {
     { id: "ATDD-Flow", path: join(packageRoot, "vendor/atdd-flow"), kind: "flow",
       revision: "2a66019a5ecf2b7a9f999ebfa04d04c9f548f19a",
       sha256: "61665ba225ffc6c0bed6952aa8f8c9d9c0e2f0d7df3982662a2cdf50eb327438" },
+    // Package-authored conventions (PLT-87): rules owned by pi-atdd itself, not mirrored upstream.
+    { id: "pi-atdd", path: join(packageRoot, "catalog/pi-atdd"), kind: "extension",
+      sha256: "06758fe0f3673d7ae68e1803d1b372da979876a1a28f50fac6823911ac3b7b6d" },
   ];
 }
 function selectorFile(file: string): Selector[] {

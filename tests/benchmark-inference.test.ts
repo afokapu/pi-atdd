@@ -12,7 +12,7 @@ test("pinned full corpus: incremental update agrees with cold replay and reports
   const cwd=mkdtempSync(join(tmpdir(),"pi-atdd-update-benchmark-"));
   try {
     const cfg=loadConfig(cwd),catalog=loadCatalog(cfg.sources,cwd);
-    assert.equal(catalog.rules.size,358);
+    assert.equal(catalog.rules.size,359);
     assert.equal(catalog.edges.length,508);
     const metrics=[];
     for(let i=0;i<3;i++){

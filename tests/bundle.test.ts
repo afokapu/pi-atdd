@@ -9,12 +9,13 @@ test("bundled canonical Bun and Flow snapshots resolve offline without consumer 
   const cwd = mkdtempSync(join(tmpdir(), "pi-atdd-bundled-"));
   try {
     const { sources, selectors } = loadConfig(cwd);
-    assert.equal(sources.length, 2);
+    assert.equal(sources.length, 3, "ATDD-Bun, ATDD-Flow and the package-authored pi-atdd source (PLT-87)");
+    assert.equal(sources[2]!.id, "pi-atdd");
     assert.equal(sources[0]!.revision, "5945d97e18310e7c862c08e73985400935d21346");
     assert.equal(sources[1]!.revision, "2a66019a5ecf2b7a9f999ebfa04d04c9f548f19a");
     for (const source of sources) assert.equal(digestSource(source.path, source.kind), source.sha256);
     const catalog = loadCatalog(sources, cwd);
-    assert.equal(catalog.rules.size, 358);
+    assert.equal(catalog.rules.size, 359, "358 upstream conventions + shared.convention.propose");
     assert.equal(catalog.edges.length, 508);
     assert.equal(catalog.unresolvedEdges.length, 44);
     const review = resolveContext(catalog, selectors, "Final behavioral review", [], "task");
@@ -55,9 +56,9 @@ test("additional conventions and cross-source dependency edges can be added offl
       "    sha256: " + extensionSha, "extraSelectors: [extras.yaml]", ""
     ].join("\n"));
     const { sources, selectors } = loadConfig(cwd);
-    assert.equal(sources.length, 3);
+    assert.equal(sources.length, 4);
     const catalog = loadCatalog(sources, cwd);
-    assert.equal(catalog.rules.size, 359);
+    assert.equal(catalog.rules.size, 360);
     assert.equal(catalog.edges.length, 509);
     const context = resolveContext(catalog, selectors, "checkpoint-signal", [], "task");
     assert.deepEqual(context.matchingIds, ["coach.collaboration.accountable-delegation", "local.checkpoint"]);
