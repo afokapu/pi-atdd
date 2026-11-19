@@ -1,7 +1,9 @@
 #!/usr/bin/env node
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { digestSource, GraphError, loadCatalog, loadConfig, resolveContext, type SourceKind } from "./catalog.ts";
 import { verifyTargets } from "./verify.ts";
+import { checkTrackerIssue, readTrackerConfig } from "./tracker-issue.ts";
 
 function parse(argv: string[]): { options: Map<string, string[]>; args: string[] } {
   const options = new Map<string, string[]>(), args: string[] = [];
@@ -34,8 +36,20 @@ export function main(argv = process.argv.slice(2)): number {
       if (runner !== "node" && runner !== "bun") throw new Error("unknown test runner");
       const result = verifyTargets(cwd, options.get("target") || [], { runner, timeoutMs: Number(first("timeout-ms", "60000")) });
       output = result; if (result.status !== "passed") status = 1;
+    } else if (command === "tracker") {
+      // PLT-96: exit 0 pass, 1 fail, 3 notice (not checkable, e.g. no tracker configured).
+      if (args[1] !== "check") throw new Error("expected tracker check");
+      const body = first("pr-body-file") ? readFileSync(resolve(cwd, first("pr-body-file")!), "utf8") : first("pr-body");
+      // PLT-96 review P2: an omitted --changed would pass an unchecked change, so it is an error (exit 2), never a pass.
+      const changed = options.get("changed");
+      if (!changed?.length) throw new Error("tracker check needs --changed <path> for each changed file; without it the change is not checked");
+      const check = checkTrackerIssue({ changedFiles: changed, branch: first("branch", "")!,
+        prBody: body, tracker: readTrackerConfig(cwd) });
+      output = { status: check.verdict, ...check };
+      if (check.verdict === "fail") status = 1;
+      if (check.verdict === "notice") status = 3;
     } else {
-      throw new Error("expected digest | context | verify");
+      throw new Error("expected digest | context | verify | tracker");
     }
     console.log(JSON.stringify(output));
     return status;

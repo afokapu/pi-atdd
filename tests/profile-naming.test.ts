@@ -108,8 +108,30 @@ test("N-004 the activation probe delivers the same rules (by alias) as v0.2.0", 
   const before = JSON.parse(readFileSync(join(ROOT, "tests/fixtures/activation-probe-v0.2.0.json"), "utf8"));
   const cwd = mkdtempSync(join(tmpdir(), "pi-atdd-probe-"));
   try {
-    const after = probe(cwd);
+    // PLT-96 adds the tracker rules at task start. Parity is exact except for those additions, which are listed
+    // here by scenario (not filtered by prefix), so any other new tracker activation still fails this test.
+    // "set up a jujutsu worktree for the integration branch" matches the `branch` term: a branch setup is tracked work.
+    // PLT-96 review P1: every edit/create scenario gains the tracker obligation and its notice; scenario 09 also
+    // gains the branch rule ("branch" term). Listed by scenario so any other new tracker activation still fails.
+    const WRITE_SCENARIOS = ["02 Implement acceptance for checkout, go green", "03 Update order model",
+      "04 Make the green test pass", "05 Add authentication to the payment endpoint",
+      "06 Fix layer boundary imports in integration", "07 Add acceptance test binding and coverage",
+      "08 Write e2e journey", "11 Persist runtime state", "12 Update documentation", "13 Refactor the presentation view"];
+    const OBLIGATION = ["shared.tracker.issue-mandatory", "shared.tracker.unconfigured-notice"];
+    const PLT96_ADDITIONS: Record<string, string[]> = {
+      ...Object.fromEntries(WRITE_SCENARIOS.map(k => [k, OBLIGATION])),
+      "09 Coordinator: set up a jujutsu worktree for the integration branch": ["coder.tracker.issue-in-branch-and-pr", ...OBLIGATION],
+    };
     const rekey = (ids: string[]) => ids.map(id => aliases[id] ?? id).sort();
+    const after = Object.fromEntries(Object.entries(probe(cwd)).map(([k, v]) => {
+      const extra = PLT96_ADDITIONS[k] ?? [];
+      const minus = (ids: string[]) => ids.filter(id => !extra.includes(id));
+      return [k, { context: minus(v.context), reasoning: minus(v.reasoning), added: extra.filter(id => v.context.includes(id) || v.reasoning.includes(id)) }];
+    }));
+    for (const [k, v] of Object.entries<any>(after)) {
+      assert.deepEqual(v.added, PLT96_ADDITIONS[k] ?? [], "PLT-96 addition set for " + k);
+      delete v.added;
+    }
     const expected = Object.fromEntries(Object.entries<any>(before).map(([k, v]) =>
       [k, { context: rekey(v.context), reasoning: rekey(v.reasoning) }]));
     assert.deepEqual(after, expected);
