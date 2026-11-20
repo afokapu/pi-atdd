@@ -8,13 +8,14 @@
 import { DEFAULT_PROFILE, profileByName, roleOfPath, type StructureProfile } from "./profile.ts";
 import { canonicalRuleId, matchesGlob, termMatches, validateSelectors, type Catalog, type Convention, type Relation, type Selector } from "./catalog.ts";
 import { PositiveReasoner, groundKey, type Fact, type Proof, type Rule, type Delta } from "./inference.ts";
+import { discoverSourceEvidence } from "./structural-evidence.ts";
 
 export type Phase = "RED" | "GREEN" | "REFACTOR" | "SMOKE";
 export type Operation = "task" | "create" | "edit" | "review";
 export type Origin = "pi-event" | "repository-observation" | "trusted-work-provider";
 export type ContextObservation = {
   scope: string; task: string; operation: Operation;
-  path?: string; phase?: Phase; revision?: string;
+  path?: string; sourceText?: string; phase?: Phase; revision?: string;
   actorRole?: string; acceptance?: string;
   origin: Origin; provenance: string;
 };
@@ -84,6 +85,26 @@ function typedRules(catalog: Catalog): Rule[] {
       { predicate: "operation", terms: ["?subject", "edit"] },
     ],
   });
+  for (const operation of ["edit", "create"] as const) {
+    if (catalog.rules.has("coder.security.missing-auth")) typed.push({
+      id: "pi-atdd.typed-bun-mutating-route-" + operation,
+      source: "pi-atdd/adapters/structural-evidence-v1",
+      head: { predicate: "active", terms: ["?subject", "coder.security.missing-auth"] },
+      body: [
+        { predicate: "code_construct", terms: ["?subject", "bun_mutating_route"] },
+        { predicate: "operation", terms: ["?subject", operation] },
+      ],
+    });
+    if (catalog.rules.has("tester.acceptance.binding-declared")) typed.push({
+      id: "pi-atdd.typed-test-urn-" + operation,
+      source: "pi-atdd/adapters/structural-evidence-v1",
+      head: { predicate: "active", terms: ["?subject", "tester.acceptance.binding-declared"] },
+      body: [
+        { predicate: "code_construct", terms: ["?subject", "test_urn_header"] },
+        { predicate: "operation", terms: ["?subject", operation] },
+      ],
+    });
+  }
   return typed;
 }
 function collectReasons(proof: Proof): string[] {
@@ -152,6 +173,8 @@ export class ReasoningSession {
       throw new Error("observation requires stable scope, task, provenance and valid operation");
     if (!["pi-event", "repository-observation", "trusted-work-provider"].includes(ob.origin))
       throw new Error("unsupported observation provenance");
+    if (ob.sourceText !== undefined && (!ob.path || typeof ob.sourceText !== "string"))
+      throw new Error("source evidence requires an observed file path");
     if (ob.origin !== "trusted-work-provider" && (ob.actorRole !== undefined || ob.phase !== undefined || ob.acceptance !== undefined))
       throw new Error("authority, phase and acceptance require trusted provider evidence");
     const entries = new Map<string, Fact>();
@@ -165,6 +188,10 @@ export class ReasoningSession {
       add("file", [ob.scope, ob.path], "path:" + ob.path + " observed by " + ob.provenance);
       const layer = roleOfPath(this.profile, ob.path); // role-level fact: the stack's local layer names never reach the rules
       if (layer) add("file_layer", [ob.scope, layer], "layer:" + layer + " from " + ob.path);
+      if (ob.sourceText !== undefined) {
+        for (const construct of discoverSourceEvidence(ob.path, ob.sourceText))
+          add("code_construct", [ob.scope, construct], "ast:" + construct + " @ " + ob.provenance);
+      }
     }
     if (ob.phase) add("phase", [ob.scope, ob.phase]);
     if (ob.actorRole) add("actor_role", [ob.scope, ob.actorRole]);
