@@ -1,0 +1,56 @@
+schema_version: 1.1.0
+rule_id: coder.flow-router.delegates-to-flowrunner
+kind: rule
+status: active
+name: FlowRouterRunner delegates execution to FlowRunner and never executes product capabilities itself (Bun)
+statement: >-
+  An `FlowRouterRunner` MUST NOT execute product capabilities directly or duplicate the FlowRunner step loop. The
+  FlowRouterRunner-defining module MUST NOT import a `src/<capability>/capability.ts` module, call
+  `runUserSystemFlow(...)`, loop over `<expr>.sequence` as an executor, or otherwise invoke product capability steps;
+  FlowRunner remains the only capability-step executor. This is the Bun-stack realization of the agnostic
+  core obligation `coder.user-system-flow.flow-router-delegates-to-flowrunner` (core afokapu/atdd#1251); the JS
+  detector that enforces it is the atdd.workspace.bun implementation referenced below.
+implementation:
+  type: validator
+  ref: coder.bun.flow-router-delegates-to-flowrunner
+content:
+  summary: >-
+    An agnostic "route-control, not execution" obligation, rendered for the Bun application. The JS
+    realization scans each FlowRouterRunner-defining module under `src/user-system-flows/**` and flags a direct
+    product capability import, a `runUserSystemFlow(...)` call, or a `for (... of <expr>.sequence)` executor loop. Member of the
+    `bun_flow_router_infrastructure` FAMILY detector (checks/flow_router_delegates.mjs).
+  normative_text: |
+    Core runtime spec afokapu/atdd#1251 — the FlowRouterRunner "must not": execute product capability steps, choose
+    the next user/system flow step inside a user/system flow, bypass FlowRunner, or duplicate FlowRunner's execution loop. It
+    resolves one admissible user/system flow and DELEGATES to `FlowRunner.execute(selectedUserSystemFlowId, ...)`. The
+    production FlowRunner is the single component that runs product capabilities and carries flow variables between them. WHICH
+    module is scanned (the FlowRouterRunner-defining files) and HOW the forbidden patterns are
+    recognized is the per-stack detector's concern; the FlowRunner module's own step loop is legitimate
+    and not flagged.
+  fix_hint: |
+    Delegate instead of executing:
+
+      execute(action, inputs, state) {
+        const res = this.resolveUserSystemFlow(action, inputs, state);
+        return new FlowRunner(res.userSystemFlowPath).execute(res.userSystemFlowId, inputs);  // delegate, do not loop
+      }
+
+    Do NOT import a product capability module, call `runUserSystemFlow(...)`, or loop over `user-system-flow.sequence` in flow router code.
+    This rule is `strict`: a newly introduced direct-execution pattern is not suppressible and fails CI.
+  exceptions:
+    - The production `FlowRunner` module is the legitimate capability-step executor; only
+      FlowRouterRunner-defining modules are scanned for direct execution.
+metadata:
+  aliases:
+    - BUN-FLOW_ROUTER-DELEGATES-FLOWRUNNER-001
+  severity: 4
+  disposition: strict
+  introduced_in: 0.1.0
+  core_design_refs:
+    - afokapu/atdd#1246
+    - afokapu/atdd#1251
+terms:
+  - term_id: direct_capability_execution
+    text: >-
+      a FlowRouterRunner module importing a product capability module, calling `runUserSystemFlow(...)`, or looping over
+      `<expr>.sequence` as a step executor — competing with FlowRunner.

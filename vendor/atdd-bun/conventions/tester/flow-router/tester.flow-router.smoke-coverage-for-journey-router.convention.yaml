@@ -1,0 +1,76 @@
+schema_version: 1.1.0
+rule_id: tester.flow-router.smoke-coverage-for-journey-router
+kind: rule
+status: active
+name: Exposed flow router journey router actions have smoke coverage through real entrypoints (Bun)
+statement: >-
+  Every exposed journey router action of a flow router (`entrypoint.exposed: true` with an `actions:`
+  entry, core afokapu/atdd#1248) MUST have a smoke test that drives the action through the real
+  entrypoint -> journey router -> FlowRouterRunner -> FlowRunner path (core afokapu/atdd#1251). This
+  is the Bun-stack realization of the agnostic core obligation
+  `tester.flow-router.smoke-coverage-for-journey-router`; its JS detector (a member of the
+  `bun_flow_router_coverage` FAMILY) scans the flow router entrypoints and the consumer's
+  `e2e/**/*.ts` tests and flags any exposed action with no smoke test that reaches the journey router and
+  exercises the production runners. EXPLICIT POLICY: an exposed action is a critical, user-facing route
+  and its smoke coverage is enforced STRICT; a flow router with `entrypoint.exposed: false` has no
+  Journey router action and is OUT OF SCOPE — the criticality signal is the core `entrypoint.exposed`
+  field, not a heuristic.
+implementation:
+  type: validator
+  ref: tester.bun.flow-router-smoke-coverage-for-journey-router
+content:
+  summary: >-
+    A "exposed journey router flow router actions have real-entrypoint smoke coverage" obligation,
+    rendered for the Bun application. The JS realization parses each flow router's `entrypoint`; for each
+    `exposed: true` action it requires a smoke test under `e2e/**/*.ts` that references the action name,
+    a journey router reference (`JourneyRouter`/`journeyRouter`), AND both production runners. Internal
+    (`exposed: false`) flow routers carry no action and are not flagged.
+  normative_text: |
+    `entrypoint.exposed: true` requires at least one action (afokapu/atdd#1248), and those actions are
+    Journey router action names — the user-facing surface. The smoke test for such an action should prove
+    the whole flow-router-enabled path end to end: a real endpoint reaches the journey router, the
+    Journey router chooses the flow router path (not a direct user/system flow), FlowRouterRunner resolves the
+    route, FlowRunner executes the selected user/system flow, and the trace records flow-routerId/routeId/
+    selectedUserSystemFlowId. The detector's enforced minimum signature for an action's smoke test is an
+    `e2e/**/*.ts` file that references the action name AND a journey router reference AND both production
+    runners (`FlowRouterRunner`, `FlowRunner`).
+
+    SEVERITY POLICY (explicit): exposed actions are critical user-facing routes -> strict;
+    `exposed: false` flow routers are internal / noncritical -> out of scope. The policy is derived
+    from the core `entrypoint.exposed` field, so it is mechanical, not a judgement call.
+  fix_hint: |
+    Add a smoke test for the flagged journey router action that hits the real entrypoint and asserts the
+    flow router path is taken: call the real action endpoint so it reaches the journey router, assert the
+    Journey router chose the flow router (FlowRouterRunner) path, that FlowRouterRunner resolved a
+    route, that FlowRunner executed the selected user/system flow, and that the captured trace records the
+    flowRouterId / routeId / selectedUserSystemFlowId. This rule is `strict` for exposed (user-facing) actions;
+    if the flow router is genuinely internal, set `entrypoint.exposed: false` with a reason and it leaves
+    scope.
+  exceptions:
+    - Flow routers with `entrypoint.exposed` false (internal-transition-only / library-only /
+      planned-not-exposed) carry no journey router action and are out of scope.
+    - An exposed action that already has a covering smoke test (a file referencing the action, the Station
+      Master, and both runners) is satisfied and not flagged.
+    - Per-stack renderings other than Bun are owned by their own workspace packages.
+metadata:
+  aliases:
+    - BUN-TESTER-FLOW_ROUTER-SMOKE-JOURNEY_ROUTER-001
+  severity: 1
+  disposition: strict
+  introduced_in: 0.1.0
+  core_design_refs:
+    - afokapu/atdd#1246
+    - afokapu/atdd#1248
+    - afokapu/atdd#1251
+terms:
+  - term_id: exposed_action
+    text: >-
+      a journey router action name listed under a flow router's `entrypoint.actions` when
+      `entrypoint.exposed: true` (afokapu/atdd#1248). It is the user-facing route surface and requires
+      smoke coverage; `exposed: false` flow routers have no such action.
+  - term_id: journey_router_smoke_test
+    text: >-
+      an `e2e/**/*.ts` smoke test that drives an exposed action through the real entrypoint to the Station
+      Master, proving the journey router chose the flow router path, FlowRouterRunner resolved a route,
+      FlowRunner executed the selected user/system flow, and the trace recorded the flow-routerId/routeId/
+      selectedUserSystemFlowId.

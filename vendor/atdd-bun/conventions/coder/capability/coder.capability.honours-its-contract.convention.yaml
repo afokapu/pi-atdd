@@ -1,0 +1,64 @@
+schema_version: 1.1.0
+rule_id: coder.capability.honours-its-contract
+kind: rule
+status: active
+name: A product capability's implementation moves the artifacts its plan document declares (Bun)
+statement: >-
+  A product capability document declares a DATA CONTRACT: `produce[]` are the artifacts the product capability owns and
+  `consume[]` the ones it takes from other product capabilities (core `capability.schema.json` requires both). The Bun
+  implementation MUST name each declared artifact where it moves flow variables, so the declaration and the
+  data actually carried cannot drift apart. Core validates that the contract is well formed; only a
+  per-stack detector can see whether this stack's code honours it.
+implementation:
+  type: validator
+  ref: coder.bun.capability-honours-its-contract
+content:
+  summary: >-
+    Binds a product capability's declared artifact contract to the Bun code that moves flow variables. The JS realization
+    reads every product capability document under `plan/**`, collects the `produce[].name` and `consume[].name`
+    artifact names, and flags any that no flow-variable-moving module names. Member of the
+    `bun_flow_router_infrastructure` FAMILY detector (checks/capability_contract_honoured.mjs).
+  normative_text: |
+    Core `capability.schema.json` requires `produce` and `consume`, each entry carrying an artifact `name`
+    (and, for produce, a `contract` and `telemetry` URN). Core validates that shape wherever the plan
+    lives; it cannot know whether a Bun module puts those artifacts into flow variables, because that means
+    reading Bun source and this stack's flow-variable idiom.
+
+    The product capability implementation is recognised STRUCTURALLY — a module that moves artifacts through flow variables
+    — not by filename. A `capability.ts` naming heuristic is the kind of fitted check this hub has had to
+    unpick more than once, and a consumer is free to name its modules as it likes.
+
+    NOT_APPLICABLE, deliberately, in two cases. A consumer that declares no product capability contract has nothing
+    to honour. A contract declared with no product capability implementation at all is an unimplemented feature,
+    not a broken contract, and belongs to whatever rule governs unimplemented plan; reporting it here
+    would fire on every freshly planned repository.
+  fix_hint: |
+    Name each declared artifact where the product capability moves it, so the two cannot drift:
+
+      export const CONSUMES = "orders:priced-basket";   // plan: consume[].name
+      export const PRODUCES = "orders:confirmed-order"; // plan: produce[].name
+
+      export function runCapability(step: string, flow variables: flow variables): void {
+        const basket = flow-variables.get(CONSUMES);
+        flow-variables.put(PRODUCES, { confirmed: true, basket });
+      }
+
+    Or correct the plan if the product capability no longer owns that artifact. This rule is `strict`: a product capability
+    whose declared contract nothing implements is not suppressible and fails CI.
+  exceptions:
+    - A product capability declared in the plan with no implementation anywhere is NOT reported here; the rule
+      judges code that exists against the contract it claims, not the absence of code.
+metadata:
+  aliases:
+    - BUN-CAPABILITY-CONTRACT-001
+  severity: 4
+  disposition: strict
+  introduced_in: 0.2.0
+  core_design_refs:
+    - afokapu/atdd#1246
+    - afokapu/atdd#1251
+terms:
+  - term_id: capability_data_contract
+    text: >-
+      the artifacts a product capability document declares under `produce[]` and `consume[]`, each identified by an
+      artifact `name`, which the product capability's flow-variable-moving code must name.

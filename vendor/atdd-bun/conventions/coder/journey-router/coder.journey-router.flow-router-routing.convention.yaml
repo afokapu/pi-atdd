@@ -1,0 +1,62 @@
+schema_version: 1.1.0
+rule_id: coder.journey-router.flow-router-routing
+kind: rule
+status: active
+name: Journey router routes both direct and flow router journeys, delegating to FlowRunner (Bun)
+statement: >-
+  The journey router composition root (`server.ts`) MUST support both direct user/system flow routing and
+  flow-router-enabled routing: its `JOURNEY_MAP` MUST admit a direct `userSystemFlowId` string AND an
+  `{flowRouterId, path}` route object, and when a flow router route is present the journey router MUST
+  reference `FlowRouterRunner` and ultimately reference `FlowRunner` for the selected user/system flow. This is
+  the Bun-stack realization of the agnostic core obligation
+  `coder.user-system-flow.journey-router-flow-router-routing` (core afokapu/atdd#1251); the JS detector that
+  enforces it is the atdd.workspace.bun implementation referenced below.
+implementation:
+  type: validator
+  ref: coder.bun.journey-router-flow-router-routing
+content:
+  summary: >-
+    An agnostic "journey router is wired for flow router" obligation, rendered for the Bun application.
+    The JS realization scans `server.ts`: when JOURNEY_MAP declares a flow router route object, the
+    module MUST reference `FlowRouterRunner` (else unlinked) and `FlowRunner` (else no delegation).
+    Member of the `bun_flow_router_infrastructure` FAMILY detector (checks/flow_router_station_routing.mjs).
+  normative_text: |
+    Core runtime spec afokapu/atdd#1251 — the additive call model:
+
+        Journey router -> FlowRouterRunner.resolveUserSystemFlow(action, inputs, state)
+                       -> FlowRunner.execute(selectedUserSystemFlowId, ...)
+
+    The existing direct mapping (`JOURNEY_MAP[action] = "<userSystemFlowId>"`) remains valid; the flow router
+    mapping (`{flowRouterId, path}`) is additive. In BOTH cases the final user/system flow execution is performed
+    by FlowRunner. A journey router that declares a flow router route but never routes through
+    FlowRouterRunner, or never reaches FlowRunner, breaks the contract. WHICH entrypoint is inspected
+    and HOW the routing is recognized is the per-stack detector's concern.
+  fix_hint: |
+    Route through the runner and delegate:
+
+      import { FlowRouterRunner } from "./user-system-flows/flow-router";
+      import { FlowRunner } from "./user-system-flows/runner";
+      export const JOURNEY_MAP = {
+        start_match: "user-system-flow:match:solo-match-complete",                       // direct
+        resolve_match: { flowRouterId: "...", path: "...yaml" },            // flow router
+      };
+      // flow router branch: new FlowRouterRunner(path).execute(...) -> FlowRunner.execute(...)
+
+    This rule is `strict`: an unlinked or non-delegating journey router is not suppressible and fails CI.
+  exceptions:
+    - Applies only when JOURNEY_MAP declares at least one flow router route object; a pure direct-user/system-flow
+      Journey router carries no flow router obligation.
+metadata:
+  aliases:
+    - BUN-JOURNEY_ROUTER-FLOW_ROUTER-ROUTING-001
+  severity: 4
+  disposition: strict
+  introduced_in: 0.1.0
+  core_design_refs:
+    - afokapu/atdd#1246
+    - afokapu/atdd#1251
+terms:
+  - term_id: journey_router
+    text: >-
+      the composition root (`server.ts`) whose JOURNEY_MAP routes both direct userSystemFlowId strings and
+      flow router route objects, referencing FlowRouterRunner and ultimately calling FlowRunner.
