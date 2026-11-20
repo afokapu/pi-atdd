@@ -1,0 +1,132 @@
+schema_version: 1.1.0
+rule_id: coder.flow-router.bilateral-binding
+kind: rule
+status: active
+name: Flow router declarations and runtime route resolution are bilaterally bound (Bun)
+statement: >-
+  A flow router system is systemic, not descriptive: it requires CLOSURE across declaration (the
+  flow router YAML route space, core afokapu/atdd#1248), runtime resolution (FlowRouterRunner,
+  core afokapu/atdd#1251), journey router reachability (the `server.ts` JOURNEY_MAP), FlowRunner
+  delegation, and the execution trace. This convention binds those surfaces in FIVE directions so a
+  declared route, a runtime resolution, a journey router action, and a recorded trace can never drift
+  apart silently. This is the Bun-stack realization of the agnostic core obligation
+  `coder.user-system-flow.flow-router-bilateral-binding`; the JS detector `bun_flow_router_binding` realizes
+  all five directions and emits this single rule_id with the failing `direction` named in the evidence.
+
+# Machine-readable bilateral relationship (the five binding directions + the schema-drift signal).
+# Each direction names the fixture the JS detector fails on and passes the clean tree.
+bidirectional:
+  - direction: declaration_to_runtime
+    requirement: >-
+      Every declared route resolves through FlowRouterRunner to the declared userSystemFlowId — the route's
+      user/system flow artifact (user_system_flow_path / plan/_user_system_flows/<user_system_flow_id>.yaml) must exist so the runtime can load it.
+    fail_fixture: fixtures/dirty
+  - direction: runtime_to_declaration
+    requirement: >-
+      FlowRouterRunner never resolves a routeId/user-system-flowId absent from the loaded YAML; a runtime that
+      returns a routeId/selectedUserSystemFlowId literal not declared in any flow router is a hidden route.
+    fail_fixture: fixtures/dirty_runtime_hidden
+  - direction: station_to_declaration
+    requirement: >-
+      Every journey router flow router mapping ({flowRouterId, path}) points to an existing
+      flow router YAML — a mapping whose path resolves to no file (or names an undeclared
+      flowRouterId) is a dangling route.
+    fail_fixture: fixtures/dirty_station_missing
+  - direction: declaration_to_station
+    requirement: >-
+      Every flow router with core entrypoint.exposed=true is journey-router-reachable through one of
+      its core entrypoint.actions wired into the JOURNEY_MAP to that flow router. CONSUMES core
+      afokapu/atdd#1248 entrypoint.exposed + entrypoint.actions; this extension defines NO parallel
+      reachability field (entrypoints, runtime_exposure, station_actions, exposed_actions, reachability).
+    fail_fixture: fixtures/dirty_unreachable
+  - direction: trace_to_declaration
+    requirement: >-
+      Every executed flow router route emits trace metadata that resolves back to the source YAML — a
+      trace test asserting trace.routeId / trace.flowRouterId values absent from the declared route
+      space does not bind the run to its declaration (core afokapu/atdd#1251 trace contract).
+    fail_fixture: fixtures/dirty_trace
+
+implementation:
+  type: validator
+  ref: coder.bun.flow-router-bilateral-binding
+
+content:
+  summary: >-
+    A bilateral-binding obligation that makes user/system flow flow router SYSTEMIC, rendered for the Bun
+    backend. One JS detector (bun_flow_router_binding) walks a consumer tree's flow router YAML
+    route space (plan/_user_system_flows/_flow_routers/**), journey router JOURNEY_MAP (server.ts),
+    FlowRouterRunner runtime (src/user-system-flows/**), and e2e trace tests (e2e/**), and emits RAW v1.1
+    violations under this rule_id for any of the five binding directions that is broken — plus a
+    schema-drift signal when a parallel reachability field is used instead of core #1248's `entrypoint`.
+  normative_text: |
+    Core runtime spec afokapu/atdd#1251 — the additive call model whose closure this rule enforces:
+
+        plan/_user_system_flows/_flow_routers/<id>.yaml          (declaration, core #1248)
+          -> entrypoint.actions[]                       (core #1248 entrypoint field — CONSUMED here)
+          -> Journey router JOURNEY_MAP action          (reachability, server.ts)
+          -> FlowRouterRunner.resolveUserSystemFlow(...)       (runtime, core #1251)
+          -> FlowRouterResolution(routeId, userSystemFlowId, category, guardId, resolutionStrategy, ...)
+          -> FlowRunner.execute(selectedUserSystemFlowId)       (delegation)
+          -> trace(flowRouterId, routeId, selectedUserSystemFlowId, ...)
+          -> validator resolves the trace back to the YAML route
+
+    OWNERSHIP SPLIT (collision prevention): core afokapu/atdd#1248/#1249 own the flow router YAML
+    schema and the SHAPE/allowed values of the `entrypoint` field. This extension only READS those
+    core fields to validate REACHABILITY against journey router and runtime traces in a consumer repo.
+    It MUST NOT introduce `entrypoints`, `runtime_exposure`, `station_actions`, `exposed_actions`,
+    `reachability`, or any other parallel reachability field. If core #1248 changes the field name or
+    shape, this rule follows core and updates its detector/fixtures.
+  fix_hint: |
+    Close the broken binding direction named in the violation's evidence:
+
+      declaration_to_runtime  — add the missing user/system flow artifact the declared route resolves to.
+      runtime_to_declaration  — remove the hidden routeId/user-system-flowId literal, or declare it in the YAML.
+      station_to_declaration  — fix the JOURNEY_MAP flow router path to point at the real YAML.
+      declaration_to_station  — wire the exposed flow router's entrypoint.action into JOURNEY_MAP (or
+                                set entrypoint.exposed:false with a reason if it is genuinely internal).
+      trace_to_declaration    — assert the trace's flow-routerId/routeId values that are declared.
+      schema drift            — replace any parallel reachability field with core #1248's `entrypoint`.
+
+    This rule is `strict`: a broken binding direction lets declaration, runtime, journey router, and
+    trace drift apart silently and therefore blocks CI.
+  exceptions:
+    - Flow routers with entrypoint.exposed:false (internal-transition-only / library-only /
+      planned-not-exposed) carry no journey-router-reachability obligation (declaration_to_station).
+    - A consumer tree with no flow router route space and no FlowRouterRunner is not a flow router
+      system; the rule does not bite.
+    - Per-stack renderings other than Bun are owned by their own workspace packages.
+
+metadata:
+  aliases:
+    - BUN-FLOW_ROUTER-BILATERAL-BINDING-001
+  severity: 1
+  disposition: strict
+  introduced_in: 0.1.0
+  core_design_refs:
+    - afokapu/atdd#1246
+    - afokapu/atdd#1248
+    - afokapu/atdd#1249
+    - afokapu/atdd#1251
+
+notes: >-
+  DISPOSITION JUSTIFICATION (strict, severity 1). Bilateral binding is what makes flow router a
+  route-control SYSTEM rather than a description. A broken binding direction — an unresolvable declared
+  route, a hidden runtime route, a dangling journey router mapping, an unreachable exposed flow router,
+  or a trace that does not resolve to its declaration — is the exact silent-drift failure class the
+  user/system-flow-flow-router design (afokapu/atdd#1246) exists to close. The detector emits RAW facts only; the
+  strict verdict is applied by a downstream gate. Per boundary spec §6.2 the core contracts are
+  referenced NARRATIVELY, and the core `entrypoint` field is CONSUMED, never forked.
+
+terms:
+  - term_id: bilateral_binding
+    text: >-
+      the property that flow router declaration, runtime resolution, journey router reachability, and
+      execution trace are bound in both directions so none can drift from the others undetected.
+  - term_id: hidden_route
+    text: >-
+      a routeId/selectedUserSystemFlowId the FlowRouterRunner runtime resolves that is declared in no
+      flow router YAML — a runtime-to-declaration binding break.
+  - term_id: parallel_reachability_field
+    text: >-
+      any non-core reachability field (entrypoints, runtime_exposure, station_actions, exposed_actions,
+      reachability) that forks core afokapu/atdd#1248's `entrypoint`; using one is schema drift.
