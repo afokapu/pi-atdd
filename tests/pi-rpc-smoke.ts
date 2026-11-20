@@ -1,11 +1,18 @@
 import { spawn } from "node:child_process";
-import { resolve } from "node:path";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 
+// PLT-98: run against an isolated, temporary Pi agent dir so an installed pi-atdd in the
+// caller's profile (e.g. PI_CODING_AGENT_DIR=~/.pi/agents/forge) cannot collide with this extension.
+const agentDir = mkdtempSync(join(tmpdir(), "pi-atdd-smoke-"));
+const cleanup = () => rmSync(agentDir, { recursive: true, force: true });
+process.on("exit", cleanup);
 const cli = resolve("node_modules/.bin/pi");
 const child = spawn(cli, ["--offline", "--approve", "-e", resolve("extensions/atdd.ts"),
   "--mode", "rpc", "--no-session"], {
   cwd: process.cwd(), stdio: ["pipe", "pipe", "pipe"], shell: false,
-  env: { ...process.env, PI_OFFLINE: "1", PI_TELEMETRY: "0", PI_SKIP_VERSION_CHECK: "1" },
+  env: { ...process.env, PI_CODING_AGENT_DIR: agentDir, PI_OFFLINE: "1", PI_TELEMETRY: "0", PI_SKIP_VERSION_CHECK: "1" },
 });
 let stdout = "", stderr = "", resolved = false;
 const timeout = setTimeout(() => stop(new Error("Pi RPC did not answer get_commands")), 25_000);
@@ -41,5 +48,5 @@ child.stdout.on("data", (chunk: Buffer) => {
   }
 });
 child.on("error", err => stop(err));
-child.on("exit", code => { if (!resolved) stop(new Error("Pi exited before reply: " + code)); });
+child.on("exit", code => { cleanup(); if (!resolved) stop(new Error("Pi exited before reply: " + code)); });
 child.stdin.write(JSON.stringify({ id: "commands", type: "get_commands" }) + "\n");
