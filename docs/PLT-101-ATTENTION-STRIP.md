@@ -232,4 +232,15 @@ These supersede the event shape, expiry and enforcement text above where they di
 | Coach keeps the strip empty and acts on items | | yes |
 | No secrets in summaries | | yes |
 | Spool growth and GC | no (Q3, deferred) | |
-| Test file `// URN:` header (`tester.test.carries-urn-identity`) | no | Not bound: no PLT-101 acceptance IDs exist in this repo's plan, and existing repo tests carry `// Acceptance:` only. Needs the planning authority. |
+| Test file `// URN:` and `// Acceptance:` headers (`tester.test.carries-urn-identity`, `tester.acceptance.binding-declared`) | yes for PLT-101-ACC-1..4 (headers, PLT-97 pattern); tests named `support:` bind to no acceptance | Whether PLT-101-ACC-1..4 exist in the plan graph is not checked here |
+
+### Accepted limit: same-user key (owner decision, option A)
+
+The owner accepted this limit as documented. Nothing more is built for it in PLT-101.
+
+- The per-profile MAC key (`<agentDir>/attention/attention.key`) is readable by any process running as the same OS user.
+- So a worker running as that user can forge Coach state records (resolve, ack, snooze, cancel, expire) for items it can see in its own profile, and can raise items under another worker identity in that profile.
+- It can also delete or rewrite the spool without any key. Unseen resolutions and not-yet-ingested raises are lost.
+- The MAC stops forgery by writes that lack the key: unsigned lines, wrongly signed lines, and altered signed bodies are rejected.
+- Profile isolation is by file path only. Under the same-user limit a same-user process can also read another profile's key by path. This is not blocked and not tested.
+- Closing the limit needs a separate OS user or a Coach-only secret. That is a later decision, not part of PLT-101.
