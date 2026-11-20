@@ -12,6 +12,7 @@ import { ReasoningSession, type ContextObservation } from "./reasoning-context.t
 import { renderReasonedPage, type RenderedPage } from "./render-reasoning.ts";
 import { observeRepository, type RepositorySnapshot } from "./repository-observer.ts";
 import { shellWriteTargetModes } from "./shell-targets.ts";
+import { registerAttentionStrip } from "./attention-strip.ts";
 import { Type } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { MODE_FILE, guardsAtdd, modeFromText, recordMode, repositoryRoot, resolveMode, type Mode, type Resolution } from "./mode.ts";
@@ -63,6 +64,7 @@ const oneLine=(s:string)=>s.replace(/\s+/g," ").trim().slice(0,160);
 const MODE_CHOICES=["ATDD — remember for this repo","Plain — remember for this repo",
   "ATDD — this session only","Plain — this session only"];
 export default function atdd(pi:ExtensionAPI):void {
+  registerAttentionStrip(pi); // PLT-101: inert unless PI_ATDD_ATTENTION_ROLE is set
   let cwdKey="", task="", serial=0;
   let catalog:Catalog|undefined,selectors:Selector[]=[];
   let reasoning:ReasoningSession|undefined;
