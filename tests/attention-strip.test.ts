@@ -1,7 +1,14 @@
-// PLT-101 Attention Strip. Seeded tests, written before the review-RETURN fixes.
-// Acceptance: PLT-101 points 1-5 (docs/PLT-101-ATTENTION-STRIP.md).
-// Review RETURN (2026-11-20) added: trust gate on every entry point, authenticated records,
-// profile filtering, malformed-record tolerance, removal of closed items, explicit expiry.
+// URN: test:pi-atdd:attention-strip:PLT-101-ACC-1
+// Acceptance: acc:pi-atdd:PLT-101-ACC-1
+// Acceptance: acc:pi-atdd:PLT-101-ACC-2
+// Acceptance: acc:pi-atdd:PLT-101-ACC-3
+// Acceptance: acc:pi-atdd:PLT-101-ACC-4
+// PLT-101 (Linear): 1 a worker raises each of the 4 types and the Coach strip lists each one; 2 ack, snooze,
+// resolve, cancel and TTL change state, and closed items leave memory; 3 restart rebuild from hidden session
+// entries gives the same open set; 4 the worker sees a Coach resolution on its next turn without agent-say.
+// Criterion 5 (tests first, green suite, draft PR, no merge) is checked by the PR process, not by this file.
+// Tests named "support:" check trust, authenticity, profile, input and wiring controls that the Linear points
+// do not list; they bind to no acceptance (docs/PLT-101-ATTENTION-STRIP.md, review RETURN amendments).
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { randomBytes } from "node:crypto";
@@ -97,7 +104,7 @@ const lastRec = (w: World, id: string): StateRecord | undefined =>
 const stateOf = (w: World, id: string) => lastRec(w, id)?.state;
 const itemOf = async (s: S, id: string) => (await s.tool("attention_status", { id })).details.item;
 
-test("acc1: a worker raises each of the 4 types and the Coach strip lists each one", async () => {
+test("PLT-101-ACC-1: a worker raises each of the 4 types and the Coach strip lists each one", async () => {
   const w = world();
   try {
     const worker = start(w, "worker", WORKER);
@@ -110,7 +117,7 @@ test("acc1: a worker raises each of the 4 types and the Coach strip lists each o
   } finally { w.cleanup(); }
 });
 
-test("acc2: ack, snooze, resolve, cancel and TTL change state; closed items leave memory and the widget", async () => {
+test("PLT-101-ACC-2: ack, snooze, resolve, cancel and TTL change state; closed items leave memory and the widget", async () => {
   const w = world();
   try {
     const worker = start(w, "worker", WORKER);
@@ -151,7 +158,7 @@ test("acc2: ack, snooze, resolve, cancel and TTL change state; closed items leav
   } finally { w.cleanup(); }
 });
 
-test("acc3: restart rebuild from hidden session entries gives the same open set", async () => {
+test("PLT-101-ACC-3: restart rebuild from hidden session entries gives the same open set", async () => {
   const w = world();
   try {
     const log: Entry[] = [];
@@ -182,7 +189,7 @@ test("acc3: restart rebuild from hidden session entries gives the same open set"
   } finally { w.cleanup(); }
 });
 
-test("acc4: the worker sees a Coach resolution on its next turn without agent-say, and only once", async () => {
+test("PLT-101-ACC-4: the worker sees a Coach resolution on its next turn without agent-say, and only once", async () => {
   const w = world();
   try {
     const workerLog: Entry[] = [];
@@ -209,7 +216,7 @@ test("acc4: the worker sees a Coach resolution on its next turn without agent-sa
   } finally { w.cleanup(); }
 });
 
-test("Q4: above-grant resolution requires the owner's answer, which is recorded and delivered", async () => {
+test("PLT-101-ACC-4: above-grant resolution requires the owner's answer, which is recorded and delivered", async () => {
   const w = world();
   try {
     const worker = start(w, "worker", WORKER);
@@ -236,7 +243,7 @@ test("Q4: above-grant resolution requires the owner's answer, which is recorded 
   } finally { w.cleanup(); }
 });
 
-test("from and profile are stamped from launch config, never from tool arguments", async () => {
+test("support: from and profile are stamped from launch config, never from tool arguments", async () => {
   const w = world();
   try {
     const worker = start(w, "worker", WORKER);
@@ -248,7 +255,7 @@ test("from and profile are stamped from launch config, never from tool arguments
   } finally { w.cleanup(); }
 });
 
-test("invalid input is rejected at raise: type, summary length, TTL bounds", async () => {
+test("support: invalid input is rejected at raise: type, summary length, TTL bounds", async () => {
   const w = world();
   try {
     const worker = start(w, "worker", WORKER);
@@ -260,7 +267,7 @@ test("invalid input is rejected at raise: type, summary length, TTL bounds", asy
   } finally { w.cleanup(); }
 });
 
-test("default TTL is 72 hours; 7 days is accepted", async () => {
+test("support: default TTL is 72 hours; 7 days is accepted", async () => {
   const w = world();
   try {
     const worker = start(w, "worker", WORKER);
@@ -271,7 +278,7 @@ test("default TTL is 72 hours; 7 days is accepted", async () => {
   } finally { w.cleanup(); }
 });
 
-test("a worker has no Coach tools and sees only its own items", async () => {
+test("support: a worker has no Coach tools and sees only its own items", async () => {
   const w = world();
   try {
     const worker = start(w, "worker", WORKER);
@@ -288,7 +295,7 @@ test("a worker has no Coach tools and sees only its own items", async () => {
   } finally { w.cleanup(); }
 });
 
-test("without launch config the strip is inert: no tools, no command, no hooks", () => {
+test("support: without launch config the strip is inert: no tools, no command, no hooks", () => {
   const w = world();
   try {
     const bare = start(w, undefined, "none");
@@ -298,7 +305,7 @@ test("without launch config the strip is inert: no tools, no command, no hooks",
   } finally { w.cleanup(); }
 });
 
-test("the owner command mirrors the Coach tools and exists only for the Coach", async () => {
+test("support: the owner command mirrors the Coach tools and exists only for the Coach", async () => {
   const w = world();
   try {
     const worker = start(w, "worker", WORKER);
@@ -311,7 +318,7 @@ test("the owner command mirrors the Coach tools and exists only for the Coach", 
   } finally { w.cleanup(); }
 });
 
-test("the Coach polls the spool every 5 seconds and the timer is cleared on shutdown", async () => {
+test("support: the Coach polls the spool every 5 seconds and the timer is cleared on shutdown", async () => {
   const w = world();
   try {
     const worker = start(w, "worker", WORKER);
@@ -328,7 +335,7 @@ test("the Coach polls the spool every 5 seconds and the timer is cleared on shut
   } finally { w.cleanup(); }
 });
 
-test("review P1: every tool, the command and the hooks refuse an untrusted project; no state changes", async () => {
+test("support: every tool, the command and the hooks refuse an untrusted project; no state changes", async () => {
   const w = world();
   try {
     const trustedWorker = start(w, "worker", WORKER);
@@ -361,7 +368,7 @@ test("review P1: every tool, the command and the hooks refuse an untrusted proje
   } finally { w.cleanup(); }
 });
 
-test("review P1: unsigned, mis-signed or forged resolutions are never applied or delivered", async () => {
+test("support: unsigned, mis-signed or forged resolutions are never applied or delivered", async () => {
   const w = world();
   try {
     const worker = start(w, "worker", WORKER);
@@ -389,7 +396,7 @@ test("review P1: unsigned, mis-signed or forged resolutions are never applied or
   } finally { w.cleanup(); }
 });
 
-test("review P1: malformed records are skipped without throwing, and a torn write cannot swallow the next record", async () => {
+test("support: malformed records are skipped without throwing, and a torn write cannot swallow the next record", async () => {
   const w = world();
   try {
     const worker = start(w, "worker", WORKER);
@@ -415,7 +422,7 @@ test("review P1: malformed records are skipped without throwing, and a torn writ
   } finally { w.cleanup(); }
 });
 
-test("review P1: same identity in another profile is invisible to the Coach and to the worker", async () => {
+test("support: same identity in another profile is invisible to the Coach and to the worker", async () => {
   const w = world();
   try {
     const worker = start(w, "worker", WORKER);
@@ -441,7 +448,7 @@ test("review P1: same identity in another profile is invisible to the Coach and 
   } finally { w.cleanup(); }
 });
 
-test("review acc2: TTL expiry is recorded once as expired and the worker is told once", async () => {
+test("PLT-101-ACC-2: TTL expiry is recorded once as expired and the worker is told once", async () => {
   const w = world();
   try {
     const worker = start(w, "worker", WORKER);
