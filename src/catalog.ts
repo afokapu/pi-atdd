@@ -317,7 +317,7 @@ export function bundledSources(): SourceSpec[] {
       sha256: "61665ba225ffc6c0bed6952aa8f8c9d9c0e2f0d7df3982662a2cdf50eb327438" },
     // Package-authored conventions (PLT-87): rules owned by pi-atdd itself, not mirrored upstream.
     { id: "pi-atdd", path: join(packageRoot, "catalog/pi-atdd"), kind: "extension",
-      sha256: "e4c3ad7e0e16808c433b1589214bc47814b7573320121702876d2e92983e05d2" },
+      sha256: "589887d4408a693ec4a3fbe606ea11ac1e439d9eda9ab32c69b9b45a2e809b48" },
   ];
 }
 function selectorFile(file: string): Selector[] {

@@ -13,7 +13,8 @@ test("pinned full corpus: incremental update agrees with cold replay and reports
   try {
     const cfg=loadConfig(cwd),catalog=loadCatalog(cfg.sources,cwd);
     assert.ok(catalog.rules.has("shared.model.tier-by-role"));
-    assert.equal(catalog.edges.length,508);
+    for(const id of ["coach.naming.instance-label","coach.policy.action-tiers","coach.role.orchestrate-not-build"]) assert.ok(catalog.rules.has(id),id);
+    assert.deepEqual(catalog.unresolvedEdges.filter(e=>e.sourceFile.startsWith("pi-atdd/")),[],"package-authored edges resolve");
     const metrics=[];
     for(let i=0;i<3;i++){
       const scope="bench-"+i, hot=new ReasoningSession(catalog,cfg.selectors);
