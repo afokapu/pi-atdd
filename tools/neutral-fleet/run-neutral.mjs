@@ -17,6 +17,9 @@ const conc = Number(opt("--concurrency", 5)), maxRounds = Number(opt("--rounds",
 const split = (pm) => { const i = pm.indexOf("/"); return { provider: pm.slice(0, i), model: pm.slice(i + 1), id: pm }; };
 const DERIVER = split(opt("--deriver", "zai/glm-5.3"));
 const FALLBACK = opt("--fallback", null) ? split(opt("--fallback")) : null;
+// --seed <dir>: <dir>/<id>/neutral.json is audited first (round 0, no derivation); the deriver runs only if it fails.
+// --no-proposals: the mechanical check rejects any proposedKeys (vocabulary v3 is closed to new keys during re-keying).
+const SEED = opt("--seed", null), NO_PROPOSALS = args.includes("--no-proposals");
 const LEDGER = opt("--fallback-ledger", null), FALLBACK_MAX = Number(opt("--fallback-max", 0));
 const sem = (n) => { let busy = 0; const q = []; return async (fn) => { while (busy >= n) await new Promise(r => q.push(r)); busy++; try { return await fn(); } finally { busy--; q.shift()?.(); } }; };
 const auditSlot = sem(Number(opt("--audit-cap", 6))), reviewSlot = sem(Number(opt("--review-cap", 4)));
@@ -95,6 +98,7 @@ export function neutralCheck(dir) {
     if (VOC.isVocabularyKey(p.key, VOCAB)) continue;
     if (!proposed.has(p.key)) errors.push("profile key not in vocabulary and not proposed: " + p.key);
   }
+  if (NO_PROPOSALS && proposed.size) errors.push("vocabulary v3: do not propose keys; use an entry of the matching map key (<key>#<entry>): " + [...proposed.keys()].join(", "));
   for (const [k, p] of proposed) {
     for (const pr of VOC.proposalProblems(k, VOCAB)) errors.push("proposed key " + k + ": " + pr);
     if (!p.whyNoExistingKey?.trim()) errors.push("proposed key " + k + ": whyNoExistingKey missing");
@@ -131,7 +135,27 @@ async function one(id) {
   copyFileSync(VOC.VOCABULARY_PATH, join(dir, "vocabulary.yaml"));
   copyFileSync(join(REPO, e.sourcePath), join(dir, "source.convention.yaml"));
   const rounds = prior ? [...prior.rounds] : []; let feedback = prior ? { audit: existsSync(join(dir, "neutral-audit.json")) ? J(join(dir, "neutral-audit.json")) : null, note: "item list now also includes verifier_detail[i]; classify them" } : null;
-  const firstRound = rounds.length + 1; let lastRound = rounds.length + maxRounds, deriver = DERIVER;
+  let seedReview = null;
+  if (SEED && existsSync(join(SEED, id, "neutral.json")) && !prior) {
+    // Reuse a saved round-0 audit only if it audited exactly this seed (resume after an interrupted run).
+    const reuse = existsSync(join(dir, "neutral-audit-r0.json")) && existsSync(join(dir, "neutral-r0.json")) && sha256(readFileSync(join(dir, "neutral-r0.json"))) === sha256(readFileSync(join(SEED, id, "neutral.json")));
+    copyFileSync(join(SEED, id, "neutral.json"), join(dir, "neutral.json")); copyFileSync(join(SEED, id, "seed.json"), join(dir, "seed.json"));
+    copyFileSync(join(dir, "neutral.json"), join(dir, "neutral-r0.json"));
+    const ck = neutralCheck(dir); writeFileSync(join(dir, "neutral-check.json"), JSON.stringify(ck, null, 2));
+    let audit = null, uv = null;
+    if (ck.ok && reuse) { audit = J(join(dir, "neutral-audit-r0.json")); copyFileSync(join(dir, "neutral-audit-r0.json"), join(dir, "neutral-audit.json")); uv = { cost: 0, reused: true }; }
+    else if (ck.ok) {
+      rmSync(join(dir, "neutral-audit.json"), { force: true });
+      uv = await auditSlot(() => pi(id + " auditor r0", { cwd: dir, provider: "openai-codex", model: "gpt-6.1-sol", thinking: "medium", tools: "read,write,ls", prompt: readFileSync(join(FLEET, "NEUTRAL_AUDITOR.md"), "utf8"), out: join(dir, "neutral-audit-r0.jsonl") }));
+      try { audit = J(join(dir, "neutral-audit.json")); copyFileSync(join(dir, "neutral-audit.json"), join(dir, "neutral-audit-r0.json")); } catch {}
+    }
+    const verdict = audit?.verdict ?? (ck.ok ? "AUDIT_UNPARSED" : "CHECK_FAILED");
+    rounds.push({ round: 0, deriverModel: "rekey-v3", deriver: { cost: 0 }, check: { ok: ck.ok, errors: ck.errors.length }, auditor: uv, verdict });
+    log(id + " round 0 (re-keyed seed): check=" + (ck.ok ? "ok" : "FAIL(" + ck.errors.length + ") " + ck.errors.join(" | ").slice(0, 160)) + " audit=" + (audit?.verdict ?? "-"));
+    if (verdict === "PASS") seedReview = J(join(dir, "seed.json")).previousAudit?.review ?? null;
+    else feedback = { mechanicalErrors: ck.errors, audit, note: "The core was re-keyed onto vocabulary v3; fix the findings without proposing new keys." };
+  }
+  const firstRound = rounds.length + 1; let lastRound = seedReview ? 0 : rounds.length + maxRounds, deriver = DERIVER;
   for (let r = firstRound; r <= lastRound; r++) {
     if (feedback) writeFileSync(join(dir, "feedback.json"), JSON.stringify(feedback, null, 2));
     if (existsSync(join(dir, "neutral.json"))) renameSync(join(dir, "neutral.json"), join(dir, "neutral-prev.json"));
@@ -162,11 +186,11 @@ async function one(id) {
   }
   // Third-party review of the final core.
   const rp = `You are a third-party reviewer (different provider). Read bun.json (authoritative ATDD-Bun rewrite; its rule_id is the legacy id, rule.json has the current id), neutral.json (derived stack-neutral core) and neutral-audit.json. Do not modify them. Answer: (1) is the core faithful to bun.json (no weaker/stronger obligation)? (2) does the core leak any stack/path? (3) imagine a Python/Django codebase with the same roles: could an agent apply core + the Bun rewrite as a reference example correctly? score 1-5. Write review-neutral.json: {"rule_id":"...","faithful":true,"leaks":[],"pythonTransferScore":1,"risks":["..."],"agreeWithAuditor":true,"summary":"..."}. Reply REVIEWED.`;
-  await reviewSlot(() => pi(id + " reviewer", { cwd: dir, provider: "kimi-coding", model: "k3.1-pro", thinking: "medium", tools: "read,write,ls", prompt: rp, out: join(dir, "review-neutral.jsonl") }));
-  let rv = null; try { rv = J(join(dir, "review-neutral.json")); } catch {}
-  writeFileSync(join(dir, "result.json"), JSON.stringify({ rule_id: id, status: rounds.at(-1).verdict, deriver: DERIVER.id, fallbackUsed: rounds.some(x => x.deriverModel !== DERIVER.id), bunSidecarSha256: bunSha, rounds, stats: neutralCheck(dir).stats,
+  if (!seedReview) await reviewSlot(() => pi(id + " reviewer", { cwd: dir, provider: "kimi-coding", model: "k3.1-pro", thinking: "medium", tools: "read,write,ls", prompt: rp, out: join(dir, "review-neutral.jsonl") }));
+  let rv = seedReview; if (!rv) try { rv = J(join(dir, "review-neutral.json")); } catch {}
+  writeFileSync(join(dir, "result.json"), JSON.stringify({ rule_id: id, seeded: !!(SEED && existsSync(join(dir, "seed.json"))), reviewCarried: !!seedReview, status: rounds.at(-1).verdict, deriver: DERIVER.id, fallbackUsed: rounds.some(x => x.deriverModel !== DERIVER.id && x.deriverModel !== "rekey-v3"), bunSidecarSha256: bunSha, rounds, stats: neutralCheck(dir).stats,
     review: rv && { faithful: rv.faithful, leaks: rv.leaks, pythonTransferScore: rv.pythonTransferScore, agreeWithAuditor: rv.agreeWithAuditor },
-    cost: rounds.reduce((s, x) => s + (x.deriver?.cost || 0) + (x.auditor?.cost || 0), 0) + usageOf(join(dir, "review-neutral.jsonl")).cost }, null, 2));
+    cost: rounds.reduce((s, x) => s + (x.deriver?.cost || 0) + (x.auditor?.cost || 0), 0) + (existsSync(join(dir, "review-neutral.jsonl")) ? usageOf(join(dir, "review-neutral.jsonl")).cost : 0) }, null, 2));
   log(id + " done: " + rounds.at(-1).verdict + " review faithful=" + rv?.faithful + " python=" + rv?.pythonTransferScore);
 }
 export async function recheck(id) {

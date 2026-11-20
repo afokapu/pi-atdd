@@ -8,7 +8,7 @@
     "when": "The area lacks its entry-point index document, before or after your change.",
     "then": "The area MUST contain its entry-point index document — the area's entry point and the node the rendered documentation navigates to.",
     "prefer": [
-      "Give the index full document identity like any authored document in the tree: its own title, stable document id, and status.",
+      "Give the index full document identity like any authored document in the tree, using the stack's documentation identity construct from the profile (its own title, stable document id, and status).",
       "Nothing to introduce? Ask whether the area should exist yet, not what its index says; grow the tree only for a real requirement.",
       "In the decision-record area, the index is also a DERIVED registry, governed by the sibling derived-registry rule."
     ],
@@ -29,7 +29,7 @@
     "verification": [
       "The check scans the documentation tree and covers exactly the canonical areas listed in the profile; it does not require an index in any other subdirectory.",
       "Report only when an area directory exists and lacks its index; absent areas are not violations. Directory existence alone is sufficient, independent of file kinds or change type.",
-      "Generated output trees under the documentation tree are excluded entirely; no index is required there. This check owns its exact generated-output classification itself — it is not inferred from any stack-wide exclusion list — and the concrete generated-output tree is realization-specific.",
+      "Generated output trees under the documentation tree are excluded entirely; no index is required there. The excluded locations come from the profile's generated-output trees, while the exclusion predicate is owned by this check itself — it is not inferred from the stack-wide never-scanned exclusion list, and that stack-wide list does not become this rule's exclusion list.",
       "Severity 3; disposition strict: the checker fails on every finding, with no advisory mode and no ratchet baseline.",
       "The violation predicate is established by a tree scan; firing before the change lands requires a planning-time tree observer (hence the activation fact is marked needs_new_observer)."
     ],
@@ -72,32 +72,27 @@
   },
   "profileRequirements": [
     {
-      "key": "layout.docs_areas",
+      "key": "layout.locations#docs_areas",
       "meaning": "The canonical area directories of the authored documentation tree that must each carry an entry-point index; the tree root is one of them.",
       "bunValue": "docs/, docs/purpose/, docs/architecture/, docs/architecture/decisions/, docs/archive/"
     },
     {
-      "key": "layout.docs_index_name",
+      "key": "layout.locations#docs_index_name",
       "meaning": "The file name of a documentation area's entry-point index document.",
       "bunValue": "index.adoc"
-    }
-  ],
-  "proposedKeys": [
-    {
-      "key": "layout.docs_areas",
-      "group": "layout",
-      "meaning": "The canonical area directories of the authored documentation tree that must each carry an entry-point index; the tree root is one of them.",
-      "bunValue": "docs/, docs/purpose/, docs/architecture/, docs/architecture/decisions/, docs/archive/",
-      "whyNoExistingKey": "The roots group covers only source/test/e2e/plan trees, and existing layout keys describe code and plan artifacts; no key lists the canonical documentation areas."
     },
     {
-      "key": "layout.docs_index_name",
-      "group": "layout",
-      "meaning": "The file name of a documentation area's entry-point index document.",
-      "bunValue": "index.adoc",
-      "whyNoExistingKey": "suffix.<file_kind> lists the suffixes of a file kind, not the fixed entry-point file name inside a directory; no layout key names it."
+      "key": "roots.generated",
+      "meaning": "The generated output trees under the documentation tree that this rule's check excludes entirely; no index is ever required there. Only the location comes from the profile — the exclusion predicate is owned by the rule's own check.",
+      "bunValue": "docs/dist"
+    },
+    {
+      "key": "idiom.docs_syntax#document_identity",
+      "meaning": "The stack's documentation identity construct that an area index must carry like any authored document: title, stable document id, and status.",
+      "bunValue": "AsciiDoc document header: `= <Title>` title line plus `:doc-id: <doc-id>` and `:status: <status>` attributes (e.g. `= Architecture`, `:doc-id: architecture.index`, `:status: current`)"
     }
   ],
+  "proposedKeys": [],
   "bunOnly": [
     {
       "item": "given",
@@ -112,7 +107,7 @@
     {
       "item": "prefer[0]",
       "text": "docs/architecture/index.adoc with `= Architecture`, `:doc-id: architecture.index`, `:status: current`",
-      "reason": "Concrete path plus the AsciiDoc header/attribute syntax for document identity; the markup syntax has no stack-neutral equivalent."
+      "reason": "The concrete worked instance (path plus the actual AsciiDoc header of the architecture index) stays in the Bun realization as the reference example; the identity construct itself comes from the profile entry idiom.docs_syntax#document_identity."
     },
     {
       "item": "prefer[2]",
@@ -122,12 +117,12 @@
     {
       "item": "avoid[2]",
       "text": "Do not require an index in docs/dist/.",
-      "reason": "Concrete generated-output path; the neutral core forbids requiring an index in generated output trees, and the concrete generated-output tree is realization-specific."
+      "reason": "Concrete generated-output path; the core forbids requiring an index in generated output trees and takes the excluded location from the profile (roots.generated)."
     },
     {
       "item": "unless[0]",
       "text": "docs/dist/ is generated output, never required to carry an index.",
-      "reason": "Concrete generated-output path; the exclusion classification is owned by this rule's own check (core verification), not by any stack-wide profile exclusion list."
+      "reason": "Concrete generated-output path supplied by the profile (roots.generated); the neutral exception and the check-owned exclusion scoping stay in the core."
     },
     {
       "item": "evidence[0]",
@@ -142,7 +137,7 @@
     {
       "item": "verifier_detail[2]",
       "text": "Exclude docs/dist/ (generated output) entirely.",
-      "reason": "Concrete generated-output path; the exclusion-entirely behavior stays in core verification, and the exact generated-output classification belongs to this check, not to a stack-wide profile list."
+      "reason": "Excluding generated output entirely is core verification; the excluded location comes from the profile (roots.generated), while the exclusion predicate is owned by this check, not inferred from the stack-wide never-scanned list."
     },
     {
       "item": "activation.facts[0]",
@@ -152,7 +147,7 @@
     {
       "item": "activation.facts[1]",
       "text": "docs/*, docs/purpose/**, docs/architecture/**, docs/archive/** (docs/dist/** excluded)",
-      "reason": "Concrete discovery globs of the Bun documentation tree; the core keeps only the neutral discovery hint."
+      "reason": "Concrete discovery globs of the Bun documentation tree; the core keeps only the neutral discovery hint, and the generated-tree exclusion inside the hint uses the profile's generated-output trees."
     },
     {
       "item": "activation.facts[2]",
@@ -167,193 +162,198 @@
     {
       "item": "activation.doesNotFire",
       "text": "docs/archive/ does not exist ... docs/dist/ (generated output) ... non-canonical subdirectory examples",
-      "reason": "Concrete path examples; the neutral non-fire situations take area and generated-tree names from the realization."
+      "reason": "Concrete path examples; the neutral non-fire situations take area names from the profile and generated-tree names from the profile's generated-output trees."
     }
   ],
   "classification": [
     {
       "item": "given",
+      "note": "Neutral authored-area concept in core; the five concrete areas come from the profile; the concrete path list also recorded as bunOnly.",
       "as": [
         "core:given",
-        "profile:layout.docs_areas",
+        "profile:layout.locations#docs_areas",
         "bunOnly"
-      ],
-      "note": "Neutral authored-area concept in core; the five concrete areas from the profile; the concrete path list also recorded as bunOnly."
+      ]
     },
     {
       "item": "when",
+      "note": "'lacks index.adoc before or after your change' neutralized to lacking the entry-point index; the file name comes from the profile.",
       "as": [
         "core:when",
-        "profile:layout.docs_index_name"
-      ],
-      "note": "'lacks index.adoc before or after your change' neutralized to lacking the entry-point index; the file name comes from the profile."
+        "profile:layout.locations#docs_index_name"
+      ]
     },
     {
       "item": "then",
+      "note": "The single obligation in neutral form; 'index.adoc' itself is the profile value and its concrete form is bunOnly.",
       "as": [
         "core:then",
-        "profile:layout.docs_index_name",
+        "profile:layout.locations#docs_index_name",
         "bunOnly"
-      ],
-      "note": "The single obligation in neutral form; 'index.adoc' itself is the profile value and its concrete form is bunOnly."
+      ]
     },
     {
       "item": "why",
+      "note": "Already stack-neutral: navigation failure plus the deliberate canonical-area scoping.",
       "as": [
         "core:why"
-      ],
-      "note": "Already stack-neutral: navigation failure plus the deliberate canonical-area scoping."
+      ]
     },
     {
       "item": "prefer[0]",
+      "note": "Neutral 'give the index full document identity' in core; the identity construct (title, doc id, status) comes from the profile map entry idiom.docs_syntax#document_identity, and only the concrete architecture instance remains Bun-only.",
       "as": [
         "core:prefer[0]",
+        "profile:idiom.docs_syntax#document_identity",
         "bunOnly"
-      ],
-      "note": "Neutral 'give the index full document identity'; the concrete path and AsciiDoc header are bunOnly."
+      ]
     },
     {
       "item": "prefer[1]",
+      "note": "Already neutral; no stack content.",
       "as": [
         "core:prefer[1]"
-      ],
-      "note": "Already neutral; no stack content."
+      ]
     },
     {
       "item": "prefer[2]",
+      "note": "Neutral derived-registry note in core; the concrete decisions path and sibling rule id are bunOnly.",
       "as": [
         "core:prefer[2]",
         "bunOnly"
-      ],
-      "note": "Neutral derived-registry note in core; the concrete decisions path and sibling rule id are bunOnly."
+      ]
     },
     {
       "item": "avoid[0]",
+      "note": "Already neutral: no ceremonial index/canonical files.",
       "as": [
         "core:avoid[0]"
-      ],
-      "note": "Already neutral: no ceremonial index/canonical files."
+      ]
     },
     {
       "item": "avoid[1]",
+      "note": "Already neutral.",
       "as": [
         "core:avoid[1]"
-      ],
-      "note": "Already neutral."
+      ]
     },
     {
       "item": "avoid[2]",
+      "note": "Neutral 'no index required in generated output trees' in core; the concrete generated-output tree (docs/dist/) is the profile value roots.generated and is also recorded as bunOnly.",
       "as": [
         "core:avoid[2]",
+        "profile:roots.generated",
         "bunOnly"
-      ],
-      "note": "Neutral 'no index required in generated output trees'; the concrete generated-output tree (docs/dist/) is bunOnly. The exclusion is this check's own classification (core verification), not a profile key: roots.excluded is the stack-wide never-scanned union and must not be re-purposed as a documentation-only list."
+      ]
     },
     {
       "item": "unless[0]",
+      "note": "Generated-output exception kept neutral in core and as check-owned exclusion scoping in verification; the concrete docs/dist/ location comes from the profile (roots.generated) and is also bunOnly. The exclusion predicate stays with this rule's check: roots.excluded is the one stack-wide union of never-scanned trees and must not be re-purposed as this documentation rule's exclusion list.",
       "as": [
         "core:unless[0]",
         "core:verification",
+        "profile:roots.generated",
         "bunOnly"
-      ],
-      "note": "Generated-output exception kept neutral in core and as check-owned exclusion scoping in verification; the concrete docs/dist/ is bunOnly. No profile key: roots.excluded means the one stack-wide union of never-scanned trees, which bun.json's rule-specific docs/dist/ exclusion is not."
+      ]
     },
     {
       "item": "unless[1]",
+      "note": "Absent areas are not reported — kept as an exception and as check scoping.",
       "as": [
         "core:unless[1]",
         "core:verification"
-      ],
-      "note": "Absent areas are not reported — kept as an exception and as check scoping."
+      ]
     },
     {
       "item": "evidence[0]",
+      "note": "No-finding evidence neutralized; validator id (docs_capability) is bunOnly.",
       "as": [
         "core:evidence[0]",
         "core:verification",
         "bunOnly"
-      ],
-      "note": "No-finding evidence neutralized; validator id (docs_capability) is bunOnly."
+      ]
     },
     {
       "item": "evidence[1]",
+      "note": "Reviewer check neutralized; 'docs/ root' becomes the documentation tree's root area.",
       "as": [
         "core:evidence[1]"
-      ],
-      "note": "Reviewer check neutralized; 'docs/ root' becomes the documentation tree's root area."
+      ]
     },
     {
       "item": "verifier_detail[0]",
+      "note": "Scoping (exactly the listed areas, no other subdirectories) is core verification; the five paths are the profile value and also bunOnly.",
       "as": [
         "core:verification",
-        "profile:layout.docs_areas",
+        "profile:layout.locations#docs_areas",
         "bunOnly"
-      ],
-      "note": "Scoping (exactly the listed areas, no other subdirectories) is core verification; the five paths are the profile value and also bunOnly."
+      ]
     },
     {
       "item": "verifier_detail[1]",
+      "note": "Exists-and-lacks-index predicate with existence-only sufficiency is generic check behavior.",
       "as": [
         "core:verification"
-      ],
-      "note": "Exists-and-lacks-index predicate with existence-only sufficiency is generic check behavior."
+      ]
     },
     {
       "item": "verifier_detail[2]",
+      "note": "Excluding generated output entirely is core verification; the excluded location comes from the profile (roots.generated) and is also bunOnly, while the exclusion predicate is owned by this check itself and not inferred from the stack-wide never-scanned list.",
       "as": [
         "core:verification",
+        "profile:roots.generated",
         "bunOnly"
-      ],
-      "note": "Excluding generated output entirely is core verification, and the exact generated-output classification is owned by this check itself; the concrete tree (docs/dist/) is bunOnly. Not a profile key — roots.excluded is the stack-wide union, which this rule-specific exclusion must not be inferred from."
+      ]
     },
     {
       "item": "verifier_detail[3]",
+      "note": "Per-rule severity and disposition are not profile keys; they stay with the core's verification.",
       "as": [
         "core:verification"
-      ],
-      "note": "Per-rule severity and disposition are not profile keys; they stay with the core's verification."
+      ]
     },
     {
       "item": "activation.facts[0]",
+      "note": "The authoritative violation predicate is neutral (area exists without index; needs_new_observer); tree-scan/planning-observer basis in verification; concrete paths and validator id are bunOnly.",
       "as": [
         "core:activation.facts[0]",
         "core:verification",
         "bunOnly"
-      ],
-      "note": "The authoritative violation predicate is neutral (area exists without index; needs_new_observer); tree-scan/planning-observer basis in verification; concrete paths and validator id are bunOnly."
+      ]
     },
     {
       "item": "activation.facts[1]",
+      "note": "Neutral discovery hint in core (plan or diff touches the documentation tree); concrete globs are bunOnly, and the generated-tree excluded from the hint is the profile value roots.generated.",
       "as": [
         "core:activation.facts[1]",
+        "profile:roots.generated",
         "bunOnly"
-      ],
-      "note": "Neutral discovery hint in core (plan or diff touches the documentation tree); concrete globs are bunOnly."
+      ]
     },
     {
       "item": "activation.facts[2]",
+      "note": "Neutral task-term hint in core; the concrete term list mirrors the stack's area names (bunOnly).",
       "as": [
         "core:activation.facts[2]",
         "bunOnly"
-      ],
-      "note": "Neutral task-term hint in core; the concrete term list mirrors the stack's area names (bunOnly)."
+      ]
     },
     {
       "item": "activation.fires",
+      "note": "The concrete path examples of the fire situations are realization-only (bunOnly); their neutral role-level equivalents live in the core's activation.fires.",
       "as": [
         "bunOnly"
-      ],
-      "note": "The concrete path examples of the fire situations are realization-only (bunOnly); their neutral role-level equivalents live in the core's activation.fires."
+      ]
     },
     {
       "item": "activation.doesNotFire",
+      "note": "The concrete path examples of the non-fire situations are realization-only (bunOnly); their neutral role-level equivalents live in the core's activation.doesNotFire, with generated-tree names from roots.generated.",
       "as": [
         "bunOnly"
-      ],
-      "note": "The concrete path examples of the non-fire situations are realization-only (bunOnly); their neutral role-level equivalents live in the core's activation.doesNotFire."
+      ]
     }
   ],
-  "neutralityNotes": "The convention is about a documentation-tree discipline rather than code, so most of it neutralizes cleanly at role level (authored area, entry-point index, generated output). What could not be made neutral: (1) the concrete canonical areas and the index file name are pulled from the profile (two keys proposed, since the closed vocabulary has no documentation-tree keys); (2) the generated-output tree excluded by this check is NOT a profile value — roots.excluded is the one stack-wide union of never-scanned vendored/generated trees, while this rule's docs/dist/ exclusion is a rule-specific classification owned by the check itself (kept generically in core verification, concretely in bunOnly), so the core does not infer it from the global list; (3) the AsciiDoc document-identity header (title, :doc-id:, :status: attributes) and the sibling rule id planner.docs.adr-registry-derived remain bunOnly — the core keeps only 'full document identity like any authored document'; (4) the validator id docs_capability and the concrete discovery globs/task terms are bunOnly; (5) severity 3 uses the ATDD convention's own severity scale and is kept in core verification per the notProfileKeys rule. The 'rendered documentation navigates to' phrasing assumes the docs tree is published/rendered, which is a property of the documentation role, not of a stack.",
+  "neutralityNotes": "The convention is about a documentation-tree discipline rather than code, so it neutralizes cleanly at role level (authored area, entry-point index, generated output). Everything concrete the core needs comes from the profile: the canonical area list and the index file name (layout.locations entries), the generated-output location excluded by this check (roots.generated — the location is profile data while the exclusion predicate is owned by the rule's own check and is not inferred from the stack-wide never-scanned union in roots.excluded), and the document-identity construct the index must carry (idiom.docs_syntax#document_identity). Remaining Bun-only: the concrete worked instance of the identity construct (docs/architecture/index.adoc with its AsciiDoc header), the sibling rule id planner.docs.adr-registry-derived, the validator id docs_capability, and the concrete discovery globs and task terms (the latter mirroring the profile's area names). Severity 3 uses the ATDD convention's own severity scale and is kept in core verification per the notProfileKeys rule. The 'rendered documentation navigates to' phrasing assumes the docs tree is published/rendered, which is a property of the documentation role, not of a stack.",
   "realizations": {
     "bun": {
       "sidecar": "conventions-sidecar/conventions/atdd-bun/planner.docs.area-index-required.json",
@@ -362,12 +362,12 @@
   },
   "audit": {
     "issue": "PLT-84",
-    "stage": 2,
-    "vocabularyVersion": 2,
+    "stage": 3,
+    "vocabularyVersion": 3,
     "verdict": "PASS",
-    "rounds": 3,
+    "rounds": 2,
     "usefulness": 5,
-    "deriver": "zai/glm-5.3",
+    "deriver": "rekey-v3 -> zai/glm-5.3",
     "auditor": "openai-codex/gpt-6.1-sol",
     "reviewer": "kimi-coding/k3.1-pro",
     "review": {

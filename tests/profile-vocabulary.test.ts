@@ -14,7 +14,7 @@ test("the vocabulary has exactly the eight groups, and every key is documented a
   for (const k of expandKeys(v)) {
     assert.ok(k.key.startsWith(k.group + "."), k.key);
     assert.ok(k.doc.trim().length > 10, k.key + " doc");
-    assert.ok(["list", "text", "path", "glob", "pattern"].includes(k.type), k.key + " type");
+    assert.ok(["list", "text", "path", "glob", "pattern", "map"].includes(k.type), k.key + " type");
   }
 });
 
@@ -25,12 +25,16 @@ test("parametric keys accept only declared parameter values", () => {
   assert.ok(!isVocabularyKey("roles.repository.path"), "repository is not a declared role");
   assert.ok(!isVocabularyKey("enforcement.severity"), "per-rule severity is not a profile key");
   assert.ok(!isVocabularyKey("lockfile.native"), "keys outside the eight groups are rejected");
+  assert.ok(isVocabularyKey("idiom.security#sql_query_sinks"), "v3: an entry of a map key");
+  assert.ok(!isVocabularyKey("roots.docs#x"), "only map keys take entries");
+  assert.ok(!isVocabularyKey("idiom.security#Bad-Entry"), "entries are snake_case");
 });
 
 test("a key proposal must sit in a group, follow the grammar and be new", () => {
   assert.deepEqual(proposalProblems("idiom.retry_policy"), []);
   assert.ok(proposalProblems("idiom.markup_kinds").some((p) => p.includes("already exists")), "approved in vocabulary v2");
   assert.ok(proposalProblems("detector.foo").length > 0);
+  assert.ok(proposalProblems("idiom.security#x").length > 0, "map entries are not proposed as keys");
   assert.ok(proposalProblems("idiom.Auth-Guard").length > 0);
   assert.ok(proposalProblems("idiom.auth_guard").some((p) => p.includes("already exists")));
 });

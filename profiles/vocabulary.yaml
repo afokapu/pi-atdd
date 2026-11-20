@@ -10,7 +10,9 @@
 #   - plain keys, e.g. `roots.source`;
 #   - parametric keys, e.g. `roles.<role>.path`, whose parameter must come from the group's `params`.
 schema: pi-atdd/profile-vocabulary/v1
-version: 2
+version: 3
+status: v3 PENDING owner review (PLT-84). v3 adds map-typed keys, referenced as '<key>#<entry>'; generated from tools/neutral-fleet/consolidate_v3.py.
+# v3 (2026-11-20, owner option 1 via Coach): 367 stage-2 proposals consolidated into 42 entries + 23 parameter values.
 # v2 (2026-11-19, owner via coordinator, PLT-84 comment 12:22Z): + idiom.markup_kinds; roots.excluded = union.
 issue: PLT-84
 groups:
@@ -39,6 +41,9 @@ groups:
         type: list
         doc: The concrete artifact kinds that play the role.
         example: "boundary -> http-route, server-entry; plan_artifact -> wmbt_yaml"
+      roles.layer_catalog: { type: map, doc: "Per-layer and per-side facts: layer responsibilities, layers per side, layers each harness exercises, component-type catalog and weights." }
+      roles.runtime_components: { type: map, doc: "The plan-executing runtime components (dispatcher, journey/train/interlocking runners, route resolver, train executor): local names, entry points, locations." }
+      roles.plan_hierarchy: { type: map, doc: "Plan decomposition levels, the unit of decomposition and its local names, containment fields." }
   roots:
     doc: Top-level trees of the repository, and the trees that are never scanned.
     keys:
@@ -69,6 +74,12 @@ groups:
           Vendored and generated trees that are never scanned. There is ONE list per stack. A rule whose
           checker owns the exact classification says so in its own verification, not here.
         example: "ATDD-Bun (owner decision): node_modules, .git, dist, build, _generated, plus repo-configured excludes"
+      roots.docs: { type: path, doc: "Root of authored documentation." }
+      roots.design_system: { type: path, doc: "Root(s) of the shared design system (primitives, tokens, components)." }
+      roots.telemetry: { type: path, doc: "Root of the telemetry tracking plan and signal definitions." }
+      roots.coordination: { type: path, doc: "Root of the durable workflow-coordination records." }
+      roots.conventions: { type: path, doc: "Where the stack's convention documents and convention graph live." }
+      roots.generated: { type: list, doc: "Generated output trees (documentation, renders, views) that are outputs, never authored inputs." }
   layout:
     doc: Directory shapes below the roots (wagon, feature, commons), and where each kind of artifact is placed.
     keys:
@@ -96,10 +107,14 @@ groups:
       layout.e2e_location:
         type: pattern
         doc: Where an end-to-end test is placed.
+      layout.locations: { type: map, doc: "Location (path segment, glob or pattern) of an artifact kind not covered by a dedicated layout key." }
+      layout.registries: { type: map, doc: "Registry and index files that enumerate artifacts of a kind (decisions, contracts, trains, themes, subjects...)." }
+      layout.schemas: { type: map, doc: "Locations of schemas that define artifact formats." }
+      layout.contract_paths: { type: map, doc: "Contract tree layout: root, per-layout schema paths (flat, faceted, collection), catalog and contract-test locations." }
   suffix:
     doc: File-name suffixes and patterns that identify each file kind.
     params:
-      file_kind: [source, unit_test, acceptance_test, e2e_test, markup, plan_artifact, config]
+      file_kind: [source, unit_test, acceptance_test, e2e_test, markup, plan_artifact, config, test, test_exempt, contract, documentation, rejected_markup, telemetry_test, telemetry_signal, a11y_test, train, convention_node, coordination_record, declaration, barrel, placeholder, appendix, agent_instruction]
     keys:
       suffix.<file_kind>:
         type: list
@@ -108,7 +123,7 @@ groups:
   urn:
     doc: URN shapes, and the syntax by which a file declares or binds to one.
     params:
-      artifact: [component, acceptance, smoke_acceptance, train, wmbt, wagon, feature, journey]
+      artifact: [component, acceptance, smoke_acceptance, train, wmbt, wagon, feature, journey, test, telemetry, telemetry_item, contract, interlocking, participant, artifact]
     keys:
       urn.<artifact>:
         type: pattern
@@ -122,6 +137,10 @@ groups:
         type: pattern
         doc: How a plan artifact declares its own URN.
         example: "urn: \"wmbt:<wagon>:<wmbt_id>\""
+      urn.test_kinds: { type: map, doc: "Test-identity URN shapes and kind segments per test kind (e2e, train e2e, journey smoke, responsive, telemetry), and harness-code maps." }
+      urn.header: { type: map, doc: "Header fields and markers a file carries for traceability (identity, Tested-By, runtime, journey/train references)." }
+      urn.grammar: { type: map, doc: "URN and identifier grammar not covered by a per-artifact key: separators, named parts, identity fields, reference shapes." }
+      urn.builder: { type: map, doc: "Canonical constructs that build a URN for an artifact kind." }
   idiom:
     doc: The stack's concrete construct for a stack-neutral concept that a core refers to.
     keys:
@@ -143,6 +162,23 @@ groups:
       idiom.declaration_scope: { type: text, doc: "Where a gate must be declared relative to the request construct." }
       idiom.comment_marker: { type: text, doc: "Line-comment syntax of the stack's source files." }
       idiom.markup_kinds: { type: list, doc: "Artifact kinds (static pages, templates, server-rendered output) that count as markup in which declarative request and gate constructs can appear.", example: "html, htmx template, server-rendered markup" }
+      idiom.plan_syntax: { type: map, doc: "Constructs of plan artifacts (produce/consume, routes, trains, ownership, status, references, sessions)." }
+      idiom.acceptance_schema: { type: map, doc: "The acceptance-artifact schema: precondition fields, trigger shapes, assertion kinds, harness templates and codes, telemetry decision." }
+      idiom.docs_syntax: { type: map, doc: "Documentation constructs: identity, status and lifecycle, relationships, internal references, generated regions, decision-record headers." }
+      idiom.convention_graph: { type: map, doc: "Convention-graph constructs: node id fields, operative fields, anchors, edge endpoints, rule-binding files." }
+      idiom.routing: { type: map, doc: "Composition-root routing constructs: action-to-route maps, route tables, journey maps and registries, start and launch surfaces." }
+      idiom.test_constructs: { type: map, doc: "Test-code constructs: test case and context, assertions and matchers, substitutions, phase and RED markers, fixtures, browser measurements." }
+      idiom.responsive: { type: map, doc: "Responsive styling: breakpoints, viewports, width conditions and declarations, length units, styling contexts and notations." }
+      idiom.design_system: { type: map, doc: "Design-system constructs: token definition and reference, raw colour literals, component exports, barrels, interactive controls, renderers." }
+      idiom.markup: { type: map, doc: "Declarative markup constructs beyond the dedicated idiom keys: request and swap constructs, progress signals, event handlers, ids, interpolation." }
+      idiom.telemetry: { type: map, doc: "Telemetry constructs: emit calls, event shapes, vendor SDKs, observation tiers and channels." }
+      idiom.logging: { type: map, doc: "Logging constructs: logger receivers, structured logger, context shape, ad-hoc print calls, CLI output." }
+      idiom.security: { type: map, doc: "Security-relevant constructs: SQL sinks and parameterisation, authorization checks, environment access, error-response payloads." }
+      idiom.module_boundaries: { type: map, doc: "Module and runtime boundary constructs: imports, outbound I/O calls, servers, collaborators, composition domains, structural roots." }
+      idiom.dto_shape: { type: map, doc: "How a DTO is declared, named and kept pure." }
+      idiom.naming: { type: map, doc: "Naming constructs: verb lexicon, name-token separators." }
+      idiom.source_syntax: { type: map, doc: "Source-syntax facts used by checks: comment-line kinds, complexity measure, runtime-declaration header and values." }
+      idiom.collaboration: { type: map, doc: "Collaboration-toolchain idioms: seat addresses, integration branches, delegation context, model portfolio, file-reading tool." }
   enforcement:
     doc: >-
       Stack-wide facts about how conventions are enforced. Per-rule severity and disposition are NOT
@@ -163,6 +199,8 @@ groups:
         type: pattern
         doc: How a finding reports its location.
         example: "<path>:<line>"
+      enforcement.exceptions: { type: map, doc: "Where and how intentional exceptions are declared (allow-lists, coverage exceptions, naming exceptions)." }
+      enforcement.presets: { type: map, doc: "Profile presets per kind of work and the location of each profile's registry." }
   tooling:
     doc: Package manager, languages, test runner and helper commands of the stack.
     keys:
@@ -176,8 +214,15 @@ groups:
       tooling.workspace_declaration: { type: text, doc: "How the workspace declares its package manager." }
       tooling.test_runner: { type: text, doc: "The stack's test runner." }
       tooling.urn_resolver: { type: text, doc: "The command that resolves a URN to its artifact." }
+      tooling.commands: { type: map, doc: "Helper commands of the stack's toolchain (authoring, plan session, generators, renderers, seat lifecycle, cleanup)." }
+      tooling.language_scopes: { type: map, doc: "Languages per check scope (scanned code, test files, in-scope files)." }
+      tooling.test_harness: { type: map, doc: "The declared test harness, foreign harnesses that must not be used, and runtime families of tests." }
+      tooling.typecheck: { type: map, doc: "Typecheck configuration, checker dependencies, no-emit commands, step names and strictness options." }
+      tooling.stack_signals: { type: list, doc: "Markers by which a repository or package is recognised as this stack." }
+      tooling.appendix_formats: { type: map, doc: "Appendix types, their file formats, and which formats the agent tooling can read." }
 # These stay with the rule, never in a profile.
 notProfileKeys:
   - "per-rule severity and disposition -> core verification"
   - "detector, validator and finding ids of a single rule -> the stack realization (bunOnly); core verification names the check generically"
+  - "rule-specific concepts of a stack -> an entry of a map key ('<key>#<entry>'), never a new key"
   - "rule-specific examples and task terms -> core activation (neutral) or the realization"

@@ -9,7 +9,7 @@ export const PROFILE_GROUPS = ["roles", "roots", "layout", "suffix", "urn", "idi
 export type ProfileGroup = typeof PROFILE_GROUPS[number];
 export type VocabularyKey = { key: string; group: ProfileGroup; type: string; doc: string; example?: string };
 export type Vocabulary = {
-  schema: string; version: number;
+  schema: string; version: number; status?: string;
   groups: Record<ProfileGroup, { doc: string; params?: Record<string, string[]>; keys: Record<string, { type: string; doc: string; example?: string }> }>;
 };
 
@@ -45,8 +45,13 @@ export function expandKeys(v: Vocabulary = loadVocabulary()): VocabularyKey[] {
   return out;
 }
 
+/** A key is a vocabulary key, or '<map key>#<entry>' where the base key has type map (v3). */
 export function isVocabularyKey(key: string, v: Vocabulary = loadVocabulary()): boolean {
-  return expandKeys(v).some(k => k.key === key);
+  const [base, entry, ...rest] = key.split("#");
+  const k = expandKeys(v).find(x => x.key === base);
+  if (!k) return false;
+  if (entry === undefined) return true;
+  return rest.length === 0 && k.type === "map" && /^[a-z0-9_]+$/.test(entry);
 }
 
 /** A proposed key must sit in one of the eight groups, use the key grammar and not exist yet. */
@@ -54,7 +59,8 @@ export function proposalProblems(key: string, v: Vocabulary = loadVocabulary()):
   const problems: string[] = [];
   const group = key.split(".")[0];
   if (!(PROFILE_GROUPS as readonly string[]).includes(group)) problems.push("group must be one of " + PROFILE_GROUPS.join(", "));
-  if (!/^[a-z]+(\.[a-z0-9_]+)+$/.test(key)) problems.push("key must match <group>.<name>[.<name>] in snake_case");
+  if (key.includes("#")) problems.push("a map entry is not a key; use the map key and add the entry to the profile");
+  else if (!/^[a-z]+(\.[a-z0-9_]+)+$/.test(key)) problems.push("key must match <group>.<name>[.<name>] in snake_case");
   if (isVocabularyKey(key, v)) problems.push("key already exists; use it");
   return problems;
 }
@@ -79,7 +85,9 @@ export function profileSchema(v: Vocabulary = loadVocabulary()) {
         type: "object", additionalProperties: false,
         properties: Object.fromEntries(keys.map(k => [k.key, {
           description: k.doc,
-          ...(k.type === "list" ? { type: "array", items: { type: "string" } } : { type: "string" }),
+          ...(k.type === "list" ? { type: "array", items: { type: "string" } }
+            : k.type === "map" ? { type: "object", propertyNames: { pattern: "^[a-z0-9_]+$" }, additionalProperties: { anyOf: [{ type: "string" }, { type: "array", items: { type: "string" } }] } }
+            : { type: "string" }),
         }])),
       },
     },

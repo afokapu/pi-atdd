@@ -10,7 +10,7 @@
     "then": "Every added, modified or deleted path in the authored documentation tree exactly equals some declared documentation artifact's `path` or some declared removal artifact's `from`.",
     "prefer": [
       "Declare exact paths at RATIFY, before the work begins.",
-      "To remove a document, declare a removal artifact whose `from` is the removed path. Removing a document is a documentation change.",
+      "To remove a document, declare a removal artifact whose `from` is the removed path. The removal artifact is the declaration construct's removal action with its `from` field, both bound by the plan-syntax profile entry. Removing a document is a documentation change.",
       "If an unplanned change IS a documentation change, the declaration was wrong at RATIFY. Re-ratify."
     ],
     "avoid": [
@@ -29,8 +29,8 @@
     ],
     "verification": [
       "Input: the change set of added, modified or deleted paths under evaluation, handed over by the convention core. The check reads it and never computes it.",
-      "Covered means the changed path is string-equal to some declared artifact's `path`, or to the `from` of a declared removal artifact. Prefix and glob matches do not count.",
-      "Scope: paths in the authored documentation tree (profile: roots.docs), excluding generated documentation output (profile: roots.docs_generated). Deleted paths are in scope.",
+      "Covered means the changed path is string-equal to some declared artifact's `path`, or to the `from` of a declared removal artifact. A removal artifact is one whose action is the declaration construct's removal action and whose covered-path field is `from`; the action vocabulary and both coverage fields are bound by the plan-syntax profile entry (profile: idiom.plan_syntax#documentation_artifacts). `from` counts as coverage only on a removal artifact. Prefix and glob matches do not count.",
+      "Scope: paths in the authored documentation tree (profile: roots.docs), excluding generated documentation output (profile: roots.generated). Deleted paths are in scope.",
       "If no documentation declaration is recorded, defer to the core declaration check. This rule fires only when a declaration exists and does not cover the change set.",
       "The check needs knowledge of the documentation tree: which root is authored documentation and which subtree beneath it is generated output. The structure profile supplies this knowledge.",
       "Strict disposition, severity 2: every undeclared documentation change is a violation; there is no advisory mode and no ratchet baseline.",
@@ -86,27 +86,17 @@
       "bunValue": "docs/"
     },
     {
-      "key": "roots.docs_generated",
-      "meaning": "The generated documentation output subtree beneath the documentation root that is never required to be declared, because it is a consequence of authored changes.",
+      "key": "roots.generated",
+      "meaning": "The generated output tree(s) beneath the documentation root that never need to be declared, because a rendered change is a consequence of an authored change, not an authored input.",
       "bunValue": "docs/dist/**"
-    }
-  ],
-  "proposedKeys": [
-    {
-      "key": "roots.docs",
-      "group": "roots",
-      "meaning": "Root of authored documentation in the repository: the tree whose changed paths a documentation declaration must cover exactly.",
-      "bunValue": "docs/",
-      "whyNoExistingKey": "The roots group covers config, source, test, e2e, plan, scan and the single stack-wide excluded list; none says where authored documentation lives, and documentation is not one of the parametric roles in roles.<role>."
     },
     {
-      "key": "roots.docs_generated",
-      "group": "roots",
-      "meaning": "Generated documentation output beneath roots.docs: build output that is a consequence of authored changes and is never required to be declared.",
-      "bunValue": "docs/dist/**",
-      "whyNoExistingKey": "roots.excluded is the one stack-wide never-scanned list for checkers that defer classification, but this rule states its own in-scope exclusion (the documentation tree IS scanned; only the generated subtree beneath it is exempt), so the exclusion is documentation-tree knowledge rather than the stack-wide list."
+      "key": "idiom.plan_syntax#documentation_artifacts",
+      "meaning": "The documentation-declaration artifact construct of plan syntax: the declaration shape and action vocabulary, which action declares a removal, and which field of each artifact carries a covered path — `path` on any artifact, `from` only on a removal artifact. This binds the core's role-level term 'removal artifact' to the concrete action and field, restoring both the coverage restriction (`from` counts only for the removal action) and the prescribed declaration form for deletions.",
+      "bunValue": "documentation: {impact: change, artifacts: [{action: modify, path: docs/purpose/release.adoc}]}; a removal is declared as an `archive` artifact whose `from` is the removed path; coverage fields: artifact `path`, or `from` of an `archive` artifact"
     }
   ],
+  "proposedKeys": [],
   "bunOnly": [
     {
       "item": "prefer[0]",
@@ -139,9 +129,10 @@
       "as": [
         "core:then",
         "profile:roots.docs",
-        "profile:roots.docs_generated"
+        "profile:roots.generated",
+        "profile:idiom.plan_syntax#documentation_artifacts"
       ],
-      "note": "'under docs/ (outside docs/dist/)' becomes 'in the authored documentation tree', with the root and the generated-output exclusion supplied by the profile; the exact-path coverage over both declaration alternatives stays in the core. The inline exclusion is preserved verbatim in unless[0] and verification, so the obligation is unchanged."
+      "note": "'under docs/ (outside docs/dist/)' becomes 'in the authored documentation tree', with the root and the generated-output exclusion supplied by the profile; exact-path coverage over both declaration alternatives stays in the core. The 'archive artifact' becomes the role-level 'removal artifact', bound to the concrete action and field by idiom.plan_syntax#documentation_artifacts, so instantiation restores the restriction that `from` counts only for that action."
     },
     {
       "item": "why",
@@ -154,16 +145,18 @@
       "item": "prefer[0]",
       "as": [
         "core:prefer[0]",
+        "profile:idiom.plan_syntax#documentation_artifacts",
         "bunOnly"
       ],
-      "note": "The advice (declare exact paths at RATIFY, before the work) is neutral; the concrete declaration block with a docs/ path is the Bun worked example, kept only in the realization."
+      "note": "The advice (declare exact paths at RATIFY, before the work) is neutral; the concrete declaration block is the Bun worked example, kept only in the realization. Its field names are plan-syntax vocabulary bound by the profile entry."
     },
     {
       "item": "prefer[1]",
       "as": [
-        "core:prefer[1]"
+        "core:prefer[1]",
+        "profile:idiom.plan_syntax#documentation_artifacts"
       ],
-      "note": "'archive artifact whose from is the removed path' is plan-declaration schema vocabulary (convention-level), not stack-specific; kept as 'removal artifact whose from is the removed path'."
+      "note": "'archive artifact whose from is the removed path' becomes 'removal artifact whose from is the removed path'; the plan-syntax profile entry binds removal to the concrete action and field."
     },
     {
       "item": "prefer[2]",
@@ -177,45 +170,47 @@
       "as": [
         "core:avoid[0]"
       ],
-      "note": "Neutralized: 'Do not touch docs/' becomes 'do not touch the documentation tree'; the typo-fix-in-rendered-artefact example is role-level."
+      "note": "Neutralized: 'Do not touch docs/' becomes 'do not touch the documentation tree'."
     },
     {
       "item": "avoid[1]",
       "as": [
         "core:avoid[1]"
       ],
-      "note": "Neutral as-is: exact-path coverage is a string-equality rule, not a stack fact."
+      "note": "Neutral as-is: exact-path coverage is a string-equality rule."
     },
     {
       "item": "unless[0]",
       "as": [
         "core:unless[0]",
-        "profile:roots.docs_generated"
+        "profile:roots.generated"
       ],
-      "note": "The exception is neutral; which subtree is generated documentation output (docs/dist/**) comes from the profile."
+      "note": "The exception is neutral; which subtree is generated documentation output comes from roots.generated."
     },
     {
       "item": "unless[1]",
       "as": [
         "core:unless[1]"
       ],
-      "note": "Neutralized: 'belongs to core' becomes 'belongs to the core declaration check'; no obligation change."
+      "note": "Neutralized: 'belongs to core' becomes 'belongs to the core declaration check'."
     },
     {
       "item": "evidence[0]",
       "as": [
         "core:evidence[0]",
         "profile:roots.docs",
-        "profile:roots.docs_generated"
+        "profile:roots.generated",
+        "profile:idiom.plan_syntax#documentation_artifacts"
       ],
-      "note": "The evidence statement is neutral; its scope terms resolve through the same two profile keys as then."
+      "note": "Scope terms resolve through roots.docs and roots.generated; the removal-artifact alternative resolves through the plan-syntax profile entry, as in then."
     },
     {
       "item": "evidence[1]",
       "as": [
-        "core:evidence[1]"
+        "core:evidence[1]",
+        "profile:idiom.plan_syntax#documentation_artifacts"
       ],
-      "note": "'Deleted docs/ paths' becomes 'deleted documentation paths'; the removal-declaration form is plan schema, kept."
+      "note": "'Deleted docs/ paths' becomes 'deleted documentation paths'; the removal-declaration form is carried by the plan-syntax profile binding."
     },
     {
       "item": "evidence[2]",
@@ -223,37 +218,38 @@
         "core:evidence[2]",
         "core:verification"
       ],
-      "note": "Per policy, the per-rule severity and disposition move to the core verification array; the evidence keeps the neutral violation statement."
+      "note": "Per policy, per-rule severity and disposition move to core verification; the evidence keeps the neutral violation statement."
     },
     {
       "item": "verifier_detail[0]",
       "as": [
         "core:verification"
       ],
-      "note": "Neutral: the check reads the change set handed over by the convention core and never computes it; the companion §5 citation is a convention-doc reference and is dropped from the core text."
+      "note": "Neutral: the check reads the change set handed over by the convention core; the companion §5 citation is dropped."
     },
     {
       "item": "verifier_detail[1]",
       "as": [
-        "core:verification"
+        "core:verification",
+        "profile:idiom.plan_syntax#documentation_artifacts"
       ],
-      "note": "The coverage definition (string equality against artifact path or removal from; no prefix or glob) is stack-neutral."
+      "note": "The coverage definition is neutral; the concrete removal action and the from-only-on-removal restriction are bound by the plan-syntax profile entry."
     },
     {
       "item": "verifier_detail[2]",
       "as": [
         "core:verification",
         "profile:roots.docs",
-        "profile:roots.docs_generated"
+        "profile:roots.generated"
       ],
-      "note": "The scope structure (documentation tree minus generated output, deletions in scope) is neutral; the concrete paths come from the profile."
+      "note": "The scope structure (documentation tree minus generated output, deletions in scope) is neutral; concrete trees come from the profile."
     },
     {
       "item": "verifier_detail[3]",
       "as": [
         "core:verification"
       ],
-      "note": "Neutral: defer to the core declaration check when no declaration is recorded; the companion §4 check 1 citation is dropped as a convention-doc reference."
+      "note": "Neutral: defer to the core declaration check when no declaration is recorded; the companion citation is dropped."
     },
     {
       "item": "verifier_detail[4]",
@@ -261,29 +257,29 @@
         "core:verification",
         "bunOnly"
       ],
-      "note": "The general fact (the check needs documentation-tree knowledge, supplied by the profile) goes to verification; the extension placement, spec/companion citations and the validator id docs_capability are realization details."
+      "note": "The general fact (the check needs documentation-tree knowledge, supplied by the profile) goes to verification; extension placement, citations and the validator id docs_capability are realization details."
     },
     {
       "item": "verifier_detail[5]",
       "as": [
         "core:verification"
       ],
-      "note": "Per policy, per-rule severity (2) and disposition (strict, no advisory mode, no ratchet baseline) live in core verification, not in the profile."
+      "note": "Per policy, per-rule severity (2) and strict disposition live in core verification."
     },
     {
       "item": "verifier_detail[6]",
       "as": [
         "core:verification",
-        "profile:roots.docs_generated"
+        "profile:roots.generated"
       ],
-      "note": "The rationale (generated output is a consequence, not an authored change) is neutral and also stated in unless[0]; the concrete subtree is profile data."
+      "note": "The rationale is neutral and also stated in unless[0]; the concrete generated subtree is profile data."
     },
     {
       "item": "activation.facts[0]",
       "as": [
         "core:activation.facts[0]"
       ],
-      "note": "A recorded documentation declaration is convention-level state, observable once an observer lists the declaration's artifacts; kept as file_kind documentation_declaration, needs_new_observer."
+      "note": "A recorded documentation declaration is convention-level state; kept as file_kind documentation_declaration, needs_new_observer."
     },
     {
       "item": "activation.facts[1]",
@@ -297,12 +293,12 @@
       "as": [
         "core:activation.facts[2]",
         "profile:roots.docs",
-        "profile:roots.docs_generated"
+        "profile:roots.generated"
       ],
-      "note": "The Bun fact type 'path_glob' is outside the closed fact vocabulary; remapped to file_kind with role-level values (authored_documentation, negated generated_documentation_output). The concrete globs resolve through the two profile keys."
+      "note": "The Bun fact type 'path_glob' is outside the closed fact vocabulary; remapped to file_kind with role-level values (authored_documentation, negated generated_documentation_output). The concrete globs resolve through roots.docs and roots.generated."
     }
   ],
-  "neutralityNotes": "The documentation-declaration schema (documentation, artifacts, action, path, archive/from) and the process terms (change set, RATIFY, the core/capability split) are ATDD-convention vocabulary rather than stack facts, so they stay in the core; a realization whose plan artifact shapes differ maps these fields. Two facts about the documentation tree had no closed-vocabulary key, so roots.docs and roots.docs_generated are proposed; roots.excluded was deliberately not used because the Bun text scopes its own exclusion instead of deferring to a stack-wide list. The Bun fact type 'path_glob' is outside the closed fact vocabulary and was remapped to file_kind with role-level values. Concrete worked examples (the declaration block, the placeholder docs/a.adoc paths in fires) are not repeated in the core; bun.json remains the reference example. Spec and companion section citations were dropped from the core text as convention-document references that add no obligation; the validator id (docs_capability) and the extension-vs-core placement are kept as bunOnly. Per policy, severity 2 and the strict disposition live in core verification rather than the profile.",
+  "neutralityNotes": "The process terms (change set, RATIFY, the core/capability split) and the documentation-declaration construct are ATDD-convention vocabulary rather than stack facts. The core says 'removal artifact'; the map entry idiom.plan_syntax#documentation_artifacts carries the concrete action and field mapping (in the Bun realization, an `archive` artifact with `from`), so instantiation restores exactly the Bun obligation and declaration form for deletions. The core text itself names no realization. Documentation-tree facts resolve through existing keys roots.docs (Bun value docs/) and roots.generated (Bun value docs/dist/**); nothing is proposed. roots.excluded was not used because the Bun text scopes its own exclusion rather than deferring to the stack-wide list. The Bun fact type 'path_glob' was remapped to file_kind with role-level values. Concrete worked examples are not repeated in the core. Spec and companion citations were dropped as convention-document references; the validator id and extension placement are bunOnly. Severity 2 and strict disposition live in core verification.",
   "realizations": {
     "bun": {
       "sidecar": "conventions-sidecar/splits/planner.docs.undeclared-change.json",
@@ -312,12 +308,12 @@
   },
   "audit": {
     "issue": "PLT-84",
-    "stage": 2,
-    "vocabularyVersion": 2,
+    "stage": 3,
+    "vocabularyVersion": 3,
     "verdict": "PASS",
-    "rounds": 1,
+    "rounds": 5,
     "usefulness": 5,
-    "deriver": "zai/glm-5.3",
+    "deriver": "rekey-v3 -> zai/glm-5.3 -> pi-claude-cli/claude-opus-5-5",
     "auditor": "openai-codex/gpt-6.1-sol",
     "reviewer": "kimi-coding/k3.1-pro",
     "review": {

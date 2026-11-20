@@ -4,7 +4,7 @@
   "legacyId": "coder.bun.green-urn-marker",
   "core": {
     "title": "Open every implementation file with its component URN marker",
-    "given": "An implementation file — production source or markup artifact, per the profile's file kinds — outside excluded test files and vendored/generated trees",
+    "given": "An implementation file — production source or markup artifact, of a file kind the profile scans — whose name matches none of the profile's test-exempt patterns and that lies in no tree on the profile's never-scanned vendored/generated list",
     "when": "the file exists in scope (new, edited or pre-existing)",
     "then": "Its first meaningful line MUST be its component URN marker, written in the binding syntax the profile prescribes for the file's kind, preceded only by blank lines and an allowed preamble (an interpreter directive or a document-type declaration).",
     "prefer": [
@@ -19,7 +19,7 @@
       "Moving code merely to make the marker easier to write."
     ],
     "unless": [
-      "Test files (the profile's excluded test patterns): bound by their acceptance URNs instead.",
+      "Test files — defined exactly as files whose name matches one of the profile's test-exempt patterns: bound by their acceptance URNs instead.",
       "Vendored and generated trees (the profile's single never-scanned list): never scanned.",
       "An interpreter directive (shebang) or a document-type declaration may precede the marker."
     ],
@@ -31,10 +31,10 @@
     ],
     "verification": [
       "A repository-wide check scans every in-scope implementation file of the profile's source and markup file kinds — whether new, edited or pre-existing, not gated on operation, phase or a prior finding — and reports a finding for each whose first meaningful line is not its component URN marker in the profile's binding syntax.",
-      "Scan-scope exclusions, owned by the checker: files matching the profile's excluded test patterns are not scanned — they bind acceptance URNs instead — and neither are the trees on the profile's single never-scanned vendored/generated list.",
+      "Scan-scope exclusions, owned by the checker and defined by pattern and path membership, not by role assignment: a file whose name matches one of the profile's test-exempt patterns is not scanned — it binds acceptance URNs instead — and a file merely assigned a test role whose name matches no such pattern stays in scope; likewise no tree on the profile's single never-scanned vendored/generated list is scanned.",
       "Header-region tolerance (detector tolerance, not coder permission): the leading run of blank lines, an optional interpreter directive or document-type declaration, and single-line comments form the header region; the first real content line ends it, so a marker below the imports or other content reads as missing.",
       "First meaningful line: the first line that is neither blank nor a preamble; an interpreter directive or document-type declaration is not content and must not displace the marker.",
-      "The check covers only the component URN marker, not the rest of the file's traceability header.",
+      "The traceability header — the leading comment block binding a file to the plan graph, whose fields and comment syntaxes the profile defines — is not checked as a whole: this rule covers only the component URN marker within it.",
       "Disposition strict: the check fails on every finding; severity 3; no advisory mode, no ratchet baseline."
     ],
     "activation": {
@@ -50,9 +50,7 @@
         {
           "fact": "file_kind",
           "values": [
-            "!unit_test",
-            "!acceptance_test",
-            "!e2e_test"
+            "!test_exempt"
           ],
           "observability": "observable_now"
         },
@@ -68,12 +66,12 @@
       "fires": [
         "Creating or editing an in-scope implementation source file whose first meaningful line is not its component URN marker",
         "Creating or editing an in-scope markup artifact whose first meaningful line is not its component URN marker",
-        "An existing, untouched implementation file in scope that lacks the marker",
+        "An existing, untouched in-scope implementation file — of a scanned file kind, matching no test-exempt pattern, in no never-scanned tree — that lacks the marker",
         "An implementation file whose URN marker sits below the imports or other content"
       ],
       "doesNotFire": [
-        "Files matching the profile's excluded test patterns (they bind acceptance URNs instead)",
-        "Files in the profile's never-scanned vendored or generated trees",
+        "A file whose name matches one of the profile's test-exempt patterns (they bind acceptance URNs instead); pattern match alone exempts, never test-role assignment, so a test-role file without a matching pattern still fires",
+        "Files in the trees on the profile's single never-scanned vendored/generated list",
         "A file whose first meaningful line is the URN marker, preceded only by blank lines and an allowed interpreter directive or document-type declaration"
       ]
     }
@@ -90,8 +88,8 @@
       "bunValue": ".html, .htm"
     },
     {
-      "key": "suffix.test_exclusion",
-      "meaning": "Name patterns of the test files excluded from this marker obligation (they bind acceptance URNs instead); the rule's checker owns the exact classification — a file is excluded by pattern match, not by per-kind suffix test.",
+      "key": "suffix.test_exempt",
+      "meaning": "Name patterns whose match exempts a file from this marker obligation (it binds acceptance URNs instead); the exemption is exactly pattern membership — a test-role file whose name matches none of these patterns stays in scope.",
       "bunValue": "*.test.*, *.spec.*"
     },
     {
@@ -103,17 +101,14 @@
       "key": "urn.binding.component",
       "meaning": "The syntax by which an implementation file opens with its component URN marker, per file kind (source vs markup).",
       "bunValue": "// URN: component:… in source; <!-- URN: component:… --> in markup templates"
-    }
-  ],
-  "proposedKeys": [
+    },
     {
-      "key": "suffix.test_exclusion",
-      "group": "suffix",
-      "meaning": "Name patterns of test files excluded from implementation-file marker and traceability obligations because they bind acceptance URNs instead of a component URN marker; the owning checker classifies a file as excluded by pattern match, not by test-kind classification.",
-      "bunValue": "*.test.*, *.spec.*",
-      "whyNoExistingKey": "suffix.unit_test, suffix.acceptance_test and suffix.e2e_test identify each test file kind by its own suffixes and must be used per their documented meanings; this exclusion is a single checker-owned pattern list that applies to any file matching the patterns regardless of which test kind it is, and the Bun convention does not decompose the patterns by test kind, so no existing key expresses it faithfully."
+      "key": "urn.header#traceability_header",
+      "meaning": "The concrete fields of the traceability header — the leading comment block binding a file to the plan graph — and its per-kind comment syntax; this rule checks only the component URN marker within it, not the other fields.",
+      "bunValue": "URN, Tested-By, Runtime, Purpose; `//` in source, `<!-- … -->` in .html templates"
     }
   ],
+  "proposedKeys": [],
   "bunOnly": [
     {
       "item": "evidence[0]",
@@ -124,217 +119,214 @@
       "item": "verifier_detail[4]",
       "text": "Unlike the Vite sibling (which counts a shebang as the first non-empty line and so reports a header it actually has as missing), this realization skips the shebang.",
       "reason": "A comparison between sibling stack realizations' detectors; it carries no stack-neutral obligation and adds nothing the core could impose."
-    },
-    {
-      "item": "verifier_detail[5]",
-      "text": "traceability_header: the leading comment block binding a file to the plan graph — URN, Tested-By, Runtime, Purpose; `//` in source, `<!-- … -->` in .html templates. This rule checks only the URN marker.",
-      "reason": "The concrete header fields and comment syntaxes are this stack's header convention; the core keeps only the neutral scope note that the check covers the URN marker alone."
     }
   ],
   "classification": [
     {
       "item": "given",
+      "note": "'Bun/htmx implementation file (.ts, … .html/.htm)' neutralized to implementation files of the profile's scanned kinds; both exclusions are kept in the given and stated as pattern/path membership (test-exempt patterns, never-scanned trees).",
       "as": [
         "core:given",
         "profile:suffix.source",
-        "profile:suffix.markup"
-      ],
-      "note": "'Bun/htmx implementation file (.ts, … .html/.htm)' neutralized to implementation files of the profile's source and markup kinds; the test-file and vendored/generated-tree exclusions are kept in the given text."
+        "profile:suffix.markup",
+        "profile:suffix.test_exempt",
+        "profile:roots.excluded"
+      ]
     },
     {
       "item": "when",
+      "note": "Already neutral: the universal existence event (new, edited or pre-existing).",
       "as": [
         "core:when"
-      ],
-      "note": "Already neutral: the universal existence event (new, edited or pre-existing)."
+      ]
     },
     {
       "item": "then",
+      "note": "One obligation, kept at full strength; the concrete `// URN:` / `<!-- URN: … -->` syntaxes and 'HTML doctype' become the profile's binding syntax and a document-type declaration.",
       "as": [
         "core:then",
         "profile:urn.binding.component"
-      ],
-      "note": "One obligation, kept at full strength; the concrete `// URN:` / `<!-- URN: … -->` syntaxes and 'HTML doctype' become the profile's binding syntax and a document-type declaration."
+      ]
     },
     {
       "item": "why",
+      "note": "Neutral except 'wagon', generalized to 'no plan slice owns it'.",
       "as": [
         "core:why"
-      ],
-      "note": "Neutral except 'wagon', generalized to 'no plan slice owns it'."
+      ]
     },
     {
       "item": "prefer[0]",
+      "note": "Already neutral (GREEN phase, plan ownership).",
       "as": [
         "core:prefer[0]"
-      ],
-      "note": "Already neutral (GREEN phase, plan ownership)."
+      ]
     },
     {
       "item": "prefer[1]",
+      "note": "'`//` for code and `<!-- … -->` for templates' becomes 'the binding syntax the profile prescribes for the file's kind'.",
       "as": [
         "core:prefer[1]",
         "profile:urn.binding.component"
-      ],
-      "note": "'`//` for code and `<!-- … -->` for templates' becomes 'the binding syntax the profile prescribes for the file's kind'."
+      ]
     },
     {
       "item": "prefer[2]",
+      "note": "Already neutral.",
       "as": [
         "core:prefer[2]"
-      ],
-      "note": "Already neutral."
+      ]
     },
     {
       "item": "avoid[0]",
+      "note": "Already neutral; 'MISSING' spelled out as 'reads as missing'.",
       "as": [
         "core:avoid[0]"
-      ],
-      "note": "Already neutral; 'MISSING' spelled out as 'reads as missing'."
+      ]
     },
     {
       "item": "avoid[1]",
+      "note": "'wagon' folded into 'a plan ownership unit — a feature, component, side, or layer'.",
       "as": [
         "core:avoid[1]"
-      ],
-      "note": "'wagon' folded into 'a plan ownership unit — a feature, component, side, or layer'."
+      ]
     },
     {
       "item": "avoid[2]",
+      "note": "Already neutral.",
       "as": [
         "core:avoid[2]"
-      ],
-      "note": "Already neutral."
+      ]
     },
     {
       "item": "avoid[3]",
+      "note": "Already neutral.",
       "as": [
         "core:avoid[3]"
-      ],
-      "note": "Already neutral."
+      ]
     },
     {
       "item": "unless[0]",
+      "note": "Exception kept at full strength, with the exemption now defined exactly by suffix.test_exempt pattern membership (the existing vocabulary file-kind key), so a test-role file without a matching pattern is not exempt.",
       "as": [
         "core:unless[0]",
-        "profile:suffix.test_exclusion"
-      ],
-      "note": "Exception kept verbatim in strength; the concrete `*.test.*` / `*.spec.*` patterns are a checker-owned exclusion over test files of any kind (not the acceptance-test kind's own suffixes), so they come from the profile via the proposed suffix.test_exclusion key."
+        "profile:suffix.test_exempt"
+      ]
     },
     {
       "item": "unless[1]",
+      "note": "Exception kept; the named trees are the profile's single never-scanned list.",
       "as": [
         "core:unless[1]",
         "profile:roots.excluded"
-      ],
-      "note": "Exception kept; the named trees are the profile's single never-scanned list."
+      ]
     },
     {
       "item": "unless[2]",
+      "note": "Shebang/doctype generalized to interpreter directive / document-type declaration; same allowance strength.",
       "as": [
         "core:unless[2]"
-      ],
-      "note": "Shebang/doctype generalized to interpreter directive / document-type declaration; same allowance strength."
+      ]
     },
     {
       "item": "evidence[0]",
+      "note": "Neutral form: the stack's traceability check reports no marker finding; the detector and finding ids are realization details (bunOnly).",
       "as": [
         "core:evidence[0]",
         "core:verification",
         "bunOnly"
-      ],
-      "note": "Neutral form: the stack's traceability check reports no marker finding; the detector and finding ids are realization details (bunOnly)."
+      ]
     },
     {
       "item": "evidence[1]",
+      "note": "Already neutral.",
       "as": [
         "core:evidence[1]"
-      ],
-      "note": "Already neutral."
+      ]
     },
     {
       "item": "evidence[2]",
+      "note": "Already neutral.",
       "as": [
         "core:evidence[2]"
-      ],
-      "note": "Already neutral."
+      ]
     },
     {
       "item": "verifier_detail[0]",
+      "note": "Pure scan scope: scanned extensions and skipped patterns/trees are profile data; the check is described generically, with the exclusions stated as checker-owned and defined by pattern/path membership rather than role assignment.",
       "as": [
         "core:verification",
         "profile:suffix.source",
         "profile:suffix.markup",
-        "profile:suffix.test_exclusion",
+        "profile:suffix.test_exempt",
         "profile:roots.excluded"
-      ],
-      "note": "Pure scan scope: scanned extensions and skipped patterns/trees are profile data; the check is described generically, with the exclusions stated as checker-owned."
+      ]
     },
     {
       "item": "verifier_detail[1]",
+      "note": "Dual-syntax detection becomes 'the marker is detected in the binding syntax the profile prescribes for each file kind'.",
       "as": [
         "core:verification",
         "profile:urn.binding.component"
-      ],
-      "note": "Dual-syntax detection becomes 'the marker is detected in the binding syntax the profile prescribes for each file kind'."
+      ]
     },
     {
       "item": "verifier_detail[2]",
+      "note": "Header-region tolerance is neutral detector mechanics (blank lines, optional directive/doctype, single-line comments); kept at full strength, including 'not a coder permission'.",
       "as": [
         "core:verification"
-      ],
-      "note": "Header-region tolerance is neutral detector mechanics (blank lines, optional directive/doctype, single-line comments); kept at full strength, including 'not a coder permission'."
+      ]
     },
     {
       "item": "verifier_detail[3]",
+      "note": "first_meaningful_line definition kept neutral; only the concrete `#!/usr/bin/env bun` example is dropped.",
       "as": [
         "core:verification"
-      ],
-      "note": "first_meaningful_line definition kept neutral; only the concrete `#!/usr/bin/env bun` example is dropped."
+      ]
     },
     {
       "item": "verifier_detail[4]",
+      "note": "Cross-realization comparison (Vite sibling); no neutral equivalent and no obligation content.",
       "as": [
         "bunOnly"
-      ],
-      "note": "Cross-realization comparison (Vite sibling); no neutral equivalent and no obligation content."
+      ]
     },
     {
       "item": "verifier_detail[5]",
+      "note": "The neutral definition of the traceability header (a leading comment block binding a file to the plan graph) and the marker-only scope stay in the core's verification; the concrete field list (URN, Tested-By, Runtime, Purpose) and per-kind comment syntaxes are profile data under the existing map key urn.header, entry traceability_header.",
       "as": [
         "core:verification",
-        "bunOnly"
-      ],
-      "note": "The scope note 'this rule checks only the URN marker' is neutral; the concrete traceability_header fields and syntaxes are bunOnly."
+        "profile:urn.header#traceability_header"
+      ]
     },
     {
       "item": "verifier_detail[6]",
+      "note": "Severity and disposition are per-rule verification facts, not profile keys; kept in the core's verification array.",
       "as": [
         "core:verification"
-      ],
-      "note": "Severity and disposition are per-rule verification facts, not profile keys; kept in the core's verification array."
+      ]
     },
     {
       "item": "activation.facts[0]",
+      "note": "Neutral positive fact: file_kind = source + markup, observable now, not gated on operation/phase/finding; the concrete suffix lists are profile data.",
       "as": [
         "core:activation.facts[0]",
         "profile:suffix.source",
         "profile:suffix.markup"
-      ],
-      "note": "Neutral positive fact: file_kind = source + markup, observable now, not gated on operation/phase/finding; the concrete suffix lists are profile data."
+      ]
     },
     {
       "item": "activation.facts[1]",
+      "note": "The Bun negative path_glob constraints are kept as two negative core facts defined by profile membership, not by role: !test_exempt means the name matches none of suffix.test_exempt's patterns (a test-role file without a matching pattern stays in scope, exactly like Bun's filename-pattern exclusion), and !vendored/!generated mean the file lies in no tree on the profile's single never-scanned list. No positive test-kind or test-role requirement is imposed.",
       "as": [
         "core:activation.facts[1]",
         "core:activation.facts[2]",
-        "profile:suffix.test_exclusion",
+        "profile:suffix.test_exempt",
         "profile:roots.excluded"
-      ],
-      "note": "The Bun negative path_glob constraints are kept as two explicit negative core facts: the file matches none of the test kinds (excluded via the checker-owned test patterns, hence !unit_test/!acceptance_test/!e2e_test) and lies in no vendored/generated tree. No positive test-kind requirement is imposed."
+      ]
     }
   ],
-  "neutralityNotes": "Nothing unneutralizable at the obligation level: the scanned file kinds, the binding syntax and both exclusion lists live in the profile (suffix.source, suffix.markup, urn.binding.component, roots.excluded, and the proposed suffix.test_exclusion), so the core names no stack, suffix or path. Revision-2 fixes from feedback: (1) the Bun `*.test.*`/`*.spec.*` exclusion is no longer squeezed into suffix.acceptance_test — it is a checker-owned, pattern-based exclusion over test files of any kind, so a distinct key (suffix.test_exclusion) is proposed and used everywhere the old entry appeared; (2) the activation facts now state the exemptions negatively (not any test kind by pattern; not in a vendored/generated tree), so an ordinary production file of the source or markup kind satisfies all facts exactly as the Bun scope constraints do. Remaining judgment calls: 'wagon' was generalized to 'plan ownership unit / plan slice'; the Vite-sibling detector comparison (verifier_detail[4]) and the concrete traceability_header field list (verifier_detail[5]) have no neutral equivalent and stay bunOnly, as do detector/validator/finding ids (evidence[0]) per the notProfileKeys rule.",
+  "neutralityNotes": "Nothing unneutralizable at the obligation level: the scanned file kinds, the binding syntax, the traceability-header field list and both exclusion lists live in the profile (suffix.source, suffix.markup, suffix.test_exempt, urn.binding.component, urn.header#traceability_header, roots.excluded — all existing vocabulary keys, no proposals), so the core names no stack, suffix or path. Revision-3 fixes from feedback: (1) the test-file exclusion is now defined everywhere — facts, fires, doesNotFire, unless and verification — exactly by suffix.test_exempt pattern membership, never by test-role assignment, so a test-role file without a matching pattern remains in scope, matching Bun's filename-pattern exclusion; (2) the concrete traceability-header field list moved from bunOnly into profile data as urn.header#traceability_header, while the core keeps the neutral header definition and the marker-only scope without expanding the check. Remaining judgment calls: 'wagon' was generalized to 'plan ownership unit / plan slice'; the Vite-sibling detector comparison (verifier_detail[4]) has no neutral equivalent and stays bunOnly, as do detector/validator/finding ids (evidence[0]) per the notProfileKeys rule.",
   "realizations": {
     "bun": {
       "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.green-urn-marker.json",
@@ -343,12 +335,12 @@
   },
   "audit": {
     "issue": "PLT-84",
-    "stage": 2,
-    "vocabularyVersion": 2,
+    "stage": 3,
+    "vocabularyVersion": 3,
     "verdict": "PASS",
     "rounds": 2,
     "usefulness": 5,
-    "deriver": "zai/glm-5.3",
+    "deriver": "rekey-v3 -> zai/glm-5.3",
     "auditor": "openai-codex/gpt-6.1-sol",
     "reviewer": "kimi-coding/k3.1-pro",
     "review": {

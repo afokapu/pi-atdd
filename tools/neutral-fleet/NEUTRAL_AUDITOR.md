@@ -17,7 +17,7 @@ You audit a stack-neutral core derived from a frozen ATDD-Bun convention rewrite
    - A layout or idiom value that belongs in the profile is a problem if it is left out of the profile.
 3. **Neutrality.** Does the core name any stack, framework, language, file suffix or path? Would it read correctly for a Python, Go or Java codebase that has the same roles?
 4. **Role activation.** Are the role-level `activation`, `fires` and `doesNotFire` equivalent, under the Bun profile, to the scope of the Bun activation?
-5. **Profile keys.** Is each `profileRequirements[].key` used with the meaning its `vocabulary.yaml` doc gives it? Is every entry in `proposedKeys` genuinely not covered by an existing key? A wrong key, or a proposal that duplicates an existing key, goes in `misclassified` with item `profile:<key>`. Per-rule severity or disposition placed in the profile is also a misclassification.
+5. **Profile keys.** Is each `profileRequirements[].key` used with the meaning its `vocabulary.yaml` doc gives it? Is every entry in `proposedKeys` genuinely not covered by an existing key? A wrong key, or a proposal that duplicates an existing key, goes in `misclassified` with item `profile:<key>`. Per-rule severity or disposition placed in the profile is also a misclassification. A map-typed key (type `map`) is referenced as `<key>#<entry>`: judge whether the entry belongs under that key's doc; the entry name itself is a value, not a key.
 6. **Usefulness.** Is the core still a single, actionable obligation, or has it become vague? Vague would be something like "follow good architecture".
 
 **Write `neutral-audit.json`:**

@@ -3,35 +3,35 @@
   "rule_id": "planner.component.io-alignment",
   "legacyId": "planner.component.io-alignment",
   "core": {
-    "title": "Draw component events only from the owning feature's ioSeeds",
+    "title": "Draw component events only from the owning feature's declared event sets",
     "given": "A component belonging to a feature declares consumed or produced events, or dependencies",
-    "when": "the planner authors, edits or reviews those events or dependencies, or changes the feature's ioSeeds",
-    "then": "Every declared consumed event must come from feature.ioSeeds.consume and fit the component's role, and every declared produced event from feature.ioSeeds.produce and fit its capability, so all events are a subset of, and traceable to, a feature ioSeed.",
+    "when": "the planner authors, edits or reviews those events or dependencies, or changes the feature's declared event sets",
+    "then": "Every declared consumed event must come from the owning feature's declared consumed-event set and fit the component's role, and every declared produced event from the feature's declared produced-event set and fit its capability, so all component events are a subset of, and traceable to, an event the feature declared.",
     "prefer": [
-      "Need a new event? Add it to the feature's ioSeeds first, then reference it.",
-      "Pick only the ioSeeds events the component's role actually consumes / its capability actually produces; the filter selects, it does not force inclusion of every seed."
+      "Need a new event? Add it to the feature's declared event sets first, then reference it.",
+      "Pick only the declared events the component's role actually consumes / its capability actually produces; the filter selects, it does not force inclusion of every declared event."
     ],
     "avoid": [
-      "Inventing inputs/outputs the feature never declared (e.g. producing an event absent from ioSeeds.produce).",
+      "Inventing inputs/outputs the feature never declared (e.g. producing an event absent from the feature's declared produced-event set).",
       "Events not selected by the role (consume) or capability (produce) filter.",
       "More than 3 consumed or 3 produced events per component.",
       "Dependencies other than same-feature components or external dependencies."
     ],
     "unless": [],
-    "why": "Limiting component events to the feature's ioSeeds keeps each component's interface within its feature's declared contract, so no component invents inputs or outputs the feature never promised.",
+    "why": "Limiting component events to the feature's declared event sets keeps each component's interface within its feature's declared contract, so no component invents inputs or outputs the feature never promised.",
     "evidence": [
-      "For each component, set(consumes) is a subset of the owning feature.ioSeeds.consume and set(produces) a subset of feature.ioSeeds.produce.",
-      "Each consumed event is justified by the component's role and each produced event by its capability (filtered from the respective ioSeeds list); reviewer states the role/capability link per event.",
+      "For each component, its declared consumed events are a subset of the owning feature's declared consumed-event set and its declared produced events are a subset of the feature's declared produced-event set.",
+      "Each consumed event is justified by the component's role and each produced event by its capability (filtered from the respective declared event set); reviewer states the role/capability link per event.",
       "Each component lists at most 3 consumed and at most 3 produced events.",
-      "Compliant example: a component consumes an event that the owning feature's ioSeeds.consume includes.",
-      "Violation example: a component produces an event that the owning feature's ioSeeds.produce does not contain.",
+      "Compliant example: a component consumes an event that the owning feature's declared consumed-event set includes.",
+      "Violation example: a component produces an event that the owning feature's declared produced-event set does not contain.",
       "Component dependencies come from other components in the same feature plus external dependencies."
     ],
     "verification": [
-      "Subset check: all consumed/produced events declared on a component must be traceable to the owning feature's ioSeeds; the checker resolves the owning feature from the plan artifact and compares the sets.",
-      "Consumed events are sourced from ioSeeds.consume filtered by the component's role and produced events from ioSeeds.produce filtered by its capability; at most 3 consumed and 3 produced events per component.",
+      "Subset check: all consumed/produced events declared on a component must be traceable to the owning feature's declared event sets; the checker resolves the owning feature from the plan artifact and compares the component's event lists against the feature's sets. The concrete field names for the feature's sets and the component's event lists come from the profile's plan-artifact syntax.",
+      "Consumed events are sourced from the feature's declared consumed-event set filtered by the component's role and produced events from the declared produced-event set filtered by its capability; at most 3 consumed and 3 produced events per component.",
       "Dependency-source check: each component dependency must resolve to a component of the same feature or to an external dependency; the reference shapes for both come from the profile.",
-      "The subset check is per declared event: if the owning feature's ioSeeds list for a direction is absent or empty, any declared event in that direction is untraceable and is a finding; a component with no declared events in that direction produces no event-subset finding, but its dependencies are still checked against the dependency-source rule. No minimum number of events is required.",
+      "The subset check is per declared event: if the owning feature's declared event set for a direction is absent or empty, any declared event in that direction is untraceable and is a finding; a component with no declared events in that direction produces no event-subset finding, but its dependencies are still checked against the dependency-source rule. No minimum number of events is required.",
       "No automated implementation exists in the reference realization; the check is reviewer/LLM-judged until a diff-level observer over component event/dependency lists and a set-comparison checker are built. The role/capability fit of an event is a semantic judgement.",
       "Scope: the check targets plan artifacts (which concrete artifact kinds count as plan artifacts comes from the profile); code-level changes that do not touch planning artifacts do not fire."
     ],
@@ -44,7 +44,7 @@
             "consume",
             "produce",
             "events",
-            "ioSeeds",
+            "declared event sets",
             "dependencies"
           ],
           "observability": "observable_now"
@@ -53,7 +53,7 @@
           "fact": "file_kind",
           "values": [
             "plan artifact carrying a component's consume/produce/dependency lists",
-            "plan artifact carrying a feature's ioSeeds"
+            "plan artifact carrying a feature's declared event sets"
           ],
           "observability": "observable_now"
         },
@@ -62,14 +62,14 @@
           "values": [
             "component consume/produce list added or edited",
             "component dependencies added or edited",
-            "feature ioSeeds added, edited or removed"
+            "feature declared event set added, edited or removed"
           ],
           "observability": "needs_new_observer"
         },
         {
           "fact": "finding",
           "values": [
-            "declared component event not in owning feature's ioSeeds",
+            "declared component event not in the owning feature's declared event set",
             "more than 3 consumed or more than 3 produced events",
             "dependency neither same-feature component nor external"
           ],
@@ -84,24 +84,29 @@
         }
       ],
       "fires": [
-        "Planner declares a component that produces an event absent from the owning feature's ioSeeds.produce.",
-        "Planner adds a consumed event to a component that the feature's ioSeeds.consume does not list.",
-        "Planner changes a feature's ioSeeds so an existing component's declared events are no longer a subset.",
+        "Planner declares a component that produces an event absent from the owning feature's declared produced-event set.",
+        "Planner adds a consumed event to a component that the feature's declared consumed-event set does not list.",
+        "Planner changes a feature's declared event sets so an existing component's declared events are no longer a subset.",
         "Planner gives a component a consumed event unrelated to its role, or a produced event unrelated to its capability.",
         "Planner lists a fourth consumed or a fourth produced event on one component.",
         "Planner adds a component dependency on a component of another feature that is not an external dependency."
       ],
       "doesNotFire": [
         "A component that declares no consumed or produced events AND whose dependencies are all same-feature components or external dependencies. (Empty event lists alone only satisfy the event-subset part; dependency sourcing must still be checked.)",
-        "Authoring a feature's ioSeeds before any component of that feature declares events or dependencies.",
+        "Authoring a feature's declared event sets before any component of that feature declares events or dependencies.",
         "Code-level changes that do not touch planning artifacts."
       ]
     }
   },
   "profileRequirements": [
     {
+      "key": "idiom.plan_syntax#component_events",
+      "meaning": "The plan-artifact syntax this rule binds to: the fields where a feature declares its consumed and produced event sets, and the fields where a component declares its consumed and produced events. The core's phrases 'the owning feature's declared consumed-/produced-event set' and 'the component's declared events' (and the activation task term 'declared event sets') resolve to these fields.",
+      "bunValue": "Feature's event sets: feature.ioSeeds.consume and feature.ioSeeds.produce. Component's event lists: consumes and produces."
+    },
+    {
       "key": "roles.plan_artifact.kinds",
-      "meaning": "The concrete plan-artifact kinds that carry component consume/produce/dependency lists and feature ioSeeds, so the rule's activation facts and the checker can target them; the core states these kinds only at role level.",
+      "meaning": "The concrete plan-artifact kinds that carry component consume/produce/dependency lists and a feature's declared event sets, so the rule's activation facts and the checker can target them; the core states these kinds only at role level.",
       "bunValue": "component plan/spec, feature plan/spec"
     },
     {
@@ -110,20 +115,12 @@
       "bunValue": "example id: component:same:feature.other"
     },
     {
-      "key": "urn.external_dependency",
+      "key": "urn.grammar#external_dependency",
       "meaning": "The reference shape, inside a plan artifact's component dependency list, that counts as an external dependency (as opposed to a component of another feature).",
       "bunValue": "example id: wagon:external#io"
     }
   ],
-  "proposedKeys": [
-    {
-      "key": "urn.external_dependency",
-      "group": "urn",
-      "meaning": "The reference shape, inside a plan artifact's component dependency list, that counts as an external dependency (as opposed to a component of another feature).",
-      "bunValue": "example id: wagon:external#io",
-      "whyNoExistingKey": "The urn group covers artifact URNs (urn.<artifact>) and file bindings (urn.binding.<artifact>) but no key describes the reference form used for external dependencies inside plan-artifact dependency lists; idiom.external_import recognises code imports of external packages, which is a different construct."
-    }
-  ],
+  "proposedKeys": [],
   "bunOnly": [
     {
       "item": "verifier_detail[0]",
@@ -138,7 +135,7 @@
     {
       "item": "verifier_detail[2]",
       "text": "Term dependencies ('Component dependencies'); example ids component:same:feature.other, wagon:external#io.",
-      "reason": "Term id is a realization detail; the concrete reference forms are carried by the profile (urn.component, urn.external_dependency) and by bun.json as the worked example."
+      "reason": "Term id is a realization detail; the concrete reference forms are carried by the profile (urn.component, urn.grammar#external_dependency) and by bun.json as the worked example."
     },
     {
       "item": "verifier_detail[3]",
@@ -154,196 +151,211 @@
   "classification": [
     {
       "item": "given",
+      "note": "Plan-model condition; already stack-neutral, kept verbatim.",
       "as": [
         "core:given"
-      ],
-      "note": "Plan-model condition; already stack-neutral, kept verbatim."
+      ]
     },
     {
       "item": "when",
+      "note": "'Planner' is the methodology actor, not a stack term; 'changes the feature's ioSeeds' is rephrased as 'changes the feature's declared event sets', binding to the feature-seed fields supplied by the profile's plan-syntax entry.",
       "as": [
-        "core:when"
-      ],
-      "note": "'Planner' is the methodology actor, not a stack term; kept verbatim."
+        "core:when",
+        "profile:idiom.plan_syntax#component_events"
+      ]
     },
     {
       "item": "then",
+      "note": "One obligation (subset + role/capability fit). The concrete field names feature.ioSeeds.consume / feature.ioSeeds.produce are profiled plan syntax (idiom.plan_syntax#component_events), so the core names only the owning feature's declared consumed-/produced-event sets. The 3-event cap and dependency sourcing remain mandatory via avoid[2]/avoid[3], evidence and verification, mirroring the split note in bun.json.",
       "as": [
-        "core:then"
-      ],
-      "note": "One obligation (subset + role/capability fit), already neutral; the 3-event cap and dependency sourcing remain mandatory via avoid[2]/avoid[3], evidence and verification, mirroring the split note in bun.json."
+        "core:then",
+        "profile:idiom.plan_syntax#component_events"
+      ]
     },
     {
       "item": "why",
+      "note": "Neutral rationale; the field-name mention 'the feature's ioSeeds' is rephrased as 'the feature's declared event sets'.",
       "as": [
         "core:why"
-      ],
-      "note": "Neutral rationale; kept verbatim."
+      ]
     },
     {
       "item": "prefer[0]",
+      "note": "Neutral compliant move; 'add it to the feature's ioSeeds' is rephrased to the feature's declared event sets, whose field names come from the plan-syntax profile entry.",
       "as": [
-        "core:prefer[0]"
-      ],
-      "note": "Neutral compliant move; kept verbatim."
+        "core:prefer[0]",
+        "profile:idiom.plan_syntax#component_events"
+      ]
     },
     {
       "item": "prefer[1]",
+      "note": "Selection-vs-inclusion clarification; 'ioSeeds events'/'every seed' rephrased to 'declared events'; the seed lists bind to the profile entry.",
       "as": [
-        "core:prefer[1]"
-      ],
-      "note": "Selection-vs-inclusion clarification; neutral, kept verbatim."
+        "core:prefer[1]",
+        "profile:idiom.plan_syntax#component_events"
+      ]
     },
     {
       "item": "avoid[0]",
+      "note": "Neutral avoidance; 'absent from ioSeeds.produce' rephrased to 'absent from the feature's declared produced-event set' (field name from the plan-syntax profile entry).",
       "as": [
-        "core:avoid[0]"
-      ],
-      "note": "Neutral; 'ioSeeds.produce' is a plan-artifact schema field, not a file path."
+        "core:avoid[0]",
+        "profile:idiom.plan_syntax#component_events"
+      ]
     },
     {
       "item": "avoid[1]",
+      "note": "Neutral; kept verbatim ('consume'/'produce' name directions, not fields).",
       "as": [
         "core:avoid[1]"
-      ],
-      "note": "Neutral; kept verbatim."
+      ]
     },
     {
       "item": "avoid[2]",
+      "note": "The 3-event cap is a methodology constant, not a stack fact; kept in the core.",
       "as": [
         "core:avoid[2]"
-      ],
-      "note": "The 3-event cap is a methodology constant, not a stack fact; kept in the core."
+      ]
     },
     {
       "item": "avoid[3]",
+      "note": "Neutral dependency-source rule; the concrete reference shapes a checker needs come from the profile via verifier_detail[2] (urn.component, urn.grammar#external_dependency).",
       "as": [
         "core:avoid[3]"
-      ],
-      "note": "Neutral dependency-source rule; the concrete reference shapes a checker needs come from the profile (urn.component, urn.external_dependency)."
+      ]
     },
     {
       "item": "evidence[0]",
+      "note": "Set-subset evidence; the field paths (feature.ioSeeds.consume/produce, component consumes/produces) are profiled plan syntax, so the core states the subset over the declared event sets and event lists.",
       "as": [
-        "core:evidence[0]"
-      ],
-      "note": "Set-subset evidence; neutral (schema fields of the plan artifact)."
+        "core:evidence[0]",
+        "profile:idiom.plan_syntax#component_events"
+      ]
     },
     {
       "item": "evidence[1]",
+      "note": "Role/capability justification evidence; 'the respective ioSeeds list' rephrased to 'the respective declared event set'.",
       "as": [
-        "core:evidence[1]"
-      ],
-      "note": "Role/capability justification evidence; neutral, kept verbatim."
+        "core:evidence[1]",
+        "profile:idiom.plan_syntax#component_events"
+      ]
     },
     {
       "item": "evidence[2]",
+      "note": "Cap evidence; neutral.",
       "as": [
         "core:evidence[2]"
-      ],
-      "note": "Cap evidence; neutral."
+      ]
     },
     {
       "item": "evidence[3]",
+      "note": "Neutralized compliant example; the concrete event instance (dilemma:presented) and field path (feature.ioSeeds.consume) stay in bun.json as the reference example; the core binds the set to the profile entry.",
       "as": [
-        "core:evidence[3]"
-      ],
-      "note": "Neutralized compliant example; the concrete event instance (dilemma:presented) stays in bun.json as the reference example."
+        "core:evidence[3]",
+        "profile:idiom.plan_syntax#component_events"
+      ]
     },
     {
       "item": "evidence[4]",
+      "note": "Neutralized violation example; the concrete event instance (order:shipped) and field path (feature.ioSeeds.produce) stay in bun.json; the core binds the set to the profile entry.",
       "as": [
-        "core:evidence[4]"
-      ],
-      "note": "Neutralized violation example; the concrete event instance (order:shipped) stays in bun.json as the reference example."
+        "core:evidence[4]",
+        "profile:idiom.plan_syntax#component_events"
+      ]
     },
     {
       "item": "evidence[5]",
+      "note": "Dependency-source evidence; neutral (the concrete reference shapes are carried by urn.component / urn.grammar#external_dependency, cf. verifier_detail[2]).",
       "as": [
         "core:evidence[5]"
-      ],
-      "note": "Dependency-source evidence; neutral."
+      ]
     },
     {
       "item": "verifier_detail[0]",
+      "note": "Generic subset check goes to core verification, with the field names for the feature's sets and component's lists taken from the plan-syntax profile entry; the term id events_subset is a realization id (bunOnly).",
       "as": [
         "core:verification",
+        "profile:idiom.plan_syntax#component_events",
         "bunOnly"
-      ],
-      "note": "Generic subset check goes to core verification; the term id events_subset is a realization id (bunOnly)."
+      ]
     },
     {
       "item": "verifier_detail[1]",
+      "note": "Filter sources and the 3-event maximum go to core verification; the field paths feature.ioSeeds.consume / feature.ioSeeds.produce are exactly the bunValue of idiom.plan_syntax#component_events; the term id event_limits and example event names stay in the realization.",
       "as": [
         "core:verification",
+        "profile:idiom.plan_syntax#component_events",
         "bunOnly"
-      ],
-      "note": "Filter sources and the 3-event maximum go to core verification; the term id event_limits and example event names stay in the realization."
+      ]
     },
     {
       "item": "verifier_detail[2]",
+      "note": "Dependency-source rule goes to core verification; term id is bunOnly; the concrete reference shapes are profile data.",
       "as": [
         "core:verification",
         "bunOnly",
         "profile:urn.component",
-        "profile:urn.external_dependency"
-      ],
-      "note": "Dependency-source rule goes to core verification; term id is bunOnly; the concrete reference shapes are profile data."
+        "profile:urn.grammar#external_dependency"
+      ]
     },
     {
       "item": "verifier_detail[3]",
+      "note": "Reviewer/LLM-judged status goes to core verification; 'implementation.type: none' is the Bun sidecar's status (bunOnly).",
       "as": [
         "core:verification",
         "bunOnly"
-      ],
-      "note": "Reviewer/LLM-judged status goes to core verification; 'implementation.type: none' is the Bun sidecar's status (bunOnly)."
+      ]
     },
     {
       "item": "verifier_detail[4]",
+      "note": "Per-declared-event check semantics including the vacuous-subset case; 'ioSeeds list for a direction' rephrased to 'declared event set for a direction', binding to the profile entry.",
       "as": [
-        "core:verification"
-      ],
-      "note": "Per-declared-event check semantics including the vacuous-subset case; fully neutral, kept in verification."
+        "core:verification",
+        "profile:idiom.plan_syntax#component_events"
+      ]
     },
     {
       "item": "activation.facts[0]",
+      "note": "Plan-model task terms; the Bun term 'ioSeeds' is the stack's local name for the feature's declared event sets, so the core lists 'declared event sets' and the plan-syntax profile entry supplies the local term.",
       "as": [
-        "core:activation.facts[0]"
-      ],
-      "note": "Plan-model task terms; neutral."
+        "core:activation.facts[0]",
+        "profile:idiom.plan_syntax#component_events"
+      ]
     },
     {
       "item": "activation.facts[1]",
+      "note": "Neutralized: the core's file-kind values name the plan-artifact role and what the artifact declares; the concrete kind names 'component plan/spec' and 'feature plan/spec' are stack data delivered by the profile key and kept in the Bun realization (bunOnly).",
       "as": [
         "core:activation.facts[1]",
         "profile:roles.plan_artifact.kinds",
         "bunOnly"
-      ],
-      "note": "Neutralized: the core's file-kind values name the plan-artifact role and what the artifact declares; the concrete kind names 'component plan/spec' and 'feature plan/spec' are stack data delivered by the profile key and kept in the Bun realization (bunOnly)."
+      ]
     },
     {
       "item": "activation.facts[2]",
+      "note": "Diff-level change facts; 'feature ioSeeds added, edited or removed' rephrased to 'feature declared event set added, edited or removed'; observer still to be built.",
       "as": [
-        "core:activation.facts[2]"
-      ],
-      "note": "Diff-level change facts; neutral, observer still to be built."
+        "core:activation.facts[2]",
+        "profile:idiom.plan_syntax#component_events"
+      ]
     },
     {
       "item": "activation.facts[3]",
+      "note": "Deterministic findings of this rule stated neutrally; 'not in owning feature's ioSeeds' rephrased to 'not in the owning feature's declared event set'; needs a set-comparison checker.",
       "as": [
-        "core:activation.facts[3]"
-      ],
-      "note": "Deterministic findings of this rule stated neutrally; needs a set-comparison checker."
+        "core:activation.facts[3]",
+        "profile:idiom.plan_syntax#component_events"
+      ]
     },
     {
       "item": "activation.facts[4]",
+      "note": "Semantic role/capability judgement; llm_judged, neutral.",
       "as": [
         "core:activation.facts[4]"
-      ],
-      "note": "Semantic role/capability judgement; llm_judged, neutral."
+      ]
     }
   ],
-  "neutralityNotes": "The rule's vocabulary (feature, component, ioSeeds, consume/produce, dependencies) belongs to the ATDD planning artifacts, not to any runtime stack, so it is kept verbatim in the core; 'feature.ioSeeds.consume' etc. are plan-artifact schema fields, not file paths. The 3-event cap is a methodology constant and stays in the core. What actually varies per stack — which concrete artifact kinds are plan artifacts and how component / external-dependency references are shaped — is taken from the profile (roles.plan_artifact.kinds, urn.component); accordingly the core's activation file-kind values are role-level ('plan artifact carrying a component's consume/produce/dependency lists' / '... a feature's ioSeeds') rather than the Bun kind names, and the Bun kind names are recorded as bunOnly with the profile key carrying them. The external-dependency reference shape had no existing vocabulary key and is proposed as urn.external_dependency. Concrete example events and reference ids are not repeated in the core; bun.json remains the worked reference example. 'implementation.type: none' is the Bun realization's status and is bunOnly; the core states generically that the check is reviewer/LLM-judged until a diff-level observer and set-comparison checker exist.",
+  "neutralityNotes": "The rule's planning vocabulary (feature, component, consume/produce, dependencies, planner) belongs to the ATDD planning model, not to any runtime stack, so it stays in the core. The concrete plan-schema field names are NOT kept in the core: ioSeeds, feature.ioSeeds.consume and feature.ioSeeds.produce (and the component's consumes/produces lists) are the Bun plan syntax, supplied as idiom.plan_syntax#component_events; the core refers only to 'the owning feature's declared consumed-/produced-event set' and 'the component's declared events' (title, when, then, prefer, avoid[0], evidence, verification and activation all rephrased accordingly), so a stack with the same planning roles does not have to adopt these field names. The 3-event cap is a methodology constant and stays in the core. What else varies per stack - which concrete artifact kinds are plan artifacts and how component / external-dependency references are shaped - is taken from the profile (roles.plan_artifact.kinds, urn.component, urn.grammar#external_dependency). Concrete example events, reference ids and the Bun kind names are not repeated in the core; bun.json remains the worked reference example. 'implementation.type: none' is the Bun realization's status and is bunOnly; the core states generically that the check is reviewer/LLM-judged until a diff-level observer and set-comparison checker exist. No new vocabulary key was needed.",
   "realizations": {
     "bun": {
       "sidecar": "conventions-sidecar/conventions/planner-nodes/planner.component.io-alignment.json",
@@ -352,12 +364,12 @@
   },
   "audit": {
     "issue": "PLT-84",
-    "stage": 2,
-    "vocabularyVersion": 2,
+    "stage": 3,
+    "vocabularyVersion": 3,
     "verdict": "PASS",
     "rounds": 2,
     "usefulness": 5,
-    "deriver": "zai/glm-5.3",
+    "deriver": "rekey-v3 -> zai/glm-5.3",
     "auditor": "openai-codex/gpt-6.1-sol",
     "reviewer": "kimi-coding/k3.1-pro",
     "review": {
