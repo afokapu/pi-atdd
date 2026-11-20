@@ -120,6 +120,7 @@ export default function atdd(pi:ExtensionAPI):void {
   }
   /** Pi tool proposals are observed before execution; changed file content is observed afterward. */
   function sourceFor(cwd:string,path:string,input?:{content?:unknown;oldText?:unknown;newText?:unknown}):string|undefined{
+    if(scopedPath(cwd,path)===null)return undefined; // avoid reading an untrusted symlink during post-tool inspection
     if(typeof input?.content==="string")return input.content.length<=1_000_000?input.content:undefined;
     let current:string|undefined;
     try{
