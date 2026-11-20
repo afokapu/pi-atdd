@@ -5,7 +5,7 @@
  */
 import { createHash } from "node:crypto";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { existsSync, lstatSync, realpathSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadCatalog, loadConfig, type Catalog, type Selector } from "./catalog.ts";
 import type { StructureProfile } from "./profile.ts";
@@ -17,7 +17,20 @@ import { registerAttentionStrip } from "./attention-strip.ts";
 import { Type } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { MODE_FILE, guardsAtdd, modeFromText, recordMode, repositoryRoot, resolveMode, type Mode, type Resolution } from "./mode.ts";
+import {
+  buildHandoff, clampToCompaction, decideContextAction, decideSettle, extractIssueId, INITIAL_HANDOFF_STATE, kickoffText,
+  parseHop, resolveCompactionReserve, DEFAULT_COMPACTION_RESERVE, resolveMaxHops, resolveThresholds,
+  type HandoffInput, type HandoffState,
+} from "./context-handoff.ts";
 
+/** Text of a user message entry in the session branch; empty for anything else. */
+function userText(value:unknown):string{
+  const entry=value as {type?:string;message?:{role?:string;content?:unknown}};
+  if(entry.type!=="message"||entry.message?.role!=="user")return "";
+  const content=entry.message?.content;
+  return typeof content==="string"?content:Array.isArray(content)?
+    content.filter(x=>x?.type==="text"&&typeof x.text==="string").map(x=>x.text).join("\n"):"";
+}
 function scopedPath(cwd:string,supplied:string):string|null {
   const abs=resolve(cwd,supplied), p=relative(cwd,abs);
   if(!p||p===".."||p.startsWith(".."+sep)||isAbsolute(p))return null;
@@ -73,6 +86,13 @@ export default function atdd(pi:ExtensionAPI):void {
   let observationWarning=false;
   const delivered=new Map<string,string>();
   const unresolvedPaths=new Set<string>();
+  // PLT-102: automatic handoff. Usage is read in turn_end; the session switch runs
+  // from a registered command because ctx.newSession is available only to commands.
+  let handoffState:HandoffState=INITIAL_HANDOFF_STATE;
+  let requestedHandoff:HandoffInput|undefined;
+  let readyHandoff:{text:string;path:string;kickoff:string}|undefined;
+  /** Hop index of this session in its chain, read back from the record that seeded it. */
+  let handoffHop=0;
   /** Post-tool pages whose budget omitted rules; delivered on the next tool result. */
   type Pending={path:string;operation:"edit"|"create";provenance:string};
   const pendingPostTool=new Map<string,Pending>();
@@ -141,6 +161,11 @@ export default function atdd(pi:ExtensionAPI):void {
     setMode(ctx,mode,!choice?"default, question dismissed":remember?MODE_FILE:"your answer");
   }
 
+  /** Pi's own compaction reserve; a handoff must fire before compaction starts. */
+  function compactionReserve(model:{provider:string;id:string}|undefined):number{
+    try{return resolveCompactionReserve(pi.getSettings(),model);}
+    catch{return DEFAULT_COMPACTION_RESERVE;}
+  }
   function reset():void{
     reasoning=undefined;delivered.clear();unresolvedPaths.clear();observationWarning=false;
     pendingPostTool.clear();
@@ -181,7 +206,9 @@ export default function atdd(pi:ExtensionAPI):void {
   }
   function restoreFromBranch(ctx:{cwd:string;sessionManager:{getBranch:()=>unknown[]}}):void{
     serial++;reset();
+    handoffState=INITIAL_HANDOFF_STATE;requestedHandoff=undefined;readyHandoff=undefined;
     const entries=ctx.sessionManager.getBranch();
+    handoffHop=Math.max(0,...entries.map(value=>parseHop(userText(value))));
     const last=[...entries].reverse().find(value=>{
       const entry=value as {type?:string;message?:{role?:string}};
       return entry.type==="message"&&entry.message?.role==="user";
@@ -285,6 +312,72 @@ export default function atdd(pi:ExtensionAPI):void {
     }
     return undefined;
   }
+  pi.on("turn_end",(_event,ctx)=>{
+    if(!ctx.isProjectTrusted())return;
+    let thresholds,maxHops;
+    try{thresholds=resolveThresholds(process.env);maxHops=resolveMaxHops(process.env);}
+    catch(e){ctx.ui.notify("ATDD context handoff disabled: "+String(e),"error");return;}
+    const usage=ctx.getContextUsage();
+    const effective=usage?clampToCompaction(thresholds,usage.contextWindow,compactionReserve(ctx.model)):thresholds;
+    const decision=decideContextAction(usage?.percent??null,effective,handoffState,handoffHop>=maxHops);
+    handoffState=decision.state;
+    if(decision.action==="notify")
+      ctx.ui.notify("Context at "+usage!.percent!.toFixed(0)+"%; automatic ATDD handoff at "+effective.handoffAt.toFixed(0)+"%","warning");
+    if(decision.action==="limit")
+      ctx.ui.notify("ATDD handoff chain limit ("+maxHops+" hops) reached; continue manually or raise PI_ATDD_HANDOFF_MAX_HOPS","warning");
+    if(decision.action==="handoff")
+      requestedHandoff={task,cwd:ctx.cwd,percent:usage!.percent!,contextWindow:usage!.contextWindow,
+        revision:currentRevision(),hop:handoffHop+1};
+  });
+  // agent_settled is the idle boundary. The request was latched at turn_end with the
+  // usage that crossed the threshold; Pi may compact before the run settles and must not
+  // cancel it. Only an aborted run drops the request (and a dropped request may re-arm).
+  pi.on("agent_settled",(event,ctx)=>{
+    if(!requestedHandoff||!ctx.isProjectTrusted())return;
+    const request=requestedHandoff;requestedHandoff=undefined;
+    try{
+      if(decideSettle(event.aborted)==="drop"){
+        handoffState={...handoffState,handoffRequested:false};
+        ctx.ui.notify("ATDD context handoff not started: the run was aborted","info");
+        return;
+      }
+      const path=join(ctx.cwd,".atdd-pi","handoffs",new Date().toISOString().replace(/[:.]/g,"-")+".md");
+      const text=buildHandoff({...request,handoffPath:path});
+      mkdirSync(dirname(path),{recursive:true});
+      writeFileSync(path,text,{flag:"wx"});
+      readyHandoff={text,path,kickoff:kickoffText(extractIssueId(request.task))};
+      pi.sendUserMessage("/atdd-handoff",{expandPromptTemplates:true});
+    }catch(e){
+      ctx.ui.notify("ATDD context handoff failed: "+String(e)+"; no handoff was written.","error");
+    }
+  });
+  pi.registerCommand("atdd-handoff",{
+    description:"Start a fresh session seeded with the pending ATDD context handoff",
+    handler:async(_args,ctx)=>{
+      const ready=readyHandoff;
+      if(!ready){ctx.ui.notify("No ATDD context handoff is pending","info");return;}
+      // The record stays pending until the switch succeeds, so a cancelled or failed
+      // switch can be retried by hand. Nothing retries automatically.
+      try{
+        const result=await ctx.newSession({
+          parentSession:ctx.sessionManager.getSessionFile(),
+          setup:async(sm)=>{
+            sm.appendMessage({role:"user",content:[{type:"text",text:ready.text}],timestamp:Date.now()});
+          },
+          withSession:async(next)=>{
+            await next.sendUserMessage(ready.kickoff);
+          },
+        });
+        if(result.cancelled){
+          ctx.ui.notify("ATDD context handoff cancelled; record kept at "+ready.path+". Run /atdd-handoff to retry.","warning");
+          return;
+        }
+        readyHandoff=undefined;
+      }catch(e){
+        ctx.ui.notify("ATDD context handoff failed: "+String(e)+". Record kept at "+ready.path+".","error");
+      }
+    },
+  });
   pi.on("tool_call",(event,ctx)=>{
     if(!ctx.isProjectTrusted()||!active(ctx.cwd))return;
     if(event.toolName==="bash"){

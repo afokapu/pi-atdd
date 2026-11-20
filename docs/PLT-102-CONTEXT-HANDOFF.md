@@ -1,83 +1,83 @@
 # PLT-102 — automatic context handoff at 85% usage (design note)
 
-Status: design note, reviewed adversarially by the worker before build. No code in this commit.
-Linear: [PLT-102](https://linear.app/forge100/issue/PLT-102/add-automatic-context-handoff-at-85percent-usage) · Coach brief: context-handoff, 2026-11-19.
+Status: built on this branch; draft PR #22. Revised after the Coach's independent review (RETURN) to fix
+the compaction race and secret leakage, and to add the `shared.handoff.*` rules.
+Linear: [PLT-102](https://linear.app/forge100/issue/PLT-102/add-automatic-context-handoff-at-85percent-usage).
 
-## 1. Goal and acceptance
+## 1. Acceptance (from Linear, the only source: no plan acceptance record exists for PLT-102)
 
-Acceptance criteria from Linear, restated as checks the build must meet:
-
-| # | Given | When | Then |
-|---|---|---|---|
-| AC1 | usage < 80% | a turn ends | nothing happens |
-| AC2 | usage ≥ 80% | a turn ends | user is notified exactly once |
-| AC3 | usage ≥ 85%, agent idle | a turn ends | handoff record is written and a new session is opened seeded with it |
-| AC4 | agent mid-run | usage crosses 85% | the switch waits until the run settles |
-| AC5 | work done | — | tests first, `npm run check` green, PR is draft, no merge |
+| # | Given | When | Then | Proof |
+|---|---|---|---|---|
+| AC1 | usage < 80% | a turn ends | nothing happens | unit: `decideContextAction` |
+| AC2 | usage ≥ 80% | a turn ends | user notified once | unit |
+| AC3 | usage ≥ 85%, agent idle | a turn ends | record written, new session seeded | adapter test; real Pi RPC run |
+| AC4 | agent mid-run / compacting | usage crosses 85% | switch waits for `agent_settled`; compaction does not cancel it | adapter test (latch); real Pi RPC run with `compaction_start/end` |
+| AC5 | work done | — | tests first, `npm run check` green, draft PR, no merge | CI on PR #22 |
 
 Out of scope: transport of attention items (PLT-101).
 
 ## 2. Design
 
-Everything lives in the existing extension (`extensions/atdd.ts` → `src/pi-activation.ts`). One new pure module, `src/context-handoff.ts`, holds the decision and record text with no Pi imports, so it is unit-testable.
+Lives in the existing extension (`extensions/atdd.ts` → `src/pi-activation.ts`). Pure decisions, redaction and record text are in `src/context-handoff.ts` (no Pi imports).
 
 ### 2.1 Hooks
 
-| Hook | Reads | Does | Why this hook |
-|---|---|---|---|
-| `turn_end` | `ctx.getContextUsage()`, `event.message` | Decides `none` / `notify` / `handoff` via `decideContextAction`. Sets a pending request for `handoff`. Stores last assistant text. | Fires after each turn is persisted, so usage is current. It is per turn, so a crossing mid-run is seen. |
-| `agent_settled` | `event.aborted`, `ctx.getContextUsage()` | If a request is pending: aborted → drop. Usage re-checked → below 85% → drop. Otherwise write the record and call `pi.sendUserMessage("/atdd-handoff", {expandPromptTemplates: true})`. | Documented idle boundary. `ctx.newSession` is only available to commands, so the switch must be requested through a command. |
-| `/atdd-handoff` command | pending record | `ctx.newSession({parentSession, setup, withSession})`. `setup` appends the record as the first user message. `withSession` sends the kickoff using the replacement ctx only. | Only command handlers may call `newSession`. The pending record is cleared only on success. |
+| Hook | Does | Why here |
+|---|---|---|
+| `turn_end` | Reads `ctx.getContextUsage()`. `decideContextAction` → notify once, or **latch** a handoff request with the usage that crossed the threshold. Clamps the threshold to Pi's compaction line. Bounds by hop. | Usage is current per turn. |
+| `agent_settled` | If a request is latched: **aborted → drop** (and re-arm allowed); otherwise write the record and request `/atdd-handoff`. Usage is **not re-read**. | Documented idle boundary. Pi compacts *before* this point, so the request must not depend on post-compaction usage. |
+| `/atdd-handoff` command | `ctx.newSession({parentSession, setup, withSession})`. `setup` seeds the record as the first user message; `withSession` sends the kickoff through the replacement ctx only. The record stays pending until the switch succeeds. | `ctx.newSession` is command-only (Pi docs). |
 
-### 2.2 Thresholds
+### 2.2 Thresholds and compaction
 
-- Defaults: notify at 80, handoff at 85 (percent of the model's context window).
-- Configured by environment variables `PI_ATDD_HANDOFF_NOTIFY_AT` and `PI_ATDD_HANDOFF_AT`. There is no extension settings schema to extend, and a new one would be more surface than this task needs.
-- Invalid values throw. They do not silently fall back. Requirement: `0 < notify ≤ handoff ≤ 100`.
-- Each action fires at most once per session. `null` or non-finite usage never triggers anything.
+- Defaults 80 (notify) / 85 (handoff), env `PI_ATDD_HANDOFF_NOTIFY_AT` / `PI_ATDD_HANDOFF_AT`; invalid values throw.
+- Pi auto-compacts when `contextTokens > window − reserveTokens`. The effective handoff threshold is capped at that line (`clampToCompaction`), so on small windows the handoff fires before compaction; otherwise it would never fire.
+- The reserve is resolved as Pi does, per field: the active model's `compaction.modelOverrides["provider/id"].reserveTokens`, then the global `compaction.reserveTokens`, then the default 16,384 (`resolveCompactionReserve`, using `ctx.model`). Invalid values fall back to the default; Pi itself rejects them when it compacts.
+- Each action fires at most once per session.
 
-### 2.3 Handoff record
+### 2.3 Hop bound
 
-Written to `.atdd-pi/handoffs/<timestamp>.md` inside the workspace (already gitignored). Shape follows the `shared.handoff.*` convention: issue id, workspace, revision, usage, task, done (last state, marked unverified), next, open items, grant, how to resume, record path. Bounded to 6,000 characters.
+- The record carries `Hop: N`. A successor reads it back from the session branch (`parseHop`); plain text is hop 0.
+- A session at `PI_ATDD_HANDOFF_MAX_HOPS` (default 5, 1–50) reports a chain-limit notice and does not hand off again.
 
-Fields the extension cannot know are written as `UNKNOWN`. Examples: open items, and the revision unless the repository observer supplies it. The record never guesses.
+### 2.4 Record (`shared.handoff.record-contents`)
 
-### 2.4 What the new session receives
+Written to `.atdd-pi/handoffs/<timestamp>.md` (gitignored, `wx`), bounded to 6,000 characters.
 
-1. One user-role message: the full record. It states that the done section is the predecessor's own unverified output.
-2. A kickoff sent through the replacement ctx: "Continue from the ATDD context handoff above. Re-verify any claimed completion before relying on it."
-3. Nothing else is carried over. Repository state is the source of truth; the session does not inherit approvals, grants or memory.
+- **Included:** issue id (or `unknown`), workspace, revision (or `UNKNOWN`), usage at the crossing (the *latched* value), hop, the task text (secret-shaped values redacted, clipped at 1,200), next, open items (`UNKNOWN`), grant (by reference), how to resume, record path.
+- **Excluded:** the predecessor's assistant output. It is recorded as `not recorded`. (Unverified, and it carried the secret in the first review.)
+- **Redaction** (task text only, **best-effort and list-based, not general secret safety**): assignments whose label is one of `password`, `passwd`, `pwd`, `passphrase`, `secret`, `token`, `credential(s)`, `auth`, `authorization`, `api_key`, `apikey`, `access_key`, `private key`, `client_secret` (`:` or `=`); `Authorization Basic …`; `Bearer …`; `sk-…`/`pk-…`/`ghp_…`/`xox…`/`AKIA…` provider token shapes; and mixed letter+digit runs of 32+ characters. Over-redaction (e.g. a SHA in the task) is accepted. A secret with a label or shape not on this list passes unchanged. The workspace and record paths are not redacted.
 
 ## 3. Sequence
 
 ```mermaid
 flowchart TD
     Turn["turn_end: read usage"]:::step
-    Check{"usage >= 85%?"}:::decide
-    Notify["notify once at >= 80%"]:::note
-    Armed["request pending"]:::wait
+    Check{"usage at or above handoff line (clamped to compaction)?"}:::decide
+    Notify["notify once at notify line"]:::note
+    Latch["handoff latched with usage at crossing"]:::wait
+    Compact["Pi may compact (not a cancel)"]:::note
     Settle["agent_settled"]:::step
-    Abort{"aborted?"}:::decide
-    Recheck{"still >= 85%?"}:::decide
-    Drop["drop request, notify"]:::stop
-    Write["write record to .atdd-pi/handoffs"]:::step
-    Cmd["/atdd-handoff command"]:::step
-    Switch{"newSession cancelled?"}:::decide
-    Keep["record kept, notify path, retry allowed"]:::stop
-    New["new session seeded with record"]:::ok
+    Abort{"run aborted?"}:::decide
+    Drop["drop latch; re-arm allowed"]:::stop
+    Hop{"hop at limit?"}:::decide
+    Limit["limit notice; no handoff"]:::stop
+    Write["write record (wx, redacted)"]:::step
+    Cmd["/atdd-handoff: ctx.newSession"]:::step
+    Switch{"switch cancelled or failed?"}:::decide
+    Keep["record kept; path reported; manual retry only"]:::stop
+    New["successor seeded with record"]:::ok
 
     Turn --> Check
-    Check -- yes --> Armed
-    Check -- "80 to 85" --> Notify
+    Check -- yes --> Hop
+    Check -- "notify band" --> Notify
     Check -- no --> Turn
-    Armed --> Settle
+    Hop -- yes --> Limit
+    Hop -- no --> Latch
+    Latch --> Compact --> Settle
     Settle --> Abort
     Abort -- yes --> Drop
-    Abort -- no --> Recheck
-    Recheck -- no --> Drop
-    Recheck -- yes --> Write
-    Write --> Cmd
-    Cmd --> Switch
+    Abort -- no --> Write --> Cmd --> Switch
     Switch -- yes --> Keep
     Switch -- no --> New
 
@@ -89,78 +89,60 @@ flowchart TD
     classDef ok fill:#dcfce7,stroke:#15803d,color:#14532d
 ```
 
-## 4. Adversarial review
+## 4. Adversarial review (worker, after the Coach's RETURN)
 
-Each hook and threshold, its weakest point, and what the design does about it.
-
-| Element | Weakest point | Response in this design |
+| Element | Weakest point | Response |
 |---|---|---|
-| `turn_end` usage read | `getContextUsage()` is an estimate for trailing messages; `percent` can be `null`. | `null` never triggers. Estimate error is accepted; the 80/85 gap absorbs it. |
-| Single-turn jump | One huge turn can go from below 85% to past the window. There is no turn boundary to act on. | Accepted and documented. Pi's own overflow recovery handles that case. |
-| Pi auto-compaction preempting | Pi compacts when `contextTokens > window − reserveTokens` (default 16,384). That is about 92% for a 200k window, so 85% fires first. For windows ≤ ~109k tokens, compaction starts *before* 85% and the handoff never fires. | Not fixed in code. Named as an open question (§6). Default models are unaffected. |
-| `notify` once | Notifying and then crossing 85% in the same run. | Notify and handoff states are separate; a jump straight to 85% skips notify and hands off (tested). |
-| Mid-run wait | Long runs or queued messages delay `agent_settled`; usage can grow or fall meanwhile. | Waiting is the spec (AC4). At settle the usage is re-read, so a compaction that freed room cancels the handoff. |
-| Abort (Escape) | Switching sessions under a user who just pressed Escape is hostile. | Aborted settles drop the request and notify. Not silently retried. |
-| Re-check at settle | Could drop a handoff that was correctly armed. | Accepted: if usage fell below 85% the session no longer needs it. Tested. |
-| `ctx.newSession` cancelled by another extension | Record exists on disk but no new session. A naive retry loops. | Record kept, path notified, pending record kept so a manual `/atdd-handoff` can retry. No automatic retry. |
-| Command surfaced as chat | The `/atdd-handoff` user message is visible in the transcript. | Accepted. Required by the command-only `newSession` API. |
-| Stale predecessor objects | Captured `ctx`/`sessionManager` are invalid after replacement. | Only the `withSession` ctx and plain strings are used. Pending data is plain text. |
-| Injection via record | `lastState` is model output, sent back as a user-role message. | Framed as unverified predecessor output; the kickoff tells the successor to re-verify. Not a trust boundary. |
-| Privacy | The record contains task text and last state, possibly private. | Stored only in the gitignored workspace folder. Sent to the same model the session already uses. No new remote destination. |
-| Record write failure | Disk full, permissions. | Writes with `wx` (no overwrite). Failure notifies and does not arm the switch. |
-| Chained handoffs | A successor can itself reach 85%. | Ephemeral state resets on session start, so each session can hand off once. A loop is possible across sessions, and is accepted: each hop needs real usage. |
-| Revision | The observer may not supply a revision. | `UNKNOWN` when absent. Not guessed from chat text. |
-| Thresholds | Bad values silently change behaviour. | Invalid values throw; tested. |
+| Settle re-read (**P1, fixed**) | Pi compacts between `turn_end` and `agent_settled`; the re-read lower usage dropped the handoff (observed in real Pi RPC by the Coach). | Latch at `turn_end`; settle drops only on abort. Real run: compaction between the two; handoff still written. |
+| Record secrets (**P1, fixed**) | The prompt and the assistant's output were copied verbatim; a seeded password reached disk. | Redact task text; omit assistant output. Real run: no `TOPSECRET`, no assistant output in any record. |
+| Chain loop (found in real run, fixed) | A successor seeded above the threshold handed off again: about 20 sessions. | Hop in record; limit at `PI_ATDD_HANDOFF_MAX_HOPS`. Real run stops at 2 with a limit notice. |
+| Compaction preempts 85% on small windows | Pi compacts at `window − reserve`, which can be below 85%. | Threshold clamped to the compaction line, using the active model's override when one exists (unit-tested and real Pi RPC, section 5). |
+| `newSession` cancelled or throws | Record exists, no successor. A retry loop would be bad. | Record kept, path reported, no automatic retry; unit-tested for cancel and throw. |
+| Over-redaction | A SHA or long slug in the task is redacted. | Accepted. The redaction is one-way and only affects the task text. |
+| Under-redaction | A secret with a label or shape not in the list passes. | Known gap: the redaction is best-effort and list-based. It is not general secret safety; keeping secrets out of prompts is the real control. |
+| Command visible in transcript | `/atdd-handoff` appears as a user message. | Accepted; required by the command-only `newSession` API. |
+| Predecessor's session file | Pi's own session file keeps the original prompt, including any secret typed into it. | Not changed by this PR. The record no longer adds to it. |
+| Stale ctx/sessionManager | Captured objects are invalid after replacement. | Only the `withSession` ctx; pending data is plain text. |
+| Hop from chat text | A user could type `Hop: 9`. | Hop is read only from a message that carries the record header. |
 
-### Changes from the brief after review
+## 5. Evidence
 
-1. Re-check usage at `agent_settled`, not only at `turn_end` (compaction can free room mid-run).
-2. Aborted settles drop the request instead of switching.
-3. Cancelled `newSession` keeps the pending record for manual retry, and does not retry automatically.
-4. The decision and settle logic are pure functions, so each failure case is a unit test.
+- **Unit/adapter tests:** `npm run check` green: 187 tests, including `tests/context-handoff*.test.ts` (latch, redaction, hop bound, per-model reserve, label coverage).
+- **Real Pi RPC, compaction latch** (temp `PI_CODING_AGENT_DIR`, faux 1k window, `reserveTokens` 400, `keepRecentTokens` 50, `PI_ATDD_HANDOFF_MAX_HOPS` 2). Timeline: `turn_end → agent_end → compaction_start → compaction_end → agent_settled`, then the record is written with the latched 237.9% usage. The Coach's earlier run showed the same order dropping the handoff before this fix.
+- **Real Pi RPC, redaction**: seeded `password=TOPSECRET` and `Authorization Bearer abc.def-123` in the prompt. First record shows `password=[REDACTED]` and `Bearer [REDACTED]`; neither secret nor the faux assistant output appears in any record.
+- **Real Pi RPC, chain bound**: two handoff records, then `ATDD handoff chain limit (2 hops) reached`.
+- **Real Pi RPC, per-model reserve (re-review P1)**: 20k faux model; global `compaction.reserveTokens` 100, model override `plt102-faux/small` `reserveTokens` 8000, so Pi compacts at 60%. Turns measured from the session file: 27.9% then 64.6%. Override run: 1 handoff record, 2 sessions (`compaction_start/end` after turn 2, successor takes turn 3). Control with the global reserve only, same prompts: 0 handoff records, 1 session, same usage (the value the old global-only code read). The window is 20k rather than 1k because Pi's own system prompt is about 2.3k tokens; a 1k window is already past any line.
+- **Real Pi RPC, redaction labels (re-review P2)**: unit tests cover `credential=`, `auth=`, `passphrase=`, `secret:`, `token=`, `apikey=`, `api_key=`, `private key:`, `private_key=`, `authorization=` and `Authorization Basic`, plus ordinary words that contain a label (`author:`, `oauth`, `credentials review`) left unchanged.
 
-## 5. Enforced vs text-only
+Not run: a counterfactual on the pre-fix code in this session (the Coach's run is the evidence there).
+
+## 6. Enforced vs text-only
 
 | Aspect | Status | Why |
 |---|---|---|
-| Threshold decision, once-only notify and handoff | **Enforced** (code, unit tests) | Pure function, tested. |
-| Wait for settle; abort drops; re-check drops | **Enforced** (code, adapter test) | Driven by Pi events. |
-| Record written before switch; `wx` no-overwrite | **Enforced** | File write precedes command request. |
-| Session switch and seeding | **Enforced** when Pi accepts it | `newSession` may be cancelled; then the record is kept and reported. |
-| Content of done, next and open items | **Text-only** | Copied from model output or `UNKNOWN`. Not verified. |
-| Successor actually resumes correctly | **Text-only** | Depends on the successor's reasoning; the kickoff only asks it to re-verify. |
-| Grant carried forward | **Text-only** | The record names the grant only by reference to the brief. The successor must read the brief. |
-| ATDD obligations | **Not claimed** | The record states unresolved applicability stays UNKNOWN. CI remains authoritative. |
+| Threshold decisions, notify/handoff once, clamp | **Enforced** | Pure functions, unit-tested. |
+| Latch at crossing; drop only on abort | **Enforced** | Adapter test and real Pi run. |
+| Hop bound | **Enforced** | Real Pi run; adapter test. |
+| Secret redaction of task text | **Best-effort only** | Pattern list over listed labels and token shapes. Not general secret safety; an unlisted label or shape passes. |
+| Record excludes assistant output | **Enforced** | Field not written. |
+| Successor's correct resumption | **Text-only** | Depends on the successor; kickoff asks it to re-verify. |
+| Grant | **Text-only** | Named by reference to the brief. |
+| ATDD applicability | **Not claimed** | Stays UNKNOWN; CI and the independent reviewer are authoritative. |
 
-## 6. Open questions for the owner
+## 7. Convention and selector
 
-1. Compaction preemption: should the extension warn when Pi's compaction threshold for the active model is ≤ 85%? That needs reading `compaction.reserveTokens`. This build does not do it.
-2. Should a successful handoff also stop the old session's further work, or leave it? Current design: Pi replaces the session, so the old one ends.
-3. Environment variables vs a settings key for thresholds. Current choice: environment variables.
+- `shared.handoff.record-contents` and `shared.handoff.bounded-chain` in `catalog/pi-atdd/conventions/shared/handoff/`, with `catalog/pi-atdd/relationships.yaml` nodes and one `requires` edge (bounded-chain → record-contents, mandatory).
+- Selector `context-handoff` in `selectors/default.yaml`. The `pi-atdd` source digest is pinned in `src/catalog.ts` and `vendor/catalog.lock.json`.
 
-## 7. Verification plan (build step, tests first)
+## 8. Open questions for the owner
 
-- `tests/context-handoff.test.ts`: thresholds (defaults, valid, invalid); decision (below 80, notify once, 85 handoff once, jump to 85, null/NaN); settle decision (aborted drops, re-check drops, still ≥85 proceeds); record (bounded, UNKNOWN fields, clipped).
-- Adapter test with a fake `pi` and `ctx`: `turn_end` at 86% → settle writes a record → command requested with `expandPromptTemplates`; second settle does nothing; command seeds the new session and kicks off; pending record consumed once; cancelled `newSession` keeps the record and reports its path.
-- `npm run check` green. Temporary `PI_CODING_AGENT_DIR` only. No edits to `~/.pi` or `installed`.
+1. (Resolved in the re-review: the active model's `compaction.modelOverrides` reserve is read first. See section 5.)
+2. Thresholds as environment variables or a settings key?
+3. Should a successful handoff end the old session, or leave it? Current: Pi replaces it.
+4. Is a plan acceptance record for PLT-102 needed? Current: acceptance is the Linear AC list only.
 
-## 8. Overlaps (report only)
+## 9. Overlaps (reported, not resolved)
 
-- PLT-101 (attention strip): explicitly out of scope.
-- PLT-96, PLT-97, PLT-100, PLT-98 (catalog counts, selectors, smoke:catalog): not touched. `smoke:catalog` is not fixed here.
-
-## 9. Mermaid — state of the workspace
-
-```mermaid
-flowchart LR
-    Main["main@origin"]:::base --> Note["design note (this commit)"]:::doc
-    Note --> Build["build: tests first, then code"]:::todo
-    Build --> Check["npm run check"]:::todo
-    Check --> Draft["draft PR, no merge"]:::todo
-    Wip["local WIP draft (not pushed)"]:::wip -.reuse.-> Build
-
-    classDef base fill:#e5e7eb,stroke:#374151,color:#111827
-    classDef doc fill:#dbeafe,stroke:#1d4ed8,color:#1e3a8a
-    classDef todo fill:#fef3c7,stroke:#b45309,color:#78350f
-    classDef wip fill:#ede9fe,stroke:#6d28d9,color:#4c1d95
-```
+- PLT-101 (attention strip): out of scope.
+- PLT-96/97/100 (catalog counts, selectors): this PR adds a selector and two rules to the `pi-atdd` source. Any count assertions elsewhere were not changed.
+- PLT-98 (`smoke:catalog`): not touched.
