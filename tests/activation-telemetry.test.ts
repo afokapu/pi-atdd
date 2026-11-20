@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, readFileSync, writeFileSync, appendFileSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -89,6 +89,7 @@ test("telemetry disabled and failed writes do not throw or block work",()=>{
     assert.equal(existsSync(activationLogPath(cwd)),false);
     delete process.env.PI_ATDD_TELEMETRY;
     const log=activationLogPath(cwd);
+    mkdirSync(process.env.PI_ATDD_TELEMETRY_DIR!,{recursive:true});
     writeFileSync(join(process.env.PI_ATDD_TELEMETRY_DIR!,"cannot-exist"),"x");
     process.env.PI_ATDD_TELEMETRY_DIR=join(process.env.PI_ATDD_TELEMETRY_DIR!,"cannot-exist");
     const out=appendActivation(cwd,{point:"task_start",outcome:"unknown"});
