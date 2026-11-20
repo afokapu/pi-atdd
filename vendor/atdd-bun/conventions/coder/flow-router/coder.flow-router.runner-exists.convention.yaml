@@ -1,0 +1,64 @@
+schema_version: 1.1.0
+rule_id: coder.flow-router.runner-exists
+kind: rule
+status: active
+name: FlowRouterRunner route-control layer exists with a resolveUserSystemFlow entry point (Bun)
+statement: >-
+  When a consumer Bun application declares guarded flow router routes (a `JOURNEY_MAP` entry that is an
+  `{flowRouterId, path}` route object in the journey router composition root `server.ts`), the
+  consumer runtime MUST ship an `FlowRouterRunner` route-control layer — a `class FlowRouterRunner`
+  defined under `src/user-system-flows/**` that exposes a `resolveUserSystemFlow(...)` entry point. This is the
+  Bun-stack realization of the agnostic core obligation `coder.user-system-flow.flow-router-runner-exists`
+  (core afokapu/atdd#1251, Part of #1246); the zero-dependency JS detector that enforces it is the
+  atdd.workspace.bun implementation referenced below.
+implementation:
+  type: validator
+  ref: coder.bun.flow-router-runner-exists
+content:
+  summary: >-
+    An agnostic "the FlowRouterRunner runtime exists" obligation, rendered for the Bun application. The
+    JS realization scans the consumer's `src/user-system-flows/**/*.ts` runtime and flags a consumer that
+    declares a flow router route (a JOURNEY_MAP route object) but ships no `FlowRouterRunner` class,
+    or ships one that lacks a `resolveUserSystemFlow` method. Member of the `bun_flow_router_infrastructure`
+    FAMILY detector (checks/flow_router_runner_exists.mjs).
+  normative_text: |
+    Core runtime spec afokapu/atdd#1251: a flow router is executable only as a route-control component.
+    Its entry point is `FlowRouterRunner.resolveUserSystemFlow(action, inputs, state)`, which evaluates guarded
+    routes and resolves exactly one admissible user/system flow before delegation. A Bun consumer that declares
+    flow router routes without this class — or with a class that has no resolveUserSystemFlow — has no
+    route-control layer at all. WHICH runtime files are inspected and HOW the class/method are recognized
+    is the per-stack detector's concern (Bun: a regex-over-source scan of the `src/user-system-flows/**`
+    selector plus the `server.ts` JOURNEY_MAP).
+  fix_hint: |
+    Add the route-control layer:
+
+      // src/user-system-flows/flow-router.ts
+      export class FlowRouterRunner {
+        constructor(private readonly flowRouterYamlPath: string) {}
+        resolveUserSystemFlow(action: string, inputs: Record<string, unknown>, state?: unknown): FlowRouterResolution { ... }
+      }
+
+    This rule is `strict`: a newly introduced flow router route without a FlowRouterRunner +
+    resolveUserSystemFlow is not suppressible and fails CI.
+  exceptions:
+    - A pure direct-user/system-flow consumer (no flow router route object in JOURNEY_MAP and no FlowRouterRunner
+      class) carries no obligation and is not flagged.
+    - Generated and vendored trees (`_generated/`, `node_modules/`, `dist/`, `build/`, `.next/`) are never scanned.
+metadata:
+  aliases:
+    - BUN-FLOW_ROUTER-RUNNER-EXISTS-001
+  severity: 4
+  disposition: strict
+  introduced_in: 0.1.0
+  core_design_refs:
+    - afokapu/atdd#1246
+    - afokapu/atdd#1251
+terms:
+  - term_id: flow_router_runner
+    text: >-
+      a `class FlowRouterRunner` under `src/user-system-flows/` exposing `resolveUserSystemFlow(...)`; the route-control
+      component that selects one admissible user/system flow and delegates execution to FlowRunner.
+  - term_id: journey_map
+    text: >-
+      the `JOURNEY_MAP` action->route mapping in `server.ts`; values are either a direct userSystemFlowId
+      string or an `{flowRouterId, path}` route object.

@@ -1,0 +1,61 @@
+schema_version: 1.1.0
+rule_id: coder.flow-router.resolution-model-exists
+kind: rule
+status: active
+name: Flow router route resolution returns structured metadata, not a bare userSystemFlowId (Bun)
+statement: >-
+  An `FlowRouterRunner.resolveUserSystemFlow(...)` MUST resolve a structured `FlowRouterResolution` model
+  carrying the route metadata — not a bare `userSystemFlowId` string. The model MUST define the fields
+  `flowRouterId`, `routeId`, `userSystemFlowId`, `userSystemFlowPath`, `category`, `guardId`, `resolutionStrategy`, and
+  `reason`. This is the Bun-stack realization of the agnostic core obligation
+  `coder.user-system-flow.flow-router-resolution-model-exists` (core afokapu/atdd#1251); the JS detector that
+  enforces it is the atdd.workspace.bun implementation referenced below.
+implementation:
+  type: validator
+  ref: coder.bun.flow-router-resolution-model-exists
+content:
+  summary: >-
+    An agnostic "structured route resolution" obligation, rendered for the Bun application. The JS
+    realization scans `src/user-system-flows/**/*.ts`: when an `FlowRouterRunner` exposes `resolveUserSystemFlow`, an
+    `FlowRouterResolution` type/interface/class defining the eight required fields MUST exist;
+    otherwise the route is resolved as a bare userSystemFlowId. Member of the `bun_flow_router_infrastructure`
+    FAMILY detector (checks/flow_router_resolution_model.mjs).
+  normative_text: |
+    Core runtime spec afokapu/atdd#1251 suggests the resolution model. For the Bun/TS stack:
+
+        export interface FlowRouterResolution {
+          flow-routerId: string; routeId: string; userSystemFlowId: string; userSystemFlowPath: string;
+          category: string; guardId: string; resolutionStrategy: string; reason: string;
+        }
+
+    A bare userSystemFlowId string loses the routeId, guardId, category, resolutionStrategy, userSystemFlowPath, and
+    the human-readable reason needed for trace and projection equivalence. Category agreement is
+    judged against the target user/system flow's `category` FIELD, never a digit parsed out of the identity
+    validation. WHICH runtime files are inspected and HOW the model fields are recognized is the
+    per-stack detector's concern (Bun: collecting the FlowRouterResolution property names).
+  fix_hint: |
+    Define the structured model and return it from resolveUserSystemFlow:
+
+      return {
+        flowRouterId, routeId, userSystemFlowId, userSystemFlowPath,
+        category, guardId, resolutionStrategy, reason,
+      };
+
+    This rule is `strict`: a resolveUserSystemFlow backed only by a bare userSystemFlowId is not suppressible and fails CI.
+  exceptions:
+    - Applies only when an `FlowRouterRunner` with a `resolveUserSystemFlow` method is present (a missing
+      runner/method is the separate `coder.bun.flow-router-runner-exists` concern).
+metadata:
+  aliases:
+    - BUN-FLOW_ROUTER-RESOLUTION-MODEL-001
+  severity: 4
+  disposition: strict
+  introduced_in: 0.1.0
+  core_design_refs:
+    - afokapu/atdd#1246
+    - afokapu/atdd#1251
+terms:
+  - term_id: flow_router_resolution_model
+    text: >-
+      the `FlowRouterResolution` structure returned by resolveUserSystemFlow, carrying flowRouterId, routeId,
+      userSystemFlowId, userSystemFlowPath, category, guardId, resolutionStrategy, reason.

@@ -91,12 +91,17 @@ const textList = (x: unknown): string[] => Array.isArray(x) && x.every(v => type
 export const PROFILES = ["planner", "tester", "coder", "reviewer", "coach", "shared"] as const;
 export type Profile = typeof PROFILES[number];
 export const CONVENTION_ID = /^(planner|tester|coder|reviewer|coach|shared)\.[a-z0-9-]+\.[a-z0-9-]+$/;
-/** Old (v0.2.0) id -> profile-first id, shipped with the package (conventions/aliases.json). */
+/** Old (v0.2.0) id -> profile-first id, shipped with the package (conventions/aliases.json).
+ * Includes the legacy split-part ids (`splitParts`, PLT-87) and the ids renamed by the PLT-103 vocabulary change
+ * (`renamedRuleIds`): they resolve like any other legacy id. */
 export function bundledAliases(): Map<string, string> {
   const path = join(packageRoot, "conventions/aliases.json");
   if (!existsSync(path)) return new Map();
-  const data = JSON.parse(readFileSync(path, "utf8")) as { aliases?: Record<string, string> };
-  return new Map(Object.entries(data.aliases ?? {}));
+  const data = JSON.parse(readFileSync(path, "utf8")) as {
+    aliases?: Record<string, string>; splitParts?: Record<string, string>; renamedRuleIds?: Record<string, string>;
+  };
+  return new Map([...Object.entries(data.aliases ?? {}), ...Object.entries(data.splitParts ?? {}),
+    ...Object.entries(data.renamedRuleIds ?? {})]);
 }
 /** Resolves an old or current id to the id loaded in this catalog (unknown ids are returned unchanged). */
 export function canonicalRuleId(catalog: Pick<Catalog, "rules" | "aliases">, id: string): string {
@@ -311,14 +316,14 @@ export function bundledSources(): SourceSpec[] {
   return [
     { id: "ATDD-Bun", path: join(packageRoot, "vendor/atdd-bun"), kind: "bun",
       revision: "5945d97e18310e7c862c08e73985400935d21346",
-      sha256: "f0e56c3f03ce5bcc7d15286c3eee2d5a61996b217dc89416c43b32f777bc244a" },
+      sha256: "20b09b7b01809e5a909f748680075724a4e5933004af26763067c93ae46d00c0" },
     { id: "ATDD-Flow", path: join(packageRoot, "vendor/atdd-flow"), kind: "flow",
       revision: "2a66019a5ecf2b7a9f999ebfa04d04c9f548f19a",
       sha256: "61665ba225ffc6c0bed6952aa8f8c9d9c0e2f0d7df3982662a2cdf50eb327438" },
     // Package-authored conventions (PLT-87): rules owned by pi-atdd itself, not mirrored upstream.
     // PLT-96 added the shared/coder/planner tracker rules and catalog/pi-atdd/relationships.yaml; pin re-reviewed.
     { id: "pi-atdd", path: join(packageRoot, "catalog/pi-atdd"), kind: "extension",
-      sha256: "00a1de5fdc7978063353fdfe0376951339ee34930ad28972989534b1d46e2765" },
+      sha256: "2f95887adff7049c49c0f0138fb4efac4f2500420cd68af66ad70ad16004085d" },
   ];
 }
 function selectorFile(file: string): Selector[] {

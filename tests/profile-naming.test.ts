@@ -59,10 +59,42 @@ test("N-002 the alias map covers all 358 old ids one-to-one and every old id res
   } finally { b.done(); }
 });
 
-test("N-002 rule content is byte-identical to v0.2.0 apart from the rule_id field", () => {
+// PLT-103: the vocabulary rename changes rule text on purpose. Each renamed file is proved against its PLT-87 pin by
+// reverse-replaying the recorded edits (conventions/provenance-vocabulary.json): every recorded position must match,
+// and the replay must restore the PLT-87 bytes, which then restore the PLT-81 bytes when the rule_id is put back.
+const vocabulary = JSON.parse(readFileSync(join(ROOT, "conventions/provenance-vocabulary.json"), "utf8"));
+const vocabularyByOldPath = new Map<string, any>(vocabulary.files.map((f: any) => [f.oldPath, f]));
+
+test("N-002 rule content is byte-identical to v0.2.0 apart from the rule_id field (PLT-103: through the recorded vocabulary edits)", () => {
   const files = provenance.filter((r: any) => r.old);
   assert.equal(files.length, 358);
   for (const r of files) {
+    const v = vocabularyByOldPath.get(r.newPath);
+    if (v) {
+      assert.equal(v.prevSha256, r.newSha256, "PLT-87 pin of " + r.newPath);
+      const nowBytes = readFileSync(join(ROOT, v.newPath));
+      assert.equal(sha(nowBytes), v.newSha256, "renamed file drifted: " + v.newPath);
+      const lines = nowBytes.toString("utf8").split("\n");
+      const byLine = new Map<number, [number, string, string][]>();
+      for (const [ln, col, text, before] of v.edits) byLine.set(ln, [...(byLine.get(ln) ?? []), [col, text, before]]);
+      for (const [ln, edits] of byLine) {
+        let line = lines[ln - 1];
+        for (const [col, text, before] of edits.sort((a, b) => b[0] - a[0])) {
+          assert.equal(line.slice(col, col + text.length), text, "recorded edit position: " + v.newPath + ":" + ln);
+          line = line.slice(0, col) + before + line.slice(col + text.length);
+        }
+        lines[ln - 1] = line;
+      }
+      const replayed = Buffer.from(lines.join("\n"), "utf8");
+      assert.equal(sha(replayed), r.newSha256, "replay does not restore the PLT-87 bytes: " + r.newPath);
+      const i = lines.findIndex(l => l === "rule_id: " + r.new);
+      assert.ok(i >= 0, r.newPath);
+      lines[i] = "rule_id: " + r.old;
+      assert.equal(sha(Buffer.from(lines.join("\n"), "utf8")), r.oldSha256, "content changed beyond the id: " + r.old);
+      assert.ok(!existsSync(join(ROOT, r.oldPath)), "old path still present: " + r.oldPath);
+      if (v.newPath !== r.newPath) assert.ok(!existsSync(join(ROOT, r.newPath)), "PLT-87 path still present: " + r.newPath);
+      continue;
+    }
     const now = readFileSync(join(ROOT, r.newPath));
     assert.equal(sha(now), r.newSha256, "moved file drifted: " + r.newPath);
     const lines = now.toString("utf8").split("\n");
