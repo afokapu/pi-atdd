@@ -1,0 +1,273 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.capability.no-consume-cycle",
+  "legacyId": "planner.wagon.no-consume-cycle",
+  "core": {
+    "title": "Keep the cross-unit produce/consume graph acyclic",
+    "given": "A plan's units (the composition units the profile names, each a bounded slice of the product) declare produce/consume entries by artifact NAME, forming a directed graph with an edge producer-unit -> consumer-unit whenever a name produced by one unit is consumed by another.",
+    "when": "You author, edit or review any plan containing such units, whether or not your change touches produce/consume entries.",
+    "then": "Ensure the name-keyed unit graph is acyclic: no strongly-connected component may contain more than one unit, including cycles that already existed.",
+    "prefer": [
+      "Before adding an edge producer B -> consumer A (A consumes a name B produces), check by artifact name whether a path A -> B already exists; if it does, the new edge would close a cycle.",
+      "When a loop exists, restructure unit boundaries or artifact ownership so dependencies flow one way."
+    ],
+    "avoid": [
+      "Reasoning about unit dependencies via the plan format's linkage field instead of the produce/consume artifact name, when the profile records that field as optional or nullable and therefore not a reliable key.",
+      "Mutual or transitive produce/consume loops between two or more units.",
+      "Hiding a loop by nulling or renaming the plan format's linkage field while the artifact names still loop."
+    ],
+    "unless": [],
+    "why": "A cross-unit produce/consume cycle means no unit in the loop can be delivered before the others; the graph must be a DAG so units can be ordered. Artifact names key the edges; whether the plan format's linkage field could serve as a key is a schema fact supplied by the profile, and an optional or nullable field is not a reliable key.",
+    "evidence": [
+      "SCC analysis of the name-keyed unit graph (nodes = units, edges producer -> consumer by artifact name) reports no component with more than one unit."
+    ],
+    "verification": [
+      "Generic check: nodes are the plan's units; add a directed edge producer-unit -> consumer-unit whenever an artifact NAME produced by one unit is consumed by another; run strongly-connected-component analysis and report every SCC containing more than one unit as a violation, whether pre-existing or newly introduced.",
+      "Edges are keyed on the produce/consume artifact name, never on the plan format's linkage field; that field's local name and schema properties (in particular its nullability) are supplied by the profile, and only the profile decides whether it could ever be a reliable key.",
+      "Change-level attribution (whether the current change produced the entry that closed the cycle) only labels findings; it is not a precondition for firing, so pre-existing cycles are still violations.",
+      "Severity 3; disposition strict."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "task_term",
+          "values": [
+            "unit",
+            "produce",
+            "consume",
+            "plan",
+            "dependency"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "operation",
+          "values": [
+            "create",
+            "edit",
+            "review"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "cross-unit produce/consume cycle"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "produce entry added/renamed",
+            "consume entry added/renamed",
+            "unit added/split/merged"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "A planner adds a consume entry to unit A for an artifact name produced by unit B, while A already (directly or transitively) feeds B by artifact name.",
+        "A planner splits a unit and the two resulting units each consume an artifact name the other produces.",
+        "Two units have null or absent linkage fields but share produce/consume artifact names forming a loop.",
+        "A planner makes an unrelated edit (e.g. only to a linkage field) in a plan whose unit graph already contains a multi-unit SCC: the existing cycle is still a violation."
+      ],
+      "doesNotFire": [
+        "A unit produces and consumes artifact names only internally (an SCC of size one unit).",
+        "Cross-unit produce/consume edges exist but form a DAG (e.g. A->B->C with no path back).",
+        "The work involves no units or produce/consume entries at all."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roles.plan_hierarchy#plan_unit",
+      "meaning": "What the stack calls the plan's composition unit -- the bounded slice of the product that a plan decomposes work into and whose produce/consume artifact-name entries form the dependency graph; also the term matched in task/plan text for activation.",
+      "bunValue": "product capability"
+    },
+    {
+      "key": "idiom.plan_syntax#linkage_field",
+      "meaning": "The plan artifact's optional cross-unit linkage/reference field (the core's 'plan format's linkage field'): its local field name and its schema properties -- in particular whether it is optional or nullable -- which determine whether it may serve as a key for dependency edges. The core never keys the produce/consume graph on this field and treats nulling or renaming it as a gaming move.",
+      "bunValue": "contract -- the plan artifact's linkage field, nullable corpus-wide"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "avoid[1]",
+      "text": "(a consume_cycle)",
+      "reason": "The parenthetical names this realization's finding/term id; the anti-pattern itself (mutual or transitive loops between units) is stack-neutral and kept in the core."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "text": "term consume_cycle: a strongly-connected component of the directed product capability produce/consume graph whose size exceeds one product capability",
+      "reason": "Rule-specific finding term id and its capability-worded definition; per the closed-vocabulary rules, finding ids of a single rule stay with the realization and the core's verification describes the SCC check generically."
+    },
+    {
+      "item": "activation.facts[2]",
+      "text": "finding id: consume_cycle (SCC detector over the name-keyed producer->consumer product capability graph)",
+      "reason": "Finding id of this rule's realization; the neutral fact names the finding generically as a cross-unit produce/consume cycle, and the SCC detector is described generically in core.verification."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:roles.plan_hierarchy#plan_unit"
+      ],
+      "note": "Neutral restatement; 'product capability' is the stack's plan-composition unit, supplied per stack by roles.plan_hierarchy#plan_unit (Bun: product capability). The name-keyed directed-graph construction is already stack-neutral."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Author/edit/review scope and the 'whether or not the change touches produce/consume entries' clause are neutral; product capabilities -> units."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then"
+      ],
+      "note": "Single obligation preserved: acyclic name-keyed graph, no multi-unit SCC, pre-existing cycles included."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why",
+        "profile:idiom.plan_syntax#linkage_field"
+      ],
+      "note": "Ordering/delivery rationale is neutral. The final sentence no longer asserts the linkage field's nullability unconditionally: whether it could be a key is a schema fact bound per stack by idiom.plan_syntax#linkage_field (Bun: contract, nullable corpus-wide), which reproduces Bun's 'artifact names are the only reliable key' exactly."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]"
+      ],
+      "note": "Path-check-before-adding-an-edge guidance is already stack-neutral (keyed by artifact name)."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]"
+      ],
+      "note": "Restructure guidance neutralized: product capability boundaries -> unit boundaries."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]",
+        "profile:idiom.plan_syntax#linkage_field"
+      ],
+      "note": "Neutral obligation: key dependencies on the produce/consume artifact name, not the linkage field, when the profile records the field as optional or nullable. The Bun field name 'contract' and its corpus-wide nullability are plan-schema idiom values bound by idiom.plan_syntax#linkage_field, not bunOnly."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]",
+        "bunOnly"
+      ],
+      "note": "Anti-pattern is neutral (loops between two or more units); the finding-term mention '(a consume_cycle)' is bunOnly."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]",
+        "profile:idiom.plan_syntax#linkage_field"
+      ],
+      "note": "Gaming anti-pattern kept generic (nulling/renaming the linkage field while the names still loop); the concrete field it names is bound per stack by idiom.plan_syntax#linkage_field (Bun: contract)."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]"
+      ],
+      "note": "SCC evidence neutralized: nodes = units, edges producer -> consumer by artifact name."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Graph construction (nodes, name-keyed directed edges) is generic and goes to the core's verification array."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "The SCC check and violation rule are generic (core:verification); the consume_cycle term id and its capability-worded definition are bunOnly."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification",
+        "profile:idiom.plan_syntax#linkage_field"
+      ],
+      "note": "Name-only keying is generic (core:verification); the excluded field's name and its nullability parenthetical are plan-schema idiom values bound by idiom.plan_syntax#linkage_field (Bun: contract, nullable corpus-wide), not bunOnly."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Per-rule severity (3) and disposition (strict) are not profile keys; they go to core:verification."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roles.plan_hierarchy#plan_unit"
+      ],
+      "note": "Neutral terms (unit, produce, consume, plan, dependency); the stack's unit term for task-text matching comes from roles.plan_hierarchy#plan_unit (Bun adds 'product capability')."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]"
+      ],
+      "note": "create/edit/review values are already neutral; the note's whole-graph semantics (fires even when the change does not touch produce/consume entries) are preserved in core.when, fires and verification."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[2]",
+        "bunOnly"
+      ],
+      "note": "Finding fact kept generically (cross-unit produce/consume cycle, needs_new_observer); the realization's finding id consume_cycle is bunOnly, with the check described generically in core.verification."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[3]"
+      ],
+      "note": "Change values neutralized (product capability -> unit); the note's 'attribution only, not a precondition for firing' semantics are preserved in core.verification."
+    }
+  ],
+  "neutralityNotes": "The rule is otherwise fully stack-neutral: it constrains only the plan's declared name-keyed produce/consume graph, with no code, path, suffix or tooling content. (1) 'product capability' is generalized to the plan's composition unit ('unit') and instantiated per stack through roles.plan_hierarchy#plan_unit (Bun: product capability); the vocabulary knows a product capability's directory (layout.capability_dir) and URN shape (urn.capability) but bun.json contains no path or URN value to bind those keys to. (2) 'contract field' is generalized to 'the plan format's linkage field'; its local name and schema properties (nullability) are plan-schema idiom values bound through idiom.plan_syntax#linkage_field (Bun: contract, nullable corpus-wide). The core makes every claim about that field conditional on the profile's schema facts -- it never asserts nullability unconditionally -- so instantiated with the Bun profile the obligation is exactly Bun's (the linkage field is nullable, hence artifact names are the only reliable key), while in a stack whose format has no such field, or a non-nullable one, the linkage-field clauses are vacuous or inapplicable and the name-keyed acyclicity obligation stands unchanged; the core is therefore neither weaker nor stronger. (3) The finding/term id consume_cycle and the detector reference are realization details kept in bunOnly; per-rule severity 3 and strict disposition are carried in core:verification, not the profile.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/planner-nodes/planner.wagon.no-consume-cycle.json",
+      "sha256": "e15ec60c61e09d552bb70df9fa2863020b605212e70e209ee76b7614013f68a9"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "rekey-v3 -> zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

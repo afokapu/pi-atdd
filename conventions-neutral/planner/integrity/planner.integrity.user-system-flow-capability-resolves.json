@@ -1,0 +1,301 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.integrity.user-system-flow-capability-resolves",
+  "legacyId": "atdd-bun.planner.train-wagon-resolves",
+  "core": {
+    "title": "List only declared product capabilities in a user/system flow",
+    "given": "A non-excluded plan artifact contains a user/system flow whose product capability list names product capabilities (changed or not).",
+    "when": "The plan is authored, edited or checked — a user/system flow's product capability list is written, a product capability declaration is renamed or removed, or existing plans are validated.",
+    "then": "Every product capability the user/system flow's product capability list names is declared as a product capability declaration with a matching product capability URN.",
+    "prefer": [
+      "Declare the missing product capability as a product capability declaration.",
+      "Or remove the product capability from the user/system flow.",
+      "When renaming or removing a product capability declaration, update every user/system flow that lists it in the same change."
+    ],
+    "avoid": [
+      "Listing a product capability in a user/system flow that has no product capability declaration — a user/system flow ordering a product capability that does not exist cannot run.",
+      "Declaring an empty placeholder product capability solely to silence the check instead of planning the product capability or removing it from the user/system flow."
+    ],
+    "unless": [
+      "Vendored and generated trees are never scanned (the stack-wide exclusion list, profile: roots.excluded)."
+    ],
+    "why": "A user/system flow ordering a product capability that does not exist cannot run. Product capability membership is the train-specific case of reference resolution.",
+    "evidence": [
+      "The stack's plan-integrity check reports no unresolved user/system flow product capability across all non-excluded plans.",
+      "For each product capability named in each user/system flow's product capability list, a reviewer finds a matching product capability declaration.",
+      "The rule has a failing fixture (a user/system flow listing an undeclared product capability) that the check rejects."
+    ],
+    "verification": [
+      "Check: every entry in a scanned user/system flow's product capability list must match a declared product capability URN; any unmatched entry is a finding.",
+      "Scan scope: applies to every scanned user/system flow, not only changed ones; pre-existing unresolved product capability references are findings regardless of what the current edit touched.",
+      "Never scan the stack-wide excluded vendored and generated trees (profile: roots.excluded); the exact classification of what is vendored or generated is owned by the stack's checker.",
+      "Severity 3; disposition strict.",
+      "Enforced by the stack's plan-integrity check, held to the same per-rule checks as every convention: a statement, strict disposition, a failing fixture, relationship edges. The concrete detector, validator and finding ids of this rule are realization details."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "user/system flow plan artifact",
+            "product capability plan artifact"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "plan integrity check: unresolved user/system flow product capability"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "user/system flow product capability list added or edited",
+            "product capability declaration renamed or removed"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "Checking any non-excluded plan, including an unchanged one, whose user/system flow's product capability list already names a product capability with no matching product capability declaration.",
+        "A planner edits only a product capability's content in a plan where some user/system flow already lists an undeclared product capability — the pre-existing unresolved reference is still a finding.",
+        "A planner adds a product capability reference to a user/system flow's product capability list without a matching product capability declaration in the plan.",
+        "A planner renames or deletes a product capability declaration while a user/system flow still lists the old reference.",
+        "A user/system flow lists a product capability reference with a typo that matches no declared product capability."
+      ],
+      "doesNotFire": [
+        "Every product capability named in every non-excluded user/system flow's product capability list has a matching product capability declaration.",
+        "Plan-like artifacts inside the stack's never-scanned vendored and generated trees (profile: roots.excluded).",
+        "Edits to a product capability's content that keep its product capability declaration, provided every user/system flow product capability reference in the scanned plans resolves to a declared product capability (pre-existing unresolved references still fire)."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roles.plan_artifact.kinds",
+      "meaning": "How to recognize the plan artifacts in which user/system flows, product capability lists and product capability declarations live (activation file_kind recognition).",
+      "bunValue": "user/system flow plan artifact, product capability plan artifact — any non-excluded plan artifact declaring a user/system flow (with a `capabilities:` list) or a `capability:<slug>`; recognizable by file kind / plan structure"
+    },
+    {
+      "key": "roots.excluded",
+      "meaning": "The stack-wide list of vendored and generated trees that are never scanned — the only exception to this rule.",
+      "bunValue": "`node_modules`, `dist`, `build`, `_generated` are never scanned"
+    },
+    {
+      "key": "urn.wagon",
+      "meaning": "The URN shape of a product capability declaration; every entry in a user/system flow's product capability list must match a declared product capability of this shape.",
+      "bunValue": "`capability:<slug>`"
+    },
+    {
+      "key": "idiom.plan_syntax#train_wagon_list",
+      "meaning": "The concrete plan-artifact construct by which a user/system flow lists the product capabilities it orders (the capability-membership list).",
+      "bunValue": "a `capabilities:` list of product capability slugs under the user/system flow declaration"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "evidence[0]",
+      "text": "The `planner_plan_integrity` validator reports no unresolved user/system flow product capability across all non-excluded plans.",
+      "reason": "Names this rule's concrete validator id; detector and validator ids are realization details, not stack-neutral."
+    },
+    {
+      "item": "evidence[2]",
+      "text": "The failing fixture is rejected by the package guard.",
+      "reason": "'Package guard' is ATDD-Bun's enforcement machinery: a package rule realized by a package guard rather than a canonical planner node."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "Implementation: validator `planner_plan_integrity` (package guard, not a canonical planner node).",
+      "reason": "The concrete validator id and ATDD-Bun's package-guard-vs-canonical-planner-node ownership split have no stack-neutral equivalent; the core requires only that a plan-integrity check enforce the obligation, wherever the stack places it."
+    },
+    {
+      "item": "activation.facts[1]",
+      "text": "finding `planner_plan_integrity: unresolved userSystemFlow capability`",
+      "reason": "The finding id embeds this realization's validator id; the neutral core names the finding generically."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "'Non-excluded' defers to the stack-wide exclusion list; the `capabilities:` list is the profile's user/system flow product capability list construct.",
+      "as": [
+        "core:given",
+        "profile:roots.excluded",
+        "profile:idiom.plan_syntax#user_system_flow_capability_list"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "Neutral; the Bun plan-syntax examples are rewritten without naming the constructs' syntax.",
+      "as": [
+        "core:when"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "The obligation is neutral; the declaration shape (`capability:<slug>`) comes from urn.capability and the list construct (`capabilities:`) from the proposed idiom key.",
+      "as": [
+        "core:then",
+        "profile:urn.capability",
+        "profile:idiom.plan_syntax#user_system_flow_capability_list"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "Already stack-neutral: user-system-flow/capability are planning vocabulary, not stack machinery.",
+      "as": [
+        "core:why"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "'Declare the missing product capability as `capability:<slug>`' → declare it as a product capability declaration; the URN shape is urn.capability.",
+      "as": [
+        "core:prefer[0]",
+        "profile:urn.capability"
+      ]
+    },
+    {
+      "item": "prefer[1]",
+      "note": "Already neutral.",
+      "as": [
+        "core:prefer[1]"
+      ]
+    },
+    {
+      "item": "prefer[2]",
+      "note": "Already neutral.",
+      "as": [
+        "core:prefer[2]"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "`capability:<slug>` declaration → product capability declaration; the rest is neutral.",
+      "as": [
+        "core:avoid[0]",
+        "profile:urn.capability"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "Already neutral (anti-gaming guidance).",
+      "as": [
+        "core:avoid[1]"
+      ]
+    },
+    {
+      "item": "unless[0]",
+      "note": "The core keeps the generic never-scanned exception; the concrete trees are the one stack-wide roots.excluded list, and the checker owns the exact classification.",
+      "as": [
+        "core:unless[0]",
+        "core:verification",
+        "profile:roots.excluded"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "Neutral evidence: the plan-integrity check reports no unresolved user/system flow product capability; the validator id is Bun-only.",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "Reviewer matches each listed product capability to a declaration; the `capability:<slug>` shape comes from the profile.",
+      "as": [
+        "core:evidence[1]",
+        "profile:urn.capability"
+      ]
+    },
+    {
+      "item": "evidence[2]",
+      "note": "The failing fixture stays in the core as rejected by the check; 'the package guard rejects' is Bun-only.",
+      "as": [
+        "core:evidence[2]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "Validator id and the package-guard-vs-canonical-planner-node mechanism are Bun-only; generically the core requires only a plan-integrity check, held to the same per-rule checks as every convention, without restricting who owns the check.",
+      "as": [
+        "bunOnly",
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "Split into two verification entries: the match rule (every entry must match a declared product capability URN) and the scan scope (every scanned user/system flow, pre-existing references included).",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "Deference to the checker's exclusion list is kept in core:verification; the concrete trees are the roots.excluded profile value.",
+      "as": [
+        "core:verification",
+        "profile:roots.excluded"
+      ]
+    },
+    {
+      "item": "verifier_detail[3]",
+      "note": "Severity 3 and strict disposition are per-rule facts, kept in core verification, not the profile.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "Values 'user/system flow plan artifact' / 'product capability plan artifact' are neutral; recognition of the file kind comes from the profile.",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roles.plan_artifact.kinds"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "Neutral finding value 'plan integrity check: unresolved user/system flow product capability'; the concrete finding id `planner_plan_integrity: ...` is Bun-only. The note's scan-all behavior is covered by core:verification.",
+      "as": [
+        "core:activation.facts[1]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "Optional early-warning diff-level fact, not a prerequisite for the rule to apply; values are already neutral.",
+      "as": [
+        "core:activation.facts[2]"
+      ]
+    }
+  ],
+  "neutralityNotes": "'User/system flow' and 'product capability' are treated as stack-neutral planning vocabulary (both are artifact kinds in the closed urn group); only their concrete syntax is profile-driven: the `capabilities:` list via the proposed idiom.plan_syntax#user_system_flow_capability_list and the `capability:<slug>` declaration via urn.capability. The exact excluded trees exist only as the roots.excluded profile value; the checker keeps ownership of classifying them. Validator/finding ids and the package-guard-vs-canonical-planner-node enforcement split stay Bun-only: which component owns the plan-integrity check is a realization choice, so the core requires the check without restricting its owner. The alias and audit metadata stay Bun-only. Severity '3' is kept as declared because severity and disposition belong to the rule, though the numeric scale itself is a convention of this package family.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/atdd-bun.planner.train-wagon-resolves.json",
+      "sha256": "78ddd84b1a84f172981ef40dcbeb9260309df318459adcff48c4a35cc7cd7cc9"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 1,
+    "usefulness": 5,
+    "deriver": "rekey-v3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}
