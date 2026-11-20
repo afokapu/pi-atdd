@@ -3,6 +3,7 @@ import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from "
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseDocument } from "yaml";
+import { DEFAULT_PROFILE, expandRoleSelectors, loadProfile, profileByName, type StructureProfile } from "./profile.ts";
 
 export class GraphError extends Error {}
 export type SourceKind = "bun" | "flow" | "extension";
@@ -26,6 +27,8 @@ export type Catalog = {
 export type Selector = {
   id: string; rules: string[]; operations?: string[];
   paths?: string[]; terms?: string[]; always?: boolean;
+  /** PLT-84: roles (domain, application, ...) resolved to path globs through the active structure profile. */
+  roles?: string[];
 };
 export type Context = {
   status: "matched" | "unresolved"; rules: Array<Convention & { reasons: string[] }>;
@@ -326,12 +329,13 @@ function selectorFile(file: string): Selector[] {
     throw new GraphError("invalid selectors schema: " + file);
   return data.selectors as Selector[];
 }
-export function loadConfig(cwd: string): { sources: SourceSpec[]; selectors: Selector[] } {
+export function loadConfig(cwd: string, profile?: StructureProfile): { sources: SourceSpec[]; selectors: Selector[]; profile: StructureProfile } {
   const configPath = resolve(cwd, "atdd-pi.yaml");
   const defaults = bundledSources();
   const defaultSelectors = join(packageRoot, "selectors/default.yaml");
   if (!existsSync(configPath)) {
-    return { sources: defaults, selectors: selectorFile(defaultSelectors) };
+    const prof = profile ?? profileByName(DEFAULT_PROFILE);
+    return { sources: defaults, selectors: expandRoleSelectors(selectorFile(defaultSelectors), prof), profile: prof };
   }
   const cfg = readYaml(configPath);
   if (cfg.schema !== "pi-atdd/config/v2") throw new GraphError("invalid atdd-pi.yaml schema (expected v2)");
@@ -364,5 +368,16 @@ export function loadConfig(cwd: string): { sources: SourceSpec[]; selectors: Sel
       selectors.push(...selectorFile(path));
     }
   }
-  return { sources, selectors };
+  // Structure profile: argument, else atdd-pi.yaml `profile:` (a bundled stack name or a project-local .json path), else ATDD-Bun.
+  let prof = profile;
+  if (!prof) {
+    const name = cfg.profile;
+    if (name !== undefined && typeof name !== "string") throw new GraphError("profile must be a stack name or a local path");
+    if (typeof name === "string" && name.endsWith(".json")) {
+      const pp = resolve(cwd, name);
+      if (isAbsolute(name) || relative(cwd, pp).startsWith("..")) throw new GraphError("profile path outside project");
+      prof = loadProfile(pp);
+    } else prof = profileByName(name ?? DEFAULT_PROFILE);
+  }
+  return { sources, selectors: expandRoleSelectors(selectors, prof), profile: prof };
 }

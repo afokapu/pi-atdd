@@ -87,7 +87,8 @@ export function profileSchema(v: Vocabulary = loadVocabulary()) {
           description: k.doc,
           ...(k.type === "list" ? { type: "array", items: { type: "string" } }
             : k.type === "map" ? { type: "object", propertyNames: { pattern: "^[a-z0-9_]+$" }, additionalProperties: { anyOf: [{ type: "string" }, { type: "array", items: { type: "string" } }] } }
-            : { type: "string" }),
+            : k.type === "text" ? { type: "string" }
+            : { anyOf: [{ type: "string" }, { type: "array", items: { type: "string" } }] }),
         }])),
       },
     },

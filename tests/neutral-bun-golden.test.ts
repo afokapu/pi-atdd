@@ -48,7 +48,7 @@ test("a tampered Bun realization is refused, not rendered", () => {
   const rel = r.realizations.bun.sidecar;
   cpSync(join(ROOT, "conventions-sidecar"), join(tmp, "conventions-sidecar"), { recursive: true });
   writeFileSync(join(tmp, rel), readFileSync(join(ROOT, rel), "utf8").replace(/"then": "/, '"then": "X'));
-  assert.throws(() => renderForStack(r, "bun", tmp), /differs from its pinned/);
+  assert.throws(() => renderForStack(r, "bun", { root: tmp }), /differs from its pinned/);
   assert.ok(existsSync(join(ROOT, rel)));
 });
 
@@ -63,6 +63,6 @@ test("SN-002: every core is neutral and uses only vocabulary (or valid proposed)
   }
 });
 
-test("stage 1 renders only stack=bun", () => {
-  assert.throws(() => renderForStack(records[0], "python"), /stage-2/);
+test("another stack cannot be rendered without its own profile", () => {
+  assert.throws(() => renderForStack(records[0], "python"), /needs its structure profile/);
 });

@@ -8,6 +8,7 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { existsSync, lstatSync, realpathSync } from "node:fs";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadCatalog, loadConfig, type Catalog, type Selector } from "./catalog.ts";
+import type { StructureProfile } from "./profile.ts";
 import { ReasoningSession, type ContextObservation } from "./reasoning-context.ts";
 import { renderReasonedPage, type RenderedPage } from "./render-reasoning.ts";
 import { observeRepository, type RepositorySnapshot } from "./repository-observer.ts";
@@ -37,7 +38,7 @@ function scopedPath(cwd:string,supplied:string):string|null {
 }
 export default function atdd(pi:ExtensionAPI):void {
   let cwdKey="", task="", serial=0;
-  let catalog:Catalog|undefined,selectors:Selector[]=[];
+  let catalog:Catalog|undefined,selectors:Selector[]=[],profile:StructureProfile|undefined;
   let reasoning:ReasoningSession|undefined;
   let observedRepo:RepositorySnapshot|undefined;
   let observationWarning=false;
@@ -57,10 +58,10 @@ export default function atdd(pi:ExtensionAPI):void {
     if(!catalog||cwdKey!==cwd){
       const config=loadConfig(cwd);
       catalog=loadCatalog(config.sources,cwd);
-      selectors=config.selectors;
+      selectors=config.selectors;profile=config.profile;
       cwdKey=cwd;reset();
     }
-    if(!reasoning)reasoning=new ReasoningSession(catalog,selectors);
+    if(!reasoning)reasoning=new ReasoningSession(catalog,selectors,profile);
     return reasoning;
   }
   const scopeFor=(path?:string)=>"pi-run:"+serial+":"+(path?"file:"+path:"task");

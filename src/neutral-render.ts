@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { StructureProfile } from "./profile.ts";
 
 export const ROOT = fileURLToPath(new URL("..", import.meta.url));
 export const NEUTRAL_DIR = join(ROOT, "conventions-neutral");
@@ -54,9 +55,46 @@ export function renderSidecar(s: Record<string, unknown>): string {
   return lines.join("\n") + "\n";
 }
 
-export type Rendered = { rule_id: string; stack: string; realization: "curated"; text: string };
+export type Rendered = { rule_id: string; stack: string; realization: "curated" | "agent-derived (unverified)"; text: string };
+export type RenderOptions = { profile?: StructureProfile; bunReference?: boolean; root?: string };
+const isBun = (stack: string) => stack === "bun" || stack === "atdd-bun";
+const show = (v: unknown) => Array.isArray(v) ? v.join(", ") : typeof v === "object" && v !== null ? JSON.stringify(v) : String(v);
 
-export function renderForStack(rec: NeutralRecord, stack: string, root = ROOT): Rendered {
-  if (stack !== "bun") throw new Error("PLT-84 stage 1 renders stack=bun only; " + stack + " needs the stage-2 renderer");
-  return { rule_id: rec.rule_id, stack, realization: "curated", text: renderSidecar(bunRealization(rec, root)) };
+/** The profile's value for a requirement key; `<map key>#<entry>` reads an entry of a map value. */
+function profileValue(p: StructureProfile, key: string): unknown {
+  const [base, entry] = key.split("#");
+  const v = p.values[base];
+  return entry === undefined ? v : (v as Record<string, unknown> | undefined)?.[entry];
+}
+
+/**
+ * stack=bun: the frozen 0.2.0 realization, verbatim (SN-001). Any other stack: the core (authoritative), the stack's
+ * profile values, and the Bun realization as a labelled reference example (SN-004), unless the stack has a curated
+ * realization of its own. `bunReference: false` drops the example (arm b of the second-stack experiment).
+ */
+export function renderForStack(rec: NeutralRecord, stack: string, opts: RenderOptions = {}): Rendered {
+  const root = opts.root ?? ROOT;
+  if (isBun(stack)) return { rule_id: rec.rule_id, stack, realization: "curated", text: renderSidecar(bunRealization(rec, root)) };
+  const profile = opts.profile;
+  if (!profile) throw new Error("rendering for stack " + stack + " needs its structure profile");
+  if (profile.stack !== stack) throw new Error("profile " + profile.stack + " is not the profile of stack " + stack);
+  const core = rec.core as Record<string, unknown>;
+  const lines = ["Realization: agent-derived (unverified) — no curated realization exists for stack " + stack + "; derive it from the core, the profile and the example, and let the reviewer verify it.",
+    "", "Core obligation (authoritative):", renderSidecar(core).trimEnd()];
+  const ver = (core.verification as string[] | undefined) ?? [];
+  if (ver.length) lines.push("Verification:", ...ver.map(x => "- " + x));
+  const have: string[] = [], missing: string[] = [];
+  for (const r of rec.profileRequirements) {
+    const v = profileValue(profile, r.key);
+    (v === undefined ? missing : have).push(v === undefined ? r.key : r.key + ": " + show(v));
+  }
+  lines.push("", "Profile values for " + stack + ":", ...(have.length ? have.map(x => "- " + x) : ["- (none)"]));
+  if (missing.length) lines.push("Keys without a value in the " + stack + " profile (derive from the codebase): " + missing.join(", "));
+  if (opts.bunReference !== false) {
+    lines.push("", "Reference implementation in ATDD-Bun — translate to this stack; the core obligation is authoritative, not the Bun specifics:",
+      renderSidecar(bunRealization(rec, root)).trimEnd());
+    const only = rec.bunOnly as { item: string; text: string; reason: string }[];
+    if (only.length) lines.push("", "Bun-only context (not an obligation on this stack):", ...only.map(b => "- " + b.text + " (" + b.reason + ")"));
+  }
+  return { rule_id: rec.rule_id, stack, realization: "agent-derived (unverified)", text: lines.join("\n") + "\n" };
 }
