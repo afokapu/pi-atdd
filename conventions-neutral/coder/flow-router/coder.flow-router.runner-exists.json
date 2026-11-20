@@ -1,0 +1,351 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.flow-router.runner-exists",
+  "legacyId": "coder.bun.interlocking-runner-exists",
+  "core": {
+    "title": "Ship a route-control runner with its user/system-flow-resolution entry point when the journey map declares flow router routes",
+    "given": "The consumer's composition root declares, in its action-to-route mapping (the journey map), at least one flow router route - a guarded-route value rather than a direct user/system flow reference",
+    "when": "the consumer is changed or checked (any file, whenever the route was added)",
+    "then": "Ship a route-control runner as a scanned source file in the tree the profile designates for it, exposing the user/system-flow-resolution entry point.",
+    "prefer": [
+      "Ship one runner component whose construction accepts a reference to the route definitions and whose entry point accepts the action, its inputs and optional state, and returns a resolution.",
+      "The entry point evaluates guarded routes, resolves exactly one admissible user/system flow, then delegates execution to the user/system flow runner."
+    ],
+    "avoid": [
+      "Flow router routes in the journey map with no route-control runner at all.",
+      "A route-control runner without the user/system-flow-resolution entry point.",
+      "A runner outside the designated tree, or present only in excluded generated/vendored trees (never scanned)."
+    ],
+    "unless": [
+      "Pure direct-train consumer: no flow router route in the journey map and no route-control runner."
+    ],
+    "why": "A flow router is executable only as a route-control component: its entry point evaluates guarded routes and picks one admissible user/system flow before delegation, so without it declared routes cannot run.",
+    "evidence": [
+      "If any journey-map value in the composition root is a flow router route, a route-control runner exists in a scanned source file of the designated tree and declares the user/system-flow-resolution entry point."
+    ],
+    "verification": [
+      "Standing repository-state check: evaluated on the current repository state, not only on newly added routes, and it applies whichever file changed.",
+      "Flag when a flow router route is declared in the journey map but no route-control runner is shipped in the designated tree, or the runner lacks the user/system-flow-resolution entry point; compliance is shown by the stack's check for this rule reporting no finding.",
+      "An eligible runner is a scanned source file of the tree the profile designates for it: the profile supplies the journey-map idiom, the runner component and its tree, the scanned source file suffix and the excluded trees; which files are inspected and how the journey map, the runner and the entry point are recognized is the per-stack detector's concern.",
+      "Never scan the profile's excluded generated/vendored trees; a runner found only there does not satisfy the rule.",
+      "Do not flag a pure direct-train consumer: no flow router route in the journey map and no route-control runner.",
+      "Severity 4, disposition strict: a finding is not suppressible and fails CI."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "role",
+          "values": [
+            "composition_root"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "journey_map_declares_flow_router_route"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "The journey map currently contains a flow router route and no route-control runner exists in the designated tree - including a pre-existing violation and a change touching only the composition root.",
+        "A flow router route is declared, a route-control runner exists, but it exposes no user/system-flow-resolution entry point.",
+        "A change introduces a new flow router route into the journey map.",
+        "A flow router route is declared and the only route-control runner lives in an excluded generated/vendored tree: excluded files never count as an eligible runner, so the rule still fires."
+      ],
+      "doesNotFire": [
+        "A pure direct-train consumer: every journey-map value is a direct user/system flow reference and no route-control runner exists.",
+        "Scan exclusion: files in the profile's excluded generated/vendored trees are never scanned and never count as an eligible runner (this does not exempt a declared flow router route that lacks an eligible runner)."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roles.composition_root.path",
+      "meaning": "Where the composition root lives; the file whose journey map declares the routes.",
+      "bunValue": "server.ts"
+    },
+    {
+      "key": "idiom.routing#journey_map",
+      "meaning": "The composition root's action-to-route mapping construct (the journey map) itself; its placement is given by roles.composition_root.path.",
+      "bunValue": "the JOURNEY_MAP action->route mapping"
+    },
+    {
+      "key": "idiom.routing#interlocking_route",
+      "meaning": "How a journey-map value that routes through a flow router (a guarded route) is distinguished from a direct user/system flow reference.",
+      "bunValue": "a JOURNEY_MAP value that is an {flowRouterId, path} route object (flow router route), vs a direct userSystemFlowId string (direct user/system flow)"
+    },
+    {
+      "key": "roles.runtime_components#route_control_runner",
+      "meaning": "The stack's route-control component and the tree in which it must be shipped; the eligible files of that tree are its scanned source files (their suffix is suffix.source).",
+      "bunValue": "a `class FlowRouterRunner` under `src/user-system-flows/**`; the route-control component that selects one admissible user/system flow and delegates execution to FlowRunner"
+    },
+    {
+      "key": "roles.runtime_components#train_resolution_entry_point",
+      "meaning": "The runner's entry point that evaluates guarded routes and resolves exactly one admissible user/system flow before delegation.",
+      "bunValue": "`resolveUserSystemFlow(action, inputs, state)`"
+    },
+    {
+      "key": "suffix.source",
+      "meaning": "The file suffix of scanned production source; an eligible runner is a scanned source file of the designated tree.",
+      "bunValue": ".ts"
+    },
+    {
+      "key": "roots.excluded",
+      "meaning": "Generated/vendored trees the check never scans; a runner found only there is not an eligible runner.",
+      "bunValue": "_generated/, node_modules/, dist/, build/, .next/"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "activation.facts[0]",
+      "text": "language: [typescript, bun] - Bun consumer application stack.",
+      "reason": "Stack-scoping fact of the Bun realization; the neutral core is stack-agnostic and is realized per stack."
+    },
+    {
+      "item": "activation.facts[1]",
+      "text": "path_glob: [server.ts, src/user-system-flows/**/*.ts] - journey router composition root and the user/system flow runtime tree.",
+      "reason": "Concrete globs spelling the composition root, the designated route-control tree and the scanned source-file suffix; the core scopes by role and takes the locations and suffix from the profile (roles.composition_root.path, roles.runtime_components#route_control_runner's tree, suffix.source)."
+    },
+    {
+      "item": "activation.facts[3]",
+      "text": "finding: [coder.bun.flow-router-runner-exists] - Detector finding from checks/flow_router_runner_exists.mjs (bun_flow_router_infrastructure family): route object present but no FlowRouterRunner class in scanned files, or class lacks resolveUserSystemFlow.",
+      "reason": "This rule's detector and finding ids are realization details; the core's verification describes the check generically."
+    },
+    {
+      "item": "prefer[0]",
+      "text": "e.g. src/user-system-flows/flow-router.ts: `export class FlowRouterRunner { constructor(private readonly flowRouterYamlPath: string) {} resolveUserSystemFlow(action: string, inputs: Record<string, unknown>, state?: unknown): FlowRouterResolution { ... } }`.",
+      "reason": "Concrete code example in the stack's language and paths; bun.json itself is delivered as the reference example and the snippet is not repeated in the core."
+    },
+    {
+      "item": "evidence[1]",
+      "text": "Detector checks/flow_router_runner_exists.mjs reports no finding for this rule.",
+      "reason": "Names this rule's detector; the generic no-finding evidence is kept in core:verification."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "Zero-dependency JS detector (atdd.workspace.bun), member of the `bun_flow_router_infrastructure` FAMILY detector: checks/flow_router_runner_exists.mjs.",
+      "reason": "Detector id, family membership and implementation path are realization details of the Bun stack."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "text": "Detection is a regex-over-source scan of the `src/user-system-flows/**/*.ts` selector plus the `server.ts` JOURNEY_MAP.",
+      "reason": "The regex-over-source mechanism is how the Bun detector implements the check; the scan scope itself is profile data (the runner tree from roles.runtime_components#route_control_runner combined with the source-file suffix suffix.source, and the composition-root path roles.composition_root.path), which core:verification combines explicitly."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "Neutral trigger: the composition root's journey map declares a flow router route. The placement (server.ts) is roles.composition_root.path; the mapping construct (JOURNEY_MAP) is the journey-map idiom; the {flowRouterId, path} object vs userSystemFlowId string taxonomy is the interlocking-route idiom.",
+      "as": [
+        "core:given",
+        "profile:roles.composition_root.path",
+        "profile:idiom.routing#journey_map",
+        "profile:idiom.routing#flow_router_route"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "Already stack-neutral; kept verbatim, including the standing-check semantics (any file, whenever the route was added).",
+      "as": [
+        "core:when"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "One obligation, neutralized: route-control runner as a scanned source file (suffix.source) in the designated tree (roles.runtime_components#route_control_runner) exposing the user/system-flow-resolution entry point (roles.runtime_components#user_system_flow_resolution_entry_point). `class FlowRouterRunner`, `src/user-system-flows/**` and `resolveUserSystemFlow(action, inputs, state)` come from the profile.",
+      "as": [
+        "core:then",
+        "profile:roles.runtime_components#route_control_runner",
+        "profile:suffix.source",
+        "profile:roles.runtime_components#user_system_flow_resolution_entry_point"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "Neutralized: concrete names replaced by role-level terms; the rationale content is unchanged.",
+      "as": [
+        "core:why"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "The core keeps only the neutral shape of the Bun example, added no stronger semantics: construction accepts a reference to the route definitions (Bun: a flowRouterYamlPath) and the entry point accepts the action, its inputs and optional state and returns a resolution (Bun: resolveUserSystemFlow returning a FlowRouterResolution); the concrete code snippet stays with the Bun realization as the reference example.",
+      "as": [
+        "core:prefer[0]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "prefer[1]",
+      "note": "Neutral as-is: the entry point evaluates guarded routes, resolves exactly one admissible user/system flow, then delegates to the user/system flow runner.",
+      "as": [
+        "core:prefer[1]"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "Route objects in JOURNEY_MAP -> flow router routes in the journey map; no route-control layer at all.",
+      "as": [
+        "core:avoid[0]"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "A route-control runner without the user/system-flow-resolution entry point.",
+      "as": [
+        "core:avoid[1]"
+      ]
+    },
+    {
+      "item": "avoid[2]",
+      "note": "Outside the designated tree and not a scanned source file of it (roles.runtime_components#route_control_runner plus suffix.source), or only in excluded trees; the exclusion list is the profile's single stack-wide list.",
+      "as": [
+        "core:avoid[2]",
+        "profile:roles.runtime_components#route_control_runner",
+        "profile:suffix.source",
+        "profile:roots.excluded"
+      ]
+    },
+    {
+      "item": "unless[0]",
+      "note": "Pure direct-train consumer exception, kept verbatim in neutral terms.",
+      "as": [
+        "core:unless[0]"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "Neutralized via the profile keys; 'scanned source file of the designated tree' preserves both the not-excluded requirement and the source-file-suffix restriction.",
+      "as": [
+        "core:evidence[0]",
+        "profile:roles.composition_root.path",
+        "profile:idiom.routing#journey_map",
+        "profile:roles.runtime_components#route_control_runner",
+        "profile:suffix.source",
+        "profile:roles.runtime_components#user_system_flow_resolution_entry_point"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "The generic 'the stack's check reports no finding' is folded into core:verification; the detector path is Bun-only.",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "Detector identity (zero-dependency JS, atdd.workspace.bun, bun_flow_router_infrastructure family, checks/ path) is a realization detail.",
+      "as": [
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "The per-stack deference ('which files are inspected and how recognized is the detector's concern') is kept in core:verification, which explicitly combines the runner tree with suffix.source for eligibility; the scanned selectors are profile data (roles.composition_root.path, runner tree, source suffix); only the regex-over-source mechanism is Bun-only.",
+      "as": [
+        "core:verification",
+        "profile:roles.composition_root.path",
+        "profile:idiom.routing#journey_map",
+        "profile:roles.runtime_components#route_control_runner",
+        "profile:suffix.source",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "Detection semantics neutralized: flag a declared flow router route with no eligible runner or a runner lacking the entry point; evaluated on current repository state, not only newly added routes.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[3]",
+      "note": "The journey-map value taxonomy (direct user/system flow vs flow router route) is profile data the check consumes.",
+      "as": [
+        "profile:idiom.routing#flow_router_route"
+      ]
+    },
+    {
+      "item": "verifier_detail[4]",
+      "note": "Never scan excluded trees, and a runner found only there does not satisfy the rule; the exact list is the profile's stack-wide roots.excluded.",
+      "as": [
+        "core:verification",
+        "profile:roots.excluded"
+      ]
+    },
+    {
+      "item": "verifier_detail[5]",
+      "note": "Do-not-flag case for a pure direct-train consumer, kept in neutral terms.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[6]",
+      "note": "Per-rule severity 4 and strict disposition (not suppressible, fails CI) belong to the core's verification, not to the profile.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "Language scoping of the Bun realization; the core applies to any stack realization.",
+      "as": [
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "The core keeps the role-level scope (composition root; standing check applying whichever file changed); the concrete globs decompose into existing and proposed profile keys: server.ts = roles.composition_root.path, src/user-system-flows/** = roles.runtime_components#route_control_runner's tree, .ts = suffix.source.",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roles.composition_root.path",
+        "profile:roles.runtime_components#route_control_runner",
+        "profile:suffix.source",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "The finding id journey_map_declares_flow_router_route is stack-neutral; needs_new_observer because a repository-state observer must parse the composition root's journey map for interlocking-route values regardless of when the route was added.",
+      "as": [
+        "core:activation.facts[1]"
+      ]
+    },
+    {
+      "item": "activation.facts[3]",
+      "note": "This rule's detector finding id and detector reference; the core describes detection generically in verification.",
+      "as": [
+        "bunOnly"
+      ]
+    }
+  ],
+  "neutralityNotes": "ATDD domain vocabulary (journey map, flow router, flow router route, user/system flow, user/system flow runner) is kept in the core: these are approach-level concepts, and the urn group already recognizes user/system flow and journey as artifact kinds. Placement of the journey map comes from the existing roles.composition_root.path key and the scanned source-file restriction from the existing suffix.source key, combined in core:verification with the designated runner tree; only the mapping construct, its value taxonomy, the runner component/tree and the entry point needed proposed idiom keys. core:prefer[0] adds no guidance beyond the Bun example: it neutralizes only its shape (construction accepts a reference to the route definitions; the entry point takes the action, its inputs and optional state and returns a resolution), and core:prefer[1] carries the resolve-then-delegate semantics that bun.json states explicitly. Detector, family and finding ids of this rule, the regex-over-source mechanism, the language-scoping activation fact, the concrete path globs and the code example are bunOnly. Per-rule severity 4 and strict disposition are kept in core:verification, and the exclusion deference (never scan the profile's excluded trees; a runner only there is ineligible) is preserved there rather than in the profile.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.interlocking-runner-exists.json",
+      "sha256": "fbac1863ceb5daed257a2c08b4a3929641742656f985284008c0c12445d3f94e"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 1,
+    "usefulness": 5,
+    "deriver": "rekey-v3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

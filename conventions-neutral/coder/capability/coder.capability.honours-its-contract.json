@@ -1,0 +1,376 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.capability.honours-its-contract",
+  "legacyId": "coder.bun.wagon-honours-its-contract",
+  "core": {
+    "title": "Name every plan-declared produce/consume artifact in the code that moves it through flow variables",
+    "given": "A product capability document (a plan artifact under the plan root) declares the product capability's data contract — produce[]: artifacts the product capability owns; consume[]: artifacts it takes from other product capabilities — and a module in this stack moves flow variables for that product capability",
+    "when": "the product capability's Cargo-moving code or its declared contract is written or changed",
+    "then": "Name every declared produce[].name and consume[].name artifact in the module(s) where that product capability moves flow variables, so declaration and carried data cannot drift apart.",
+    "prefer": [
+      "Use plan-matching named constants for artifact names at the flow variables call sites, so every get/put names exactly what the plan declares.",
+      "If the product capability no longer owns an artifact, correct the plan instead.",
+      "Name your modules as you like; no particular filename is required — what matters is that the module moving the product capability's flow variables names its artifacts."
+    ],
+    "avoid": [
+      "Plan produce/consume lists diverging from what is actually put/got through flow variables.",
+      "Putting a product capability's declared names only in a shared or unrelated module that does not move that product capability's flow variables.",
+      "Trying to suppress a finding: this rule's findings are not suppressible."
+    ],
+    "unless": [
+      "The repository declares no product capability contract at all (not applicable).",
+      "The product capability has no implementation anywhere: an unimplemented feature, not a broken contract; another rule governs it."
+    ],
+    "why": "The core capability-contract schema only checks that the contract is well formed; only a per-stack check reading this stack's source and its flow-variable idiom can see whether the code carries the declared artifacts.",
+    "evidence": [
+      "For every product capability document under the plan root with an implementation, each produce[].name and consume[].name string appears in at least one Cargo-moving module.",
+      "The stack's capability-contract check reports no findings; the check run (CI) passes — strict, not suppressible."
+    ],
+    "verification": [
+      "Read every product capability document found recursively under the plan root (profile: roots.plan); collect produce[].name and consume[].name artifact names; flag any name that no Cargo-moving module names.",
+      "The core capability-contract schema validates the document's shape — both produce and consume lists, each entry carrying an artifact name, and produce entries also a contract and a telemetry URN — wherever the plan lives, but cannot know whether the stack's code puts those artifacts into flow variables: that means reading this stack's source and its flow-variable idiom, which only the per-stack check does.",
+      "Recognise a product capability implementation structurally — a module that moves artifacts through flow variables, per the profile's flow-variable-call source idiom (profile: idiom.source_syntax#flow_variables_calls) — never by filename; filename-based naming heuristics are exactly the fitted checks to avoid, and consumers may name modules as they like.",
+      "Not applicable, deliberately, in two cases: (1) the repository declares no product capability contract — nothing to honour; (2) a contract is declared with no product capability implementation at all — an unimplemented feature, not a broken contract, belonging to whatever rule governs unimplemented plan, since reporting it here would fire on every freshly planned repository. The check judges code that exists against the contract it claims, not the absence of code.",
+      "Strict disposition, severity 4: a finding is not suppressible and fails the check run (CI).",
+      "Scope of the check: capability-to-module association is not explicit — it verifies only that at least one Cargo-moving module names each declared artifact, not that the naming module is the one that moves that product capability's flow variables."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "capability_document"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "flow_variables_moving_module"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "capability_has_implementation"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "capability_document_produce_consume_edited",
+            "flow_variables_moving_module_added_or_edited"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "A product capability document in the plan root declares a produce[] or consume[] artifact name that no Cargo-moving module names, while an implementation of that product capability exists.",
+        "A Cargo-moving module is edited and stops naming an artifact its product capability document still declares.",
+        "A product capability document gains a new produce[]/consume[] entry while a product capability implementation already exists, and no Cargo-moving module names the newly declared artifact."
+      ],
+      "doesNotFire": [
+        "The repository declares no product capability contract at all.",
+        "A product capability is declared in the plan but has no implementation anywhere (unimplemented feature, governed by another rule).",
+        "A contract entry is added and the Cargo-moving code already names (or is updated to name) that artifact.",
+        "Repositories on other stacks: this core is realized per stack, and a realization fires only on its own stack.",
+        "Only the shape of the product capability document is wrong (core capability-contract schema validation, not this rule)."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roots.plan",
+      "meaning": "Path of the root of plan artifacts; product capability documents live below it and the check reads every product capability document found recursively under this root.",
+      "bunValue": "plan"
+    },
+    {
+      "key": "roles.plan_artifact.kinds",
+      "meaning": "The plan-artifact kind that declares the product capability data contract (the product capability document).",
+      "bunValue": "capability_document"
+    },
+    {
+      "key": "idiom.source_syntax#cargo_calls",
+      "meaning": "The stack's source construct by which a module moves artifacts through flow variables — the executable call form the check uses to recognise Cargo-moving modules structurally (never by filename) and to locate where declared artifact names must appear.",
+      "bunValue": "flow-variables.get(name) / flow-variables.put(name, value) method calls on the flow variables passed to the product capability (e.g. in runCapability(step, flow variables): const basket = flow-variables.get(CONSUMES); flow-variables.put(PRODUCES, { confirmed: true, basket });)"
+    },
+    {
+      "key": "tooling.languages",
+      "meaning": "Languages of production source; the realization's language activation fact draws its values from here — necessary but not sufficient to identify the stack, so the language-scoped activation itself stays in the realization.",
+      "bunValue": "typescript, javascript"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "prefer[0]",
+      "text": "Plan-matching name constants used at the flow variables call sites: `export const CONSUMES = \"orders:priced-basket\"; // plan: consume[].name` / `export const PRODUCES = \"orders:confirmed-order\"; // plan: produce[].name`; in `runCapability(step, flowVariables)`: `const basket = flow-variables.get(CONSUMES); flow-variables.put(PRODUCES, { confirmed: true, basket });`.",
+      "reason": "The worked example is written in this stack's module/export syntax and flow variables call form; bun.json stays the reference example for other stacks."
+    },
+    {
+      "item": "evidence[1]",
+      "text": "checks/capability_contract_honoured.mjs reports no findings; CI passes (strict, not suppressible).",
+      "reason": "Names this rule's concrete Bun detector script and path; the core names the check generically and keeps the strict, non-suppressible disposition in verification."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "text": "Member of the bun_flow_router_infrastructure FAMILY detector (checks/capability_contract_honoured.mjs).",
+      "reason": "Detector family membership and the script path are realization details of this one rule; severity and disposition move to core verification."
+    },
+    {
+      "item": "activation.facts[0]",
+      "text": "language: typescript, javascript (observable_now) — necessary but not sufficient: TS/JS alone does not distinguish Bun from Node.js or Deno.",
+      "reason": "The language values are profile data (tooling.languages), but the language activation fact itself is realization-specific stack scoping: language alone does not distinguish Bun from Node.js or Deno, so the neutral core is scoped to a stack by its profile, not by naming languages or runtimes."
+    },
+    {
+      "item": "activation.facts[1]",
+      "text": "change: stack_is_bun (needs_new_observer) — Bun stack identity needs a repo-level observer (e.g. the consumer's configured stack / Bun runtime markers); the rule is Bun-only.",
+      "reason": "Names a specific stack; the neutral core cannot carry a stack identity fact, and each realization scopes itself to its own stack."
+    },
+    {
+      "item": "activation.facts[5]",
+      "text": "finding: declared_artifact_not_named_by_flow_variables_moving_code (needs_new_observer) — emitted by the bun_flow_router_infrastructure family detector (checks/capability_contract_honoured.mjs).",
+      "reason": "The finding id of this rule's Bun detector is a realization detail; the core's verification describes the finding generically."
+    },
+    {
+      "item": "activation.facts[2]",
+      "text": "path_glob: plan/** (observable_now) — product capability documents live under plan/**; their produce[].name / consume[].name entries define the contract.",
+      "reason": "The Bun activation's path_glob is the realization's derived recursive scan of product capability documents below the profile's plan root (roots.plan = plan); the root itself is a profile value, and the recursive traversal lives in the core's verification."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "'under plan/**' becomes 'under the plan root' (profile roots.plan); 'Bun code' becomes 'a module in this stack'; produce/consume ownership meanings kept.",
+      "as": [
+        "core:given"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "Already stack-neutral.",
+      "as": [
+        "core:when"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "'Bun module(s)' becomes 'module(s)'; the single obligation is unchanged.",
+      "as": [
+        "core:then"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "'Core capability.schema.json' becomes 'the core capability-contract schema' (a core, not stack, artifact); 'detector reading Bun source' becomes 'per-stack check reading this stack's source'.",
+      "as": [
+        "core:why"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "Core keeps the role-level guidance (plan-matching named constants at the flow variables call sites); the concrete code snippet stays in the Bun reference.",
+      "as": [
+        "core:prefer[0]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "prefer[1]",
+      "note": "Already stack-neutral.",
+      "as": [
+        "core:prefer[1]"
+      ]
+    },
+    {
+      "item": "prefer[2]",
+      "note": "Already stack-neutral (naming freedom, no filename required).",
+      "as": [
+        "core:prefer[2]"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "Already stack-neutral.",
+      "as": [
+        "core:avoid[0]"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "Already stack-neutral; the check's narrower scope (some Cargo-moving module names it) is recorded in core verification.",
+      "as": [
+        "core:avoid[1]"
+      ]
+    },
+    {
+      "item": "avoid[2]",
+      "note": "Non-suppressibility is coder-facing advice and also the strict-disposition enforcement entry.",
+      "as": [
+        "core:avoid[2]",
+        "core:verification"
+      ]
+    },
+    {
+      "item": "unless[0]",
+      "note": "'The consumer' means the repository; kept neutral. NOT_APPLICABLE case.",
+      "as": [
+        "core:unless[0]"
+      ]
+    },
+    {
+      "item": "unless[1]",
+      "note": "Already stack-neutral; the unimplemented-capability exception is retained exactly.",
+      "as": [
+        "core:unless[1]"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "'under plan/**' is delivered by the profile's plan root (plan) with the recursive scan described in core verification.",
+      "as": [
+        "core:evidence[0]",
+        "profile:roots.plan"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "Neutral evidence (check reports no findings, CI passes, strict) plus the Bun detector script name kept only in the reference.",
+      "as": [
+        "core:evidence[1]",
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "Check description is stack-neutral; reading product capability documents 'under plan/**' becomes the recursive scan below the profile's plan root (plan).",
+      "as": [
+        "core:verification",
+        "profile:roots.plan"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "Core-schema shape summary (produce/consume, artifact name, contract and telemetry URN) and the 'core cannot see flow variables use' boundary both stay in the core; 'Bun module/source' becomes 'the stack's module/source'.",
+      "as": [
+        "core:verification",
+        "core:why"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "Structural recognition, never by filename, stays in the core and is grounded in the profile's flow-variable-call source idiom (idiom.source_syntax#flow_variables_calls); the concrete 'capability.ts' filename illustration is not repeated (naming freedom already in prefer[2]).",
+      "as": [
+        "core:verification",
+        "core:prefer[2]",
+        "profile:idiom.source_syntax#flow_variables_calls"
+      ]
+    },
+    {
+      "item": "verifier_detail[3]",
+      "note": "Both NOT_APPLICABLE cases and their rationale are stack-neutral and retained in full.",
+      "as": [
+        "core:verification",
+        "core:unless[0]",
+        "core:unless[1]"
+      ]
+    },
+    {
+      "item": "verifier_detail[4]",
+      "note": "Severity 4 and strict disposition go to core verification (not profile keys); the family/detector/script identity is Bun-only.",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[5]",
+      "note": "The capability_data_contract term definition is stack-neutral and is already carried by given and then.",
+      "as": [
+        "core:given",
+        "core:then"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "The production-language values are profile data via tooling.languages; the language activation fact itself has no neutral equivalent (typescript/javascript is necessary but not sufficient to identify the stack), so it also stays bunOnly and the core scopes via the profile.",
+      "as": [
+        "profile:tooling.languages",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "stack_is_bun names a specific stack; each realization supplies its own stack-identity fact.",
+      "as": [
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "path_glob plan/** becomes file_kind capability_document located via the profile's plan root; the recursive glob itself is the realization's derived scan below that root (kept in bunOnly, not stored as the root value).",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roots.plan",
+        "profile:roles.plan_artifact.kinds",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.facts[3]",
+      "note": "capability_document/flow_variables_moving_module kinds kept; structural recognition of a Cargo-moving module needs the profile's flow-variable-call source idiom — an executable source construct, so it lives under idiom.source_syntax#flow_variables_calls (source-syntax facts used by checks), not plan syntax.",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:idiom.source_syntax#flow_variables_calls"
+      ]
+    },
+    {
+      "item": "activation.facts[4]",
+      "note": "capability_has_implementation is stack-neutral; needed for the no-implementation NOT_APPLICABLE case.",
+      "as": [
+        "core:activation.facts[2]"
+      ]
+    },
+    {
+      "item": "activation.facts[5]",
+      "note": "Finding id of this rule's detector; per the notProfileKeys policy it stays in the realization.",
+      "as": [
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.facts[6]",
+      "note": "Diff-level facts (contract entries edited; Cargo-moving code changed) are stack-neutral and kept.",
+      "as": [
+        "core:activation.facts[3]"
+      ]
+    }
+  ],
+  "neutralityNotes": "Flow variables and the product capability produce/consume data contract are ATDD-core concepts, not stack specifics, so they stay in the neutral core. Three things could not be made neutral and remain Bun-only: (1) the stack-identity activation facts (language typescript/javascript — its values supplied by the profile's tooling.languages, since language alone does not distinguish Bun from Node.js or Deno — and change stack_is_bun) — the neutral core is scoped to a stack by its profile instead; (2) this rule's detector, family and finding ids (bun_flow_router_infrastructure, checks/capability_contract_honoured.mjs, declared_artifact_not_named_by_flow_variables_moving_code), which the core's verification describes generically; (3) the concrete fix-hint code snippet and the 'capability.ts' filename illustration, dropped from the core because bun.json is delivered as the worked reference example. Severity 4 and the strict, non-suppressible disposition are kept in core verification per the notProfileKeys policy. The profile's plan root carries the path itself (plan); the recursive plan/** traversal of product capability documents below that root is core verification behavior, with the Bun activation's path_glob kept as the realization's derived form. Recognising a Cargo-moving module structurally needs the stack's flow variables source-call idiom, stored as idiom.source_syntax#flow_variables_calls: these are executable source-code method calls used by the check — a source-syntax fact, not a construct of plan artifacts, so idiom.plan_syntax does not cover them. The realization's language activation values come from tooling.languages, while the language fact itself stays Bun-only because language alone does not identify the stack.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.wagon-honours-its-contract.json",
+      "sha256": "3555ff18b6c89a4e90a8b3040aff4d3f9156b4eb5ae3d3e0afdaeacb268e0d5f"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "rekey-v3 -> zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}
