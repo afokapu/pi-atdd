@@ -1,0 +1,266 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.integrity.parse",
+  "legacyId": "atdd-bun.planner.parse",
+  "core": {
+    "title": "Keep every plan artifact parseable",
+    "given": "The repository has plan artifacts under the plan root, outside vendored or generated trees.",
+    "when": "The plan tree is in scope for planning work or validation; this covers every such artifact, changed or unchanged.",
+    "then": "Every in-scope plan artifact parses in the data format its file kind requires, including artifacts you did not change.",
+    "prefer": [
+      "Fix the syntax the finding reports.",
+      "Treat parsing as the first gate: schema and identity checks only run once the artifact parses."
+    ],
+    "avoid": [
+      "Leaving a plan artifact half-written or unparseable and relying on later rules to catch its other defects; they cannot see it.",
+      "Silencing the finding by renaming the artifact, moving it into a vendored or generated tree, or changing its file kind instead of fixing the syntax."
+    ],
+    "unless": [
+      "Vendored and generated trees are never scanned: a path containing a directory segment this rule's check classifies as vendored or generated is out of scope; the exact segment names are this rule's own realization data, not a stack-wide list."
+    ],
+    "why": "An artifact that does not parse is invisible to every other rule, so its defects hide behind one error.",
+    "evidence": [
+      "The plan-integrity check parses every in-scope plan artifact and reports no parse finding.",
+      "A reviewer can load every in-scope plan artifact with the parser for its file kind without error."
+    ],
+    "verification": [
+      "Scan scope: every plan artifact under the plan root whose file kind is a plan-artifact kind, changed or not. Exclusions: the check skips any path containing a directory segment it classifies as vendored or generated; that exact classification is owned by this rule's check and is deliberately not taken from the stack-wide excluded-list profile value; nothing else is excluded.",
+      "Each unparseable plan artifact yields one finding reporting the syntax error; per-rule severity 3, disposition strict: the rule fails on every finding, no advisory mode, no ratchet baseline.",
+      "The check covers parseability only; schema and identity defects of an artifact that does parse are other rules' findings. Which parser a file kind uses is supplied by the realization."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "role",
+          "values": [
+            "plan_artifact"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "plan_artifact"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "plan artifact does not parse"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "The repository contains any plan artifact under the plan root, whatever its plan-artifact kind, whether or not it was touched in the current change.",
+        "An unchanged plan artifact under the plan root is unparseable, even before any check has reported it.",
+        "The agent creates or edits a plan artifact under the plan root (example occasion).",
+        "The plan-integrity check reports a parse error for a plan artifact (example occasion)."
+      ],
+      "doesNotFire": [
+        "Files under a vendored or generated tree, i.e. a path containing a directory segment the rule's check excludes, even if they sit under the plan root.",
+        "Files under the plan root that are not of a plan-artifact file kind, for example free-form prose or notes.",
+        "Structured artifacts of those file kinds outside the plan root."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roots.plan",
+      "meaning": "Where plan artifacts live, so the core can scope 'the plan tree' and 'under the plan root' without naming a path.",
+      "bunValue": "plan"
+    },
+    {
+      "key": "suffix.plan_artifact",
+      "meaning": "Which file kinds (suffixes) count as plan artifacts and are therefore in scope and must parse; the format each kind denotes decides the parser.",
+      "bunValue": ".yaml, .yml, .json"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "unless[0]",
+      "text": "Vendored and generated trees (node_modules, dist, build, _generated) are never scanned.",
+      "reason": "The exact excluded directory segments are this rule's checker-owned classification in the Bun realization. The vocabulary's stack-wide excluded list is a union that also contains other trees, so this rule's exact four-segment set cannot be presented as that profile value; the core keeps only the conceptual 'vendored and generated trees are never scanned' and the exact names are carried here so instantiation skips precisely these segments."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "The planner_plan_integrity validator parses every .yaml/.yml/.json under plan/ and reports no atdd-bun.planner.parse finding.",
+      "reason": "Validator and finding ids of this rule are realization details; core verification and core evidence name the same check generically, and the concrete root and suffixes are profile values."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "Scan scope: every file under plan/ with extension .yaml, .yml or .json, changed or not; skip any path containing a node_modules, dist, build or _generated directory segment.",
+      "reason": "The plan root and plan-artifact suffixes are profile values (roots.plan, suffix.plan_artifact), but the exact skipped directory segments (node_modules, dist, build, _generated) are the rule's checker-owned Bun classification, not the stack-wide excluded-list profile value; they are carried here so the Bun instantiation skips precisely those segments."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "text": "Package rule: realized by a package guard (validator planner_plan_integrity) rather than a canonical planner node, but held to the same per-rule checks as every convention: a convention, strict, a failing fixture, relationship edges.",
+      "reason": "This describes how the rule is realized and governed inside the ATDD-Bun package (package guard vs canonical planner node, validator ref, per-rule gate artifacts); it constrains the rule's own authoring, not the obligation on plan artifacts."
+    },
+    {
+      "item": "activation.facts[2]",
+      "text": "finding atdd-bun.planner.parse, reported by the planner_plan_integrity validator over the whole plan/ tree; a finding is one occasion to apply the rule, not a precondition.",
+      "reason": "The finding and validator ids are realization details; the core keeps a generic parse-finding fact with the same observability, and the occasion-not-precondition semantics live in activation.fires."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:roots.plan"
+      ],
+      "note": "'under plan/' is the plan root (roots.plan); 'outside vendored or generated trees' is the conceptual exclusion whose exact segments this rule's check owns (see unless[0] and verification), not the stack-wide union."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Already role-level ('the plan tree', 'changed or unchanged'); kept verbatim."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "profile:suffix.plan_artifact"
+      ],
+      "note": "'parses as YAML or JSON' becomes 'parses in the data format its file kind requires'; the formats arrive via the plan-artifact file kinds."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Verbatim; already stack-neutral."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]"
+      ],
+      "note": "Verbatim; already stack-neutral."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]"
+      ],
+      "note": "Verbatim; schema and identity checks are plan-level check families, not stack constructs."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Verbatim; already stack-neutral."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]",
+        "profile:suffix.plan_artifact"
+      ],
+      "note": "'changing its extension' becomes 'changing its file kind' (suffix.plan_artifact); 'vendored/generated tree' is the conceptual exclusion this rule's check owns, with no stack-wide list implied."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]",
+        "bunOnly"
+      ],
+      "note": "The core keeps the conceptual 'vendored and generated trees are never scanned'; the enumerated segments (node_modules, dist, build, _generated) are this rule's checker-owned Bun classification and must not be presented as the stack-wide roots.excluded union, whose owner-decision value includes additional trees. They are carried bunOnly, and the core verification records that the exact classification is rule-owned and nothing else is excluded."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ],
+      "note": "Neutral restatement in core evidence; the validator and finding ids stay bunOnly."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]",
+        "profile:suffix.plan_artifact"
+      ],
+      "note": "'with a YAML/JSON parser' becomes 'with the parser for its file kind'; the formats are the plan-artifact file kinds' own."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "profile:roots.plan",
+        "profile:suffix.plan_artifact",
+        "bunOnly"
+      ],
+      "note": "Scan scope: the plan root and plan-artifact suffixes are profile values; the exact excluded directory segments are the rule's checker-owned classification kept in the Bun realization (bunOnly) rather than taken from the stack-wide excluded-list profile key. Core verification states the deference explicitly and that nothing else is excluded, so the Bun instantiation skips precisely node_modules, dist, build and _generated segments."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "One finding per unparseable artifact; severity 3 and strict disposition are per-rule enforcement and live in core verification, not the profile."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "Package-guard realization and per-rule gate artifacts are realization governance with no stack-neutral obligation content."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roots.plan",
+        "profile:suffix.plan_artifact"
+      ],
+      "note": "path_glob fact becomes a role fact (plan_artifact): the in-scope set is enumerable from the repository tree at any time; the concrete globs are profile data."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:suffix.plan_artifact"
+      ],
+      "note": "'yaml/json determined by extension' becomes a file_kind fact determined by the plan-artifact suffixes."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[2]",
+        "bunOnly"
+      ],
+      "note": "Finding fact kept generically (plan artifact does not parse, needs_new_observer); the concrete finding/validator ids stay bunOnly."
+    }
+  ],
+  "neutralityNotes": "The rule was already nearly neutral. 'Every .yaml/.yml/.json under plan/' became 'every plan artifact under the plan root of a plan-artifact file kind', with the root (roots.plan) and the file kinds and their formats (suffix.plan_artifact) supplied by the profile. The scan exclusions are handled as checker-owned: the exact vendored/generated directory segments (node_modules, dist, build, _generated in the reference) are this rule's own classification, carried in bunOnly on unless[0] and verifier_detail[0], because the vocabulary's roots.excluded is one stack-wide union (which also contains e.g. .git and repository-configured excludes) that this rule must neither redefine nor consume; core unless and core verification say the exact classification is rule-owned and that nothing else is excluded, so the Bun instantiation skips precisely those four segment names. Which concrete parser a file kind uses (the YAML or JSON parser in the reference) is left to the realization; the core only demands that the artifact parse. The validator/finding ids and the package-guard realization of this rule are bunOnly. Per-rule severity 3 and strict disposition are kept in core verification, not the profile. No proposed keys were needed.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/atdd-bun.planner.parse.json",
+      "sha256": "03bf2ef064b8f08551338f8aa0ea75493322fd88f16690e8ccc9567192470615"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 3,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

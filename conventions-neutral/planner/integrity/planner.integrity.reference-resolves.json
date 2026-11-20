@@ -1,0 +1,367 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.integrity.reference-resolves",
+  "legacyId": "atdd-bun.planner.reference-resolves",
+  "core": {
+    "title": "Make every typed plan reference resolve to a declared artifact",
+    "given": "The plan's artifacts contain typed references to plan artifacts, changed or not (the reference kinds in scope are the plan-reference shapes the profile lists).",
+    "when": "The plan is validated or inspected as a whole, or the planner authors, edits, removes or renames plan artifacts.",
+    "then": "Every such typed reference must name an artifact the plan declares.",
+    "prefer": [
+      "Declare the referenced artifact in the plan when the relationship is real.",
+      "Correct the reference to the actual declared id when it is a typo or stale after a rename.",
+      "When removing or renaming an artifact, update every typed reference that points to it in the same change."
+    ],
+    "avoid": [
+      "Leaving references to nothing — a relationship the plan claims but cannot show.",
+      "Creating empty placeholder artifacts only to make a reference resolve without the relationship being real.",
+      "Treating references of a kind whose resolution another rule owns as if this rule owned them."
+    ],
+    "unless": [
+      "The reference lives in a vendored or generated tree; those are never scanned."
+    ],
+    "why": "A reference to nothing is a relationship the plan claims and cannot show; unresolved references break plan traceability.",
+    "evidence": [
+      "The whole-plan integrity check reports no unresolved typed references for the plan.",
+      "A reviewer can map each typed reference to an artifact the plan declares."
+    ],
+    "verification": [
+      "A whole-plan check resolves every in-scope typed reference — including pre-existing, unchanged ones — against the artifacts the plan declares; it does not check only references touched by the current change.",
+      "Only the reference kinds in scope for this rule are checked; reference kinds whose resolution is owned by another rule are excluded.",
+      "Vendored and generated trees are never scanned; the exact classification of excluded trees is owned by the stack's checker and is the stack-wide excluded list in the profile.",
+      "Per-rule severity 3 with strict disposition: the rule fails on every finding; there is no advisory mode and no ratchet baseline."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "role",
+          "values": [
+            "plan_artifact"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "plan_artifact"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "operation",
+          "values": [
+            "plan-validation",
+            "plan-inspection",
+            "plan-authoring",
+            "plan-editing"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "typed-reference-added-or-changed",
+            "referenced-artifact-removed-or-renamed"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "unresolved-reference"
+          ],
+          "observability": "observable_now"
+        }
+      ],
+      "fires": [
+        "A planner writes a plan artifact that references an artifact id that no plan artifact declares.",
+        "A plan artifact or acceptance artifact references an id that was renamed or removed elsewhere in the plan.",
+        "Whole-plan validation finds a pre-existing, unchanged typed reference that names no declared artifact, even though nothing in the current change touched it."
+      ],
+      "doesNotFire": [
+        "A reference of a kind whose resolution another rule owns.",
+        "References inside vendored or generated trees — the trees the profile marks as never scanned.",
+        "Every typed reference in the plan names an artifact the plan declares."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roles.plan_artifact.kinds",
+      "meaning": "The concrete plan artifact kinds that declare ids in the plan and that typed references point at; the core's 'artifact the plan declares' ranges over these, and they identify plan artifact files by path/file kind.",
+      "bunValue": "wagons, features, WMBTs, trains, interlockings, journeys"
+    },
+    {
+      "key": "urn.wagon",
+      "meaning": "Typed reference shape by which a plan artifact references a wagon; one of the reference kinds this rule resolves.",
+      "bunValue": "`wagon:`"
+    },
+    {
+      "key": "urn.feature",
+      "meaning": "Typed reference shape by which a plan artifact references a feature; one of the reference kinds this rule resolves.",
+      "bunValue": "`feature:`"
+    },
+    {
+      "key": "urn.wmbt",
+      "meaning": "Typed reference shape by which a plan artifact references a WMBT; one of the reference kinds this rule resolves.",
+      "bunValue": "`wmbt:`"
+    },
+    {
+      "key": "urn.train",
+      "meaning": "Typed reference shape by which a plan artifact references a train; one of the reference kinds this rule resolves.",
+      "bunValue": "`train:`"
+    },
+    {
+      "key": "urn.interlocking",
+      "meaning": "Typed reference shape by which a plan artifact references an interlocking; one of the reference kinds this rule resolves.",
+      "bunValue": "`interlocking:`"
+    },
+    {
+      "key": "urn.journey",
+      "meaning": "Typed reference shape by which a plan artifact references a journey; one of the reference kinds this rule resolves.",
+      "bunValue": "`journey:`"
+    },
+    {
+      "key": "roots.excluded",
+      "meaning": "The stack-wide list of vendored and generated trees that are never scanned, so references inside them are out of scope.",
+      "bunValue": "`node_modules`, `dist`, `build`, `_generated`"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "urn.interlocking",
+      "group": "urn",
+      "meaning": "URN shape of the interlocking artifact: the typed reference prefix by which a plan artifact references an interlocking.",
+      "bunValue": "`interlocking:`",
+      "whyNoExistingKey": "The urn group's artifact params cover component, acceptance, smoke_acceptance, train, wmbt, wagon, feature and journey but not interlocking; ATDD-Bun plan artifacts include interlockings, whose references this rule must resolve."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "avoid[2]",
+      "text": "Treating `contract:` references under this rule; they belong to the contract registry rules.",
+      "reason": "The excluded reference kind `contract:` and the contract registry rules belong to this stack's plan ontology; the neutral core says only that kinds whose resolution another rule owns are out of scope."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "The `planner_plan_integrity` validator reports no unresolved typed references for the whole plan.",
+      "reason": "Validator ids of this one rule are realization details; the core describes the realizing check generically."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "Realized by validator `planner_plan_integrity` (a package guard, not a canonical planner node).",
+      "reason": "The validator id and the package-guard / canonical-planner-node distinction are ATDD-Bun realization details; the core's verification names the check generically."
+    },
+    {
+      "item": "activation.facts[4]",
+      "text": "`planner_plan_integrity:unresolved-reference`",
+      "reason": "Finding ids of this rule are realization details; the core keeps only the generic finding kind `unresolved-reference`."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:urn.wagon",
+        "profile:urn.feature",
+        "profile:urn.wmbt",
+        "profile:urn.train",
+        "profile:urn.interlocking",
+        "profile:urn.journey"
+      ],
+      "note": "The concrete prefix list in the Bun given is exactly the profile's plan-reference URN shapes; the core keeps 'typed references to plan artifacts, changed or not'."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Already role-level: whole-plan validation/inspection or authoring/editing/removing/renaming of plan artifacts."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then"
+      ],
+      "note": "One obligation, unchanged; the reference kinds in scope come from the profile, which keeps it no stronger (contract-style kinds excluded) and no weaker."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Stack-neutral rationale."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]"
+      ],
+      "note": "Neutral fix path."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]"
+      ],
+      "note": "Neutral fix path."
+    },
+    {
+      "item": "prefer[2]",
+      "as": [
+        "core:prefer[2]"
+      ],
+      "note": "Neutral fix path for rename/removal; adds no new obligation."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Neutral anti-pattern."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Neutral metric-gaming anti-pattern."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]",
+        "bunOnly"
+      ],
+      "note": "Neutralized to 'kinds whose resolution another rule owns'; the concrete `contract:` kind and contract registry rules are Bun-specific."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]",
+        "profile:roots.excluded"
+      ],
+      "note": "The exception is neutral; the concrete never-scanned trees are the stack-wide excluded list in the profile."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ],
+      "note": "Neutral evidence keeps 'whole-plan integrity check reports no unresolved typed references'; the validator name is realization-specific."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]",
+        "profile:urn.wagon",
+        "profile:urn.feature",
+        "profile:urn.wmbt",
+        "profile:urn.train",
+        "profile:urn.interlocking",
+        "profile:urn.journey"
+      ],
+      "note": "The reviewer mapping is neutral; the enumerated prefixes are the profile's URN shapes."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "bunOnly",
+        "core:verification"
+      ],
+      "note": "Validator id and package-guard realization are Bun-only; the existence of a realizing whole-plan check is stated generically in core verification."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "profile:urn.wagon",
+        "profile:urn.feature",
+        "profile:urn.wmbt",
+        "profile:urn.train",
+        "profile:urn.interlocking",
+        "profile:urn.journey"
+      ],
+      "note": "'All typed references in scanned plan artifacts are checked, not only changed ones' and the exclusion of kinds owned by another rule go to core:verification; the scanned prefixes are the profile's URN shapes; the `contract:` clause is the Bun instance of that exclusion (see avoid[2])."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "profile:roots.excluded",
+        "core:verification"
+      ],
+      "note": "The excluded directories are the stack-wide never-scanned list (profile); the core's verification keeps the deference that the checker owns the exact exclusion classification."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Per-rule severity and disposition stay with the rule: both are retained in core verification — severity 3 and strict disposition (fails on every finding, no advisory mode, no ratchet baseline). Neither is a profile key nor a Bun-only detail."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roles.plan_artifact.kinds"
+      ],
+      "note": "Bun's 'layer: plan' restated as the role plan_artifact; the concrete artifact kinds come from the profile. Applicability prerequisite: an invariant over every typed reference in the plan."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:roles.plan_artifact.kinds"
+      ],
+      "note": "Applies to all plan artifact files outside vendored/generated trees, whether or not they changed."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[2]"
+      ],
+      "note": "Operations are already stack-neutral; full-plan validation/inspection runs regardless of what changed, authoring/editing are additional triggers."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[3]"
+      ],
+      "note": "Optional routing hint only, not an applicability prerequisite; unchanged unresolved references remain in scope."
+    },
+    {
+      "item": "activation.facts[4]",
+      "as": [
+        "core:activation.facts[4]",
+        "bunOnly"
+      ],
+      "note": "The generic finding kind 'unresolved-reference' is core; the prefixed finding id names this rule's Bun validator."
+    }
+  ],
+  "neutralityNotes": "The obligation itself is stack-neutral; all stack specificity sits in (a) the six reference prefixes, carried by the profile's urn.* shapes (interlocking proposed, since the closed vocabulary lacks it), (b) the excluded `contract:` kind, kept only as 'kinds whose resolution another rule owns' with the concrete kind in bunOnly, (c) the never-scanned trees via roots.excluded, with the core deferring exact classification to the stack's checker, and (d) validator and finding ids, which are realization details. Per-rule severity 3 and strict disposition are both retained in core verification as rule-level facts, per the vocabulary's notProfileKeys. The core's phrase 'an artifact the plan declares' presumes the profile's URN declaration conventions; bun.json does not state that syntax, so no profile value was required for it.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/atdd-bun.planner.reference-resolves.json",
+      "sha256": "5d5fff5ef41255ce6a2829e284f78c735cee548c113aa3416c11019edfd3e991"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

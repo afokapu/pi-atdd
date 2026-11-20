@@ -1,0 +1,351 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.feature.size-max-rule",
+  "legacyId": "planner.feature.size-max-rule",
+  "core": {
+    "title": "Size each feature as max(WMBT-count size, footprint size)",
+    "given": "A feature has a WMBT count and, after decomposition, a footprint (components, events, new events).",
+    "when": "You size or reclassify the feature.",
+    "then": "Set the feature's final size to max(WMBT-count size, footprint size).",
+    "prefer": [
+      "Pass 1 (planning): size by WMBT count only, to unblock decomposition — XS ≤5, S 6–10, M 11–20, L >20.",
+      "Pass 2 (post-decomposition): compute the footprint, reclassify with the max rule, and gate M/L features.",
+      "Keep final size at S or smaller; split or stage any larger feature before execution — decompose/stage an M feature (11–20 WMBTs), split an L feature (>20 WMBTs) immediately.",
+      "Keep each feature within ≤8 components, ≤3 events, ≤3 new events."
+    ],
+    "avoid": [
+      "Taking the smaller of the two sizes or using only the WMBT count once a footprint exists.",
+      "Sending an M or L feature to execution without splitting or staging it.",
+      "Shaving WMBT counts or merging events/components on paper to land in S without actually reducing scope."
+    ],
+    "unless": [],
+    "why": "Blended strategy: WMBT count alone sizes the feature early so decomposition is unblocked (Pass 1); once the footprint is known, the max rule reclassifies the feature so the larger of the two sizes governs and M/L features are gated (Pass 2).",
+    "evidence": [
+      "Each feature records its WMBT-count size, its footprint size, and a final size equal to the larger of the two.",
+      "No feature with final size M or L enters execution; each was split or staged first.",
+      "Per-feature component, event and new-event counts are at or below 8, 3 and 3."
+    ],
+    "verification": [
+      "A check recomputes each feature's final size as max(WMBT-count size, footprint size) under the size order XS < S < M < L, and treats a recorded final size that is not the larger of the two, or that exceeds the maximum allowed size S, as a violation.",
+      "A check enforces the WMBT-count brackets (XS ≤5, S 6–10, M 11–20, L >20) and the per-feature footprint limits (≤8 components, ≤3 events, ≤3 new events), and fails any feature whose final size exceeds S at the execution gate; the expected remedy is to split or stage before execution (M: decompose/stage, L: split immediately).",
+      "Footprint size is computed by the footprint-scoring convention and the WMBT count by the grouping-strategy convention; this rule's check consumes those results and does not re-verify them.",
+      "Activation does not require a finding: compliant features and Pass 1 sizing are in scope without any violation. Observing the phase and finding facts needs a detector that counts WMBTs per feature and computes its footprint; recognizing the plan artifacts themselves is delegated to the profile's plan-artifact kinds and paths."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "role",
+          "values": [
+            "planner"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "feature",
+            "wmbt",
+            "wagon plan"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "phase",
+          "values": [
+            "planning (Pass 1)",
+            "post-decomposition (Pass 2)"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "feature final size M or L",
+            "components > 8",
+            "events > 3",
+            "new events > 3"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "A planner authors or edits a feature and assigns it a size from its WMBT count (Pass 1), even when the size is XS or S and no footprint exists yet.",
+        "After WMBT decomposition, a feature's footprint is computed and its final size must be reclassified (Pass 2), whether or not the result is compliant.",
+        "A feature has 11+ WMBTs or exceeds 8 components, 3 events, or 3 new events, and is about to be scheduled for execution.",
+        "A plan or doc edit states, restates or changes a feature's size or its execution eligibility, even if WMBT/component/event counts are unchanged."
+      ],
+      "doesNotFire": [
+        "Editing code or tests that do not define, size or schedule a planner feature.",
+        "Editing a feature's prose in a way that neither defines, changes nor restates its size or execution eligibility, and does not change its WMBTs, components or events.",
+        "Sizing a wagon or train as a whole rather than an individual feature."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roles.plan_artifact.kinds",
+      "meaning": "The concrete plan-artifact kinds that play the plan-artifact role, used to recognize the feature/WMBT/wagon plan files on which this rule activates; the Bun realization matches them by path glob and file kind.",
+      "bunValue": "feature, wmbt, wagon plan"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "verifier_detail[0]",
+      "text": "final_size_rule: final = max(wmbt_count_size, footprint_size); size order XS < S < M < L; max_size = S.",
+      "reason": "The term id (final_size_rule) and machine parameter names belong to this rule's Bun checker; the neutral obligation (max rule, size order, S cap) is carried by then, prefer[2] and core verification."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "text": "wmbt_bracket: XS ≤5 WMBTs; S 6–10; M 11–20 (decompose/stage); L >20 (split immediately).",
+      "reason": "The term id (wmbt_bracket) belongs to this rule's Bun checker; the brackets themselves are stack-neutral method parameters kept in prefer[0]/prefer[2] and core verification."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "text": "overflow_action: split or stage before execution; fail any feature whose final size > S at the execution gate.",
+      "reason": "The constraint/term id (overflow_action) belongs to this rule's Bun checker; the gate semantics are stack-neutral and kept in prefer[2], avoid[1], evidence[1] and core verification."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given"
+      ],
+      "note": "Verbatim; feature, WMBT count and footprint are ATDD planning terms, not stack terms."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Verbatim."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then"
+      ],
+      "note": "Verbatim; the single obligation of this rule."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Verbatim; the Pass 1 / Pass 2 blended-strategy rationale is method-level."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]"
+      ],
+      "note": "Verbatim; WMBT-count brackets are method parameters, stack-neutral."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]"
+      ],
+      "note": "Verbatim."
+    },
+    {
+      "item": "prefer[2]",
+      "as": [
+        "core:prefer[2]"
+      ],
+      "note": "Verbatim; the S cap and split/stage remedies (which bun.json itself proposes splitting out as planner.feature.size-cap-gate)."
+    },
+    {
+      "item": "prefer[3]",
+      "as": [
+        "core:prefer[3]"
+      ],
+      "note": "Verbatim; per-feature footprint limits are method parameters."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Verbatim; role-level anti-pattern for the max rule."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Verbatim; execution-gate anti-pattern."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]"
+      ],
+      "note": "Verbatim; metric-gaming anti-pattern, no stack terms."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]"
+      ],
+      "note": "Verbatim."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]"
+      ],
+      "note": "Verbatim."
+    },
+    {
+      "item": "evidence[2]",
+      "as": [
+        "core:evidence[2]"
+      ],
+      "note": "Verbatim; restates the 8/3/3 limits."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Semantics (final = max, order XS < S < M < L, max_size = S) go to core verification; the term id final_size_rule and its parameter names are Bun checker vocabulary."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Brackets are stack-neutral and already in prefer[0]/prefer[2], restated for the check in core verification; the term id wmbt_bracket is bunOnly."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Per-feature footprint limits (8/3/3) are stack-neutral, already in prefer[3]/evidence[2], and restated as the check's limits in core verification."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Execution-gate semantics go to core verification; the constraint id overflow_action is bunOnly."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Cross-references to the sibling planner conventions that compute footprint size and WMBT count; these convention ids are method-level (not stack names) and are kept in core verification as a scope limit on the check."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roles.plan_artifact.kinds"
+      ],
+      "note": "Bun's 'layer' fact is renamed to the core activation vocabulary's 'role'; the note's recognition mechanism (planner artifacts identifiable by path/file kind) is realized through the profile's plan-artifact kinds."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:roles.plan_artifact.kinds"
+      ],
+      "note": "Kind values kept verbatim; the concrete recognition of these plan-artifact kinds (path glob and file kind) comes from the profile."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[2]"
+      ],
+      "note": "Verbatim values with needs_new_observer retained; the note (selects which pass applies, not a prerequisite) is preserved by the fires entries and core verification."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[3]",
+        "core:verification"
+      ],
+      "note": "Values kept verbatim; the note's nuance (optional violation trigger, not an activation prerequisite; needs a WMBT-counting, footprint-computing detector) is preserved in core verification."
+    },
+    {
+      "item": "activation.fires[0]",
+      "as": [
+        "core:activation.fires[0]"
+      ],
+      "note": "Verbatim; role-level planner situation, including XS/S and pre-footprint sizing."
+    },
+    {
+      "item": "activation.fires[1]",
+      "as": [
+        "core:activation.fires[1]"
+      ],
+      "note": "Verbatim; role-level planner situation."
+    },
+    {
+      "item": "activation.fires[2]",
+      "as": [
+        "core:activation.fires[2]"
+      ],
+      "note": "Verbatim; thresholds are method parameters."
+    },
+    {
+      "item": "activation.fires[3]",
+      "as": [
+        "core:activation.fires[3]"
+      ],
+      "note": "Verbatim; role-level planner situation."
+    },
+    {
+      "item": "activation.doesNotFire[0]",
+      "as": [
+        "core:activation.doesNotFire[0]"
+      ],
+      "note": "Verbatim; role-level exclusion."
+    },
+    {
+      "item": "activation.doesNotFire[1]",
+      "as": [
+        "core:activation.doesNotFire[1]"
+      ],
+      "note": "Verbatim; role-level exclusion."
+    },
+    {
+      "item": "activation.doesNotFire[2]",
+      "as": [
+        "core:activation.doesNotFire[2]"
+      ],
+      "note": "Verbatim; role-level exclusion (wagon/train-level sizing is out of scope)."
+    }
+  ],
+  "neutralityNotes": "This is a planning-methodology rule: feature, WMBT, footprint, Pass 1/Pass 2, the size brackets and the 8/3/3 limits are ATDD method terms, so the core keeps them verbatim and names no stack, runtime, framework, language, package manager, file suffix or path. The only Bun-specific content is the checker's term/constraint ids (final_size_rule, wmbt_bracket, overflow_action) and their machine parameter names, classified bunOnly per the notProfileKeys rule; their semantics are fully preserved in then/prefer/verification. The Bun activation notes say plan artifacts are recognized 'by path glob and file kind' without stating the concrete globs or suffixes, so the core delegates recognition to the profile via roles.plan_artifact.kinds (no path key is required, since bun.json contains no exact path value to instantiate one with); verification states this deference. Bun's activation fact name 'layer' is renamed to the core activation vocabulary's 'role' with the same value 'planner'.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/planner-nodes/planner.feature.size-max-rule.json",
+      "sha256": "915618aecd9127ab0bbdff741eac4b701d5a65a2b6a98bcfc8d2be139529c491"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 1,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

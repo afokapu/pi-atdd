@@ -1,0 +1,295 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.interlocking.registry-mirrors-document",
+  "legacyId": "planner.interlocking.registry-mirrors-document",
+  "core": {
+    "title": "Keep every index-registry entry in sync with the document it indexes",
+    "given": "A plan index registry artifact indexes individual plan documents by path, mirroring the mirrored fields declared by the stack profile from each document it indexes",
+    "when": "the plan reaches the confirmation phase (CONFIRM), for every indexed entry, regardless of which files or fields the current change touched",
+    "then": "every registry entry's mirrored fields must equal the values in the document it points at.",
+    "prefer": [
+      "Treat the document as authoritative: edit the document first, then copy the mirrored fields into the registry entry in the same change.",
+      "When a mismatch is found — including a pre-existing one your change did not cause — fix the registry entry to match the document, not the other way round."
+    ],
+    "avoid": [
+      "Changing the document to match a stale registry entry — on disagreement the registry is always the defect.",
+      "Updating a document's mirrored fields without updating its registry entry (or vice versa).",
+      "Treating an existing mismatch as out of scope because your change did not touch the registry or that document.",
+      "Adding fields to the registry that diverge from or are not sourced from the document."
+    ],
+    "unless": [],
+    "why": "The document is authoritative and the registry is only discovery metadata that denormalises the mirrored fields from it; any disagreement means the registry is lying to whoever discovers the indexed documents through it.",
+    "evidence": [
+      "The registry-coherence check passes at CONFIRM against the live registry (all entries, not only changed ones).",
+      "On failure, the report names the indexed item, the disagreeing field, and the registry value and the document value for each disagreement."
+    ],
+    "verification": [
+      "Disposition strict: fails on every finding, no advisory mode, no ratchet baseline. Severity 3.",
+      "Confirm-blocking: the check runs at the confirmation phase against the live registry and blocks the plan on failure.",
+      "Scope: every entry of the live registry is checked, not a diff — pre-existing mismatches count even when the current change touched neither the registry nor the document.",
+      "Only the mirrored fields are compared; differences in other document fields are not findings, and such differences never exempt a mismatch on a mirrored field.",
+      "On disagreement the document wins: the registry entry is reported as the defect."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "phase",
+          "values": [
+            "CONFIRM"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "plan index registry artifact",
+            "indexed plan document"
+          ],
+          "observability": "observable_now"
+        }
+      ],
+      "fires": [
+        "At CONFIRM, a registry entry disagrees with the document it points at on a mirrored field, even though nothing in the current change touched the registry or the document (a pre-existing mismatch).",
+        "At CONFIRM, after a planner added a registry entry whose mirrored fields differ from the document it points at.",
+        "At CONFIRM, after a planner changed a document's mirrored fields without updating its registry entry.",
+        "At CONFIRM, while the current change only edits unrelated plan files or non-mirrored document fields, but some indexed entry still disagrees on a mirrored field."
+      ],
+      "doesNotFire": [
+        "At CONFIRM, every registry entry's mirrored fields equal the values in the document it points at (no finding, regardless of what changed).",
+        "Repositories with no index registry artifact at the profile-declared location; the rule is an existence gate — the registry must exist and index at least one document, but it does not need to be touched or read by the current plan.",
+        "Differences in document fields the registry does not mirror (anything other than the profile-declared mirrored fields) — these are not compared; but such edits never exempt a mismatch on a mirrored field."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "layout.plan_item",
+      "meaning": "Path pattern of one plan document indexed by the index registry; each registry entry names one document of this shape by path, and that document is authoritative on disagreement.",
+      "bunValue": "plan/_trains/_interlockings/*.yaml"
+    },
+    {
+      "key": "layout.index_registry",
+      "meaning": "Path of the plan index registry artifact whose entries mirror fields from the documents they index; its existence (indexing at least one document) gates the rule.",
+      "bunValue": "plan/_trains/_interlockings.yaml"
+    },
+    {
+      "key": "idiom.registry_mirrored_fields",
+      "meaning": "The concrete document fields the registry denormalises; exactly these fields are compared for every entry.",
+      "bunValue": "theme, status, surfaces"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "layout.index_registry",
+      "group": "layout",
+      "meaning": "Path of a plan index registry artifact that mirrors fields from every document it indexes; its existence (indexing at least one document) gates rules about it.",
+      "bunValue": "plan/_trains/_interlockings.yaml",
+      "whyNoExistingKey": "No existing key names the registry side of the paired index-registry / indexed-document pattern: roles.plan_artifact.path is one generic glob for the whole plan-artifact role and layout.plan_item already carries the indexed-document item pattern; only the registry file's own location is missing."
+    },
+    {
+      "key": "idiom.registry_mirrored_fields",
+      "group": "idiom",
+      "meaning": "The concrete field names the index registry denormalises from each indexed document; exactly these are compared on every entry.",
+      "bunValue": "theme, status, surfaces",
+      "whyNoExistingKey": "The idiom group covers source-code constructs only; no key carries a plan-artifact field vocabulary, and the field names are stack data the core must not hard-code."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "evidence[0]",
+      "text": "Validator test_interlocking_registry_coherence::test_live_registry_agrees_with_every_document_it_indexes passes at CONFIRM against the live registry (all entries, not only changed ones).",
+      "reason": "Names this rule's Bun validator id; validator ids are realization details, so the core's evidence and verification describe the check generically."
+    },
+    {
+      "item": "evidence[1]",
+      "text": "On failure, the report names interlocking_id, field, registry_value and document_value for each disagreement.",
+      "reason": "The concrete failure-report field names are this rule's Bun finding shape; the core states the report content generically and the Bun names stay with the realization."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "text": "Validation: family=coherence, template=cross_artifact_field_agreement, variant=planner_interlocking_registry_mirror, subject_kind=interlocking, phase=CONFIRM, enforcement=confirm-blocking. Checks every entry of the live registry, not a diff.",
+      "reason": "family/template/variant/subject_kind are this rule's Bun validation-taxonomy ids (subject_kind=interlocking names the stack's artifact kind); only the neutral scope — confirm-blocking, live registry, every entry, not a diff — survives in core:verification."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "text": "Failure evidence fields: interlocking_id, field, registry_value, document_value.",
+      "reason": "Concrete finding-evidence field ids of this rule's checker; realization detail."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:layout.index_registry",
+        "profile:layout.plan_item"
+      ],
+      "note": "Neutral index-registry / indexed-document relationship; the concrete registry file comes from profile:layout.index_registry and the indexed-document path pattern from profile:layout.plan_item."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Already neutral; CONFIRM is the ATDD process phase, not stack data."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "profile:idiom.registry_mirrored_fields"
+      ],
+      "note": "One obligation: the entry agrees with its document on the mirrored fields; the field names theme, status, surfaces come from the profile."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why",
+        "profile:idiom.registry_mirrored_fields"
+      ],
+      "note": "Neutral authority rationale; the field list is de-inlined to the profile."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]",
+        "profile:idiom.registry_mirrored_fields"
+      ],
+      "note": "Neutral except the field list, which the profile supplies."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]"
+      ],
+      "note": "Fully neutral; carried over unchanged."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Neutral."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]",
+        "profile:idiom.registry_mirrored_fields"
+      ],
+      "note": "'status, theme or surfaces' generalized to the mirrored fields."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]"
+      ],
+      "note": "Neutral."
+    },
+    {
+      "item": "avoid[3]",
+      "as": [
+        "core:avoid[3]"
+      ],
+      "note": "Neutral."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ],
+      "note": "Neutral check description in the core; the validator id is realization-side."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]",
+        "bunOnly"
+      ],
+      "note": "Generic failure-report content in the core; the concrete field names are bunOnly."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:then",
+        "core:verification",
+        "profile:idiom.registry_mirrored_fields"
+      ],
+      "note": "Defines the mirrored fields; the obligation and the 'only mirrored fields are compared' scope use the concept, the profile supplies the names. The term id mirrored_field stays with the realization."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:given",
+        "core:avoid[0]",
+        "core:verification",
+        "profile:layout.plan_item"
+      ],
+      "note": "The document named by the entry's path is authoritative and the registry entry is the reported defect; the concrete document path pattern comes from profile:layout.plan_item. The term id authoritative_document stays with the realization."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Neutral scope (confirm-blocking, live registry, every entry, not a diff) goes to core:verification; the validation-taxonomy ids are bunOnly."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:evidence[1]",
+        "bunOnly"
+      ],
+      "note": "Same finding-shape content as evidence[1]."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Per-rule severity 3 and strict disposition are rule data (core:verification), not profile data."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]"
+      ],
+      "note": "Phase CONFIRM is process-level vocabulary; kept as-is."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:layout.index_registry",
+        "profile:layout.plan_item"
+      ],
+      "note": "The existence gate is neutralized to the index-registry artifact kind (fact file_kind); the registry location comes from profile:layout.index_registry and the indexed-document globs from profile:layout.plan_item."
+    }
+  ],
+  "neutralityNotes": "The core abstracts Bun's 'interlocking registry'/'interlocking document' into a plan 'index registry' and its 'indexed documents'; the kind name 'interlocking' stays realization-side. The indexed-document path pattern uses the existing vocabulary key layout.plan_item (its WMBT example is an example, not a restriction; under the Bun profile it resolves to plan/_trains/_interlockings/*.yaml). Two profile keys remain proposed because the closed vocabulary has neither a key for the registry file's own location (layout.index_registry) nor for the mirrored-field names (idiom.registry_mirrored_fields). The phase name CONFIRM and the 'planner' persona are ATDD-process vocabulary rather than stack data, so they remain in the core. Severity 3, strict disposition and the confirm-blocking / live-registry / no-diff scope are kept in core:verification; this rule's validator id, validation-taxonomy ids (family/template/variant/subject_kind) and finding-report field names are bunOnly.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/planner-nodes/planner.interlocking.registry-mirrors-document.json",
+      "sha256": "d8fcaeaa65bcd33c1c9a393f4d7953b43ee41f34944229945d733fefa42af141"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

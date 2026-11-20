@@ -1,0 +1,361 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.acceptance.urn-generation",
+  "legacyId": "planner.acceptance.urn-generation",
+  "core": {
+    "title": "Build acceptance URNs in the profile-declared acceptance URN shape via the profile's URN builder",
+    "given": "A plan artifact declares an acceptance tied to a WMBT within a wagon and executed by a specific harness.",
+    "when": "The planner assigns or changes that acceptance's URN.",
+    "then": "The URN must match the profile's acceptance URN shape — the wagon and WMBT step id as its hierarchy, then the harness code, a per-harness sequence and an optional readability slug as its facet cluster — and must be produced through the profile's acceptance URN builder rather than assembled ad hoc.",
+    "prefer": [
+      "Build the URN with the profile's acceptance URN builder rather than concatenating strings by hand.",
+      "Use the hierarchy separator only for the wagon–WMBT hierarchy and the facet separator only for the harness–sequence–slug cluster, as fixed by the profile's acceptance URN shape.",
+      "Give each part its profile-declared form: the wagon id, the WMBT step id (step code plus its sequence), the harness code from the harness vocabulary, a per-harness sequence within the profile-declared range, and an optional readability slug."
+    ],
+    "avoid": [
+      "Newly introducing an acceptance id in a superseded legacy identifier form instead of the profile's acceptance URN shape.",
+      "Dropping the WMBT id or harness code from the URN, or sharing one sequence across harnesses.",
+      "Harness codes outside the profile's harness vocabulary, WMBT step letters outside the profile's step alphabet, or slugs outside the profile's slug idiom."
+    ],
+    "unless": [],
+    "why": "The URN is the canonical id of an acceptance: it makes the WMBT tie explicit, bakes in harness visibility for routing, keeps a per-harness sequence, and allows an optional readability slug.",
+    "evidence": [
+      "Every new/changed acceptance URN matches the profile's acceptance URN shape, and its sequence part satisfies the profile's per-part constraints, which can be stricter than the shape pattern alone.",
+      "No acceptance id in the stack's superseded legacy identifier form is newly introduced."
+    ],
+    "verification": [
+      "Strict disposition: every new or changed acceptance URN found in plan artifacts must satisfy both the profile's acceptance URN shape and its per-part constraints; the shape pattern alone may admit values the parts definition forbids (e.g. a zero sequence), so the check enforces both.",
+      "The check treats the acceptance URN as the canonical identifier of an acceptance; the term, detector and finding ids of this rule's check are realization details.",
+      "Detecting 'new or changed' needs a diff-level observer that extracts acceptance-URN-shaped strings from added/modified content and matches them against the profile's acceptance URN shape (needs_new_observer).",
+      "A legacy-form id is a finding only when newly introduced; the rule scopes to URNs being assigned or changed, so untouched legacy ids are migration debt, not findings.",
+      "The check does not cover editing acceptance body text without touching the URN, authoring URNs for non-acceptance entities, or which harness codes exist (governed by the harness-vocabulary rule)."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "operation",
+          "values": [
+            "create",
+            "rename"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "plan_artifact"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "task_term",
+          "values": [
+            "acceptance",
+            "acc:",
+            "URN",
+            "acceptance id"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "acceptance URN added or modified"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "Planner adds a new acceptance under a WMBT and must assign its URN.",
+        "Planner writes an acceptance URN by hand in a plan or wagon document.",
+        "Planner migrates a superseded legacy acceptance id to the profile's acceptance URN shape."
+      ],
+      "doesNotFire": [
+        "Editing acceptance body text (given/when/then) without touching its URN.",
+        "Authoring URNs for non-acceptance entities (wagons, WMBTs, contracts).",
+        "Choosing which harness code exists in the vocabulary (governed by planner.acceptance.harness-vocabulary)."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "urn.acceptance",
+      "meaning": "The acceptance URN shape (pattern) every acceptance URN must match, including its separator characters and embedded alphabets (WMBT step letters, harness codes, slug idiom).",
+      "bunValue": "^acc:[a-z][a-z0-9-]*:[DLPCEMYRK][0-9]{3}-(UNIT|HTTP|EVENT|WS|E2E|A11Y|VIS|METRIC|JOB|DB|SEC|LOAD|SCRIPT|WIDGET|GOLDEN|BLOC|INTEGRATION|RLS|EDGE|REALTIME|STORAGE|SMOKE)-[0-9]{3}(?:-[a-z0-9-]+)?$"
+    },
+    {
+      "key": "urn.parts.acceptance",
+      "meaning": "Per-part constraints of the acceptance URN beyond the shape pattern: the form of each named part and the per-harness sequence range (which excludes values the pattern alone would admit).",
+      "bunValue": "Parts: wagon = kebab-case wagon; wmbt_id = step code + seq (C004); harness = UPPERCASE harness code; NNN = per-harness 001-999; slug = optional kebab descriptor."
+    },
+    {
+      "key": "idiom.urn_builder",
+      "meaning": "The stack's construct that builds an acceptance URN from its parts, which authors must use instead of hand-concatenation.",
+      "bunValue": "URNBuilder.acceptance(wagon_id, wmbt_id, harness_code, seq, slug=None)"
+    },
+    {
+      "key": "roles.plan_artifact.kinds",
+      "meaning": "The concrete plan-artifact kinds whose editing can introduce or change acceptance ids (the activation file_kind fact).",
+      "bunValue": "acceptance, wagon, wmbt, plan"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "urn.parts.acceptance",
+      "group": "urn",
+      "meaning": "Named parts of the acceptance URN and their per-part constraints beyond the shape pattern (each part's form and the per-harness sequence range).",
+      "bunValue": "Parts: wagon = kebab-case wagon; wmbt_id = step code + seq (C004); harness = UPPERCASE harness code; NNN = per-harness 001-999; slug = optional kebab descriptor.",
+      "whyNoExistingKey": "urn.acceptance (the parametric urn.<artifact>) holds only the shape pattern, which can be looser than the rule (the acceptance pattern admits sequence 000 while the parts definition forbids it); no existing key carries per-part constraints, and inventing them inside the pattern key would overload its type. A proposal cannot introduce a new parametric family (urn.parts.<artifact>), so the acceptance instance is named literally as urn.parts.acceptance; the owner may generalize it to a parametric key on approval."
+    },
+    {
+      "key": "idiom.urn_builder",
+      "group": "idiom",
+      "meaning": "The stack's construct that builds an artifact URN from its parts (the canonical construction channel authors must use).",
+      "bunValue": "URNBuilder.acceptance(wagon_id, wmbt_id, harness_code, seq, slug=None)",
+      "whyNoExistingKey": "tooling.urn_resolver covers resolving a URN to its artifact, not constructing one, and no idiom key names the canonical URN builder."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "avoid[0]",
+      "text": "The legacy format acc:{wagon}:{nnn}:{acceptance_id} (e.g. acc:authenticate-user:001:AC-EXEC-201) — it is being migrated away.",
+      "reason": "The superseded legacy identifier form and its example are this stack's migration history; another stack has no such legacy, so the core refers to it only as the superseded legacy form."
+    },
+    {
+      "item": "evidence[1]",
+      "text": "URNBuilder.acceptance(\"authenticate-user\", \"C004\", \"E2E\", \"019\") -> acc:authenticate-user:C004-E2E-019",
+      "reason": "Concrete worked example using the stack's builder signature and literal ids; kept in the realization as the reference example (rule 4)."
+    },
+    {
+      "item": "evidence[2]",
+      "text": "URNBuilder.acceptance(\"maintain-ux\", \"C004\", \"E2E\", \"019\", \"user-connection\") -> acc:maintain-ux:C004-E2E-019-user-connection",
+      "reason": "Concrete worked example using the stack's builder signature and literal ids; kept in the realization as the reference example (rule 4)."
+    },
+    {
+      "item": "evidence[3]",
+      "text": "No URN in the legacy form acc:{wagon}:{nnn}:{acceptance_id} (e.g. acc:authenticate-user:001:AC-EXEC-201) is newly introduced.",
+      "reason": "The concrete legacy form and example are stack migration history; the neutral obligation (no newly introduced legacy-form id) is core:evidence[1]."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "Term acceptance_urn (label 'Acceptance URN'): the canonical id of an acceptance.",
+      "reason": "The term id and label of this rule's checker are realization details (notProfileKeys); only the neutral definition survives in core:verification."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "text": "Counter-example to flag: acc:authenticate-user:001:AC-EXEC-201 (legacy acc:{wagon}:{nnn}:{acceptance_id}, being migrated).",
+      "reason": "The concrete legacy counter-example is stack migration history with no neutral equivalent."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given"
+      ],
+      "note": "Already role-level: plan artifact, WMBT, wagon and harness are methodology terms present in the profile vocabulary."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Neutral as-is."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "profile:urn.acceptance",
+        "profile:idiom.urn_builder"
+      ],
+      "note": "Obligation split: the concrete shape comes from the profile key urn.acceptance, the construction channel from idiom.urn_builder; the core keeps the shape's hierarchy/facet semantics and the builder-only construction."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Neutral as-is."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]",
+        "profile:idiom.urn_builder"
+      ],
+      "note": "Neutralized to 'the profile's acceptance URN builder'; the exact call signature is the profile value."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]",
+        "profile:urn.acceptance"
+      ],
+      "note": "Separator semantics (hierarchy vs facet cluster) stay in the core; which characters play those roles is fixed by the profile shape."
+    },
+    {
+      "item": "prefer[2]",
+      "as": [
+        "core:prefer[2]",
+        "profile:urn.parts.acceptance",
+        "profile:urn.acceptance"
+      ],
+      "note": "The per-part forms (kebab wagon, step code + 3-digit seq, UPPERCASE harness code, 001-999, kebab slug) are profile data (urn.parts.acceptance); the core states only that each part takes its profile-declared form."
+    },
+    {
+      "item": "prefer[3]",
+      "as": [
+        "profile:urn.acceptance"
+      ],
+      "note": "The full pattern with the step-letter and harness-code alphabets is exactly the profile's acceptance URN shape; the core's then/evidence refer to it generically."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]",
+        "bunOnly"
+      ],
+      "note": "Neutral avoid: no newly introduced legacy-form ids; the concrete legacy form and example are realization history."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Already neutral (methodology terms only)."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]",
+        "profile:urn.acceptance"
+      ],
+      "note": "Neutralized to 'outside the profile's vocabularies'; the concrete alphabets live in the profile shape (harness vocabulary owned by planner.acceptance.harness-vocabulary)."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "profile:urn.acceptance",
+        "profile:urn.parts.acceptance"
+      ],
+      "note": "Check against shape plus per-part constraints; the concrete pattern reference (prefer[3]) and 001-999 range are profile data."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "Concrete builder-call example; its neutral content (builder output satisfies the shape) is already core:evidence[0]."
+    },
+    {
+      "item": "evidence[2]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "Concrete builder-call example with slug; reference example only."
+    },
+    {
+      "item": "evidence[3]",
+      "as": [
+        "core:evidence[1]",
+        "bunOnly"
+      ],
+      "note": "Neutral obligation kept (no newly introduced legacy-form ids); the concrete legacy form and example are bunOnly."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "The definition 'canonical id of an acceptance' enters core:verification; the term/label ids are realization details."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "profile:urn.acceptance",
+        "core:verification"
+      ],
+      "note": "The pattern is the profile value; the note that the pattern alone admits a forbidden value (sequence 000) becomes the core's 'enforce shape and parts' verification scope."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "profile:urn.parts.acceptance"
+      ],
+      "note": "The parts definition is profile data via the proposed key urn.parts.acceptance; the core's prefer[2]/evidence[0] consume it generically."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:prefer[1]"
+      ],
+      "note": "Separator semantics; the concrete colon/dash mapping is carried by the profile shape."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Flagging only newly introduced legacy-form ids is the check's scope (core:verification); the concrete counter-example is bunOnly."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]"
+      ],
+      "note": "Operation values create/rename are neutral."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:roles.plan_artifact.kinds"
+      ],
+      "note": "Core fact uses the neutral kind plan_artifact; the concrete kinds (acceptance, wagon, wmbt, plan) are the profile value."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[2]",
+        "profile:urn.acceptance"
+      ],
+      "note": "Task terms stay in core activation (notProfileKeys); the 'acc:' prefix term arrives with the profile's acceptance URN shape."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[3]",
+        "core:verification"
+      ],
+      "note": "Change fact kept neutral; the diff-observer mechanics from its note (extract acceptance-URN-shaped strings from changes) are described generically in core:verification."
+    }
+  ],
+  "neutralityNotes": "The acceptance-URN alphabet — the 'acc:' prefix, WMBT step letters, the harness-code vocabulary (owned by planner.acceptance.harness-vocabulary) and the per-harness sequence range — is this stack's identifier data, so the core carries only the shape's semantics (hierarchy vs facet cluster, builder-only construction, per-part constraint duty) and pulls the concrete pattern and parts from the profile (urn.acceptance plus the proposed urn.parts.acceptance; proposed literally because proposals cannot declare a new parametric family). The legacy id form and its examples, the builder-call worked examples, and the rule's term/label ids have no neutral equivalent and stay bunOnly. The superseded-legacy-form avoid/evidence could not name the concrete form neutrally because it is migration history, not a stack-independent concept. 'Wagon', 'WMBT' and 'harness' are kept: they are methodology terms already present in the closed profile vocabulary (layout and urn groups), not stack names.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/planner-nodes/planner.acceptance.urn-generation.json",
+      "sha256": "76d7eb9420832ac321a8025c4f5ceeb8c09875db44320fc71a7ee6c4d41df146"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

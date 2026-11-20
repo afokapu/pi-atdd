@@ -1,0 +1,326 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.coverage.bidirectional-coverage-between-wagons",
+  "legacyId": "planner.coverage.bidirectional-coverage-between-wagons",
+  "core": {
+    "title": "Keep wagon manifests and feature files cross-referenced both ways",
+    "given": "The plan contains feature files and/or wagon manifests with features[] entries.",
+    "when": "The planner authors, edits, moves, deletes or reviews any of them.",
+    "then": "Every feature file is referenced by its wagon manifest's features[], and every features[] entry resolves to an existing feature file.",
+    "prefer": [
+      "Update features[] in the same change that adds, renames or removes a feature file.",
+      "Record an intentionally wagon-less feature in the orphan-feature allow-list instead of leaving it silently unreferenced."
+    ],
+    "avoid": [
+      "A feature file no wagon manifest lists (feature -> wagon gap).",
+      "A features[] entry pointing to a missing, renamed or deleted feature file (wagon -> feature gap).",
+      "Recording a feature that does belong to a wagon on the orphan allow-list just to silence the coverage check."
+    ],
+    "unless": [
+      "The feature is recorded in the orphan-feature allow-list (exempts only the feature -> wagon direction; features[] entries must still resolve)."
+    ],
+    "why": "Coverage means each feature is referenced by its wagon and vice versa; a one-sided link leaves untracked features or dangling references, breaking plan traceability.",
+    "evidence": [
+      "The feature -> wagon coverage check passes: every feature file is referenced by its wagon manifest (excluding orphan-allow-listed features).",
+      "The wagon -> feature coverage check passes: every wagon features[] entry has a corresponding feature file."
+    ],
+    "verification": [
+      "Two repository-wide coverage checks over the plan tree: direction feature -> wagon — every feature file must be referenced by its wagon manifest, with the orphan allow-list as the only exception; direction wagon -> feature — every features[] entry must resolve to an existing feature file, with no exceptions authored.",
+      "The allow-list exemption is one-directional: it never excuses a dangling features[] entry, and the wagon -> feature direction admits no exceptions.",
+      "Per-rule disposition: documentation-only — the obligation guides authors and reviewers; the checks report coverage gaps rather than block.",
+      "Out of scope: references between a wagon and its parent (train) artifacts, which belong to the parent-level coverage convention."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "wagon_manifest",
+            "feature_file"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "operation",
+          "values": [
+            "create",
+            "edit",
+            "rename",
+            "delete",
+            "read",
+            "review"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "wagon_features_list_changed",
+            "feature_file_added_or_removed"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "coverage_check_reports_unreferenced_feature",
+            "coverage_check_reports_dangling_wagon_feature_reference"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "The planner adds a new feature file without adding it to its wagon manifest's features[] list.",
+        "The planner adds a features[] entry pointing to a feature file that does not exist.",
+        "The planner renames or deletes a feature file, leaving a stale features[] entry.",
+        "The planner edits or reviews a plan where a pre-existing feature file is not referenced by its wagon manifest, even with no structural edit and no coverage check run yet.",
+        "The planner inspects a wagon manifest (including one whose wagon has no feature files) containing a dangling features[] entry, with no current structural edit or coverage finding.",
+        "A feature file exists (not allow-listed) whose wagon manifest is missing or does not list it.",
+        "A coverage check reports an unreferenced feature or a dangling wagon features[] reference."
+      ],
+      "doesNotFire": [
+        "The feature file is recorded in the orphan-feature allow-list (exempts the feature -> wagon direction only).",
+        "Edits to train <-> wagon references only (covered by the parent-level, train coverage convention).",
+        "Content-only edits to a feature file when every feature file is already listed by its wagon and every features[] entry already resolves."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roles.plan_artifact.kinds",
+      "meaning": "The concrete plan-artifact kinds this rule links — the wagon manifest (with its features[] list) and the feature file. The core activates on the neutral kinds wagon_manifest and feature_file; the profile maps them to the stack's concrete artifact kinds (in Bun, feature_file -> feature_yaml). Presence of either kind activates the rule and is what the coverage checks compare.",
+      "bunValue": "wagon_manifest, feature_yaml"
+    },
+    {
+      "key": "suffix.plan_artifact",
+      "meaning": "How feature files and wagon manifests are recognized as plan artifacts on disk (suffix or name pattern); the concrete serialization (YAML) is known only here, never in the core.",
+      "bunValue": "yaml (bun.json speaks of 'feature YAML files')"
+    },
+    {
+      "key": "roots.plan",
+      "meaning": "The plan tree the bidirectional coverage checks scan for wagon manifests and feature files.",
+      "bunValue": "plan tree (bun.json: 'The plan contains feature YAML files and/or wagon manifests...', 'a feature YAML file in the plan tree')"
+    },
+    {
+      "key": "enforcement.allowlists",
+      "meaning": "The named allow-list in which intentionally wagon-less features are recorded, exempting them from the feature -> wagon direction only.",
+      "bunValue": "features_orphaned"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "enforcement.allowlists",
+      "group": "enforcement",
+      "meaning": "Named allow-lists by which the stack records intentional exceptions for specific checks; this rule needs the orphan-feature allow-list holding features intentionally listed by no wagon.",
+      "bunValue": "features_orphaned",
+      "whyNoExistingKey": "No existing key names artifact-level exception lists: enforcement.suppression_marker is a time-boxed per-rule suppression syntax, and roots.excluded only removes trees from scanning; neither is a named allow-list of individually exempted artifacts."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "activation.facts[0]",
+      "text": "value: feature_yaml",
+      "reason": "The concrete artifact-kind name carries the YAML serialization detail of the ATDD-Bun realization; the core activates on the neutral feature_file role, and the mapping feature_file -> feature_yaml lives in roles.plan_artifact.kinds."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "validator id: test_all_features_in_wagon_manifest",
+      "reason": "Validator id of this rule's ATDD-Bun realization; the core names the feature -> wagon coverage check generically."
+    },
+    {
+      "item": "evidence[1]",
+      "text": "validator id: test_all_wagon_feature_refs_exist",
+      "reason": "Validator id of the ATDD-Bun realization; the core names the wagon -> feature coverage check generically."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "validator: test_all_features_in_wagon_manifest",
+      "reason": "Validator id is a realization detail; the direction/exception content is carried by core.verification."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "text": "validator: test_all_wagon_feature_refs_exist",
+      "reason": "Validator id is a realization detail; the direction/no-exceptions content is carried by core.verification."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "text": "Term id: wagon_feature_coverage",
+      "reason": "Glossary term id of the realization; its definition ('each feature is referenced by its wagon and vice versa') is already carried by core then and why."
+    },
+    {
+      "item": "activation.facts[3]",
+      "text": "values: test_all_features_in_wagon_manifest, test_all_wagon_feature_refs_exist",
+      "reason": "Finding/validator ids are realization detector ids; the core activation describes the findings neutrally."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given"
+      ],
+      "note": "Already neutral: plan-structure terms only; 'and/or' preserves that one kind alone suffices."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Unchanged; names only the acting role and neutral operations."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then"
+      ],
+      "note": "The single bidirectional obligation, kept as one conjunction; no stack terms."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Neutral rationale; also absorbs the definitional text of verifier_detail[2]."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]"
+      ],
+      "note": "Same-change guidance is plan-structure level, kept."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]",
+        "profile:enforcement.allowlists"
+      ],
+      "note": "Concept neutralized to 'the orphan-feature allow-list'; the concrete name features_orphaned comes from the profile (proposed key enforcement.allowlists)."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Already neutral, kept."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Already neutral, kept."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]",
+        "profile:enforcement.allowlists"
+      ],
+      "note": "Anti-gaming directive kept; 'validator' generalized to 'coverage check', allow-list name from the profile."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]",
+        "profile:enforcement.allowlists"
+      ],
+      "note": "Exception preserved in full, including its one-directional scope; the concrete allow-list name comes from the profile."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ],
+      "note": "Core states the check generically; the validator id is a realization detail."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]",
+        "bunOnly"
+      ],
+      "note": "Core states the check generically; the validator id is a realization detail."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Direction, exception and no-exception scope go to verification entry 1; the validator id stays bunOnly."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Direction and no-authored-exceptions content goes to verification entry 1; the validator id stays bunOnly."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "Only the term id is Bun-side; its definition is duplicated in core then/why, so nothing is lost."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roles.plan_artifact.kinds",
+        "profile:suffix.plan_artifact",
+        "bunOnly"
+      ],
+      "note": "The core activates on neutral artifact-role kinds wagon_manifest and feature_file; the concrete kind feature_yaml (with its YAML serialization) is reached only through roles.plan_artifact.kinds, and disk recognition of that serialization through suffix.plan_artifact. The note that either kind alone suffices is preserved by core.given ('and/or')."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]"
+      ],
+      "note": "Operation values are already neutral; the continuous-invariant note is preserved by fires[3] and fires[4]."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[2]"
+      ],
+      "note": "Change values are neutral plan-structure diffs; stays needs_new_observer and remains an optional trigger, not a precondition."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[3]",
+        "bunOnly"
+      ],
+      "note": "Finding values neutralized to coverage-finding descriptions; the validator ids are realization details, and the finding remains an additional trigger, not the only one."
+    }
+  ],
+  "neutralityNotes": "Wagon, feature, features[], train and 'the plan tree' are plan-structure vocabulary shared across stacks (cf. the layout and urn profile groups), so they remain in the core. The core's activation uses the serialization-neutral artifact-role kind feature_file; the concrete kind feature_yaml and its YAML recognition live only in profile values (roles.plan_artifact.kinds maps feature_file -> feature_yaml; suffix.plan_artifact carries the YAML suffix). The profile also supplies the plan root and the orphan allow-list name (proposed key enforcement.allowlists). Validator and finding ids (test_all_features_in_wagon_manifest, test_all_wagon_feature_refs_exist) and the term id wagon_feature_coverage are realization details and remain bunOnly. bun.json's per-fact activation notes are preserved elsewhere rather than as note fields on the core facts: 'either kind alone suffices' by core.given, 'the invariant holds continuously, not only on structural edits' by fires[3] and fires[4], and 'change/finding facts are additional triggers, not required for firing' by their needs_new_observer observability plus fires[6]. How a feature's owning wagon is determined (directory placement vs. manifest listing) is not specified by bun.json, so the core leaves it to the realization's check.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/planner-nodes/planner.coverage.bidirectional-coverage-between-wagons.json",
+      "sha256": "d8182fbf6688e36d469f3382a349a182871dac457f512917b492c1a795d912af"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

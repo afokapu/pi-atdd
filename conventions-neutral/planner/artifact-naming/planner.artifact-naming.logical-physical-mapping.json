@@ -1,0 +1,325 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.artifact-naming.logical-physical-mapping",
+  "legacyId": "planner.artifact-naming.logical-physical-mapping",
+  "core": {
+    "title": "Map each logical artifact name to its contract path with the stack's deterministic segmentation rule",
+    "given": "Any work (for example a plan artifact, an acceptance, a doc, source code, tooling or config) involves a logical artifact name: a segmented logical name whose final segment is an aspect, optionally carrying a variant segment.",
+    "when": "You derive, reference or check the contract path where that artifact's contract lives.",
+    "then": "Derive the physical path by splitting the logical name on the stack's name separators, so that each segment is a directory level under the contract root and the final segment supplies the file name — the variant, which is a file name only and not a directory level, when the name carries one, otherwise the aspect, which then also remains the final directory level — under the stack's contract file pattern, or no file at all for a directory reference.",
+    "prefer": [
+      "A variant becomes the contract document's file name instead of adding a directory level.",
+      "A singular aspect maps to one single-object contract document named after the aspect.",
+      "A plural aspect backed by a concrete collection maps to the stack's collection-contract construct, whose item contract is the singular contract.",
+      "A plural aspect that only groups related contracts maps to a directory reference with no contract document."
+    ],
+    "avoid": [
+      "Stating a contract path that does not follow the stack's segmentation mapping for the named artifact.",
+      "Inventing a contract document for a directory reference, or naming the document after the aspect when a variant exists."
+    ],
+    "unless": [],
+    "why": "A deterministic mapping lets anyone locate an artifact's contract from its name alone, so names and files cannot drift.",
+    "evidence": [
+      "For each artifact name referenced, splitting on the stack's name separators yields exactly the referenced contract directory and file name.",
+      "Physical form matches the aspect: singular -> one single-object contract document; plural with a concrete collection -> the stack's collection contract referencing the singular contract; plural grouping -> a directory with no contract document."
+    ],
+    "verification": [
+      "Needs a new observer: for every logical artifact name whose contract path is derived, referenced or checked, re-derive the path with the profile's mapping — every name segment is a directory level under the profile's contract root; a variant names only the file; without a variant the aspect is both the final directory level and the file stem — and flag any stated or existing contract path that differs.",
+      "The check covers only the name-to-path mapping: it does not judge how the artifact name is composed (naming pattern) or the singular vs plural choice (cardinality) when no contract path is derived, referenced or checked in the same work, and a contract path with no logical artifact name to map from or to is out of scope."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "task_term",
+          "values": [
+            "artifact",
+            "contract",
+            "schema",
+            "URN",
+            "produces",
+            "consumes"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "contract document",
+            "contract directory"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "artifact name does not resolve to the stated contract path"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "Any task derives, references or checks the physical contract path for a logical artifact name, e.g. a plan artifact stating where an artifact's contract lives.",
+        "An acceptance, doc, source code, tooling or config references a contract path for a named artifact.",
+        "A new variant segment or plural aspect is introduced and its contract location must be stated.",
+        "Naming or cardinality work that also states or derives the contract path of the artifact."
+      ],
+      "doesNotFire": [
+        "Text mentions a contract path with no logical artifact name to map from or to.",
+        "Deciding singular vs plural aspect (cardinality-from-aspect convention), provided no contract path is derived, referenced or checked in the same work.",
+        "Composing the artifact name itself (naming-pattern convention), provided no contract path is derived, referenced or checked in the same work."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "urn.artifact_name",
+      "meaning": "The grammar of a logical artifact name — the separator between name segments and the separator that marks a variant in the final segment — which the core's mapping splits on.",
+      "bunValue": "':' separates name segments, '.' separates a variant from its aspect (e.g. scenario:fragment, sensory:gesture.raw; title: splitting on ':' and '.')"
+    },
+    {
+      "key": "layout.contracts_dir",
+      "meaning": "Root directory of the contract tree, under which each name segment becomes one directory level.",
+      "bunValue": "contracts/"
+    },
+    {
+      "key": "suffix.contract",
+      "meaning": "File-name pattern of an artifact's contract document, applied to the final segment's stem (variant if present, else aspect).",
+      "bunValue": "<variant>.schema.json if a variant exists, else <aspect>.schema.json (activation globs: contracts/**, contracts/**/*.schema.json)"
+    },
+    {
+      "key": "idiom.collection_contract",
+      "meaning": "The stack's concrete construct for a collection contract (a plural aspect backed by a concrete collection) and how that contract references its singular contract, including the relative reference layout — this is what the core's collection-contract requirement (prefer[2], evidence[1]) instantiates to.",
+      "bunValue": "array schema {type: array, items: $ref ../singular} — a JSON Schema of type array whose items $ref the singular aspect's schema one directory up (../<singular>.schema.json)"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "urn.artifact_name",
+      "group": "urn",
+      "meaning": "Shape of a logical artifact name: the separator between name segments and the separator marking a variant in the final segment — the grammar that logical-to-physical mapping rules split on.",
+      "bunValue": "':' separates name segments, '.' separates a variant from its aspect (scenario:fragment, sensory:gesture.raw)",
+      "whyNoExistingKey": "urn.<artifact> gives URN shapes of typed artifacts (component, acceptance, ...) and urn.declaration/urn.binding cover declaration syntax; no key gives the generic logical artifact name grammar."
+    },
+    {
+      "key": "layout.contracts_dir",
+      "group": "layout",
+      "meaning": "Root directory of the contract tree, under which each name segment of a logical artifact name becomes a directory level.",
+      "bunValue": "contracts/",
+      "whyNoExistingKey": "The layout group locates wagons, features, commons, plan items and tests, and the roots group has no contract root; the contract/schema tree is missing."
+    },
+    {
+      "key": "suffix.contract",
+      "group": "suffix",
+      "meaning": "File-name pattern of a contract document (the file kind a logical artifact name resolves to).",
+      "bunValue": "*.schema.json (stem = variant if present, else aspect)",
+      "whyNoExistingKey": "suffix.<file_kind>'s params have no contract/schema file kind; a contract document is neither source, test, markup, plan artifact nor config."
+    },
+    {
+      "key": "idiom.collection_contract",
+      "group": "idiom",
+      "meaning": "The stack's concrete construct for a collection contract (a plural aspect with a concrete collection) and how it references its singular contract, including the relative reference layout.",
+      "bunValue": "array schema {type: array, items: $ref ../singular} — a JSON Schema of type array whose items $ref the singular aspect's schema one directory up (../<singular>.schema.json)",
+      "whyNoExistingKey": "The idiom group covers boundary, validation, runtime and markup constructs (handlers, guards, imports, gates); no key describes the contract language's collection/reference notation, and the urn/suffix/layout keys cover only name grammar, root and file pattern."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "given",
+      "text": "involves a logical artifact name such as scenario:fragment or sensory:gesture.raw",
+      "reason": "Concrete ATDD-Bun example names exercising the stack's ':'/'.' name grammar; the core omits concrete examples because bun.json is delivered as the reference example."
+    },
+    {
+      "item": "prefer[0]",
+      "text": "gesture.raw -> gesture/raw.schema.json",
+      "reason": "Worked example inlining the Bun separators, contract root and contract file pattern; the core keeps only the role-level rule."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "Algorithm: segments = split(artifact, /[:.]/); path = 'contracts/' + segments[0..-1].join('/'); file = variant ? variant+'.schema.json' : (directory_reference ? none : aspect+'.schema.json').",
+      "reason": "Exact checker pseudocode inlines the Bun separators, contract root and contract file pattern; the core's verification states the same mapping generically with those values from the profile."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "text": "Reference examples: scenario:fragment -> contracts/scenario/fragment/fragment.schema.json (singular object); scenario:fragments -> contracts/scenario/fragments/fragments.schema.json (array schema); commons:ux:foundations -> contracts/commons/ux/foundations/ (directory reference, no file); sensory:gesture.raw -> contracts/sensory/gesture/raw.schema.json (variant becomes filename); commons:ux:foundations:color.primary -> contracts/commons/ux/foundations/color/primary.schema.json",
+      "reason": "Worked reference examples with concrete Bun names and paths; by design the core does not repeat them — bun.json is the delivered reference example for other stacks."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "text": "Term physical_form ('Three physical forms'): directory_reference = logical grouping, no concrete schema file; array_schema = {type: array, items: $ref ../singular}; singular_schema = single object schema.",
+      "reason": "The physical_form term name and its three-value realization vocabulary belong to the Bun checker; the three forms' neutral content is carried by core prefer[1..3] and evidence[1], and the array_schema value is supplied on instantiation by the profile key idiom.collection_contract."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "bunOnly"
+      ],
+      "note": "Situations neutralized (wagon/WMBT -> plan artifact); the concrete example names are Bun reference material."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "'schema' is the Bun name for the contract document; the core says 'contract', and suffix.contract supplies the schema form on instantiation."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then"
+      ],
+      "note": "Split separators, contract root and contract file pattern come from urn.artifact_name, layout.contracts_dir and suffix.contract; instantiating them reproduces the Bun then exactly."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Already stack-neutral; kept verbatim."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]",
+        "bunOnly"
+      ],
+      "note": "Neutral rule kept; the concrete gesture.raw worked example stays in the realization."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]"
+      ],
+      "note": "'object schema' generalized to single-object contract document."
+    },
+    {
+      "item": "prefer[2]",
+      "as": [
+        "core:prefer[2]",
+        "profile:idiom.collection_contract"
+      ],
+      "note": "The structural rule (collection contract whose item contract is the singular contract) is core; the concrete array-schema and relative $ref realization is supplied to other stacks through idiom.collection_contract, so it is no longer bunOnly."
+    },
+    {
+      "item": "prefer[3]",
+      "as": [
+        "core:prefer[3]"
+      ],
+      "note": "'schema file' generalized to contract document; directory-reference rule is neutral."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "'split rule' generalized to the stack's segmentation mapping from the profile."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "'schema file' generalized to contract document; the two failure modes are kept."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]"
+      ],
+      "note": "Separators supplied by urn.artifact_name on instantiation."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]",
+        "profile:idiom.collection_contract"
+      ],
+      "note": "Three physical forms kept structurally in the core; the concrete 'array schema whose items $ref ../singular' realization is the idiom.collection_contract bunValue, so this item is no longer bunOnly."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "The mapping algorithm is stated generically in core verification with profile values; the exact pseudocode with inlined Bun constants is realization detail."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "Concrete worked examples are deliberately not repeated in the core; bun.json is the reference example."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:prefer[1]",
+        "core:prefer[2]",
+        "core:prefer[3]",
+        "core:evidence[1]",
+        "profile:idiom.collection_contract",
+        "bunOnly"
+      ],
+      "note": "The three physical forms underpin the core prefer/evidence items; the array_schema value ({type: array, items: $ref ../singular}) is supplied by idiom.collection_contract; the physical_form term definition itself is realization vocabulary."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:then",
+        "core:verification"
+      ],
+      "note": "Fully neutral disambiguation (aspect is both last directory and filename stem; variant is filename only) folded into the then obligation and the verification algorithm."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]"
+      ],
+      "note": "Task terms (artifact, contract, schema, URN, produces, consumes) are already stack-neutral."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:layout.contracts_dir",
+        "profile:suffix.contract"
+      ],
+      "note": "Bun's path_glob fact becomes a neutral file_kind fact; the concrete globs are reconstructed from the contract root and contract file pattern."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[2]",
+        "core:verification"
+      ],
+      "note": "The finding text is neutral; the needed detector is described generically in core verification, with the split separators supplied by urn.artifact_name."
+    }
+  ],
+  "neutralityNotes": "The split separators (':' and '.'), the contract root ('contracts/'), the contract file pattern ('.schema.json') and the collection-contract idiom ({type: array, items: $ref ../singular}) are not hard-coded in the core; they enter through urn.artifact_name, layout.contracts_dir, suffix.contract and idiom.collection_contract, all proposed because the closed vocabulary has no contract-tree, logical-name or contract-language keys. Worked examples (scenario:fragment -> contracts/..., gesture.raw -> gesture/raw.schema.json) stay in the Bun realization, which is the delivered reference. 'aspect' and 'variant' are kept in the core: they are cross-stack ATDD planner vocabulary from the sibling naming conventions, not stack terms. The Bun activation fact type 'path_glob' has no counterpart in the neutral fact enum and is expressed as a file_kind fact whose recognition patterns come from the profile keys. bun.json declares no severity, disposition or checker ids, so core verification carries only the generic check scope and its exclusions.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/planner-nodes/planner.artifact-naming.logical-physical-mapping.json",
+      "sha256": "dfa56ede08c67b289d75f8535d8d35a8a9f8d23be66ce48c189b7a38f6f52303"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

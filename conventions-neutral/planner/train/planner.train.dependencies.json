@@ -1,0 +1,285 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.train.dependencies",
+  "legacyId": "planner.train.dependencies",
+  "core": {
+    "title": "Reference train prerequisites in the train URN shape",
+    "given": "A train's plan artifact exists or is being authored, edited, reviewed or validated, with or without existing dependency entries",
+    "when": "The planner writes, changes or checks that train's dependencies",
+    "then": "Every entry in the train's dependencies must be a reference to a prerequisite train, written in the train URN shape given by the profile.",
+    "prefer": [
+      "Foundation (commons) trains often precede the trains that build on them; order them first when that applies — a frequent pattern, not an unconditional requirement."
+    ],
+    "avoid": [
+      "A data-flow consumer train that does not depend on the train producing the data it consumes — consumers must depend on producers.",
+      "Circular dependencies between trains — direct, transitive, or a train listing itself — are forbidden.",
+      "Free-text, bare-id or references to finer-grained plan artifacts (such as wagons) in the dependencies list instead of a train reference in the train URN shape.",
+      "Reversing direction: making a producer depend on its consumer."
+    ],
+    "unless": [],
+    "why": "A dependency is a prerequisite train reference; one uniform train reference shape lets tooling resolve ordering, consumers need their producers first, and a cycle makes the trains impossible to sequence.",
+    "evidence": [
+      "Every entry in each train's dependencies matches the profile's train URN shape and resolves to an existing train.",
+      "A graph walk over all train dependencies (including self-edges) finds no cycle.",
+      "Each consumer train lists the train producing its consumed data among its dependencies; no producer depends on its consumer."
+    ],
+    "verification": [
+      "Treat every dependency entry as a prerequisite-train reference and validate it against the profile's train URN shape; an entry that does not match, or does not resolve to an existing train, is a violation.",
+      "Validate existing entries on every train, not only on trains changed in the current edit; a train referencing itself is a cycle of length one.",
+      "The reference-shape check and the whole-graph cycle walk (self-edges included) are mechanical; the consumer-depends-on-producer (data-flow) check is llm_judged unless the stack's plan data records train-level produce/consume relationships."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "train spec",
+            "train registry entry"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "task_term",
+          "values": [
+            "train",
+            "dependency",
+            "dependencies",
+            "prerequisite",
+            "depends on",
+            "train order",
+            "sequence trains"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "train spec added or edited",
+            "train dependency list added or edited"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "dependency reference not matching the train reference shape",
+            "train depends on itself",
+            "circular train dependency",
+            "consumer train missing dependency on its producer train"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "Planner authors a new train that needs another train's outputs or foundation first",
+        "Planner edits the dependencies list of an existing train",
+        "Planner adds or edits a train that consumes data produced by another train",
+        "Planner reviews or validates existing train specs, including ones whose dependencies list contains malformed references, a self-reference, or a cycle",
+        "Planner edits any part of a train spec whose existing dependencies violate the reference shape or form a cycle"
+      ],
+      "doesNotFire": [
+        "Editing a wagon's internal acceptances or WMBTs without touching or reviewing any train spec",
+        "Authoring documentation or plans that do not define, edit or validate train specs"
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "urn.train",
+      "meaning": "The URN shape every prerequisite-train reference must match — the core's 'train URN shape' in then, avoid, evidence and the check.",
+      "bunValue": "^train:[0-9]{2}-[a-z][a-z0-9-]*$"
+    },
+    {
+      "key": "roles.plan_artifact.kinds",
+      "meaning": "The concrete plan-artifact kinds this rule fires on: the kind that defines a train and the registry kind that lists trains.",
+      "bunValue": "train spec, train registry entry"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "verifier_detail[1]",
+      "text": "Source example (foundation_first): train:00-auth-session before train:30-match-solo.",
+      "reason": "Concrete project example URNs; the neutral counterpart (foundation trains often ordered first, kept qualified) is core:prefer[0], and bun.json itself is delivered as the reference example."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "text": "Source example (data_flow): train:30-match-solo depends on train:21-scenario-curation.",
+      "reason": "Concrete project example URNs; the neutral obligation (consumers depend on producers) is carried by core:avoid[0] and core:evidence[2]."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given"
+      ],
+      "note": "'train spec' is the plan artifact defining a train — methodology vocabulary, not a stack term; its concrete recognition comes from roles.plan_artifact.kinds."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Unchanged; 'planner' is a methodology role, not a stack role."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:verification",
+        "core:then",
+        "profile:urn.train"
+      ],
+      "note": "Same single obligation; the concrete form train:{train_id} and the regex ^train:[0-9]{2}-[a-z][a-z0-9-]*$ are profile data (urn.train), not core text."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "'a uniform train:{train_id} form' generalized to 'one uniform train reference shape'; the rest is already stack-neutral."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]"
+      ],
+      "note": "The qualified wording ('often', 'when that applies', 'not an unconditional requirement') is kept; the authentication/session illustration stays in bun.json as the reference example."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "No stack terms; the data_flow consumer/producer direction is neutral and kept at full strength."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Kept, including the self-reference case counted as a cycle."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]",
+        "profile:urn.train"
+      ],
+      "note": "'wagon references' kept as a closed-vocabulary plan-artifact example (urn.wagon); 'instead of train:{train_id}' becomes 'instead of a train reference in the train URN shape'."
+    },
+    {
+      "item": "avoid[3]",
+      "as": [
+        "core:avoid[3]"
+      ],
+      "note": "Direction reversal is stack-neutral; kept verbatim in meaning."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "profile:urn.train"
+      ],
+      "note": "The concrete pattern is the urn.train profile value; matching-the-shape and resolving-to-an-existing-train are neutral."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]",
+        "core:verification"
+      ],
+      "note": "The graph walk (self-edges included) is a stack-neutral check description; also restated generically in core.verification."
+    },
+    {
+      "item": "evidence[2]",
+      "as": [
+        "core:evidence[2]"
+      ],
+      "note": "Consumer/producer direction evidence is neutral; kept."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "profile:urn.train"
+      ],
+      "note": "Term definition ('dependency' = prerequisite train reference) is in core then/why; 'circular: forbidden' is core:avoid[1]; the concrete pattern is the urn.train profile value; the generic check is in core.verification. No rule-specific detector/validator ids exist in bun.json to mark bunOnly."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "Concrete example URNs with no neutral equivalent; neutral counterpart core:prefer[0]."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "Concrete example URNs with no neutral equivalent; neutral counterparts core:avoid[0] and core:evidence[2]."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Scope of the check (every train, not only changed ones; self-edge = cycle of length one) is stack-neutral enforcement scope."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roles.plan_artifact.kinds"
+      ],
+      "note": "Kind names are methodology vocabulary; how the realization recognizes these kinds concretely is profile data."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]"
+      ],
+      "note": "Task terms are neutral planning vocabulary (notProfileKeys: rule-specific task terms -> core activation)."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[2]"
+      ],
+      "note": "Kept with observability needs_new_observer; no stack terms."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[3]",
+        "core:verification"
+      ],
+      "note": "'not matching pattern' neutralized to 'not matching the train reference shape'; the note's guidance that the producer/consumer check is llm_judged unless train-level produce/consume data exists goes to core.verification."
+    }
+  ],
+  "neutralityNotes": "Trains, wagons and WMBTs are ATDD plan-artifact vocabulary present in the closed profile vocabulary (urn.train, urn.wagon, urn.wmbt, layout.wagon_dir), so the core uses them rather than code roles; no stack, runtime, framework, language, package manager, file suffix or path is named. The only genuinely stack-specific datum is the concrete reference form train:{train_id} / ^train:[0-9]{2}-[a-z][a-z0-9-]*$, which becomes profile data (urn.train); a stack with a different train URN shape realizes the identical obligation with its own value. The two concrete source examples (verifier_detail[1], verifier_detail[2]) stay Bun-only under the reference-example policy. 'unless' is empty in bun.json and remains empty in the core. bun.json declares no per-rule severity or disposition, so none was invented; the llm_judged status of the consumer→producer check and the validate-every-train scope are kept in core.verification.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/planner-nodes/planner.train.dependencies.json",
+      "sha256": "3aa3109b6cae961e0fbc9c37cea320a7bb52857b19128b518440dce2f7b4e42e"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 1,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

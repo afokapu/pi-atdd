@@ -1,0 +1,375 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.docs.adr-registry-derived-listing-matches-adrs",
+  "legacyId": "planner.docs.adr-registry-derived.listing-matches-adrs",
+  "splitOf": "planner.docs.adr-registry-derived",
+  "core": {
+    "title": "The decision registry lists exactly the declared decision records, with no missing and no stale entry",
+    "given": "A documentation corpus with a decisions tree holding zero or more decision records (ADRs). The registry document that lists them may or may not exist yet.",
+    "when": "The documentation corpus is validated or reviewed, or you plan or author any docs change (typically adding, renaming or removing a decision record, editing its declared id or its declared decision target, or editing the registry document).",
+    "then": "The registry listing names exactly the decision records the corpus declares: every decision record's id is listed, and every listed id has a decision record.",
+    "prefer": [
+      "Delimit the listing with the stack's generated-region markers where the list belongs, so that only that region is read.",
+      "Run the stack's registry drift check to confirm there is no drift. It writes nothing."
+    ],
+    "avoid": [
+      "Leaving a stale entry after a decision record is renamed or removed. A list that names something is read as authoritative, so the stale entry survives review.",
+      "Mentioning decision ids in prose without delimiting the listing region. Outside fenced example blocks those mentions count as listed references. Delimit the region if the prose should be ignored."
+    ],
+    "unless": [
+      "Prose around the entries (a title, an introductory paragraph) is not compared. Only the set of decision-id references is.",
+      "A decisions tree with no decision records needs no entries. An empty registry is correct."
+    ],
+    "why": "The check is bidirectional on purpose. A missing entry is the obvious drift. A stale entry (a record listed after its file was renamed or removed) is the one that survives review, because a list that names something is read as authoritative about it.",
+    "evidence": [
+      "The stack's registry drift check reports no drift.",
+      "The set of decision-id references in the registry listing equals the set of decision records (by declared id) in the decisions tree, in both directions."
+    ],
+    "verification": [
+      "Violation in both directions: a decision record in the tree but absent from the registry listing (missing), or a listing entry with no decision record in the tree (stale).",
+      "Listing region: if the registry delimits a generated region (per the profile's generated-region idiom), only that region is read. These are the markers a generator writes around its own output; a corpus whose generator marks its output has already said where its list begins and ends, and taking it at its word beats any heuristic.",
+      "If no region is delimited, the registry document is read minus its fenced example blocks (per the profile's fence idiom). A decision-record skeleton shown in fences illustrates the shape and lists nothing.",
+      "When no region is delimited, a prose mention of a decision id is not excused: a sentence naming an id and a list entry naming one cannot be told apart without guessing at the corpus's formatting. A corpus that wants prose ignored says so by delimiting the region.",
+      "A decision record is recognized, and its id read, per the profile's decision-record pattern.",
+      "Resolving a decision record's declared decision target is out of scope here: the sibling rule that resolves graph edges reports a target no document declares, not this one.",
+      "If decision records exist and the registry document is absent or has no listing, every record counts as a missing entry.",
+      "The invariant is unconditional: drift already present in the corpus is a violation whenever the corpus is checked, whether or not the current change touches the records or the registry.",
+      "A listing that equals the record set exactly raises no drift finding here even if the registry was not regenerated; provenance is judged by the sibling part of this convention that requires regeneration over hand-typing.",
+      "Severity 2."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "decision record",
+            "decision registry"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "operation",
+          "values": [
+            "create",
+            "edit",
+            "rename",
+            "delete"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "registry drift: decision-record set (by declared id) != set of decision-id references in the registry listing"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "Corpus validation (the stack's registry drift check, or a docs audit for an unrelated change) finds existing drift that no current change introduced.",
+        "A decision record exists and its declared id is not in the registry listing (missing entry). This includes the case where the registry document does not exist or has no listing.",
+        "The listing names a decision id that no decision record declares, e.g. after a rename, a removal or an id change (stale entry).",
+        "No generated region is delimited, and a prose sentence in the registry document (outside fenced example blocks) names a decision id that no record declares. The sentence counts as a listed reference."
+      ],
+      "doesNotFire": [
+        "The title or introductory paragraph of the registry document changes and the set of decision-id references still matches the record set.",
+        "A generated region is delimited and some text outside the region, including prose, names decision ids. Only the region is read.",
+        "No region is delimited and a decision-record skeleton appears inside a fenced example block.",
+        "The decisions tree holds no decision records and the registry has no entries.",
+        "A decision record's declared target names an undeclared architecture node. The sibling rule that resolves graph edges reports this case.",
+        "The listing equals the record set exactly, even though the registry was not regenerated. This part raises no drift finding; provenance is judged by the sibling part that requires regeneration over hand-typing."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "layout.decision_records",
+      "meaning": "Where the corpus's decision records live and how one is recognized: the file pattern plus the attributes that make a document a decision record, including the attribute that declares its id and the attribute that declares its decision target.",
+      "bunValue": "documents at `docs/architecture/decisions/adr-YYYYMMDD-NNN-<slug>.adoc` (glob `docs/architecture/decisions/adr-*.adoc`) declaring `:adr-id:`, `:status:`, `:date:` and `:decides:`"
+    },
+    {
+      "key": "layout.decision_registry",
+      "meaning": "The registry document that lists the decision records by id; it may not exist yet.",
+      "bunValue": "`docs/architecture/decisions/index.adoc`"
+    },
+    {
+      "key": "idiom.generated_region",
+      "meaning": "How a machine-maintained (generated) region is delimited, so that only that span is read as the listing, and the name of the registry's region.",
+      "bunValue": "a span delimited by `// BEGIN GENERATED: <name>` and `// END GENERATED: <name>`, which a generator rewrites in place; the registry's region is named `adr-register`"
+    },
+    {
+      "key": "idiom.fenced_example_block",
+      "meaning": "The markup construct that fences literal/example blocks whose content illustrates shape and lists nothing.",
+      "bunValue": "AsciiDoc `----` listing blocks"
+    },
+    {
+      "key": "enforcement.runner",
+      "meaning": "The stack-wide runner that executes the stack's convention checks and thus this rule's registry drift check; the exact per-rule check invocation is a realization detail kept in bunOnly.",
+      "bunValue": "`atdd-bun`"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "layout.decision_records",
+      "group": "layout",
+      "meaning": "Glob/pattern of the corpus's decision records (ADRs) and the attributes that recognize one, including the id-declaring attribute.",
+      "bunValue": "`docs/architecture/decisions/adr-*.adoc`; a document at `docs/architecture/decisions/adr-YYYYMMDD-NNN-<slug>.adoc` declaring `:adr-id:`, `:status:`, `:date:` and `:decides:`",
+      "whyNoExistingKey": "roles.<role>.path accepts only code/test/plan roles and no layout key places decision-record documents; the layout group's doc ('where each kind of artifact is placed') is the right home."
+    },
+    {
+      "key": "layout.decision_registry",
+      "group": "layout",
+      "meaning": "The registry document that lists the decision records by id.",
+      "bunValue": "`docs/architecture/decisions/index.adoc` (may not exist yet)",
+      "whyNoExistingKey": "No layout key places the decisions registry; existing layout keys cover code, test and plan artifacts only."
+    },
+    {
+      "key": "idiom.generated_region",
+      "group": "idiom",
+      "meaning": "How a machine-maintained generated region is delimited (and the name of the registry's region), so that only that span is read as a generated listing.",
+      "bunValue": "`// BEGIN GENERATED: <name>` ... `// END GENERATED: <name>`, a span a generator rewrites in place; the registry's region is named `adr-register`",
+      "whyNoExistingKey": "idiom.comment_marker covers only the line-comment syntax of source files; no key describes the generated-region marker convention."
+    },
+    {
+      "key": "idiom.fenced_example_block",
+      "group": "idiom",
+      "meaning": "The markup construct that fences literal/example blocks whose content illustrates shape and lists nothing.",
+      "bunValue": "AsciiDoc `----` listing blocks",
+      "whyNoExistingKey": "idiom.markup_kinds lists markup artifact kinds, not the fence construct inside a markup document."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "prefer[1]",
+      "text": "Run `atdd-bun docs adr-register --check` to confirm there is no drift. It writes nothing.",
+      "reason": "Names the Bun detector invocation; the core refers generically to the stack's registry drift check, with the runner supplied by enforcement.runner."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "`atdd-bun docs adr-register --check` reports no drift.",
+      "reason": "The concrete check command is this rule's Bun realization; the neutral equivalent is 'the stack's registry drift check reports no drift'."
+    },
+    {
+      "item": "activation.facts[2]",
+      "text": "Computed by the docs_capability validator / `atdd-bun docs adr-register --check` on any corpus validation. The listing is the adr-register region if one is declared, otherwise the whole file minus its ---- blocks.",
+      "reason": "Validator and command ids are per-rule realization details; the region-determination rules are neutralized through the profile idioms and core verification."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:layout.decision_records",
+        "profile:layout.decision_registry"
+      ],
+      "note": "Decisions tree and registry document are profile data; 'index.adoc may not exist yet' kept as 'the registry may not exist yet'."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Attribute names (:adr-id:, :decides:) neutralized to 'declared id' and 'declared decision target'; the path becomes 'the registry document'."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then"
+      ],
+      "note": "Bidirectional equality obligation unchanged; the concrete registry path replaced by 'the registry listing'."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Already stack-neutral."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]",
+        "profile:idiom.generated_region"
+      ],
+      "note": "The concrete marker strings are the profile idiom's value; the core prefers delimiting the listing region."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]",
+        "profile:enforcement.runner",
+        "bunOnly"
+      ],
+      "note": "Core: run the stack's registry drift check, which writes nothing; the runner comes from enforcement.runner (stack-wide value 'atdd-bun') and the exact command is the Bun realization."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Already stack-neutral ('ADR' rendered as 'decision record')."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]",
+        "profile:idiom.generated_region",
+        "profile:idiom.fenced_example_block"
+      ],
+      "note": "'---- blocks' becomes 'fenced example blocks' per the profile idiom; 'markers' becomes the delimited generated region."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]"
+      ],
+      "note": "Already stack-neutral."
+    },
+    {
+      "item": "unless[1]",
+      "as": [
+        "core:unless[1]"
+      ],
+      "note": "Already stack-neutral."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ],
+      "note": "Neutral evidence is the stack's registry drift check reporting no drift; the command itself is bunOnly."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]"
+      ],
+      "note": "':adr-id:' becomes 'declared id'; the bidirectional set equality is unchanged."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Bidirectional violation definition, neutral wording."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "profile:idiom.generated_region"
+      ],
+      "note": "Listing rule 1 kept verbatim in substance; the marker syntax comes from the profile idiom."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification",
+        "profile:idiom.fenced_example_block"
+      ],
+      "note": "Listing rule 2 kept; '----' is the profile fence idiom's value."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Listing rule 3 (prose not excused when no region is delimited), neutral wording."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification",
+        "profile:layout.decision_records"
+      ],
+      "note": "The ADR recognition rule (path pattern plus the four attributes) is profile data; the check recognizes records per that pattern."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "as": [
+        "core:verification",
+        "profile:idiom.generated_region"
+      ],
+      "note": "The generated-region definition is the profile idiom; the core verification uses the concept."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Scope exclusion kept; the sibling rule is named by function (resolves graph edges) rather than by id."
+    },
+    {
+      "item": "verifier_detail[7]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Severity belongs to core verification, not to the profile. bun.json declares Severity 2 and no disposition, so none is added; any disposition (e.g. the source's strict note) is realization-level context and imposes nothing here."
+    },
+    {
+      "item": "verifier_detail[8]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Absent or listing-less registry => every record is a missing entry; neutral wording."
+    },
+    {
+      "item": "verifier_detail[9]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Unconditional invariant, unchanged in substance."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:layout.decision_records",
+        "profile:layout.decision_registry"
+      ],
+      "note": "The closed fact enum has no path_glob; mapped to file_kind over the two artifact kinds, whose concrete paths are the profile keys' values."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]"
+      ],
+      "note": "Operations are already neutral; the fact's note (finding fires on its own at validation time) is carried by fires[0]."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[2]",
+        "bunOnly"
+      ],
+      "note": "Finding neutralized to set inequality by declared id vs listing references; the validator/command in the note are bunOnly."
+    }
+  ],
+  "neutralityNotes": "The obligation itself (a registry listing must equal the declared decision-record set, bidirectionally, with the region-determination and prose rules) is fully stack-neutral. What could not be neutralized in place: the AsciiDoc/ATDD-Bun specifics - the registry and record paths, the :adr-id:/:status:/:date:/:decides: attributes, the // BEGIN/END GENERATED markers (region name adr-register) and the ---- fences - have no keys in the closed vocabulary (it covers only code, test and plan artifacts), so four keys are proposed and the exact Bun values ride in profileRequirements. The detector invocation (`atdd-bun docs adr-register --check`) and the docs_capability validator ref stay in bunOnly; enforcement.runner carries only the stack-wide runner value, per the vocabulary's assignment of single-rule detector details to the realization. Severity stayed in core verification per notProfileKeys; bun.json declares no disposition for this rule, so none is stated in the core. Sibling conventions are referenced by function ('the rule that resolves graph edges', 'the sibling part requiring regeneration over hand-typing') because their current ids were not available in these inputs. The activation fact type path_glob does not exist in the closed fact enum and was mapped to file_kind over the two artifact kinds.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/splits/planner.docs.adr-registry-derived.json",
+      "sha256": "a1de592426203315dc51cab075a2ee7652d5c961aecb1b9f0089ac80539b956f",
+      "part": "planner.docs.adr-registry-derived.listing-matches-adrs"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

@@ -1,0 +1,466 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.interface.contract-urn",
+  "legacyId": "planner.interface.contract-urn",
+  "core": {
+    "title": "Give every wagon produce/consume entry a version-free contract URN that resolves in the registry",
+    "given": "A wagon manifest (a plan artifact) declares produce/consume entries that name artifacts by domain, resource and an optional category facet, backed by the contract registry.",
+    "when": "You author or edit those entries, roll contract URNs out across wagons, or change registry contract ids or producers.",
+    "then": "Every produce/consume entry in a wagon manifest carries a version-free contract URN — the profile's contract-URN shape applied to the entry's artifact name, unchanged — that resolves to a contract in the registry (any version) whose producer names the producing wagon.",
+    "prefer": [
+      "Derive the URN from the artifact name per the profile's contract-URN shape: domain first, then resource, with the optional category facet preserved; the name is otherwise unchanged.",
+      "Same URN on the producer's produce entry and every consume entry; each consume entry names the producing wagon through the profile's consume producer-reference idiom.",
+      "Upgrade in order: add urn to all wagon artifacts; validate all resolve; generate missing contracts for orphaned URNs."
+    ],
+    "avoid": [
+      "Legacy URNs that use the facet separator for domain/resource hierarchy; migrate them to the profile's contract-URN shape.",
+      "Versions or schema/API detail in the URN.",
+      "Changing URNs when a contract moves to a new version.",
+      "Dropping the category facet when deriving the URN from the artifact name."
+    ],
+    "unless": [
+      "Pre-URN wagons: the urn field is optional initially; it is required for new wagons."
+    ],
+    "why": "Wagons declare WHAT (URN), contracts HOW (version, schema, API): contracts evolve without wagon-manifest changes, names stay readable, and the graph keeps bidirectional wagon<->contract linkage.",
+    "evidence": [
+      "Every produce/consume entry in a wagon manifest has a urn matching the profile's contract-URN shape and equal to the contract prefix plus the entry's artifact name, unchanged.",
+      "Each URN resolves to a contract in the contract registry: some versioned contract id matching the URN body, at any version.",
+      "The matched contract's producer resolves back to the wagon whose produce entry carries the URN (bidirectional linkage)."
+    ],
+    "verification": [
+      "Shape check: every produce/consume entry's urn matches the profile's contract-URN shape and equals the contract prefix plus the entry's artifact name unchanged (domain, resource and any category facet all preserved).",
+      "Resolution check: each URN resolves to a contract in the contract registry — some versioned contract id whose body matches the URN, at any version; the registry id is the authoritative source for schema, version and API.",
+      "Linkage check: the matched contract's producer resolves back to the wagon whose produce entry carries the URN (bidirectional wagon<->contract linkage); an unresolved URN or a broken back-link is a finding.",
+      "Legacy normalisation: a URN that uses the facet separator for hierarchy normalises to the profile's contract-URN shape, with the category kept as a facet, and is migrated rather than left in place.",
+      "Backward compatibility: a missing urn on a pre-existing (pre-rollout) wagon manifest is tolerated initially; a missing urn on a new wagon manifest is a finding.",
+      "The rollout is checked in order: urn added to all wagon artifacts, then all URNs validated to resolve, then missing contracts generated for orphaned URNs.",
+      "Out of scope: a version-only registry bump (no artifact rename, no producer change) — the URN is unchanged by design."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "wagon manifest (plan artifact)",
+            "contract registry"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "operation",
+          "values": [
+            "create",
+            "edit"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "produce/consume entry added or modified",
+            "urn field added or changed",
+            "registry contract id or producer field added/changed/removed"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "task_term",
+          "values": [
+            "urn",
+            "contract urn",
+            "orphaned urn",
+            "add urn to wagons"
+          ],
+          "observability": "observable_now"
+        }
+      ],
+      "fires": [
+        "Planner adds a produce entry to a new wagon manifest",
+        "Planner adds a consume entry referencing an artifact produced by another wagon",
+        "Planner edits an existing urn field or renames a produced/consumed artifact",
+        "Planner meets a legacy URN in a manifest that uses the facet separator for hierarchy and must migrate it",
+        "Planner runs the URN rollout: adding urn to all wagon artifacts, validating resolution, and generating contracts for orphaned URNs",
+        "Planner changes a contract id or producer field in the registry so a wagon URN may no longer resolve or link back",
+        "A wagon-manifest edit or a registry edit alone activates (the two are alternatives); an ordinary manifest edit does not also require touching the registry"
+      ],
+      "doesNotFire": [
+        "Editing prose docs or acceptances that do not touch wagon-manifest produce/consume entries or registry ids/producers",
+        "Bumping a contract version in the registry without renaming the artifact or changing its producer (the URN stays unchanged)",
+        "Code-only changes outside the plan root and the contract registry"
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roles.plan_artifact.path",
+      "meaning": "Where the plan artifacts that carry produce/consume entries (wagon manifests) live, so activation and checks can target them.",
+      "bunValue": "plan/{wagon}/*.yaml"
+    },
+    {
+      "key": "roles.plan_artifact.kinds",
+      "meaning": "The concrete artifact kind playing the plan-artifact role here: the wagon manifest declaring produce/consume entries.",
+      "bunValue": "wagon manifest (YAML) with produce/consume entries"
+    },
+    {
+      "key": "layout.contract_registry",
+      "meaning": "Location of the contract registry into which contract URNs must resolve (ids, versions, producers).",
+      "bunValue": "contracts/_artifacts.yaml"
+    },
+    {
+      "key": "urn.contract",
+      "meaning": "The version-free contract URN shape carried in the urn field of each produce/consume entry, derived from the entry's artifact name.",
+      "bunValue": "contract:{domain}:{resource}[.{category}]"
+    },
+    {
+      "key": "urn.contract_id",
+      "meaning": "The versioned contract id shape in the registry; a version-free contract URN maps to any version of the matching id.",
+      "bunValue": "{domain}:{resource}[.{category}]:v{version}; urn contract:{domain}:{resource}[.{category}] maps to any version of id {domain}:{resource}[.{category}]:v*"
+    },
+    {
+      "key": "idiom.consume_producer_reference",
+      "meaning": "The syntax by which a consume entry in a wagon manifest names the wagon that produces the consumed artifact (the core's 'consume entries name the producing wagon').",
+      "bunValue": "from wagon:<producer>"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "urn.contract",
+      "group": "urn",
+      "meaning": "The version-free contract URN shape carried in the urn field of each produce/consume entry of a plan artifact, derived from the entry's artifact name.",
+      "bunValue": "contract:{domain}:{resource}[.{category}]",
+      "whyNoExistingKey": "The urn group's artifact params (component, acceptance, smoke_acceptance, train, wmbt, wagon, feature, journey) include no contract kind, and existing keys describe an artifact's own URN or a source file's binding — not a version-free contract reference carried by plan entries."
+    },
+    {
+      "key": "urn.contract_id",
+      "group": "urn",
+      "meaning": "The versioned contract id shape in the contract registry; a version-free contract URN maps to any version of the matching id.",
+      "bunValue": "{domain}:{resource}[.{category}]:v{version}; urn contract:{domain}:{resource}[.{category}] maps to any version of id {domain}:{resource}[.{category}]:v*",
+      "whyNoExistingKey": "No existing key describes registry contract ids or the version-agnostic URN-to-id mapping that resolution depends on."
+    },
+    {
+      "key": "layout.contract_registry",
+      "group": "layout",
+      "meaning": "Location of the contract registry that plan-artifact contract URNs must resolve into (ids, versions, producers).",
+      "bunValue": "contracts/_artifacts.yaml",
+      "whyNoExistingKey": "Layout keys cover wagon/feature/commons code trees and plan items, but none locates the contract registry paired with plan artifacts."
+    },
+    {
+      "key": "idiom.consume_producer_reference",
+      "group": "idiom",
+      "meaning": "The syntax by which a consume entry in a plan artifact (wagon manifest) names the wagon that produces the consumed artifact.",
+      "bunValue": "from wagon:<producer>",
+      "whyNoExistingKey": "The idiom group covers source and declarative-markup constructs (handlers, gates, imports, requests), but no key describes a plan-artifact manifest's producer reference on a consume entry."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "prefer[0]",
+      "text": "mechanic:decision.choice -> contract:mechanic:decision.choice",
+      "reason": "Concrete Bun naming example; worked examples stay in the realization (bun.json is the reference example)."
+    },
+    {
+      "item": "avoid[0]",
+      "text": "Legacy dot hierarchy contract:mechanic.decision.choice",
+      "reason": "Concrete legacy-URN example using the Bun separators; the neutral avoid keeps the wrong-separator-for-hierarchy rule."
+    },
+    {
+      "item": "avoid[3]",
+      "text": "ux:foundations.colors -> contract:ux:foundations",
+      "reason": "Concrete Bun artifact names illustrating facet-dropping; no stack-neutral equivalent beyond the neutral rule."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "urn matching ^contract:[^:.]+:[^:.]+(\\.[^:.]+)?$ and equal to 'contract:' + the entry name",
+      "reason": "Literal check regex hard-coding the Bun URN prefix and separators; the neutral check validates against the profile's contract-URN shape."
+    },
+    {
+      "item": "evidence[3]",
+      "text": "maintain-ux produce name ux:foundations, urn contract:ux:foundations, to external; maintain-ux produce name ux:foundations.colors, urn contract:ux:foundations.colors, to external; stage-characters consume name ux:foundations, urn contract:ux:foundations, from wagon:maintain-ux",
+      "reason": "Worked positive example with real Bun wagon names and syntax (including a concrete instance of the consume producer-reference idiom); covered by the neutral evidence statements plus bun.json as the delivered reference example."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "text": "ux:foundations -> contract:ux:foundations; ux:foundations.colors -> contract:ux:foundations.colors; mechanic:decision.choice -> contract:mechanic:decision.choice; match:result -> contract:match:result; player:identity -> contract:player:identity",
+      "reason": "Name->URN conversion examples; the conversion rule itself is neutral (core prefer/verification) against the profile shape."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "text": "id ux:foundations:v1 (version 1.0.0, path ux/foundations.json, producer wagon:maintain-ux) matches urn contract:ux:foundations; id ux:foundations.colors:v1 matches urn contract:ux:foundations.colors",
+      "reason": "Concrete registry-entry example including Bun file paths and producer syntax."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "text": "contract:mechanic.decision.choice -> contract:mechanic:decision.choice",
+      "reason": "Concrete counter-example; the normalisation rule itself is in core verification against the profile shapes."
+    },
+    {
+      "item": "activation.fires",
+      "text": "a legacy dot-for-hierarchy URN such as contract:{domain}.{resource}",
+      "reason": "Literal legacy-shape illustration inside a fires entry; the neutral fire describes the wrong-separator situation generically."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:roles.plan_artifact.path",
+        "profile:roles.plan_artifact.kinds",
+        "profile:layout.contract_registry"
+      ],
+      "note": "Manifest location/kind and registry location are profile data; the domain/resource/category naming components are convention substance."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "profile:urn.contract",
+        "profile:urn.contract_id"
+      ],
+      "note": "One obligation kept whole (version-free URN + resolution + producer back-link); literal URN and registry-id shapes supplied by the profile."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "'wagon YAML changes' generalized to 'wagon-manifest changes'."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]",
+        "bunOnly"
+      ],
+      "note": "Derivation rule neutral via the profile's contract-URN shape; the concrete name example stays Bun-side."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]",
+        "profile:idiom.consume_producer_reference"
+      ],
+      "note": "Same-URN rule is neutral; the literal `from wagon:<producer>` producer-reference syntax is a configurable manifest idiom, not a Bun-only detail, so it is profile data (idiom.consume_producer_reference, proposed) and the core's producer-reference requirement connects to it — another stack supplies its corresponding syntax. Only the concrete worked instance (evidence[3]) stays bunOnly."
+    },
+    {
+      "item": "prefer[2]",
+      "as": [
+        "core:prefer[2]",
+        "core:verification"
+      ],
+      "note": "Ordered rollout kept verbatim; also restated as the check's phase order."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]",
+        "bunOnly"
+      ],
+      "note": "Neutralized to wrong-separator-for-hierarchy; the literal legacy example is bunOnly."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Neutral once the ':v1' illustration is dropped."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]"
+      ],
+      "note": "'v1->v2' generalized to 'a new version'."
+    },
+    {
+      "item": "avoid[3]",
+      "as": [
+        "core:avoid[3]",
+        "bunOnly"
+      ],
+      "note": "Facet-dropping rule neutral; concrete names are bunOnly."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]",
+        "core:verification"
+      ],
+      "note": "Pre-URN tolerance is both an exception and the check's backward-compatibility rule (with verifier_detail[6])."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Neutral shape/equality evidence; the literal regex is the mechanical Bun restatement."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]",
+        "core:verification",
+        "profile:layout.contract_registry",
+        "profile:urn.contract_id"
+      ],
+      "note": "Resolution evidence; registry path and id shape come from the profile."
+    },
+    {
+      "item": "evidence[2]",
+      "as": [
+        "core:evidence[2]",
+        "core:verification"
+      ],
+      "note": "Bidirectional-linkage evidence is already neutral."
+    },
+    {
+      "item": "evidence[3]",
+      "as": [
+        "bunOnly",
+        "profile:idiom.consume_producer_reference"
+      ],
+      "note": "Worked positive example with real Bun wagon names; not repeated in the core per the reference-example rule. Its `from wagon:maintain-ux` fragment is a concrete instance of the consume producer-reference idiom, whose syntax is profile data."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "profile:urn.contract"
+      ],
+      "note": "Format/conversion rule restated generically against the profile shape; it also underwrites core:prefer[0]."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "Pure conversion examples; the rule they illustrate lives in core:prefer[0] and verification."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification",
+        "profile:urn.contract_id",
+        "profile:layout.contract_registry"
+      ],
+      "note": "Registry id semantics (authoritative for schema/version/API; URN matches any version) described generically; shapes from profile."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "Concrete id-matching examples with Bun paths and producer syntax."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Linkage/validation check described generically (URN->contract lookup, producer->wagon)."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Legacy normalisation rule neutral via profile shapes; the counter-example is bunOnly."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "as": [
+        "core:verification",
+        "core:unless[0]"
+      ],
+      "note": "Backward-compatibility disposition of the check, mirroring unless[0]."
+    },
+    {
+      "item": "verifier_detail[7]",
+      "as": [
+        "core:verification",
+        "core:prefer[2]"
+      ],
+      "note": "Rollout phases as the check's ordered scope."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roles.plan_artifact.path",
+        "profile:roles.plan_artifact.kinds",
+        "profile:layout.contract_registry"
+      ],
+      "note": "The path_glob fact (no neutral path fact type) becomes a file_kind fact over wagon manifests and the registry; locations come from the profile; its OR note moved into fires."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[2]"
+      ],
+      "note": "Change values are neutral; the needs_new_observer status and the version-bump exclusion are kept (exclusion also in doesNotFire/verification)."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[3]"
+      ],
+      "note": "Task terms kept in core activation (neutral per vocabulary notProfileKeys guidance)."
+    },
+    {
+      "item": "activation.fires",
+      "as": [
+        "core:activation.fires",
+        "bunOnly"
+      ],
+      "note": "Situations neutralized to role level (plan root, registry); the literal legacy-URN illustration is bunOnly; the OR clarification from facts[0]'s note is added as a fires entry."
+    },
+    {
+      "item": "activation.doesNotFire",
+      "as": [
+        "core:activation.doesNotFire"
+      ],
+      "note": "Neutralized: registry version-bump example generalized, 'outside plan/ and contracts/' becomes 'outside the plan root and the contract registry'."
+    }
+  ],
+  "neutralityNotes": "The obligation itself (version-free contract URN derived from the artifact name, registry resolution at any version, producer back-link, ordered rollout, pre-URN tolerance) is stack-neutral. All concrete shapes, locations and idioms are profile data: manifest location/kind (roles.plan_artifact.path/kinds), the registry location (layout.contract_registry, proposed), the URN and registry-id shapes (urn.contract / urn.contract_id, proposed — the vocabulary's urn group has no contract kind), and the consume-entry producer-reference syntax (idiom.consume_producer_reference, proposed — the idiom group has no manifest producer-reference key); another stack supplies its own corresponding syntax for the core's 'consume entries name the producing wagon'. Bun's path_glob activation fact became a file_kind fact because the neutral fact vocabulary has no path fact; its OR note ('either side alone activates') moved into fires. Worked examples with real wagon names (including the concrete `from wagon:maintain-ux` instance) and the literal check regex stay Bun-side; bun.json is delivered as the reference example. 'Wagon' is retained as neutral vocabulary (the profile vocabulary itself defines wagons as bounded product slices), and 'registry'/'manifest' name convention concepts, not stack mechanisms.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/planner-nodes/planner.interface.contract-urn.json",
+      "sha256": "14ce723e9ace17c46ad6f92af983bd61f5af8a9a0f40acb6e37b358437f1571c"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

@@ -1,0 +1,343 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.plan.confirm-before-author",
+  "legacyId": "planner.plan.confirm-before-author",
+  "core": {
+    "title": "Author nothing before the operator ratifies the locked decomposition",
+    "given": "A plan session whose decomposition the operator has not yet ratified and locked — the ratify gate, where LLM/operator judgment ends and deterministic authoring begins.",
+    "when": "Any authoring writer would be invoked for a unit of the decomposition.",
+    "then": "Author nothing until the operator confirms and the decomposition is locked.",
+    "prefer": [
+      "On ratification, let the plan-session orchestrator (the system, not the agent) deterministically invoke the authoring writer per locked unit: complete, atomic, idempotently replayable.",
+      "In the session machine, keep the lock guard as the first statement of the author pass: raise the stack's session-gate error (idiom.session_gate_error) while the session is unlocked, before invoking any authoring writer."
+    ],
+    "avoid": [
+      "Invoking the authoring writer yourself, before or after ratification.",
+      "An author pass that invokes any writer while the session is unlocked, or a guard moved after the first writer call."
+    ],
+    "unless": [],
+    "why": "Ratify is the conversational-to-deterministic boundary; authoring only from an operator-locked decomposition keeps it complete, atomic and replayable rather than driven by unconfirmed agent judgment.",
+    "evidence": [
+      "The stack's convention check for this rule passes.",
+      "No authoring writer invocation occurs in the session before the lock/ratification event; post-lock invocations come from the plan-session orchestrator per locked unit.",
+      "The session machine's author pass raises the stack's session-gate error (idiom.session_gate_error) while the session is unlocked, as its first statement, before any authoring writer is invoked."
+    ],
+    "verification": [
+      "Severity 4 (high); disposition strict: the rule fails on every finding; no advisory mode, no ratchet baseline.",
+      "Normative check: the session machine's author pass MUST refuse to invoke any authoring writer until the session is locked by the operator's ratification.",
+      "Fix direction: the lock guard runs as the first statement of the author pass, before the first writer invocation, and the pass fails closed by raising the stack's session-gate error (idiom.session_gate_error) while the session is unlocked; the lock-state predicate and the guard-first ordering are part of the rule, not profile data.",
+      "Scope: the check covers the session machine's author pass (located per layout.session_machine) and authoring-writer invocations within a plan session; conversation about the decomposition with no writer invocation, and work outside a plan session, are out of scope.",
+      "Validator, detector and finding ids are realization details of each stack; the core names the check generically."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "phase",
+          "values": [
+            "plan-session:pre-ratify",
+            "plan-session:ratify",
+            "plan-session:author-on-confirm"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "operation",
+          "values": [
+            "invocation of the authoring writer",
+            "plan-session confirm / author-pass execution"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "task_term",
+          "values": [
+            "plan",
+            "decomposition",
+            "ratify",
+            "confirm",
+            "author"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "the session machine's author pass, in the files located by layout.session_machine, is changed or reviewed"
+          ],
+          "observability": "observable_now"
+        }
+      ],
+      "fires": [
+        "The decomposition is proposed but not yet ratified, and an authoring writer is about to be invoked for a unit.",
+        "The agent is tempted to invoke the authoring writer itself instead of letting the plan-session orchestrator do it on confirm.",
+        "The operator has ratified and the session is locked: authoring must happen via the plan-session orchestrator per locked unit, not by the agent.",
+        "The session machine's author pass is changed or reviewed."
+      ],
+      "doesNotFire": [
+        "Conversation about the decomposition in which no authoring writer is invoked and no locked unit is authored.",
+        "Work outside a plan session (no decomposition-to-authoring flow)."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "idiom.session_gate_error",
+      "meaning": "The error type by which the session machine fails closed when a gate blocks an operation; binds the core's 'session-gate error' raised by the author pass in prefer[1], evidence[2] and the verification fix direction. The lock-state predicate (session unlocked) and the guard-first ordering stay in the rule, not in this key.",
+      "bunValue": "SessionGateError"
+    },
+    {
+      "key": "tooling.authoring_writer",
+      "meaning": "The command that deterministically authors one unit of a locked decomposition; binds the core's 'authoring writer', which only the plan-session orchestrator may invoke (never the agent), and whose invocation the activation operation fact observes.",
+      "bunValue": "atdd author <kind>"
+    },
+    {
+      "key": "tooling.plan_orchestrator",
+      "meaning": "The command that runs the plan session (ratify/confirm) and, on confirm, invokes the authoring writer per locked unit; binds the core's 'plan-session orchestrator (the system, not the agent)'.",
+      "bunValue": "atdd plan"
+    },
+    {
+      "key": "layout.session_machine",
+      "meaning": "Where the plan session machine's implementation files (the state machine holding the lock and the author pass) live, relative to the source root; scopes the core's change fact on the session machine's author pass and the check's author-pass scope.",
+      "bunValue": "**/plan/session*, **/PlanSession*"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "idiom.session_gate_error",
+      "group": "idiom",
+      "meaning": "The error type by which the session machine fails closed when a gate blocks an operation (here: authoring before the plan session is locked).",
+      "bunValue": "SessionGateError",
+      "whyNoExistingKey": "idiom.error_types is documented for how domain and boundary errors are typed and raised; the session gate's fail-closed error is plan-session machinery, not a domain or boundary error, and no other idiom key covers it."
+    },
+    {
+      "key": "tooling.authoring_writer",
+      "group": "tooling",
+      "meaning": "The command that deterministically authors one unit of a locked plan decomposition.",
+      "bunValue": "atdd author <kind>",
+      "whyNoExistingKey": "The tooling group covers languages, package manager, manifest/lockfiles, test runner and urn resolver only; no key names the decomposition-to-source authoring writer that planner rules must refer to."
+    },
+    {
+      "key": "tooling.plan_orchestrator",
+      "group": "tooling",
+      "meaning": "The command that runs the plan session (propose/ratify/confirm) and invokes the authoring writer on confirm.",
+      "bunValue": "atdd plan",
+      "whyNoExistingKey": "No vocabulary key names the plan-session driver: enforcement.runner runs convention checks and tooling.test_runner runs tests; neither is the plan flow that owns author-on-confirm."
+    },
+    {
+      "key": "layout.session_machine",
+      "group": "layout",
+      "meaning": "Where the plan session machine's implementation files (session state, lock, author pass) live, relative to the source root.",
+      "bunValue": "**/plan/session*, **/PlanSession*",
+      "whyNoExistingKey": "Layout keys cover wagon, feature, commons, plan-item, test and e2e placement only; roles.<role>.path covers the ten architectural/artifact roles and plan_artifact names plan artifacts (e.g. WMBTs), not the session-machine implementation files."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "given",
+      "text": "the Ratify gate / confirm_boundary",
+      "reason": "'confirm_boundary' is a term id of the Bun corpus/source; the neutral core keeps the concept (the ratify gate where judgment ends and deterministic authoring begins) without the corpus term id."
+    },
+    {
+      "item": "prefer[1]",
+      "text": "keep the lock guard as the first statement of PlanSession.author(): raise SessionGateError when self.locked is False",
+      "reason": "Names the concrete session-machine class, method and lock flag of the Bun realization (PlanSession.author(), self.locked); the fail-closed error type binds to the profile via the proposed idiom.session_gate_error (bunValue: SessionGateError), while the lock-state predicate and the guard-first ordering remain in the neutral core, so only these concrete identifiers stay stack-specific."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "Validator test_plan_confirm_before_author::test_confirm_before_author_is_enforced passes.",
+      "reason": "Validator and test ids of this one rule are realization details; the core's verification names the check generically."
+    },
+    {
+      "item": "evidence[2]",
+      "text": "PlanSession.author() raises SessionGateError when self.locked is False, as its first statement, before any author writer is called.",
+      "reason": "Concrete class, method and lock flag of the Bun session machine; the gate error type binds via idiom.session_gate_error and the neutral behavior (raise it while the session is unlocked, as the first statement, before any writer) is core:evidence[2], so only the concrete class/method/flag names stay with the realization."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "text": "Fix hint: PlanSession.author() must raise SessionGateError when self.locked is False, before calling any author writer. Keep the lock guard as the first statement of author().",
+      "reason": "The neutral fix direction (guard first, raise the stack's session-gate error per idiom.session_gate_error before any writer call, lock predicate kept in the rule) is in core:verification and core:prefer[1]; the concrete class and method names are rule-specific realization details."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "text": "Term author_on_confirm: on confirm, atdd plan deterministically invokes atdd author per locked unit (complete, atomic, idempotently replayable).",
+      "reason": "Corpus term id plus concrete command names; the neutral definition equals core:prefer[0], and the commands are bound by the proposed profile keys tooling.plan_orchestrator and tooling.authoring_writer."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "bunOnly"
+      ],
+      "note": "Neutral given keeps the ratify-gate concept; the corpus term id 'confirm_boundary' is dropped to bunOnly."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when",
+        "profile:tooling.authoring_writer"
+      ],
+      "note": "'atdd author <kind> writer' neutralizes to 'the authoring writer', bound per stack by the proposed tooling.authoring_writer key."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then"
+      ],
+      "note": "Already stack-neutral; one obligation, unchanged."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "No stack names; unchanged."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]",
+        "profile:tooling.plan_orchestrator",
+        "profile:tooling.authoring_writer"
+      ],
+      "note": "'atdd plan (the system, not the agent)' and 'atdd author <kind>' neutralize to the plan-session orchestrator and the authoring writer, bound by the two proposed tooling keys."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]",
+        "profile:idiom.session_gate_error",
+        "bunOnly"
+      ],
+      "note": "Neutral core keeps the full rule content: guard as the first statement of the author pass, raise the stack's session-gate error while the session is unlocked, before any writer call. The error type binds via the proposed idiom.session_gate_error (idiom.error_types is not used: it is documented for domain/boundary error typing, and the lock-state predicate stays in the rule); only the concrete class/method/lock-flag names remain bunOnly."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]",
+        "profile:tooling.authoring_writer"
+      ],
+      "note": "'atdd author writer' becomes 'the authoring writer'; the anti-pattern (agent invoking it, before or after ratification) is unchanged."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Role-level already (author pass, unlocked session, guard ordering); unchanged."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ],
+      "note": "Neutral counterpart 'the stack's convention check for this rule passes'; the validator/test id is a realization detail (bunOnly)."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]",
+        "profile:tooling.authoring_writer",
+        "profile:tooling.plan_orchestrator"
+      ],
+      "note": "Same behavioral evidence with tool names bound by the proposed profile keys."
+    },
+    {
+      "item": "evidence[2]",
+      "as": [
+        "core:evidence[2]",
+        "profile:idiom.session_gate_error",
+        "bunOnly"
+      ],
+      "note": "Neutral: the author pass raises the stack's session-gate error (idiom.session_gate_error) while the session is unlocked, as its first statement, before any writer; the error type is a profile requirement via the proposed key, and the concrete class/method/flag names are bunOnly."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Generic normative check statement; 'atdd author writer' neutralizes to 'authoring writer'."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "profile:idiom.session_gate_error",
+        "bunOnly"
+      ],
+      "note": "The fix direction (guard before the first writer call, fail closed by raising the stack's session-gate error, lock predicate kept in the rule) maps to core:verification with the error type bound via the proposed idiom.session_gate_error; the concrete class/method names are bunOnly."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Per-rule severity and disposition belong to core verification, not to profile keys."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:prefer[0]",
+        "bunOnly"
+      ],
+      "note": "Neutral content equals core:prefer[0]; the corpus term id 'author_on_confirm' and the concrete command names are realization bookkeeping."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]"
+      ],
+      "note": "Phase names are stack-neutral; needs a new observer exposing the session's lock state (locked = operator ratified)."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:tooling.authoring_writer",
+        "profile:tooling.plan_orchestrator"
+      ],
+      "note": "Concrete command invocations neutralize to 'invocation of the authoring writer' and 'plan-session confirm / author-pass execution', bound by the proposed tooling keys; needs a tool-call observer distinguishing invoker (agent vs system) and lock state."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[2]"
+      ],
+      "note": "Task terms are neutral heuristics; unchanged."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[3]",
+        "profile:layout.session_machine"
+      ],
+      "note": "Re-typed from path_glob (not in the closed fact vocabulary) to a change fact on the session machine's author pass; the location globs are stack layout data and bind through the proposed layout.session_machine key instead of remaining bunOnly."
+    }
+  ],
+  "neutralityNotes": "The obligation itself (author nothing before operator ratification and lock; system-owned author-on-confirm; guard-first author pass) is fully stack-neutral. Per revision feedback, the session gate's fail-closed error no longer reuses idiom.error_types (documented for domain/boundary error typing): a proposed idiom.session_gate_error key binds only the error type (Bun: SessionGateError), while the lock-state predicate (session unlocked) and the required guard-first ordering stay in the rule text. The session-machine location globs from activation.facts[3] are stack layout data and now bind through the proposed layout.session_machine key rather than staying bunOnly; the path_glob fact itself is re-typed as a change fact (path_glob is not in the closed fact vocabulary). The concrete session-machine class, method and lock-flag names (PlanSession.author(), self.locked), the corpus term ids (confirm_boundary, author_on_confirm) and the validator/test ids remain bunOnly. Two tooling keys are proposed because the core must bind 'the authoring writer' and 'the plan-session orchestrator' to concrete stack commands and the closed vocabulary has no such keys. The lock-state facts need a new observer in every stack (observability needs_new_observer is preserved).",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/planner-nodes/planner.plan.confirm-before-author.json",
+      "sha256": "c4b4986394ec57df0f819f2594697b0a05ed6f391c1990a287010ade7e59e651"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 3,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

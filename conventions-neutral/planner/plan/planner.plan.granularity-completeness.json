@@ -1,0 +1,332 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.plan.granularity-completeness",
+  "legacyId": "planner.plan.granularity-completeness",
+  "core": {
+    "title": "Plan ratification reports the dangling granularity ladder",
+    "given": "A plan session whose decomposition did not descend every rung of the stack's granularity ladder of plan artifact kinds, down to the terminal acceptance rung (the rung at which the plan becomes testable end to end)",
+    "when": "The plan session is ratified (locked)",
+    "then": "Ratification names the rungs of the ladder the decomposition did not descend, so the operator is told the plan is not testable end to end instead of having to notice it.",
+    "prefer": [
+      "Compose incrementally: ratify the slice in scope (planner.decomposition.local-scope) and let the report name the rungs not yet descended.",
+      "Opt into the strict gate when the repository wants a hard refusal; the refusal is atomic (the session is unlocked before the check raises)."
+    ],
+    "avoid": [
+      "Treating a plan that keeps only the coarsest rung of the ladder as done: it names a shape but nothing testable.",
+      "Blocking non-strict ratification until lower rungs exist (e.g. refusing to lock a decomposition that keeps several coarsest-rung slices); that makes the session unusable."
+    ],
+    "unless": [],
+    "why": "A decomposition that keeps only the coarsest rung names a shape but nothing testable. Advisory by default, deliberately, to allow incremental composition; the failure closed is detection — only an operator holding the protocol in memory noticed that such a plan had locked.",
+    "evidence": [
+      "When rungs were not descended, the ratification report identifies the plan session, the plan-artifact kinds the decomposition kept, and the rungs not descended.",
+      "With the strict gate on, ratification refuses and the plan session is left unlocked (atomic refusal).",
+      "The realization's validator test for this rule passes."
+    ],
+    "verification": [
+      "Check scope: when a plan session is ratified, compute the rungs of the stack's granularity ladder (from the profile) that the session's decomposition did not descend, and report them.",
+      "The check is a presence-style conditional requirement evaluated over the plan session at confirmation; its registration tokens (family, template, variant, subject-kind) are realization detail.",
+      "Disposition: advisory, severity 2, by default and deliberately — report, do not block the lock; the session must stay usable for incremental composition.",
+      "Strict opt-in: a strict mode of the ratification check turns the report into a refusal; the refusal is atomic — the session is unlocked before the check raises.",
+      "Failure evidence must identify the plan session, the plan-artifact kinds kept, and the dangling rungs."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "operation",
+          "values": [
+            "plan ratification",
+            "plan ratification under the strict gate"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "phase",
+          "values": [
+            "confirm"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "dangling rungs of the granularity ladder (rungs the decomposition did not descend)"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "task_term",
+          "values": [
+            "ratify",
+            "lock plan",
+            "decomposition",
+            "acceptance",
+            "the rung names of the stack's granularity ladder"
+          ],
+          "observability": "llm_judged"
+        }
+      ],
+      "fires": [
+        "A plan session is ratified while its decomposition keeps only the coarsest rung of the ladder and nothing else.",
+        "A plan session is ratified whose decomposition did not descend one or more rungs of the ladder down to the acceptance rung.",
+        "Ratification runs under the strict gate on a decomposition with rungs not descended (refusal; the session is left unlocked)."
+      ],
+      "doesNotFire": [
+        "A plan session is ratified whose decomposition descended every rung of the ladder, down to the acceptance rung.",
+        "The planner edits a plan session without ratifying it.",
+        "Coder or tester work on code and tests outside a plan session."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roles.plan_artifact.granularity_ladder",
+      "meaning": "The ordered rungs of the stack's plan-granularity ladder, from the coarsest slice kind to the terminal acceptance rung; the core uses it to define which rungs a decomposition must descend and which rungs are dangling.",
+      "bunValue": "wagon, feature, WMBT, acceptance"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "roles.plan_artifact.granularity_ladder",
+      "group": "roles",
+      "meaning": "The ordered kinds of plan artifact a decomposition must descend, from the coarsest slice kind to the terminal acceptance rung; defines which rungs are dangling when a decomposition skips levels.",
+      "bunValue": "wagon, feature, WMBT, acceptance",
+      "whyNoExistingKey": "roles.plan_artifact.kinds lists the role's artifact kinds without order or a designated terminal rung, and no layout or urn key expresses the sequence of decomposition levels; the rule needs the ordered ladder to define dangling rungs."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "activation.facts[0]",
+      "text": "atdd plan ratify; atdd plan ratify --strict",
+      "reason": "The concrete CLI spellings of the ratification operation and its strict variant belong to the stack's tooling; the core names the operation and the strict gate generically."
+    },
+    {
+      "item": "activation.facts[1]",
+      "text": "phase value CONFIRM",
+      "reason": "The validation-phase token is the stack's validator vocabulary; the core says only that the check runs at plan confirmation."
+    },
+    {
+      "item": "activation.facts[2]",
+      "text": "finding id dangling_rungs",
+      "reason": "The finding id of this rule's validator is a realization detail; the core describes the finding generically."
+    },
+    {
+      "item": "activation.facts[3]",
+      "text": "task terms wagon, feature, WMBT",
+      "reason": "The rung names are per-stack profile data (the granularity ladder), not neutral words."
+    },
+    {
+      "item": "prefer[1]",
+      "text": "`atdd plan ratify --strict`",
+      "reason": "The concrete command and flag of the stack's strict gate; the core prefers the strict gate generically."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "report fields session_id, kept_kinds, dangling_rungs",
+      "reason": "Exact report field spellings are the stack's report shape; the core states the evidence content generically."
+    },
+    {
+      "item": "evidence[1]",
+      "text": "`--strict`",
+      "reason": "Concrete flag spelling of the strict gate; the atomic refusal itself is neutral and kept in the core."
+    },
+    {
+      "item": "evidence[2]",
+      "text": "Validator test test_plan_unit_spec_schema::test_ratify_reports_the_dangling_ladder",
+      "reason": "The validator test id is a realization detail of this rule."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "text": "family=presence, template=conditional_requirement, variant=planner_plan_granularity_completeness, phase=CONFIRM, subject_kind=plan-session",
+      "reason": "Validator registration ids are realization details; the core's verification names the check generically."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "text": "`atdd plan ratify --strict`",
+      "reason": "The concrete command and flag of the stack's strict gate."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "text": "failure evidence fields session_id, kept_kinds, dangling_rungs",
+      "reason": "Exact report field spellings are the stack's report shape; the core's verification states the required evidence content generically."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:roles.plan_artifact.granularity_ladder"
+      ],
+      "note": "The ladder is named generically; its rungs and their order come from the profile key."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Ratification of a plan session is protocol vocabulary, already neutral."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then"
+      ],
+      "note": "The single obligation: name the dangling rungs; already neutral."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "'Wagons-only' neutralized to 'keeps only the coarsest rung'; the detection failure and deliberate advisory stance are neutral."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]"
+      ],
+      "note": "Incremental composition with the report naming un-descended rungs; planner.decomposition.local-scope is a rule id, not a stack artifact."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]",
+        "bunOnly"
+      ],
+      "note": "Strict-gate preference is neutral; the concrete command and flag spelling are realization detail."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "'Wagons-only plan' neutralized to 'a plan that keeps only the coarsest rung'."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Non-blocking stance; the 'eight wagons' example neutralized to coarsest-rung slices."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ],
+      "note": "Report content (session, kept kinds, dangling rungs) is neutral; exact field spellings are realization detail."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]",
+        "bunOnly"
+      ],
+      "note": "Atomic refusal under the strict gate is neutral; the flag spelling is realization detail."
+    },
+    {
+      "item": "evidence[2]",
+      "as": [
+        "core:evidence[2]",
+        "bunOnly"
+      ],
+      "note": "The passing validator test is required evidence; the concrete test id is realization detail."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "profile:roles.plan_artifact.granularity_ladder"
+      ],
+      "note": "Defines dangling rungs generically; the concrete rung list and order come from the profile ladder."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "A presence-style conditional requirement over the plan session at confirmation is the generic check; family/template/variant/subject-kind tokens are realization ids."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Per-rule disposition (advisory) and severity (2) belong to core verification, not to the profile; the core states severity 2 exactly."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Strict opt-in and the atomic refusal are neutral verification facts; the concrete command/flag spelling is realization detail."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Required failure-evidence content is neutral; exact field spellings are realization detail."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "bunOnly"
+      ],
+      "note": "The operation fact stays (plan ratification, strict variant); the concrete command strings are realization detail."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]",
+        "bunOnly"
+      ],
+      "note": "The confirm phase stays with observability needs_new_observer; the token CONFIRM is the stack's phase vocabulary."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[2]",
+        "bunOnly"
+      ],
+      "note": "The dangling-rungs finding stays generic; the finding id is realization detail."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[3]",
+        "bunOnly"
+      ],
+      "note": "Neutral terms kept; the rung-name terms (wagon, feature, WMBT) come from the stack's ladder via the profile."
+    }
+  ],
+  "neutralityNotes": "Plan session, ratify/lock, planner, decomposition and the acceptance rung are treated as ATDD-protocol vocabulary, not stack specifics, and stay in the core. What could not be made neutral: the ladder's concrete rung names (moved to the profile via the proposed key roles.plan_artifact.granularity_ladder), the ratification command spellings including the strict flag, the report field names, and the phase/finding/validator-registration tokens (all bunOnly realization details). prefer[0] keeps the cross-reference to planner.decomposition.local-scope, which is a rule id rather than a stack artifact. The 'wagons-only' wording was neutralized as 'keeps only the coarsest rung'; with the Bun profile ladder (wagon = coarsest rung) this restores exactly the Bun reading. The per-rule severity is carried exactly (severity 2) in core verification, per the notProfileKeys rule that per-rule severity and disposition stay with the rule.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/planner-nodes/planner.plan.granularity-completeness.json",
+      "sha256": "3d9e31a23ed4772c3ffe2ca47b2ae4c744b00c817f34918f7c452bfcfc28a008"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

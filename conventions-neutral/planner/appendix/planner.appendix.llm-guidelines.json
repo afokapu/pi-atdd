@@ -1,0 +1,343 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.appendix.llm-guidelines",
+  "legacyId": "planner.appendix.llm-guidelines",
+  "core": {
+    "title": "Read every provided appendix before planning from it",
+    "given": "The user's input includes an appendix (file path, file URL, or 'appendix:' mention).",
+    "when": "You are about to create a planning output (one of the stack's plan artifact kinds, profile: roles.plan_artifact.kinds) or to ask what the user wants to create.",
+    "then": "Read the appendix with the designated file-reading tool (profile: idiom.file_read_tool) and grasp what it shows (multi-screen flow, single component, architecture, etc.) before producing the output or the question.",
+    "prefer": [
+      "Read an appendix in a format the designated file-reading tool consumes directly as multimodal input (exactly the formats listed in profile: tooling.appendix_readable_formats) as multimodal input rather than treating it as an opaque attachment.",
+      "Analyze by type: mockup → UI components, layouts, flows, states, interactions, responsive variants; spreadsheet → business rules, calculations, data models, validation constraints; document → requirements, constraints, specifications, acceptance criteria; diagram → architecture, entities, sequences, state transitions, relationships; audio → transcribe, extract user pain points, requirements, context, clarifications; video → workflows, interactions, pain points, existing behavior patterns.",
+      "When creating, enrich the output with the appendix's type-specific content appropriate to that output's kind: apply the entries of the kind-keyed enrichment map for the kind being created (the concrete map is realization data; the kinds come from the profile's plan artifact kinds) — e.g. more accurate description and a domain model from diagrams/documents; behavioral step statements from flows/interactions; an acceptance harness matched to the appendix type (mockup → visual, diagram → integration); component clustering from mockup sections; component props/state/behavior from mockups and diagrams — not the entire list for every output.",
+      "Grounded question shape: state what the appendix shows (e.g. 'I see your mockup shows a login form'), then ask what the user wants to create."
+    ],
+    "avoid": [
+      "Planning from the text request alone, ignoring a provided appendix.",
+      "When creating: producing an output not enriched with the appendix's type-specific content appropriate to that output's kind (prefer[1], prefer[2]). Required.",
+      "When creating: leaving the appendix unreferenced in the output's manifest. Required step; manifest structure is defined by the artifact schema, not this convention.",
+      "When intent is unclear (the request names no plannable artifact kind): asking an abstract question that ignores the appendix, e.g. 'What do you want to build?'. The question must cite what the appendix shows."
+    ],
+    "unless": [],
+    "why": "Appendices only reduce ambiguity if consumed — to enrich generated artifacts and to ground routing questions in concrete content, cutting confusion and back-and-forth.",
+    "evidence": [
+      "The planner transcript shows the appendix was read (a call of the designated file-reading tool, profile: idiom.file_read_tool, on the referenced path/URL) before the output or question was produced.",
+      "Created artifacts contain details traceable to the appendix's type-specific content (e.g. components/flows from a mockup, entities from a diagram, rules from a spreadsheet), and acceptance harnesses match the appendix type (mockup → visual, diagram → integration).",
+      "When an output was created, its manifest references the appendix (in the schema-defined manifest structure).",
+      "Clarification questions asked after an appendix was provided without clear intent name concrete content from it (e.g. screens, entities, components) rather than being abstract."
+    ],
+    "verification": [
+      "No automated detector exists for this rule (implementation type none); compliance is judged by an LLM or reviewer from the planner transcript and the created artifacts.",
+      "Appendix detection is pattern-based: a file path in the user input, the literal 'appendix:', or a file URL.",
+      "Disambiguation flow to check: the planner reads the appendix with the designated file-reading tool, grasps what it shows (multi-screen flow, single component, architecture, etc.), then asks a clarification question grounded in that content; both an open follow-up and an options list are acceptable — what matters is the grounding statement.",
+      "Creation workflow order to check: detect → read multimodally (the directly consumable formats per the profile) → analyze by type → enrich the output with the kind-appropriate type-specific content → reference the appendix in the manifest; the manifest structure itself is defined by the artifact schema, not by this convention."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "task_term",
+          "values": [
+            "appendix:",
+            "file path in user input",
+            "file URL in user input"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "mockup",
+            "spreadsheet",
+            "document",
+            "diagram",
+            "audio",
+            "video"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "phase",
+          "values": [
+            "creation",
+            "disambiguation"
+          ],
+          "observability": "llm_judged"
+        }
+      ],
+      "fires": [
+        "User asks the planner to create a planning output (one of the stack's plan artifact kinds) and attaches a mockup, diagram, spreadsheet, document, audio or video file.",
+        "User message contains 'appendix:' followed by a file path or URL.",
+        "User provides an appendix without an intent keyword naming a plannable artifact kind, so the planner must ask a clarifying question."
+      ],
+      "doesNotFire": [
+        "Planner request with no file path, file URL or 'appendix:' mention.",
+        "Coder or tester work that does not author planner artifacts."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roles.plan_artifact.kinds",
+      "meaning": "The concrete kinds of planning output the planner can author; the core says 'planning output' / 'plannable artifact kind' and this key supplies the stack's enumeration (used by when, the kind-conditioned enrichment guidance and the unclear-intent condition).",
+      "bunValue": "wagon, WMBT, acceptance, feature, component"
+    },
+    {
+      "key": "idiom.file_read_tool",
+      "meaning": "The tool the agent must use to read a referenced file path or URL; it restores the concrete named-tool read requirement of then, evidence[0] and the verification flow, so the instantiated core requires exactly the realization's read tool rather than any file-read operation.",
+      "bunValue": "the Read tool — the planner reads the referenced appendix path/URL by invoking the Read tool, and the compliance evidence is a Read tool call in the transcript"
+    },
+    {
+      "key": "tooling.appendix_readable_formats",
+      "meaning": "The appendix formats the stack's reading tool consumes directly as multimodal input; core.prefer[0] applies exactly to these formats and to no others, so the instantiated preference covers exactly the realization's enumerated formats.",
+      "bunValue": "PNG, JPG, SVG, PDF, audio, video (read directly as multimodal input)"
+    },
+    {
+      "key": "tooling.appendix_type_map",
+      "meaning": "How a referenced appendix's concrete observable format/kind is classified into an analysis type, selecting the type-specific analysis; supplies the observer's concrete observable values for the activation file_kind fact, whose core values are the neutral analysis types.",
+      "bunValue": "Observable kinds: png, jpg, svg, pdf, audio, video, spreadsheet, document, diagram; the observer classifies the referenced appendix by type (mockup, spreadsheet, document, diagram, audio, video) to select the type-specific analysis"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "idiom.file_read_tool",
+      "group": "idiom",
+      "meaning": "The tool the agent uses to read a referenced file path or URL (multimodal where applicable); transcript calls of this tool are the compliance evidence for read-before-use rules.",
+      "bunValue": "the Read tool — the planner reads the referenced appendix path/URL by invoking the Read tool, and the compliance evidence is a Read tool call in the transcript",
+      "whyNoExistingKey": "The idiom group binds boundary, validation and machinery constructs and the tooling group binds build/test commands, but no existing key names the agent's file-reading tool, which this appendix rule needs so its core can require the realization's named reader rather than any file-read operation."
+    },
+    {
+      "key": "tooling.appendix_readable_formats",
+      "group": "tooling",
+      "meaning": "The appendix formats the stack's agent tooling (its designated file-reading tool) consumes directly as multimodal input; read-before-plan rules scope their multimodal-reading preference exactly to this list.",
+      "bunValue": "PNG, JPG, SVG, PDF, audio, video (read directly as multimodal input)",
+      "whyNoExistingKey": "The suffix group classifies repository source, test, markup and plan files by name suffix, and the tooling group covers package manager, languages, test runner and URN resolver; no existing key describes which appendix formats the stack's reading tool consumes directly as multimodal input."
+    },
+    {
+      "key": "tooling.appendix_type_map",
+      "group": "tooling",
+      "meaning": "How a referenced appendix's concrete observable format/kind is classified into an analysis type (e.g. mockup, spreadsheet, document, diagram, audio, video) to select type-specific analysis; supplies the observer values for appendix-type activation facts.",
+      "bunValue": "Observable kinds: png, jpg, svg, pdf, audio, video, spreadsheet, document, diagram; the observer classifies the referenced appendix by type (mockup, spreadsheet, document, diagram, audio, video) to select the type-specific analysis",
+      "whyNoExistingKey": "No existing key describes how a user-provided appendix's concrete format is classified into an analysis type; the suffix keys classify repository source files, not user-provided appendices, and no idiom or tooling key covers this capability mapping."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "prefer[2]",
+      "text": "Enrichment map when creating: wagon → more accurate description, domain model from diagrams/docs; WMBT → better when/must/then from flows/interactions; acceptance → harness (mockup→visual, diagram→integration); feature → component clustering from mockup sections; component → props/state/behavior from mockups and diagrams.",
+      "reason": "The enrichment map is keyed by the stack's concrete plan artifact kinds and assigns different enrichments to different kinds; the core keeps only the kind-conditioned obligation (apply the entries for the kind being created) and each stack supplies its own keyed map."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given"
+      ],
+      "note": "Neutral as-is; 'appendix:', file path and file URL are rule-level task terms, not stack identifiers."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when",
+        "profile:roles.plan_artifact.kinds"
+      ],
+      "note": "'Planning output (wagon, WMBT, acceptance, feature, component)' becomes 'planning output'; the enumerated kinds come from the profile and also remain verbatim in the realization."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "profile:idiom.file_read_tool"
+      ],
+      "note": "Single obligation kept. The named-tool requirement is restored through the profile binding idiom.file_read_tool (proposed key, Bun value 'the Read tool'), so the instantiated core requires the Read tool exactly, not any file-read operation."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Neutral as-is."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]",
+        "profile:tooling.appendix_readable_formats"
+      ],
+      "note": "The multimodal-reading preference is restricted to the formats the designated reading tool consumes directly, bound via the proposed key tooling.appendix_readable_formats (Bun value: PNG, JPG, SVG, PDF, audio, video), so the instantiated preference covers exactly the Bun enumeration and no other formats; the core names no concrete formats, so no bunOnly item remains."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]"
+      ],
+      "note": "The per-type analysis map (mockup/spreadsheet/document/diagram/audio/video) is task-level and fully neutral; kept."
+    },
+    {
+      "item": "prefer[2]",
+      "as": [
+        "core:prefer[2]",
+        "profile:roles.plan_artifact.kinds",
+        "bunOnly"
+      ],
+      "note": "The core obligation is kind-conditioned: apply the enrichment entries for the kind being created, not the entire list for every output. The concrete keyed map (wagon/WMBT/acceptance/feature/component assignments) is bunOnly realization data, keyed by the profile's plan artifact kinds."
+    },
+    {
+      "item": "prefer[3]",
+      "as": [
+        "core:prefer[3]"
+      ],
+      "note": "Example neutralized to cite the appendix without naming stack artifact kinds; the exact Bun sentence stays in the realization as the reference example."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Neutral as-is."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Required force preserved; inherits the kind-conditioning from prefer[2], matching Bun's per-kind enrichment assignments; still cross-references the core's prefer[1] and prefer[2]."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]",
+        "core:verification"
+      ],
+      "note": "Required manifest-reference step kept; the deference of manifest structure to the schema is echoed in verification."
+    },
+    {
+      "item": "avoid[3]",
+      "as": [
+        "core:avoid[3]",
+        "profile:roles.plan_artifact.kinds"
+      ],
+      "note": "Intent keywords neutralized to 'the request names no plannable artifact kind'; the concrete keywords ('wagon', 'wmbt') are the stack's artifact names."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "profile:idiom.file_read_tool"
+      ],
+      "note": "The transcript read-call requirement is restored through the profile binding idiom.file_read_tool, so the instantiated evidence is exactly a Read tool call on the referenced path/URL, not any file-read operation."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]"
+      ],
+      "note": "Neutral as-is; examples are appendix-type-level, not stack-level."
+    },
+    {
+      "item": "evidence[2]",
+      "as": [
+        "core:evidence[2]"
+      ],
+      "note": "Neutral; manifest structure remains deferred to the schema."
+    },
+    {
+      "item": "evidence[3]",
+      "as": [
+        "core:evidence[3]"
+      ],
+      "note": "Neutral as-is."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]"
+      ],
+      "note": "Detection task terms are rule-level and neutral; observability observable_now preserved."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:tooling.appendix_type_map"
+      ],
+      "note": "Core values are the neutral analysis types (mockup, spreadsheet, document, diagram, audio, video) with observability needs_new_observer preserved; the concrete observable kinds (png, jpg, svg, pdf, audio, video, spreadsheet, document, diagram) and the format-to-type classification are capability data bound through the proposed key tooling.appendix_type_map, so no bunOnly item remains."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[2]"
+      ],
+      "note": "Phase values and llm_judged kept; the note's intent keywords are the profile's artifact names, neutralized in the core text."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Detection pattern stated generically in verification."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "profile:idiom.file_read_tool"
+      ],
+      "note": "Expected disambiguation flow kept in verification with the read step bound to the designated file-reading tool (idiom.file_read_tool)."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "The acceptance of either an open follow-up or an options list is core verification; the concrete example dialogues stay in the realization."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "The positive/negative pattern (grounded vs abstract question) is core verification; the example sentences stay in the realization."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Per-rule disposition: no automated detector, LLM/reviewer judged — stays with the rule, not the profile."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "as": [
+        "core:verification",
+        "profile:tooling.appendix_readable_formats"
+      ],
+      "note": "Creation workflow order kept generically with kind-appropriate enrichment and multimodal reading scoped to the directly consumable formats per the profile; manifest structure deferred to the artifact schema."
+    }
+  ],
+  "neutralityNotes": "This is an agent-behavior rule, so most content is already stack-neutral. Points: (1) The concrete plan-artifact kinds (wagon, WMBT, acceptance, feature, component) are stack-local and enter the core only through the profile key roles.plan_artifact.kinds; the intent keywords in avoid[3] and the phase-fact note are those same names and survive concretely only in the realization. (2) The Bun read requirement names a concrete tool ('Read the appendix with the Read tool', evidence 'Read tool call in the transcript'); the core says 'the designated file-reading tool' and binds it via the proposed key idiom.file_read_tool (Bun value: the Read tool), so instantiation imposes exactly Bun's named-tool obligation. (3) The directly multimodal-readable formats are capability data bound via the proposed key tooling.appendix_readable_formats (Bun value: PNG, JPG, SVG, PDF, audio, video); core.prefer[0] applies exactly to that list, so it is neither broader nor narrower than the realization's enumeration, and the core names no concrete formats. (4) The appendix-type observer's concrete observable kinds (png, jpg, svg, pdf, audio, video, spreadsheet, document, diagram) and its format-to-type classification are capability data bound via the proposed key tooling.appendix_type_map; the core activation fact keeps only the neutral analysis types (mockup, spreadsheet, document, diagram, audio, video). (5) The enrichment obligation is kind-conditioned in the core (apply the entries of the kind-keyed map for the kind being created, not the entire list); the concrete wagon/WMBT/acceptance/feature/component map is bunOnly realization data. (6) The output 'manifest' is kept as a neutral artifact concept because the rule itself defers its structure to the artifact schema.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/planner-nodes/planner.appendix.llm-guidelines.json",
+      "sha256": "80b82558f61a9b3a08fac0a153c37025384416c9d8aa1ac0a8cddfbb2118e81c"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 3,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

@@ -1,0 +1,411 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.journey.definition",
+  "legacyId": "planner.journey.definition",
+  "core": {
+    "title": "Declare journeys as topology above interlockings: entrypoint, continuations, explicit terminals",
+    "given": "A journey document composing routing decisions across interlockings, each interlocking selecting exactly one linear train",
+    "when": "the planner authors or changes the journey's entrypoint, routes, continuations or terminals",
+    "then": "Declare the journey as {station-entrypoint, entrypoint-interlocking, route-continuations, explicit-terminals}: if exposed, its starting actions on the consumer-facing start surface (stack name via profile: idiom.journey_start_surface), its consumer surfaces and first interlocking; and for every route, after its selected train completes, either an explicit terminal or a continuation from (interlocking_id, route_id) via a named artifact that train produces to the next interlocking.",
+    "prefer": [
+      "Compose interlocking -> train -> interlocking; keep each interlocking a local boundary selecting one linear train.",
+      "Ownership: the interlocking selects the train, the train executor (stack component via profile: idiom.train_executor) executes wagons linearly, the journey owns continuation.",
+      "Exposed journeys: the stack binds the declared start-surface actions (profile: idiom.journey_start_surface) to the journey entry through its entry-binding idiom (profile: idiom.journey_entry_binding).",
+      "Treat journey artifacts as planner data; a separate runtime may introduce a journey executor (stack component via profile: idiom.journey_executor)."
+    ],
+    "avoid": [
+      "Recursive interlockings (one selecting or invoking another).",
+      "Moving wagon execution out of the train executor (stack component via profile: idiom.train_executor), or letting any of the three absorb the others.",
+      "Implicitly dangling routes, or continuations not keyed by an artifact the selected train produces.",
+      "Encoding runtime execution (e.g. a journey executor, profile: idiom.journey_executor) into the semantic journey definition."
+    ],
+    "unless": [],
+    "why": "Keeping continuation in the journey lets routing compose across interlockings without recursive interlockings or split wagon execution, so each boundary stays local and verifiable.",
+    "evidence": [
+      "The journey document validates against the stack's canonical journey schema (profile: layout.journey_schema).",
+      "Exposed journeys list start-surface actions (stack name via profile: idiom.journey_start_surface) / consumer surfaces and an entrypoint interlocking.",
+      "Every (interlocking_id, route_id) reached by the journey has either an explicit terminal or a continuation naming an artifact produced by that route's selected train and a target interlocking.",
+      "No interlocking selects another interlocking; wagon execution remains in the train executor (stack component via profile: idiom.train_executor)."
+    ],
+    "verification": [
+      "Journey shape check: journey -> {station-entrypoint, entrypoint-interlocking, route-continuations, explicit-terminals}; journey documents are validated against the stack's canonical journey schema (profile: layout.journey_schema).",
+      "continuation = binding from one (interlocking_id, route_id) pair, through an artifact produced by that route's selected train, to the next interlocking.",
+      "terminal = explicit declaration that a route ends the journey rather than continuing to another interlocking.",
+      "station_entrypoint: exposed journeys declare start-surface actions (stack name via profile: idiom.journey_start_surface) and consumer surfaces; the stack binds those actions to the journey entry through its entry-binding idiom (profile: idiom.journey_entry_binding); the concrete stack rule that performs the binding is realization detail and stays with the realization.",
+      "Disposition advisory, severity 3."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "journey document (the plan-artifact kind validated against the stack's canonical journey schema, profile: layout.journey_schema)"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "operation",
+          "values": [
+            "create",
+            "modify"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "task_term",
+          "values": [
+            "journey",
+            "interlocking",
+            "continuation",
+            "terminal",
+            "consumer start surface (stack name via profile: idiom.journey_start_surface)",
+            "entrypoint",
+            "route"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "route continuation or terminal added/removed",
+            "entrypoint action added/changed"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "interlocking selects/invokes another interlocking",
+            "wagon execution placed outside the train executor (stack component via profile: idiom.train_executor)"
+          ],
+          "observability": "llm_judged"
+        }
+      ],
+      "fires": [
+        "Planner adds a new journey that should be startable from actions on the consumer-facing start surface (profile: idiom.journey_start_surface).",
+        "Planner adds a route to an interlocking used by a journey and must decide whether the route terminates or continues.",
+        "Planner wants control to pass to another interlocking after a selected train finishes producing an artifact.",
+        "A plan proposes making an interlocking select another interlocking, or making a journey run wagons directly."
+      ],
+      "doesNotFire": [
+        "Planner edits only a single interlocking's train selection without touching any journey continuation or terminal.",
+        "Planner edits only wagon order inside one linear train.",
+        "Work on a journey-executor runtime implementation (stack component via profile: idiom.journey_executor; governed by runtime conventions, not this semantic definition)."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roles.plan_artifact.kinds",
+      "meaning": "The concrete artifact kinds that play the plan-artifact role; the core needs the kind that is the journey document, so activation and checks can recognize it.",
+      "bunValue": "journey document (shape: planner-schemas/journey.schema.json)"
+    },
+    {
+      "key": "layout.journey_schema",
+      "meaning": "Location of the stack's canonical journey schema against which journey documents are validated (activation file-kind, evidence and the shape check defer to it).",
+      "bunValue": "planner-schemas/journey.schema.json"
+    },
+    {
+      "key": "idiom.journey_start_surface",
+      "meaning": "The stack's concrete name for the consumer-facing start surface whose actions start an exposed journey; used by the entrypoint declaration in then, prefer[2], evidence, the station_entrypoint check and the activation task terms.",
+      "bunValue": "Station Master"
+    },
+    {
+      "key": "idiom.train_executor",
+      "meaning": "The stack's component that executes a selected train's wagons linearly; used by the ownership statements (prefer[1], avoid[1]), evidence[3] and the ownership-boundary finding in activation.",
+      "bunValue": "TrainRunner"
+    },
+    {
+      "key": "idiom.journey_executor",
+      "meaning": "The stack's runtime component that may execute a journey, deliberately separate from the semantic journey definition; used by prefer[3], the avoid[3] example and the runtime-work exclusion in activation.",
+      "bunValue": "JourneyRunner"
+    },
+    {
+      "key": "idiom.journey_entry_binding",
+      "meaning": "How the stack binds each declared start-surface action to the journey entry (the concrete binding target and shape); used by prefer[2] and the station_entrypoint check.",
+      "bunValue": "binds the declared Station Master actions to {journeyId, path}"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "layout.journey_schema",
+      "group": "layout",
+      "meaning": "Path of the canonical schema that defines the shape of the journey plan artifact, against which journey documents are validated.",
+      "bunValue": "planner-schemas/journey.schema.json",
+      "whyNoExistingKey": "The layout group covers where artifacts are placed and the urn group covers identifier shapes; no existing key locates a plan artifact's canonical validation schema, which this rule's activation, evidence and shape check all defer to."
+    },
+    {
+      "key": "idiom.journey_start_surface",
+      "group": "idiom",
+      "meaning": "The stack's concrete name for the consumer-facing start surface whose actions start an exposed journey.",
+      "bunValue": "Station Master",
+      "whyNoExistingKey": "The idiom group covers handlers, auth, errors, validation, gates and markup constructs, and roles.* describe file roles; no existing key names the start surface from which an exposed journey is launched, which the entrypoint obligation, activation task terms and the station_entrypoint check all need."
+    },
+    {
+      "key": "idiom.train_executor",
+      "group": "idiom",
+      "meaning": "The stack's component that executes a selected train's wagons linearly.",
+      "bunValue": "TrainRunner",
+      "whyNoExistingKey": "No existing idiom key names the linear train-execution component; the ownership statements (prefer[1], avoid[1]), evidence[3] and the ownership-boundary finding all refer to it, so its concrete name is reusable stack idiom rather than Bun-only content."
+    },
+    {
+      "key": "idiom.journey_executor",
+      "group": "idiom",
+      "meaning": "The stack's runtime component that may execute a journey, deliberately kept separate from the semantic journey definition.",
+      "bunValue": "JourneyRunner",
+      "whyNoExistingKey": "No existing idiom key names a runtime journey-execution component; roles.* cover architectural file roles, not runtime component names, yet prefer[3], the avoid[3] example and the runtime-work exclusion in activation all refer to the executor generically."
+    },
+    {
+      "key": "idiom.journey_entry_binding",
+      "group": "idiom",
+      "meaning": "How the stack binds each declared start-surface action to the journey entry (the concrete binding target and shape).",
+      "bunValue": "binds the declared Station Master actions to {journeyId, path}",
+      "whyNoExistingKey": "urn.binding.journey describes a source or test file binding itself to a journey artifact by URN syntax; the entry binding instead routes consumer start-surface actions to a journey entry ({journeyId, path}) and is realized by a separate stack rule, so no existing key fits."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "prefer[2]",
+      "text": "via coder.bun.station-master-journey-routing",
+      "reason": "References the Bun coder rule that realizes the entry binding; a concrete stack's rule id is realization detail. The binding shape {journeyId, path} itself is profile data (idiom.journey_entry_binding), and the start surface name is profile data (idiom.journey_start_surface)."
+    },
+    {
+      "item": "prefer[3]",
+      "text": "a separate Bun runtime",
+      "reason": "Names the ATDD-Bun runtime realization; the core says only 'a separate runtime', and the executor component name comes from idiom.journey_executor."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "text": "Bun binds those actions via coder.bun.station-master-journey-routing",
+      "reason": "Same split as prefer[2]: the stack qualifier and the Bun coder-rule reference are realization details with no stack-neutral equivalent; the surface name and the {journeyId, path} binding shape are carried by idiom.journey_start_surface and idiom.journey_entry_binding."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given"
+      ],
+      "note": "Planner-topology statement; already stack-neutral."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Already stack-neutral."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "profile:idiom.journey_start_surface"
+      ],
+      "note": "Obligation kept verbatim except 'Station Master actions' neutralized to start actions on the consumer-facing start surface; the surface name is a reusable stack-idiom value (Station Master in Bun), not a Bun-only obligation."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Already stack-neutral."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]"
+      ],
+      "note": "Composition pattern; already stack-neutral."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]",
+        "profile:idiom.train_executor"
+      ],
+      "note": "Ownership statement neutralized ('TrainRunner' -> 'the train executor'); the executor component name is a reusable stack-idiom value (idiom.train_executor), not Bun-only."
+    },
+    {
+      "item": "prefer[2]",
+      "as": [
+        "core:prefer[2]",
+        "profile:idiom.journey_start_surface",
+        "profile:idiom.journey_entry_binding",
+        "bunOnly"
+      ],
+      "note": "Neutral obligation: declared start-surface actions are bound to the journey entry. The start-surface name and the {journeyId, path} binding shape are profile idiom values; only the Bun coder-rule reference remains bunOnly."
+    },
+    {
+      "item": "prefer[3]",
+      "as": [
+        "core:prefer[3]",
+        "profile:idiom.journey_executor",
+        "bunOnly"
+      ],
+      "note": "Neutralized to 'a separate runtime may introduce a journey executor'; 'JourneyRunner' is the profiled journey-executor name and only the 'Bun runtime' qualifier is bunOnly."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Already stack-neutral."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]",
+        "profile:idiom.train_executor"
+      ],
+      "note": "Neutralized ('TrainRunner' -> 'the train executor'); the component name is the profiled idiom value."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]"
+      ],
+      "note": "Already stack-neutral."
+    },
+    {
+      "item": "avoid[3]",
+      "as": [
+        "core:avoid[3]",
+        "profile:idiom.journey_executor"
+      ],
+      "note": "Neutral obligation with the example neutralized to 'a journey executor'; the stack component name comes from idiom.journey_executor, so no Bun-only content remains."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "profile:layout.journey_schema"
+      ],
+      "note": "Schema validation kept; the concrete schema path becomes profile data (proposed key)."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]",
+        "profile:idiom.journey_start_surface"
+      ],
+      "note": "Neutralized to start-surface actions / consumer surfaces; 'Station Master' is the profiled start-surface idiom value."
+    },
+    {
+      "item": "evidence[2]",
+      "as": [
+        "core:evidence[2]"
+      ],
+      "note": "Already stack-neutral."
+    },
+    {
+      "item": "evidence[3]",
+      "as": [
+        "core:evidence[3]",
+        "profile:idiom.train_executor"
+      ],
+      "note": "Neutralized ('TrainRunner' -> 'the train executor'); the component name is the profiled idiom value."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "profile:layout.journey_schema"
+      ],
+      "note": "Journey shape definition goes to verification; the canonical schema reference is profile data."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Continuation definition; already stack-neutral, kept as a verification entry."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Terminal definition; already stack-neutral, kept as a verification entry."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification",
+        "profile:idiom.journey_start_surface",
+        "profile:idiom.journey_entry_binding",
+        "bunOnly"
+      ],
+      "note": "station_entrypoint check kept generically and stack-anonymously (the concrete rule that performs the binding is realization detail, named only in the realization); the surface name and the {journeyId, path} binding shape are profile idiom values, and the stack coder-rule reference stays bunOnly."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Per-rule severity and disposition stay with the rule (core verification), not the profile."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:layout.journey_schema",
+        "profile:roles.plan_artifact.kinds"
+      ],
+      "note": "file_kind fact kept; journey-document recognition defers to the plan-artifact kind and the canonical schema (profile)."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]"
+      ],
+      "note": "operation fact; already stack-neutral."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[2]",
+        "profile:idiom.journey_start_surface"
+      ],
+      "note": "task_term fact kept with 'Station Master' neutralized to the consumer start surface; the stack's start-surface term is supplied by idiom.journey_start_surface so activation fires on the same tasks."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[3]"
+      ],
+      "note": "change fact; already stack-neutral, needs a diff-level observer over journey documents."
+    },
+    {
+      "item": "activation.facts[4]",
+      "as": [
+        "core:activation.facts[4]",
+        "profile:idiom.train_executor"
+      ],
+      "note": "finding fact kept with 'TrainRunner' neutralized to the train executor (name via idiom.train_executor); ownership-boundary absorption stays llm_judged."
+    }
+  ],
+  "neutralityNotes": "The planner-topology vocabulary (journey, interlocking, train, wagon, route, continuation, terminal, entrypoint) is treated as stack-neutral ATDD planning vocabulary, since the profile vocabulary itself recognizes train, wagon and journey artifacts. The stack-specific component and surface names are reusable stack-idiom values, not obligations exclusive to one realization: 'Station Master' (idiom.journey_start_surface), 'TrainRunner' (idiom.train_executor), 'JourneyRunner' (idiom.journey_executor) and the {journeyId, path} entry-binding shape (idiom.journey_entry_binding) are carried as proposed profile keys and referenced consistently in the core obligation, activation facts/fires/exclusions and the verification entries; the closed vocabulary had no fitting keys, so all are proposed. What could not be made neutral: (1) the reference to the coder rule coder.bun.station-master-journey-routing, a concrete stack's rule id that realizes the entry binding (stays with the realization, per notProfileKeys; the core verification describes the check generically and without naming the stack); (2) the 'Bun runtime' qualifier in prefer[3], which names the reference realization (core says only 'a separate runtime'); (3) the canonical journey schema path is data, not rule text, carried by the proposed layout.journey_schema key.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/planner-nodes/planner.journey.definition.json",
+      "sha256": "57e8d52d8cfa19495bdddbe2cbc452b38ea9782bc211bbdb02a83ec5554a4fb1"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 3,
+    "usefulness": 4,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 4,
+      "agreeWithAuditor": true
+    }
+  }
+}

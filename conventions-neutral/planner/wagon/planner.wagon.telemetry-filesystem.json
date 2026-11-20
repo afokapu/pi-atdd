@@ -1,0 +1,412 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.wagon.telemetry-filesystem",
+  "legacyId": "planner.wagon.telemetry-filesystem",
+  "core": {
+    "title": "Map each telemetry URN to its directory of signal files",
+    "given": "A plan artifact, wagon or acceptance declares telemetry URNs, or work touches, validates or generates from files in the telemetry signal tree.",
+    "when": "You author, edit, rename or validate a telemetry URN, its signal files, or the manifest built from them.",
+    "then": "Keep each telemetry URN's signals in the signal directory derived from that URN, as signal files named {signal-type}.{plane}[.{measure}] with the profile's signal-file suffix, carrying a measure on metric signals and none on event signals.",
+    "prefer": [
+      "Derive the signal directory's path segments from the URN's theme and segment separators.",
+      "Name metric signal files with their measure component and event signal files without one.",
+      "Planes: ui, ux, be, nw, db, st, tm, sc, au, fn, if. Measures: count, duration, latency, size, rate, percentage."
+    ],
+    "avoid": [
+      "Metric signal files without a measure component.",
+      "Event signal files with a measure component.",
+      "Planes or measures outside the controlled lists.",
+      "Hand-editing the telemetry manifest; it is generated from the profile's manifest input."
+    ],
+    "unless": [],
+    "why": "A deterministic URN-to-directory mapping lets tooling resolve URNs to signal files and generate the manifest from the filesystem; the signal type (quantitative metric vs discrete event) decides whether a measure is needed.",
+    "evidence": [
+      "Every declared telemetry URN resolves to an existing signal directory derived from it.",
+      "Each file in that directory matches the signal-file name pattern, with the measure present if and only if the signal type is metric.",
+      "Plane and measure tokens are members of the controlled lists.",
+      "The telemetry manifest is generated from the profile's manifest input (not hand-authored)."
+    ],
+    "verification": [
+      "Resolve every declared telemetry URN to its signal directory using the profile's telemetry URN shape and signal-directory pattern, treating the URN's theme and segment separators (including the separator inside segments) as directory levels; a declared URN with no existing matching directory is a finding.",
+      "Check every file in each signal directory against the profile's signal-file name pattern; the measure component must be present exactly when the signal type is metric (metric signals require it, event signals must not carry it).",
+      "Check plane and measure tokens for membership in the controlled axes: planes ui, ux, be, nw, db, st, tm, sc, au, fn, if; measures (metric signals only) count, duration, latency, size, rate, percentage.",
+      "Check that the telemetry manifest is generated from the profile's manifest input rather than hand-authored; the rule does not require a committed manifest or a freshness check.",
+      "Recognize the telemetry signal tree by location: any file under the tree root glob supplied by the profile is an activation signal by itself, regardless of whether it is a recognized signal file; the detector also reports pre-existing noncompliance, not only changes introduced by the current task.",
+      "Task terms are candidate signals only; they confirm and activate the rule when a telemetry URN, a path under the telemetry signal tree (any file in the tree, per the profile's tree root glob), or telemetry manifest generation is in scope."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "any file under the telemetry signal tree (by location, not by kind)"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "wagon manifest",
+            "acceptance",
+            "telemetry signal file",
+            "telemetry manifest"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "task_term",
+          "values": [
+            "telemetry",
+            "telemetry URN",
+            "signal",
+            "metric",
+            "event",
+            "telemetry manifest"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "telemetry URN declared, edited or renamed",
+            "signal file added, renamed or removed",
+            "telemetry manifest generation changed"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "telemetry URN without matching signal directory",
+            "signal filename not matching the pattern",
+            "plane or measure outside the controlled list",
+            "metric without measure or event with measure"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "A wagon or acceptance declares, edits or renames a telemetry URN",
+        "A signal file is added, renamed or removed under the telemetry signal tree",
+        "A task validates or reviews existing telemetry URNs, their signal directories or signal filenames",
+        "An existing telemetry URN has no matching signal directory",
+        "An existing signal file uses a plane or measure outside the controlled lists, a metric lacks a measure, or an event carries one",
+        "The telemetry manifest is generated or its generation input is changed"
+      ],
+      "doesNotFire": [
+        "Plan edits that declare no telemetry URNs, touch nothing under the telemetry signal tree and do not involve the telemetry manifest",
+        "Non-telemetry artifact URNs (covered by the general artifact-naming grammar)",
+        "A task merely mentioning the words 'event' or 'metric' with no telemetry URN, telemetry signal-tree path or manifest in scope"
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "urn.telemetry",
+      "meaning": "The URN shape of one telemetry signal set; the core maps each such URN to a signal directory.",
+      "bunValue": "telemetry:{theme}:{segments}"
+    },
+    {
+      "key": "layout.telemetry_signal_tree",
+      "meaning": "The root glob of the telemetry signal tree; any file under it is an in-scope activation signal by location, independent of signal-file recognition.",
+      "bunValue": "telemetry/**"
+    },
+    {
+      "key": "layout.telemetry_signal_dir",
+      "meaning": "The directory pattern of one telemetry URN's signal files, derived by splitting the URN into path segments.",
+      "bunValue": "telemetry/{theme}/{segments}/"
+    },
+    {
+      "key": "suffix.telemetry_signal",
+      "meaning": "The name pattern, including the file suffix, of one telemetry signal file.",
+      "bunValue": "{signal-type}.{plane}[.{measure}].json"
+    },
+    {
+      "key": "layout.telemetry_manifest_input",
+      "meaning": "The file set from which the generated telemetry manifest is built.",
+      "bunValue": "telemetry/{domain}/{resource}/*.json"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "urn.telemetry",
+      "group": "urn",
+      "meaning": "URN shape of one telemetry signal set (theme plus dot-separated segments).",
+      "bunValue": "telemetry:{theme}:{segments}",
+      "whyNoExistingKey": "The urn group's artifact params (component, acceptance, smoke_acceptance, train, wmbt, wagon, feature, journey) include no telemetry artifact."
+    },
+    {
+      "key": "layout.telemetry_signal_tree",
+      "group": "layout",
+      "meaning": "Root glob of the telemetry signal tree; any file under it is an in-scope activation signal by location, independent of file-kind recognition.",
+      "bunValue": "telemetry/**",
+      "whyNoExistingKey": "The layout group covers wagon, feature, commons, plan-item and test/e2e locations only, and the roots group covers only source/test/e2e/plan roots; no existing key names the tree the telemetry signal files and manifest live in."
+    },
+    {
+      "key": "layout.telemetry_signal_dir",
+      "group": "layout",
+      "meaning": "Directory of one telemetry URN's signal files, derived by splitting the URN into path segments.",
+      "bunValue": "telemetry/{theme}/{segments}/",
+      "whyNoExistingKey": "The layout group covers wagon, feature, commons, plan-item and test/e2e locations only; the per-URN telemetry signal directory is missing."
+    },
+    {
+      "key": "suffix.telemetry_signal",
+      "group": "suffix",
+      "meaning": "Name pattern, including the file suffix, of one telemetry signal file (signal type, plane, optional measure).",
+      "bunValue": "{signal-type}.{plane}[.{measure}].json",
+      "whyNoExistingKey": "The suffix group's file_kind params (source, unit_test, acceptance_test, e2e_test, markup, plan_artifact, config) include no telemetry signal kind."
+    },
+    {
+      "key": "layout.telemetry_manifest_input",
+      "group": "layout",
+      "meaning": "The file set from which the generated telemetry manifest is built.",
+      "bunValue": "telemetry/{domain}/{resource}/*.json",
+      "whyNoExistingKey": "No layout key describes the input set of a generated artifact."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "why",
+      "text": "signal type (OpenTelemetry metric vs analytics event)",
+      "reason": "Names concrete instrumentation standards and an analytics taxonomy; the core keeps only the quantitative-metric vs discrete-event distinction."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "text": "signal_type term (metric vs event): metric = OpenTelemetry metric; event = analytics event.",
+      "reason": "The term id and the OpenTelemetry/analytics glosses are realization terminology; the stack-neutral measure rule (metric requires a measure, event forbids one) is in core:verification."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "text": "Source example: telemetry:mechanic:decision.choice -> telemetry/mechanic/decision/choice/ (metric.db.count.json, metric.be.duration.json, event.be.json).",
+      "reason": "A worked example with the realization's concrete URN, directory and filenames; per the derivation rules the concrete example is not repeated in the core — bun.json is delivered as the reference example."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:urn.telemetry",
+        "profile:layout.telemetry_signal_tree"
+      ],
+      "note": "Neutralized to 'telemetry URNs' and 'files in the telemetry signal tree' (any file in the tree, by location); the concrete URN shape and tree root glob are profile data."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Already stack-neutral; kept verbatim."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "profile:layout.telemetry_signal_dir",
+        "profile:suffix.telemetry_signal"
+      ],
+      "note": "One obligation kept intact: directory derived from the URN, the {signal-type}.{plane}[.{measure}] naming skeleton (suffix from the profile), measure on metric signals and none on event signals."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why",
+        "bunOnly"
+      ],
+      "note": "Rationale kept; the 'OpenTelemetry metric vs analytics event' gloss is realization wording (see bunOnly)."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]",
+        "profile:layout.telemetry_signal_dir"
+      ],
+      "note": "Neutral move: derive the signal directory's path segments from the URN's separators; the concrete mapping example stays in bun.json as the reference example."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]",
+        "profile:suffix.telemetry_signal"
+      ],
+      "note": "Neutralized to the measure-presence rule; the concrete filenames (metric.db.count.json, event.be.json) are the reference example, not repeated."
+    },
+    {
+      "item": "prefer[2]",
+      "as": [
+        "core:prefer[2]"
+      ],
+      "note": "The controlled plane and measure lists are ATDD scheme vocabulary, not stack structure; kept verbatim in the core."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Neutral as-is ('suffix' restated as name 'component')."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Neutral as-is."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]"
+      ],
+      "note": "Neutral as-is."
+    },
+    {
+      "item": "avoid[3]",
+      "as": [
+        "core:avoid[3]",
+        "profile:layout.telemetry_manifest_input"
+      ],
+      "note": "The no-hand-edit obligation is core; the concrete generation-input path is profile data."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "profile:urn.telemetry",
+        "profile:layout.telemetry_signal_dir"
+      ],
+      "note": "URN shape and directory pattern come from the profile; the resolution obligation is core."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]",
+        "profile:suffix.telemetry_signal"
+      ],
+      "note": "Filename pattern (with suffix) from the profile; the measure-iff-metric condition is core."
+    },
+    {
+      "item": "evidence[2]",
+      "as": [
+        "core:evidence[2]"
+      ],
+      "note": "Neutral as-is."
+    },
+    {
+      "item": "evidence[3]",
+      "as": [
+        "core:evidence[3]",
+        "profile:layout.telemetry_manifest_input"
+      ],
+      "note": "Generated-not-authored obligation is core; the input set is profile data."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "profile:urn.telemetry",
+        "profile:layout.telemetry_signal_dir"
+      ],
+      "note": "Generic resolution rule (theme and segment separators, including the '.' inside segments, become directory levels) goes to core:verification; the concrete shapes are profile data."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "profile:suffix.telemetry_signal"
+      ],
+      "note": "Generic filename check in core:verification; the pattern with its file suffix is profile data."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "The metric-requires-measure / event-forbids-measure check is core:verification; the signal_type term id and the OpenTelemetry/analytics glosses are realization details (see bunOnly)."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Axes-membership check with the controlled lists kept in the core; the 'telemetry_axes' term id is a realization detail."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "A worked example only; the core keeps the mapping rule and bun.json remains the delivered reference example."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "as": [
+        "core:verification",
+        "profile:layout.telemetry_manifest_input"
+      ],
+      "note": "Generic manifest-generation check in core:verification; the concrete input set is the profile value, and the verbatim-source provenance ('source wording, verbatim') stays with the realization."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:layout.telemetry_signal_tree"
+      ],
+      "note": "Bun's path_glob fact (telemetry/**, telemetry/**/*.json) becomes its own location-based core fact: any file under the telemetry signal tree is an activation signal by location, independent of signal-file recognition; the tree root glob comes from layout.telemetry_signal_tree (the telemetry/**/*.json value is the same tree restricted to signal files, whose suffix comes from suffix.telemetry_signal)."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:suffix.telemetry_signal"
+      ],
+      "note": "'telemetry signal json' neutralized to 'telemetry signal file' (the concrete suffix comes from suffix.telemetry_signal); kept as a separate recognized-kind fact, distinct from the location-based tree fact."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[2]"
+      ],
+      "note": "Terms are ATDD vocabulary, kept as-is; the candidate-only confirmation — by a telemetry URN, a path under the telemetry signal tree, or manifest generation in scope — is carried by doesNotFire and core:verification."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[3]"
+      ],
+      "note": "Neutral as-is; the diff-level observer is still needed (needs_new_observer)."
+    },
+    {
+      "item": "activation.facts[4]",
+      "as": [
+        "core:activation.facts[4]",
+        "core:verification"
+      ],
+      "note": "Finding kinds neutralized ('matching directory' -> 'matching signal directory'; 'the pattern' -> the profile's signal-file pattern); the note that the detector also fires on pre-existing noncompliance is recorded in core:verification."
+    }
+  ],
+  "neutralityNotes": "The concrete telemetry scheme data — the URN shape (telemetry:{theme}:{segments}), the signal-tree root glob (telemetry/**), the per-URN signal-directory pattern (telemetry/{theme}/{segments}/), the signal-file name pattern with its .json suffix ({signal-type}.{plane}[.{measure}].json) and the manifest generation input (telemetry/{domain}/{resource}/*.json) — is stack realization data; none of the closed vocabulary's keys fits, so it is carried by five proposed profile keys (urn.telemetry, layout.telemetry_signal_tree, layout.telemetry_signal_dir, suffix.telemetry_signal, layout.telemetry_manifest_input). Path-based activation is preserved as its own core fact: any file under the telemetry signal tree is an activation signal by location, independent of signal-file recognition, and a path under the tree also confirms candidate task terms (core:verification and doesNotFire); the tree location itself is profile data, so under the Bun profile it instantiates to telemetry/**. The controlled plane/measure lists stay in the core because they are ATDD scheme vocabulary, not stack structure. The OpenTelemetry-metric / analytics-event glosses remain Bun-only wording. The worked mapping example (verifier_detail[4]) and the legacy '{domain}/{resource}' manifest wording are not repeated in the core: bun.json remains the reference example, and the legacy wording survives only as the bunValue of layout.telemetry_manifest_input. Term ids (signal_type, telemetry_axes) are realization details named in core:verification only generically.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/planner-nodes/planner.wagon.telemetry-filesystem.json",
+      "sha256": "eed3dbe0039eac683b8f3c9825a21b7c2a6fb649605c9d0a263a0741bd9fc295"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

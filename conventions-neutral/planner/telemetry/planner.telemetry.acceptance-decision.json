@@ -1,0 +1,357 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.telemetry.acceptance-decision",
+  "legacyId": "planner.telemetry.acceptance-decision",
+  "core": {
+    "title": "Every acceptance makes an explicit telemetry decision",
+    "given": "Telemetry is adopted: the tracking plan's root exists, or any acceptance declares telemetry (either alone suffices).",
+    "when": "You plan or review any acceptance or tracking-plan item.",
+    "then": "Every acceptance declares an explicit telemetry decision: disposition `required` listing at least one well-formed, concrete telemetry URN that the acceptance demands be observed emitted and that exists as a tracking-plan item in the tracking plan, or disposition `not-applicable` with a rationale of at least 20 characters.",
+    "prefer": [
+      "Record the decision explicitly: disposition required listing concrete telemetry URNs taken from the tracking plan, or disposition not-applicable with a considered rationale of at least 20 characters.",
+      "List required items by kind (events, metrics, traces, logs).",
+      "Treat not-applicable as a considered answer, not the absence of one.",
+      "Make every acceptance a tracking-plan item names resolve to a declared acceptance."
+    ],
+    "avoid": [
+      "Omitting the telemetry declaration once adopted — silence is not a disposition.",
+      "Malformed, non-concrete or unplanned URNs (the requirement is unplannable).",
+      "Token rationales under 20 characters that are not a real answer.",
+      "Requiring a test for every debug log or internal span.",
+      "Dangling tracking-plan acceptance references.",
+      "Forcing acceptance lists and plan references to mirror each other."
+    ],
+    "unless": [
+      "Diagnostic logs and internal spans are not automatically telemetry obligations; the decision is per acceptance.",
+      "Inert until adoption: no tracking plan and no acceptance telemetry declaration → nothing emitted (see the tracking-plan schema rule in this rulebook)."
+    ],
+    "why": "An explicit per-acceptance decision removes the false choice between testing every debug log and having no observability requirement; both-direction resolution keeps traceability intact.",
+    "evidence": [
+      "Every acceptance has a telemetry declaration with disposition required or not-applicable.",
+      "Each required declaration lists ≥1 URN; each is well-formed, concrete, and resolves to a tracking-plan item in the tracking plan.",
+      "Each not-applicable declaration carries a rationale of ≥20 characters.",
+      "Every acceptance reference in a tracking-plan item resolves to a declared acceptance.",
+      "The stack's convention check for this rule (acceptance telemetry decisions and tracking-plan resolution) reports no findings."
+    ],
+    "verification": [
+      "Adoption gate: the check is active if the tracking plan's root exists — an existing root counts even when it contains no plan items yet — OR any acceptance declares telemetry; it emits nothing only if there is no tracking plan and no acceptance telemetry declaration. Presence of tracking-plan items is not required for the acceptance checks.",
+      "Decision = disposition plus, for required, concrete item lists by kind (events, metrics, traces, logs); for not-applicable, a rationale of at least 20 characters. A missing or invalid disposition, or an empty required list, is a finding.",
+      "A required item is a concrete telemetry URN the acceptance demands be observed emitted; it must exist as a tracking-plan item in the tracking plan (the plan root is a profile path whose existence alone adopts the capability; items are located by scanning beneath that root via the plan-artifact kinds; URN well-formedness per the tracking-plan schema rule).",
+      "Resolution is checked in both directions (acceptance → plan URNs, plan item → acceptance references); the lists are not required to be mirror images, because an item may serve acceptances beyond those that first required it.",
+      "Strict disposition: the check fails on every finding; there is no advisory mode and no ratchet baseline. Severity 2 on the rulebook's scale.",
+      "The concrete telemetry-declaration construct comes from the profile (the stack's telemetry-decision idiom); the concrete detector/validator and finding ids of this rule are realization details of the stack's checker."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "tracking-plan root (the tracking plan exists in the repository)"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "acceptance declaring a telemetry block"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "acceptance",
+            "tracking-plan item"
+          ],
+          "observability": "observable_now"
+        }
+      ],
+      "fires": [
+        "Telemetry is adopted and any acceptance in the repository (new or existing, untouched) has no telemetry declaration — including when no tracking-plan items exist yet.",
+        "An acceptance declares disposition missing or other than required / not-applicable.",
+        "An acceptance declares required with an empty list (zero URNs).",
+        "An acceptance declares required with a URN that is malformed, non-concrete, or absent from the tracking plan.",
+        "An acceptance declares not-applicable with no rationale or a rationale under 20 characters.",
+        "A tracking-plan item (including in tracking-plan-only changes, or when no acceptance declares telemetry) references an acceptance that no acceptance declares."
+      ],
+      "doesNotFire": [
+        "No tracking plan exists and no acceptance declares telemetry (capability not adopted).",
+        "A tracking-plan item serves acceptances beyond those that list it as required (lists need not mirror).",
+        "Diagnostic logs or internal spans that no acceptance requires have no dedicated test."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roots.plan",
+      "meaning": "Root of plan artifacts, as a path: the tree under which the tracking plan (the stack's telemetry root, a plan-artifact tree) lives. Existence of this root is adoption alternative A — an existing root activates the rule even when it contains no plan items yet — and it is the resolution target for required telemetry URNs and the source of reverse-direction acceptance references. Plan items are found by a descendant scan derived from this root (the Bun realization derives the glob `<telemetry root>/**` from it). The frozen Bun sidecar carries only the placeholder root.",
+      "bunValue": "<telemetry root>"
+    },
+    {
+      "key": "roles.plan_artifact.kinds",
+      "meaning": "The concrete artifact kinds that play the 'tracking-plan item' role in this stack, so the check can enumerate plan items, their URNs and their acceptance references.",
+      "bunValue": "tracking-plan item"
+    },
+    {
+      "key": "idiom.telemetry_decision",
+      "meaning": "The concrete construct by which an acceptance declares its explicit telemetry decision: disposition required with a list of concrete telemetry URNs by kind, or disposition not-applicable with a rationale. The core obligates the decision content; each stack supplies this declaration idiom.",
+      "bunValue": "Shape: `telemetry: {disposition: required, events: [<concrete telemetry:event:… URN from the tracking plan>]}` or `telemetry: {disposition: not-applicable, rationale: <considered reason, ≥20 chars>}`."
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "idiom.telemetry_decision",
+      "group": "idiom",
+      "meaning": "The concrete construct by which an acceptance declares its explicit telemetry decision: disposition required with a list of concrete telemetry URNs by kind, or disposition not-applicable with a rationale.",
+      "bunValue": "Shape: `telemetry: {disposition: required, events: [<concrete telemetry:event:… URN from the tracking plan>]}` or `telemetry: {disposition: not-applicable, rationale: <considered reason, ≥20 chars>}`.",
+      "whyNoExistingKey": "The existing idiom keys cover boundary, auth, error, validation, import, nesting, request/gate and markup constructs; none describes the artifact-level declaration block in which an acceptance records its telemetry decision."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "evidence[4]",
+      "text": "Validator planner_telemetry_plan reports no findings.",
+      "reason": "Names this rule's concrete validator id; detector/validator ids are realization details, so the core's evidence names the check generically."
+    },
+    {
+      "item": "activation.facts[0]",
+      "text": "path_glob fact with value `<telemetry root>/**`, checked directly by the validator planner_telemetry_plan.",
+      "reason": "The path-glob fact form and the descendant-matching scan glob `<telemetry root>/**` are the realization's mechanism (the derived scan beneath the profile's plan root); the core states adoption alternative A as the plan root's presence, with the root path supplied by the existing profile key roots.plan — an existing empty root still activates the rule."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given"
+      ],
+      "note": "Adoption OR-gate kept; 'a telemetry root exists' → 'the tracking plan's root exists' (root is the profile path roots.plan; its existence alone suffices even with no plan items yet)."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Verbatim; already stack-neutral."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then"
+      ],
+      "note": "One obligation kept; 'under the telemetry root' → 'in the tracking plan'. The reverse-direction clause stays out of then, as in Bun (proposed there as a split)."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Verbatim."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]",
+        "profile:idiom.telemetry_decision"
+      ],
+      "note": "Core prefer records the decision explicitly (neutral); the concrete declaration shape is the stack's telemetry-decision idiom via the proposed key idiom.telemetry_decision."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]"
+      ],
+      "note": "Verbatim; events/metrics/traces/logs are neutral telemetry item kinds."
+    },
+    {
+      "item": "prefer[2]",
+      "as": [
+        "core:prefer[2]"
+      ],
+      "note": "Verbatim."
+    },
+    {
+      "item": "prefer[3]",
+      "as": [
+        "core:prefer[3]"
+      ],
+      "note": "Verbatim; reverse-direction guidance."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "'telemetry block' → 'telemetry declaration'; obligation unchanged."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Verbatim."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]"
+      ],
+      "note": "Verbatim."
+    },
+    {
+      "item": "avoid[3]",
+      "as": [
+        "core:avoid[3]"
+      ],
+      "note": "Verbatim."
+    },
+    {
+      "item": "avoid[4]",
+      "as": [
+        "core:avoid[4]"
+      ],
+      "note": "Verbatim."
+    },
+    {
+      "item": "avoid[5]",
+      "as": [
+        "core:avoid[5]"
+      ],
+      "note": "Verbatim; non-mirroring exception preserved."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]"
+      ],
+      "note": "Verbatim."
+    },
+    {
+      "item": "unless[1]",
+      "as": [
+        "core:unless[1]"
+      ],
+      "note": "'no telemetry root' → 'no tracking plan'; sibling rule id genericized to 'the tracking-plan schema rule in this rulebook'."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]"
+      ],
+      "note": "'telemetry block' → 'telemetry declaration'."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]"
+      ],
+      "note": "'under the telemetry root' → 'in the tracking plan'."
+    },
+    {
+      "item": "evidence[2]",
+      "as": [
+        "core:evidence[2]"
+      ],
+      "note": "Verbatim."
+    },
+    {
+      "item": "evidence[3]",
+      "as": [
+        "core:evidence[3]"
+      ],
+      "note": "Verbatim."
+    },
+    {
+      "item": "evidence[4]",
+      "as": [
+        "core:evidence[4]",
+        "bunOnly"
+      ],
+      "note": "Neutral evidence names the check generically; the validator id planner_telemetry_plan is a realization detail."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Adoption gate carried into core:verification, neutralized; 'presence of tracking-plan items is not required' preserved."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Decision definition and finding conditions carried in meaning."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification",
+        "profile:roots.plan"
+      ],
+      "note": "required_item definition carried into core:verification; the concrete root comes from roots.plan."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Both-direction resolution and non-mirroring rationale carried in meaning."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Per-rule severity (2) and strict disposition belong to core verification; the sharedNode id policy.strict-disposition is a realization reference, its content is carried in verification."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roots.plan",
+        "bunOnly"
+      ],
+      "note": "Adoption alternative A kept as a presence fact; the root is roots.plan, while the path_glob form and derived glob `<telemetry root>/**` are recorded bunOnly."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]"
+      ],
+      "note": "Adoption alternative B kept verbatim."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[2]",
+        "profile:roles.plan_artifact.kinds"
+      ],
+      "note": "Scope fact kept verbatim; 'tracking-plan item' binds to the stack's plan-artifact kinds via roles.plan_artifact.kinds (Bun value \"tracking-plan item\")."
+    }
+  ],
+  "neutralityNotes": "The rule is artifact-content-level, so nearly everything was already neutral. 'Telemetry root' was neutralized to 'the tracking plan / the tracking plan's root', represented by roots.plan as a PATH (Bun value `<telemetry root>`); the descendant scan glob `<telemetry root>/**` is the realization's mechanism (bunOnly), so an existing empty root still activates the rule. The concrete telemetry-declaration shape is exposed through the proposed key idiom.telemetry_decision; the application-specific example URN and rationale stay only in the Bun audit trail. 'tracking-plan item' binds via roles.plan_artifact.kinds (Bun value \"tracking-plan item\"); 'acceptance' needs no path or suffix value because the frozen sidecar asserts none. URN well-formedness is delegated to the tracking-plan schema rule, referenced generically. The validator id planner_telemetry_plan and the shared policy node id are realization details; severity 2 and strict disposition are carried in core:verification.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/planner.telemetry.acceptance-decision.json",
+      "sha256": "672ba4391c47325fcbe0050fe14d15669d52fc3feb96e78e0a53c32f05e8d2a5"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 4,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3 -> pi-claude-cli/claude-opus-5-5",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

@@ -1,0 +1,326 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.interface.ownership-rules",
+  "legacyId": "planner.interface.ownership-rules",
+  "core": {
+    "title": "Give each artifact one producing component; consumers reference its contract",
+    "given": "A plan declares component interfaces with producing and consuming artifact entries",
+    "when": "The planner adds or changes a producing or consuming entry for an artifact",
+    "then": "Declare each artifact as produced by exactly one component, which generates (owns) its contract; every other component using the artifact declares it as consumed and references that existing contract instead of generating its own.",
+    "prefer": [
+      "A producing entry names the artifact, its destination, and (optionally) the path of the contract it generates",
+      "A consuming entry uses the same artifact name, names the producing component, and (if given) repeats the producer's contract path",
+      "The contract path field is optional on every entry but recommended; newly added components should carry explicit contract references"
+    ],
+    "avoid": [
+      "Two components declaring the same artifact as produced (split ownership)",
+      "A consumer generating or redefining its own contract for an artifact another component produces",
+      "Consuming an artifact that no component produces (orphan)"
+    ],
+    "unless": [
+      "Any entry may omit the contract field (it is not required, for backward compatibility); existing components keep working with implicit contracts"
+    ],
+    "why": "Single-producer ownership with consumers referencing the same contract makes bidirectional producer/consumer coverage and orphan detection possible.",
+    "evidence": [
+      "For every artifact, exactly one component lists it as produced; where that producing entry carries a contract path, it points to the generated contract (entries without the field remain valid implicit contracts)",
+      "Every consuming entry names its producing component; where both the consuming and the producing entry carry a contract path, the two paths are equal",
+      "Whether newly added components carry explicit contract fields is checked only as a recommendation; absence is reported as a recommendation gap, not a violation"
+    ],
+    "verification": [
+      "Producer and consumer are defined for the check: the producer is the component that declares the artifact in its producing entries and generates the contract; a consumer is a component that declares the artifact in its consuming entries and references the existing contract.",
+      "The contract field is optional (not required) but recommended: absence on any entry is never a violation — implicit contracts remain valid — and on newly added components it is at most a recommendation gap.",
+      "Contract-path equality is checked only where both the consuming and the producing entry carry a contract path; entries without the field are outside that check.",
+      "Single-producer-per-artifact, orphan and contract-path checks are cross-declaration checks over all plan interface declarations, not per-file checks; detecting entry-level changes requires a diff-level observer over those declarations."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "plan artifact that declares component interfaces with producing/consuming artifact entries (concrete kinds from the profile)"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "task_term",
+          "values": [
+            "produce",
+            "consume",
+            "artifact",
+            "contract",
+            "producer",
+            "consumer",
+            "component interface (the stack's local term via the profile)"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "a producing entry is added or changed",
+            "a consuming entry is added or changed",
+            "the contract field is added or removed on an interface entry"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "artifact declared as produced by more than one component",
+            "artifact consumed with no producing component (orphan)",
+            "consuming entry's contract path differs from the producing entry's contract path (when both are present)"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "The planner adds a component that outputs an artifact and declares it as produced",
+        "The planner adds a consuming entry for an artifact produced by another component",
+        "The planner authors a new component interface and decides whether to include contract fields"
+      ],
+      "doesNotFire": [
+        "Edits to declaration fields unrelated to producing/consuming entries (e.g. descriptive text or wording of other plan artifacts)",
+        "Implementation code changes inside a component that do not touch its interface declaration",
+        "Contract schema content edits that do not change which component produces or consumes the artifact"
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roles.plan_artifact.kinds",
+      "meaning": "The plan-artifact file kinds whose producing/consuming artifact entries this rule governs; they are the activation file_kind values.",
+      "bunValue": "wagon manifest; wagon interface declaration (produce[]/consume[])"
+    },
+    {
+      "key": "idiom.plan_ownership_declaration",
+      "meaning": "How producing and consuming artifact entries are declared (entry fields: artifact name, destination, producer reference, optional contract path), the stack's term for these interface declarations, and its name for the declaring unit.",
+      "bunValue": "produce[]/consume[] entries in wagon interface declarations; producer entry: artifact name, `to` destination, optional `contract` path it generates; consumer entry: same artifact name, `from` the producing wagon, optional `contract` path; stack terms: 'wagon', 'wagon interface'"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "idiom.plan_ownership_declaration",
+      "group": "idiom",
+      "meaning": "How a plan artifact declares that a component produces an artifact and that another component consumes it: the producing/consuming entry constructs and their fields (artifact name, destination, the field naming the producing component, the optional contract path), plus the stack's local term for such interface declarations and for the declaring unit.",
+      "bunValue": "wagon interface declarations carry produce[]/consume[] artifact entries; producer entry fields: artifact name, `to` destination, optional `contract` path it generates; consumer entry fields: same artifact name, `from` naming the producing wagon, optional `contract` path; the stack calls the declaring unit a 'wagon' and the declaration a 'wagon interface'",
+      "whyNoExistingKey": "The idiom group covers code-level constructs (routes, guards, errors, validation, imports) but has no key for how plan artifacts declare artifact production/consumption between components; the urn.* keys give URN shapes, not declaration syntax, and layout/roles keys give locations and kinds, not entry fields."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "activation.facts[3]",
+      "text": "implementation.type is none in the Bun source: the realization currently ships no detector for the cross-wagon ownership/coverage check, so the findings above and entry-level change detection need new observers in this realization.",
+      "reason": "Asserts the current Bun realization's implementation state (no observer shipped yet); other stacks may already ship such observers, so it is not part of the stack-neutral obligation. The generic cross-declaration check scope stays in core:verification, and the facts' needs_new_observer observability already records the observer requirement."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "text": "Source positive example (producer): wagon resolve-dilemmas: produce name mechanic:decision.choice, to external, contract contracts/artifacts/decision/choice.json",
+      "reason": "Names a specific project wagon, artifact and contract path; the core keeps only the role-level shape (prefer[0]) and bun.json itself is delivered as the worked reference example."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "text": "Source positive example (consumer): wagon commit-state: consume name mechanic:decision.choice, from wagon:resolve-dilemmas, contract contracts/artifacts/decision/choice.json",
+      "reason": "Names specific project wagons, artifact and contract path; the core keeps only the role-level shape (prefer[1], evidence[1])."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:roles.plan_artifact.kinds",
+        "profile:idiom.plan_ownership_declaration"
+      ],
+      "note": "'wagon interfaces with produce[]/consume[] entries' neutralized to component interfaces with producing/consuming entries; the concrete plan-artifact kinds and entry syntax come from the profile."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "'produce[] or consume[] entry' neutralized to producing/consuming entry; no condition dropped."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then"
+      ],
+      "note": "Single obligation carried over in role terms: exactly one producing component owns the contract; consumers reference it instead of generating their own."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Already stack-neutral; unchanged."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]",
+        "profile:idiom.plan_ownership_declaration"
+      ],
+      "note": "Role-level shape of a producing entry (artifact name, destination, optional contract path); concrete field names come from the profile."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]",
+        "profile:idiom.plan_ownership_declaration"
+      ],
+      "note": "Role-level consumer guidance; the `from` field that names the producer is stack syntax supplied by the profile."
+    },
+    {
+      "item": "prefer[2]",
+      "as": [
+        "core:prefer[2]",
+        "core:verification"
+      ],
+      "note": "Recommendation for newly added components ('wagons' -> 'components'); its never-a-violation disposition is stated in verification."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Neutral negation of single ownership (split ownership)."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Neutral: a consumer must not generate or redefine a contract for another producer's artifact."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]"
+      ],
+      "note": "Orphan consumption; neutral."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]",
+        "core:verification"
+      ],
+      "note": "Exception carried in full: contract field optional for backward compatibility, implicit contracts valid; the required=false disposition is restated in verification."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]"
+      ],
+      "note": "Single-producer evidence; the implicit-contract carve-out is preserved exactly."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]",
+        "profile:idiom.plan_ownership_declaration"
+      ],
+      "note": "Producer-naming evidence; the `from` field name arrives via the profile; the 'when both carry a path' equality condition is kept."
+    },
+    {
+      "item": "evidence[2]",
+      "as": [
+        "core:evidence[2]",
+        "core:verification"
+      ],
+      "note": "Recommendation-only check; its disposition (recommendation gap, not violation) is mirrored in verification."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Producer/consumer role definitions used by the check, neutralized to 'the component that declares the artifact as produced / as consumed'."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "core:unless[0]"
+      ],
+      "note": "required=false / recommended=true is a per-rule disposition, not a profile key; the backward-compatibility rationale already lives in unless[0]."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Absence of the contract field is never a violation; on new components at most a recommendation gap."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "Project-specific producer example; its general form is prefer[0]."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "Project-specific consumer example; its general forms are prefer[1] and evidence[1]."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roles.plan_artifact.kinds"
+      ],
+      "note": "file_kind values are the stack's plan-artifact kinds ('wagon manifest', 'wagon interface declaration'); the core names the role, the profile supplies the kinds."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:idiom.plan_ownership_declaration"
+      ],
+      "note": "Generic planning terms kept in the core; the stack term 'wagon interface' arrives through the profile key's value."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[2]",
+        "core:verification"
+      ],
+      "note": "Entry-level change fact neutralized; needs_new_observer kept. The generic requirement for a diff-level observer over the entries is stated in verification without asserting anything about which observers a realization ships."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[3]",
+        "bunOnly"
+      ],
+      "note": "Finding values neutralized to component level; needs_new_observer kept. The fact's note that the current Bun realization ships no detector (implementation.type is none) is a realization fact, carried as bunOnly rather than in core:verification."
+    }
+  ],
+  "neutralityNotes": "The core says 'component' where ATDD-Bun says 'wagon' (a bounded slice of the product); that mapping and the stack's local terms travel in the proposed idiom.plan_ownership_declaration profile key, because the closed vocabulary has no key for plan-level produce/consume declaration syntax. Field names (produce[], consume[], from, contract, to) are stack syntax and appear only in that profile value and in bun.json itself. The two project-specific source examples (verifier_detail[3]/[4]) have no neutral equivalent and stay bunOnly, since bun.json is the delivered reference example. The 'WMBT wording' example in doesNotFire was generalized to 'wording of other plan artifacts' (WMBT being a stack plan-artifact kind). 'No detector exists yet' is a Bun realization fact (the rewrite records implementation.type: none) and is carried only in bunOnly; core:verification states the generic cross-declaration check scope and the generic need for a diff-level observer, without asserting which observers a realization ships and without adding any interim enforcement (such as plan review) that bun.json does not require. The splitSuggestion (extracting the optional contract-field recommendation into its own rule) is realization bookkeeping, not carried into the core; the recommendation itself is fully preserved in prefer[2], unless[0] and verification, so the core is neither weaker nor stronger than bun.json.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/planner-nodes/planner.interface.ownership-rules.json",
+      "sha256": "59f53bf34b545064a96093be0f5e5b28614dd9d05e32c4215ee4ea8ab8c79e69"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

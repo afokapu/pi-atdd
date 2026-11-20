@@ -1,0 +1,447 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.contract.registry-coherence",
+  "legacyId": "planner.contract.registry-coherence",
+  "core": {
+    "title": "Bind produce/consume contracts to registered contract identities",
+    "given": "Plan artifacts declare produce/consume entries for each module; an authored contract registry is the single source of truth for each contract's identity, path, theme, producers and consumers.",
+    "when": "You author, change, review or validate produce/consume entries, their contract references, or registry entries.",
+    "then": "Every non-null contract reference on a produce or consume entry must, after stripping its URN prefix, resolve to an identity registered in the contract registry.",
+    "prefer": [
+      "Add new contract identities to the registry through its authoring flow, so the registry entry carries identity, path, theme, producers and consumers.",
+      "Mandatory (null-cross-edge invariant): give the producing entry of every cross-module edge (an artifact name produced by one module and consumed by a different module) a non-null registered contract.",
+      "Mandatory (unconsumed invariant): mark a produced non-null contract that no other module consumes with the external-consumption marker."
+    ],
+    "avoid": [
+      "Contract URNs whose identity, after stripping the URN prefix, is absent from the registry (typos, renamed or deleted contracts). A prefixed URN is valid exactly when its stripped identity is a registry key.",
+      "A null contract on a cross-module producer (dangling producer — no contract binds the edge); a required invariant, not optional.",
+      "A produced non-null contract that no other module consumes and that is not marked external; a required invariant, not optional.",
+      "Silencing findings by nulling a contract reference or by marking an internally consumed contract external."
+    ],
+    "unless": [
+      "A produced contract with no consuming module is coherent if marked external (this exempts only the unconsumed invariant)."
+    ],
+    "why": "The registry owns contract identity and producer/consumer ownership; unregistered URNs, null-bound cross-module edges and orphan producers let the plan graph and the registry drift.",
+    "evidence": [
+      "The registry-coherence check passes with no findings of any of the three kinds (all three invariants are required).",
+      "A reviewer can map every contract URN in the plan artifacts, after stripping its prefix, to a key in the contract registry.",
+      "Every cross-module edge has a non-null contract on its producing entry; every produced non-null contract has another consuming module or the external marker."
+    ],
+    "verification": [
+      "Registry keys are contract identities; the contract URN prefix is stripped before lookup.",
+      "Unregistered identity: every non-null contract URN on any produce or consume entry must strip to an existing registry identity.",
+      "Null cross-module edge: edges are keyed on artifact name — a name produced by one module and consumed by a different module; the producing entry must declare a non-null contract (a null contract there is a dangling producer). Same-module produce/consume is not a cross-module edge.",
+      "Unconsumed: every produce entry with a non-null contract must be consumed by at least one other module or carry the external-consumption marker.",
+      "All three invariants are checked across the whole plan graph — every plan artifact's produce/consume entries against the contract registry. Exemptions are per-invariant: a null contract on a non-cross edge exempts only the null-cross-edge invariant; the external marker exempts only the unconsumed invariant.",
+      "Disposition advisory, severity 3."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "plan artifact manifest",
+            "contract registry"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "produce entry added or edited",
+            "consume entry added or edited",
+            "contract field changed (including set to null)",
+            "registry entry added/removed/renamed"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "operation",
+          "values": [
+            "review",
+            "validate"
+          ],
+          "observability": "llm_judged"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "unregistered contract identity",
+            "null contract on a cross-module edge (dangling producer)",
+            "produced contract with no consumer and not marked external"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "task_term",
+          "values": [
+            "contract",
+            "produce",
+            "consume",
+            "module",
+            "registry",
+            "URN"
+          ],
+          "observability": "observable_now"
+        }
+      ],
+      "fires": [
+        "A planner adds a consume entry whose contract URN strips to an identity not present in the contract registry.",
+        "A planner adds a produce entry for an artifact name that another module consumes, with a null contract reference.",
+        "A produce entry declares a non-null contract that no other module consumes and that is not marked external.",
+        "A contract is renamed or removed from the registry while plan artifacts still reference its identity.",
+        "A planner reviews or validates existing plan artifacts that already contain an unregistered identity, a null-contract cross-module producer, or an unconsumed non-external produced contract — even without editing them."
+      ],
+      "doesNotFire": [
+        "Null-cross-edge only: a produce entry with a null contract whose artifact name is not consumed by any other module is exempt from the null-cross-edge invariant; the rule is inactive only if the registered-identity and unconsumed invariants also hold for the rest of the graph.",
+        "Unconsumed only: a produced contract consumed by no module but explicitly marked external is exempt from the unconsumed invariant; its URN must still resolve to a registered identity, and the null-cross-edge invariant must still hold elsewhere.",
+        "Edits to plan artifact fields unrelated to produce/consume (e.g. descriptions) that leave contract references unchanged — only when the graph already satisfies all three invariants.",
+        "Changes outside the plan artifacts and the contract registry, when the existing graph already satisfies all three invariants."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "layout.plan_item",
+      "meaning": "Where the plan artifacts that carry the produce/consume graph live.",
+      "bunValue": "plan/<wagon>/_<wagon>.yaml"
+    },
+    {
+      "key": "layout.contract_registry",
+      "meaning": "Path of the single authored contract registry that owns contract identities and their producer/consumer ownership.",
+      "bunValue": "contracts/_contracts.yaml"
+    },
+    {
+      "key": "idiom.contract_reference",
+      "meaning": "The syntax by which a plan artifact's produce/consume entry references a contract: a contract field that holds a contract URN (its prefix is stripped to obtain the registered identity) or null.",
+      "bunValue": "contract: URN / contract: null; strip the 'contract:' URN prefix before lookup"
+    },
+    {
+      "key": "idiom.contract_external_marker",
+      "meaning": "The marker on a produced contract that declares it consumed outside the plan graph (exempts the unconsumed invariant only).",
+      "bunValue": "to: external"
+    },
+    {
+      "key": "tooling.contract_authoring",
+      "meaning": "The authoring flow or command that adds a contract identity to the registry.",
+      "bunValue": "create_contract"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "layout.contract_registry",
+      "group": "layout",
+      "meaning": "Path of the single authored contract registry that is the source of truth for contract identities and their producer/consumer ownership.",
+      "bunValue": "contracts/_contracts.yaml",
+      "whyNoExistingKey": "No key locates the contract registry: it is not a plan item (layout.plan_item), not a source/test/e2e root, and not the repository config (roots.config)."
+    },
+    {
+      "key": "idiom.contract_reference",
+      "group": "idiom",
+      "meaning": "The syntax by which a plan artifact's produce/consume entry references a contract: a contract field that holds a contract URN (its prefix is stripped to obtain the registered identity) or null.",
+      "bunValue": "contract: URN / contract: null; strip the 'contract:' URN prefix before lookup",
+      "whyNoExistingKey": "The urn.binding.<artifact> family describes a source or test file binding ITSELF to an artifact (header comment, decorator, annotation) — it does not cover a plan-artifact entry referencing an external contract identity, with null allowed and a URN prefix stripped to normalize the identity. No other urn or idiom key covers a plan entry's contract-reference syntax and identity normalization, so a new idiom key (not an extension of the self-binding family) is proposed."
+    },
+    {
+      "key": "idiom.contract_external_marker",
+      "group": "idiom",
+      "meaning": "The marker on a produced contract that declares it consumed outside the plan graph (exempts the unconsumed invariant only).",
+      "bunValue": "to: external",
+      "whyNoExistingKey": "The idiom group covers request, gate, import and machinery constructs only; nothing describes the external-consumption marker of a produced contract."
+    },
+    {
+      "key": "tooling.contract_authoring",
+      "group": "tooling",
+      "meaning": "The authoring flow or command that adds a contract identity to the registry.",
+      "bunValue": "create_contract",
+      "whyNoExistingKey": "tooling.urn_resolver resolves URNs but no key names the flow that authors registry entries."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "prefer[1]",
+      "text": "Label 'NULL-CROSS-WAGON'.",
+      "reason": "Finding id of this rule's validator; the core labels the invariant generically (null-cross-edge)."
+    },
+    {
+      "item": "prefer[2]",
+      "text": "Label 'UNCONSUMED'.",
+      "reason": "Finding id of this rule's validator; the core labels the invariant generically (unconsumed)."
+    },
+    {
+      "item": "unless[0]",
+      "text": "'(exempts UNCONSUMED only)'.",
+      "reason": "Finding id of this rule's validator; the core names the invariant generically."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "test_contract_registry_coherence::test_contract_registry_coherence passes with no UNREGISTERED, NULL-CROSS-WAGON or UNCONSUMED findings.",
+      "reason": "Validator id and finding ids of this one rule are realization details; the core refers to the coherence check and the three invariant kinds generically."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "text": "'UNREGISTERED' finding id.",
+      "reason": "Finding id of this rule's validator; core verification names the check generically."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "text": "'NULL-CROSS-WAGON' finding id.",
+      "reason": "Finding id of this rule's validator; core verification names the check generically."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "text": "'UNCONSUMED' finding id.",
+      "reason": "Finding id of this rule's validator; core verification names the check generically."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "text": "Finding ids NULL-CROSS-WAGON and UNCONSUMED in the per-invariant exemption parenthetical (the concrete paths plan/<wagon>/_<wagon>.yaml and contracts/_contracts.yaml come from the profile).",
+      "reason": "Finding ids are realization details; the core keeps the per-invariant exemption semantics with generic invariant names."
+    },
+    {
+      "item": "activation.facts[3]",
+      "text": "Finding values UNREGISTERED, NULL-CROSS-WAGON, UNCONSUMED, produced by validator test_contract_registry_coherence.",
+      "reason": "Finding and validator ids of this rule are realization details; the core activation fact describes the three finding kinds generically."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:layout.plan_item",
+        "profile:layout.contract_registry"
+      ],
+      "note": "Manifest path and registry path come from the profile; 'wagon' neutralized to module."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when",
+        "profile:idiom.contract_reference"
+      ],
+      "note": "'contract: fields' neutralized to contract references whose syntax comes from the profile."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "profile:layout.contract_registry",
+        "profile:idiom.contract_reference"
+      ],
+      "note": "One obligation (registered identity); URN prefix and registry location come from the profile."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "'cross-wagon' neutralized to cross-module."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]",
+        "profile:tooling.contract_authoring"
+      ],
+      "note": "Registry authoring flow kept; the concrete flow name comes from the profile."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]",
+        "bunOnly"
+      ],
+      "note": "Mandatory null-cross-edge invariant kept; the NULL-CROSS-WAGON label is a finding id (bunOnly)."
+    },
+    {
+      "item": "prefer[2]",
+      "as": [
+        "core:prefer[2]",
+        "profile:idiom.contract_external_marker",
+        "bunOnly"
+      ],
+      "note": "Mandatory unconsumed invariant kept; external marker from profile; UNCONSUMED label is a finding id (bunOnly)."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]",
+        "profile:idiom.contract_reference"
+      ],
+      "note": "Typo/renamed/deleted identity case kept; prefix-stripping syntax from the profile."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Null contract on a cross-module producer; semantics unchanged, terms neutralized."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]",
+        "profile:idiom.contract_external_marker"
+      ],
+      "note": "Unconsumed non-external produced contract; marker from profile."
+    },
+    {
+      "item": "avoid[3]",
+      "as": [
+        "core:avoid[3]",
+        "profile:idiom.contract_reference",
+        "profile:idiom.contract_external_marker"
+      ],
+      "note": "Metric-gaming anti-pattern kept; concrete constructs from profile."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]",
+        "profile:idiom.contract_external_marker",
+        "bunOnly"
+      ],
+      "note": "Exemption kept and still scoped to one invariant; UNCONSUMED label is a finding id (bunOnly)."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ],
+      "note": "Passing check with zero findings of all three kinds kept; validator/finding ids are bunOnly."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]",
+        "profile:layout.plan_item",
+        "profile:layout.contract_registry",
+        "profile:idiom.contract_reference"
+      ],
+      "note": "Manual URN-to-registry-key mapping kept; paths and prefix syntax from profile."
+    },
+    {
+      "item": "evidence[2]",
+      "as": [
+        "core:evidence[2]",
+        "profile:idiom.contract_external_marker"
+      ],
+      "note": "Cross-module edge and consumed-or-external evidence kept."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "profile:idiom.contract_reference"
+      ],
+      "note": "Registry keys are identities; prefix stripped before lookup."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Unregistered-identity check described generically; finding id bunOnly."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Cross-module edge keyed on artifact name, same-module exclusion kept; NULL-CROSS-WAGON id bunOnly."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification",
+        "profile:idiom.contract_external_marker",
+        "bunOnly"
+      ],
+      "note": "Consumed-by-other-module-or-external check kept; UNCONSUMED id bunOnly."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification",
+        "profile:layout.plan_item",
+        "profile:layout.contract_registry",
+        "profile:idiom.contract_external_marker",
+        "bunOnly"
+      ],
+      "note": "Whole-graph scope and per-invariant exemptions kept; concrete paths from profile, finding ids bunOnly."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Advisory disposition, severity 3 — per-rule enforcement stays with the rule."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:layout.plan_item",
+        "profile:layout.contract_registry"
+      ],
+      "note": "path_glob re-expressed as file_kind (plan artifact manifest, contract registry); the concrete globs come from the profile."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]"
+      ],
+      "note": "Change kinds are already neutral; diff-level observer requirement kept."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[2]"
+      ],
+      "note": "review/validate operation fact kept unchanged."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[3]",
+        "bunOnly"
+      ],
+      "note": "Finding kinds described generically; exact finding/validator ids are bunOnly."
+    },
+    {
+      "item": "activation.facts[4]",
+      "as": [
+        "core:activation.facts[4]"
+      ],
+      "note": "Task terms kept; 'wagon' neutralized to 'module' (the stack's bounded product slice)."
+    }
+  ],
+  "neutralityNotes": "'Wagon' is the ATDD-Bun name for a bounded product slice; the core says 'module' and the mapping back is carried by the profile's wagon concept (layout.wagon_dir). Finding and validator ids (UNREGISTERED, NULL-CROSS-WAGON, UNCONSUMED, test_contract_registry_coherence) are realization details kept bunOnly; the core names the three invariants generically (registered identity, null cross-module edge, unconsumed) while preserving that all three are mandatory and that exemptions apply per invariant. The rule cannot be instantiated without four proposed profile keys (registry path, plan-entry contract-reference syntax, external marker, registry authoring flow); until approved, bun.json remains the worked example. Bun-side metadata with no core counterpart (audit, trace, additions, splitSuggestion) stays in the realization; the split suggestions would equally split the neutral core's prefer/avoid/unless/verification entries.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/planner-nodes/planner.contract.registry-coherence.json",
+      "sha256": "d545602b9faa5610b41feec92f299d1f8b25d567893caf736f871b163bd0ccc6"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 4,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 4,
+      "agreeWithAuditor": true
+    }
+  }
+}

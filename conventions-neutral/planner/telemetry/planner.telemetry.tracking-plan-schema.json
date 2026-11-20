@@ -1,0 +1,420 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.telemetry.tracking-plan-schema",
+  "legacyId": "planner.telemetry.tracking-plan-schema",
+  "core": {
+    "title": "Make each tracking-plan item's identity mirror its path",
+    "given": "Telemetry is adopted, and a tracking-plan item file exists under the telemetry root. The root's default location and its configured override come from the profile; a configured root replaces the default. The file may be new, changed or unchanged.",
+    "when": "You plan, author, rename or review a tracking-plan item at <telemetry root>/<theme>/<artifact>/{event|trace|metric|log}.<plane>[.<measure>]",
+    "then": "Make the item's declared identity mirror its path: id = telemetry:{kind}:{plane}:{theme}:{artifact}[:{measure}], logical_artifact = telemetry:{theme}:{artifact}, and the file name's kind, plane and measure equal the declared fields.",
+    "prefer": [
+      "Name the file for what it is, then derive id and logical_artifact from the path.",
+      "Keep the item valid against the stack's tracking-plan schema. Declare id, a SemVer version, logical_artifact, kind, plane, owner, purpose, acceptances, properties and required. Optionally add forbidden_properties. Give each property a type, classification and cardinality. Every `required` name must be declared in `properties`. Metric dimensions are optional, but each one present must declare cardinality.",
+      "Give every metric item a measure segment (metric.<plane>.<measure> in the file name, id ending :{measure}). Never give an event, trace or log item a measure segment."
+    ],
+    "avoid": [
+      "Renaming a file or hand-editing an id so that the path and the identity drift apart",
+      "Declaring the same concrete id in two files",
+      "Putting notes, indexes or generated bundles under the telemetry root",
+      "Treating a logical artifact as an exporter event"
+    ],
+    "unless": [
+      "Telemetry is not adopted: there is no telemetry root and no acceptance telemetry declaration. Adoption means creating the tree or making the first acceptance decision."
+    ],
+    "why": "The telemetry tree is a registry, not a suggestion. The path is the authority for identity, so a renamed file or a hand-edited id cannot drift apart silently.",
+    "evidence": [
+      "Every tracking-plan item file under the resolved telemetry root validates against the tracking-plan schema.",
+      "For each file, the kind, plane and measure parsed from the file name match the declared fields. The id equals telemetry:{kind}:{plane}:{theme}:{artifact}[:{measure}] and the logical_artifact equals telemetry:{theme}:{artifact}, both derived from the path.",
+      "Every name in `required` appears in `properties`.",
+      "No concrete id is declared by more than one file.",
+      "With no telemetry root and no acceptance telemetry declaration, the check emits no findings.",
+      "In an adopted repository, an unchanged item that is invalid is still reported. Checks cover all items, not only changed ones.",
+      "Every metric item has a measure segment in its file name and id. No event, trace or log item has one."
+    ],
+    "verification": [
+      "Severity 2, strict disposition: the check fails on every finding; there is no advisory mode and no ratchet baseline.",
+      "Scope: the telemetry root, the versioned tracking-plan source of truth, resolved through the profile. A configured root replaces the default and does not add to it; only the resolved root is scanned.",
+      "Item path grammar: <telemetry root>/<theme>/<artifact>/{event|trace|metric|log}.<plane>[.<measure>] with the item file suffix taken from the profile's item pattern. Metric items carry a measure segment; event, trace and log items never do.",
+      "Division of labor: local shape is the tracking-plan schema's job — required identity fields, URN grammar, SemVer core version, property declarations with classification and cardinality, and metric dimensions that declare cardinality. This rule covers the cross-artifact checks the schema cannot see: (1) the file name's kind, plane and measure match the declared fields; (2) the id equals telemetry:{kind}:{plane}:{theme}:{artifact}[:{measure}] derived from the path; (3) the logical_artifact equals telemetry:{theme}:{artifact} from the path; (4) the names in `required` are a subset of the `properties` keys; (5) no two files declare the same concrete id.",
+      "Item fields: id, version, logical_artifact, kind, plane, owner, purpose, acceptances, properties, required. Optional: forbidden_properties and, for metrics only, dimensions.",
+      "Identity model: a concrete item is a telemetry URN with kind and plane, telemetry:{kind}:{plane}:{theme}:{artifact}[:{measure}]. A logical artifact, telemetry:{theme}:{artifact}, is the stable architectural identity of an observable outcome; it is not an exporter event — the concrete items under it are.",
+      "Every file of the tracking-plan item format under the root is judged as an item. There is no allow-list for non-item files of that format.",
+      "Adoption gate: with no telemetry root and no acceptance telemetry declaration anywhere, emit nothing. Installing or upgrading the convention tooling must not fail a repository that has not opted in.",
+      "After adoption, the check covers all items under the resolved root regardless of diff status; an unchanged item that is invalid is still reported."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "tracking_plan_item"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "telemetry adopted: a telemetry root exists, or an acceptance declares telemetry"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "task_term",
+          "values": [
+            "telemetry",
+            "tracking plan",
+            "event",
+            "metric",
+            "trace",
+            "log"
+          ],
+          "observability": "observable_now"
+        }
+      ],
+      "fires": [
+        "A planner adds a new tracking-plan item file under the telemetry root for a new observable outcome",
+        "A tracking-plan item file is renamed or moved, and its id or logical_artifact no longer matches its new path",
+        "An existing, unchanged tracking-plan item in an adopted repository has an id that does not match its path",
+        "A metric item has no measure segment, or an event, trace or log item has one",
+        "The repository configures a non-default telemetry root, and an item under that configured root is checked"
+      ],
+      "doesNotFire": [
+        "The repository has no telemetry root and no acceptance declares telemetry (it has not opted in)",
+        "Item files outside the resolved telemetry root, including files under the default root when a different root is configured",
+        "Files under the telemetry root that are not of the tracking-plan item format"
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roots.telemetry",
+      "meaning": "Where the telemetry (tracking-plan) registry lives: the default root, the config knob that overrides it, and that the override replaces the default rather than adding to it. This is a second, simultaneous plan registry alongside the one carried by roots.plan, which in this stack is bound to the source plan root.",
+      "bunValue": "`telemetry/` by default, configurable as topology.telemetry_root in atdd-bun.yaml; the configured root replaces the default and does not add to it"
+    },
+    {
+      "key": "roots.config",
+      "meaning": "The repository file in which the telemetry root override is declared.",
+      "bunValue": "atdd-bun.yaml"
+    },
+    {
+      "key": "layout.telemetry_item",
+      "meaning": "Path pattern of one tracking-plan item under the telemetry root, including the theme/artifact segments, the kind.plane[.measure] file-name grammar and the item file suffix. A second, simultaneous plan-item grammar alongside the one carried by layout.plan_item.",
+      "bunValue": "<telemetry_root>/<theme>/<artifact>/{event|trace|metric|log}.<plane>[.<measure>].json"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "roots.telemetry",
+      "group": "roots",
+      "meaning": "Root of the telemetry tracking-plan registry: the versioned source of truth for planned observations; a configured root replaces the default and does not add to it.",
+      "bunValue": "`telemetry/` by default, configurable as topology.telemetry_root in atdd-bun.yaml",
+      "whyNoExistingKey": "roots.plan is the general plan-artifact root key and is not restricted to any one artifact kind. The need is cardinality, not restriction: a profile holds ONE value per key, and this stack runs two distinct plan registries at the same time — roots.plan is bound in this stack to topology.plan_root (default plan, the vocabulary's own Bun example) for the source plan tree, while the telemetry tracking plan is a separate, simultaneous registry with its own default (telemetry/) and its own override knob (topology.telemetry_root). Binding the telemetry root to roots.plan would collide with that already-bound plan_root value and point the check at the wrong tree, so the second registry needs a second root key."
+    },
+    {
+      "key": "layout.telemetry_item",
+      "group": "layout",
+      "meaning": "Path pattern of one tracking-plan item under the telemetry registry root, carrying the theme/artifact segments, the kind.plane[.measure] file-name grammar and the item file suffix.",
+      "bunValue": "<telemetry_root>/<theme>/<artifact>/{event|trace|metric|log}.<plane>[.<measure>].json",
+      "whyNoExistingKey": "layout.plan_item is the general per-stack pattern for one plan artifact and is not restricted to WMBTs. Again the need is cardinality: it is a single slot per stack, bound in this stack to the plan-root registry's pattern (<plan_root>/<wagon_dir>/<wmbt_id>.yaml, the vocabulary's example), while the telemetry registry's items follow a different, simultaneous grammar under a different root (<telemetry_root>/<theme>/<artifact>/{event|trace|metric|log}.<plane>[.<measure>].json). One pattern slot cannot carry both grammars, so the second registry needs a second item-pattern key."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "prefer[1]",
+      "text": "Keep the file valid against telemetry-plan.schema.json.",
+      "reason": "The schema document's file name belongs to this realization; the core refers to 'the stack's tracking-plan schema' and spells out its required content, so another stack's equivalent schema document instantiates it."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "Every .json file under the resolved telemetry root validates against telemetry-plan.schema.json.",
+      "reason": "Names the realization's schema document and the .json suffix; the neutral evidence keeps the obligation and takes the format from the profile's item pattern."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "text": "Local shape is the JSON Schema's job (telemetry-plan.schema.json)",
+      "reason": "Names the realization's schema technology and document; the neutral division of labor (the schema owns local shape, this rule owns cross-artifact checks) is kept in core verification."
+    },
+    {
+      "item": "verifier_detail[8]",
+      "text": "Reference fix example (source fix_hint), the file telemetry/commons/response-invocation-accepted/event.be.json: {\"id\": \"telemetry:event:be:commons:response-invocation-accepted\", \"version\": \"1.0.0\", \"logical_artifact\": \"telemetry:commons:response-invocation-accepted\", \"kind\": \"event\", \"plane\": \"be\", \"owner\": \"commons\", \"purpose\": \"Records that a response invocation passed acceptance so ingress health can be audited.\", \"acceptances\": [\"acc:commons:E001-UNIT-001\"], \"properties\": { \"response_id\": { \"type\": \"string\", \"classification\": \"internal\", \"cardinality\": \"high\" } }, \"required\": [\"response_id\"], \"forbidden_properties\": [\"raw_payload\", \"secret\", \"prompt\"]}",
+      "reason": "A rule-specific worked example with concrete paths and field values; bun.json is delivered as the reference example, and the core keeps role-level guidance only."
+    },
+    {
+      "item": "activation.facts[2]",
+      "text": "finding values: [\"telemetry_adopted\"]",
+      "reason": "The finding id of this rule's adoption observer is a realization detail; the core keeps the adoption fact (root exists or an acceptance declares telemetry) and its needs_new_observer status."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:roots.telemetry",
+        "profile:roots.config"
+      ],
+      "note": "Adoption, file existence and change status are neutral; the default root, the override knob and the config file are profile data."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when",
+        "profile:layout.telemetry_item"
+      ],
+      "note": "The grammar is kept with placeholders; the concrete root and file suffix come from the profile's item pattern."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then"
+      ],
+      "note": "Already stack-neutral; the single obligation (identity mirrors the path)."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Neutral verbatim."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]"
+      ],
+      "note": "Neutral as-is."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]",
+        "bunOnly"
+      ],
+      "note": "The field list is the neutral telemetry model; only the schema document's file name is realization-specific."
+    },
+    {
+      "item": "prefer[2]",
+      "as": [
+        "core:prefer[2]"
+      ],
+      "note": "Neutral; the .json suffix is dropped from the file-name example (it rides in the profile pattern)."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Neutral as-is."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Neutral as-is."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]"
+      ],
+      "note": "Neutral as-is; 'telemetry root' is a profile-supplied location, not a stack path."
+    },
+    {
+      "item": "avoid[3]",
+      "as": [
+        "core:avoid[3]"
+      ],
+      "note": "'Exporter' is telemetry-domain vocabulary, not a stack term."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]"
+      ],
+      "note": "The adoption exception is neutral and kept in full; dropping it would weaken the rule."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ],
+      "note": "Schema-validity evidence is neutral; the schema document name and .json wording are realization details."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]"
+      ],
+      "note": "The URN derivations from the path are the neutral core of the rule."
+    },
+    {
+      "item": "evidence[2]",
+      "as": [
+        "core:evidence[2]"
+      ],
+      "note": "Neutral as-is."
+    },
+    {
+      "item": "evidence[3]",
+      "as": [
+        "core:evidence[3]"
+      ],
+      "note": "Neutral as-is."
+    },
+    {
+      "item": "evidence[4]",
+      "as": [
+        "core:evidence[4]"
+      ],
+      "note": "Neutral; 'the validator' is generalized to 'the check'."
+    },
+    {
+      "item": "evidence[5]",
+      "as": [
+        "core:evidence[5]",
+        "core:verification"
+      ],
+      "note": "The whole-tree scan scope is also recorded as a verifier fact in core verification."
+    },
+    {
+      "item": "evidence[6]",
+      "as": [
+        "core:evidence[6]"
+      ],
+      "note": "Neutral as-is."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "profile:roots.telemetry",
+        "profile:roots.config",
+        "core:verification"
+      ],
+      "note": "The concrete root, knob and config file are profile data; 'the versioned tracking-plan source of truth' is kept in core verification."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "profile:layout.telemetry_item"
+      ],
+      "note": "The grammar is neutral minus the suffix; the suffix rides in the profile's item pattern."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "The division of labor is neutral; the schema technology and document name are realization-specific."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "The five cross-artifact checks are stack-neutral and are kept verbatim in core verification."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "The item field list is the neutral telemetry model."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "The URN grammar and the logical-artifact definition are neutral telemetry-model content."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "as": [
+        "core:verification",
+        "profile:layout.telemetry_item"
+      ],
+      "note": "The no-allow-list rule is neutral; which files count as item files comes from the profile's format/suffix."
+    },
+    {
+      "item": "verifier_detail[7]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "The adoption gate is neutral; 'upgrading the package' is generalized to installing/upgrading the convention tooling."
+    },
+    {
+      "item": "verifier_detail[8]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "Rule-specific worked example with concrete paths and field values; no stack-neutral equivalent beyond the role-level guidance already in the core."
+    },
+    {
+      "item": "verifier_detail[9]",
+      "as": [
+        "core:verification",
+        "profile:roots.telemetry"
+      ],
+      "note": "Root-resolution semantics (replace, do not add; scan regardless of diff status) are neutral; the knob names come from the profile."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roots.telemetry",
+        "profile:layout.telemetry_item"
+      ],
+      "note": "The path_glob fact is generalized to the tracking-plan item file kind under the resolved root; root and pattern (including suffix) are profile data. Scope covers new, changed and unchanged files."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[0]"
+      ],
+      "note": "'json' states the same fact as the path glob — every file of the profile's tracking-plan item kind under the resolved root is judged as an item — so it merges into the single core file_kind fact instead of duplicating it."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[1]",
+        "bunOnly"
+      ],
+      "note": "The adoption fact and its needs_new_observer status are neutral; the finding id telemetry_adopted is a realization detail."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[2]"
+      ],
+      "note": "The task terms are telemetry-domain words, not stack terms."
+    }
+  ],
+  "neutralityNotes": "The telemetry data model — kinds (event/trace/metric/log), planes, measures, the item field list and the telemetry:{...} URN grammar — is treated as stack-neutral convention content, because the tracking plan is an ATDD artifact whose shape does not depend on the runtime; only its serialization suffix is profile data. Profile keys roots.telemetry and layout.telemetry_item are proposed rather than reusing roots.plan and layout.plan_item: those existing keys are general plan-artifact keys (not WMBT-only), but a profile holds one value per key and this stack runs two simultaneous plan registries — the plan-root registry already occupies both slots (the vocabulary's Bun examples bind them to topology.plan_root and <plan_root>/<wagon_dir>/<wmbt_id>.yaml), so the telemetry registry needs its own slots. If the owner instead prefers to extend the vocabulary with a parametric plan-registry form (e.g. roots.plan.<registry>), the two proposals should fold into it. What could not be made neutral: the default root path and its config knob (profile: roots.telemetry, declared in roots.config), the concrete item path pattern including the .json suffix (profile: layout.telemetry_item), the schema document name telemetry-plan.schema.json (bunOnly: prefer[1], evidence[0], verifier_detail[2]), the adoption finding id telemetry_adopted (bunOnly), and the worked fix example (bunOnly: verifier_detail[8]). Severity 2 and the strict disposition are kept in core verification, not the profile, per the not-profile-keys rule; the validator ref planner_telemetry_plan stays with the realization.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/planner.telemetry.tracking-plan-schema.json",
+      "sha256": "a99b8e965dcc3138b4fdd3e247663b4108ee2a8cea3234b6a80b8a1e861d0b11"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

@@ -1,0 +1,300 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.wmbt.urn-naming",
+  "legacyId": "planner.wmbt.urn-naming",
+  "core": {
+    "title": "Name each WMBT with a unique step-coded URN matching the profile-declared WMBT URN shape",
+    "given": "Any artifact (plan artifact, wagon manifest, acceptance, doc or source), by any author, contains a WMBT (what-must-be-true) URN.",
+    "when": "A WMBT URN is created, modified or referenced.",
+    "then": "The URN is a unique identifier conforming to the WMBT URN shape declared by the profile (urn.wmbt) — its wagon segment is the parent wagon's id in the shape's casing, its step code is a single letter from the shape's step-code vocabulary, and its sequence is zero-padded within the shape's range — and it is built with the stack's canonical WMBT URN builder (idiom.urn_builder).",
+    "prefer": [
+      "Generate the URN with the stack's canonical WMBT URN builder rather than hand-typing it.",
+      "Use the parent wagon's own id, in the casing the URN shape declares, as the wagon segment.",
+      "Pick the step letter from the shape's step-code vocabulary and a zero-padded sequence within the shape's range that keeps the URN unique."
+    ],
+    "avoid": [
+      "Reusing a URN already assigned to another WMBT (URNs must be unique).",
+      "Unpadded or out-of-range sequences, or step codes that are not a single letter of the shape's step-code vocabulary.",
+      "Using a wagon segment that is not the parent wagon's id or does not follow the shape's casing rule."
+    ],
+    "unless": [],
+    "why": "The WMBT URN is the WMBT's stable identity: it embeds the owning wagon and step code so file names, acceptances and traceability tooling can resolve it unambiguously.",
+    "evidence": [
+      "Every WMBT URN matches the WMBT URN shape declared by the profile (pattern and sequence range).",
+      "The wagon segment equals the id of the wagon that contains the WMBT.",
+      "No two WMBTs share the same URN."
+    ],
+    "verification": [
+      "Scope: any artifact of any kind and any author that contains a WMBT URN; the trigger is the URN content, not the artifact kind or the author.",
+      "A check validates every WMBT URN against the profile-declared WMBT URN shape (urn.wmbt): pattern, wagon-segment casing, step-code vocabulary and sequence range; a sequence that matches the pattern but falls outside the range is still invalid. It also checks that the wagon segment equals the id of the containing wagon and that no two WMBTs share a URN.",
+      "Detecting that a WMBT URN was created, modified or referenced in any artifact requires a diff-level observer for candidate WMBT URNs — strings carrying the scheme of the profile-declared WMBT URN shape (urn.wmbt), including malformed ones — not only strings already matching the full valid shape; the full shape and sequence-range validation applies after activation. Without such an observer this change-based activation is not observable (marked needs_new_observer).",
+      "Not covered: URNs of other artifact kinds (e.g. wagon, feature, acceptance, component), and edits to a WMBT's statement or acceptances that neither create, change nor reference its URN."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "wmbt",
+            "wagon manifest",
+            "acceptance",
+            "plan artifact",
+            "source"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "task_term",
+          "values": [
+            "wmbt",
+            "wmbt urn",
+            "what must be true"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "wmbt urn added",
+            "wmbt urn changed",
+            "wmbt urn referenced"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "A new WMBT is added to a wagon and given its URN",
+        "A WMBT is renamed, renumbered or moved to another wagon or step",
+        "An acceptance, doc or code file writes a reference to a WMBT by URN",
+        "Code or tooling mints a WMBT URN programmatically"
+      ],
+      "doesNotFire": [
+        "Edits to a WMBT's statement or acceptances that neither create, change nor reference a WMBT URN",
+        "URNs of other kinds (wagon, feature, acceptance, component) being authored"
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "urn.wmbt",
+      "meaning": "The WMBT URN shape this rule enforces: full pattern, wagon-segment casing, step-code vocabulary and sequence range (a sequence can match the pattern yet still be out of range), plus the scheme used to detect candidate WMBT URNs — including malformed ones — before full validation.",
+      "bunValue": "^wmbt:[a-z][a-z0-9-]*:[DLPCEMYRK][0-9]{3}$; sequence_range: 001-999 (000 is invalid even though it matches [0-9]{3}); wagon segment kebab-case ([a-z][a-z0-9-]*); step codes D, L, P, C, E, M, Y, R, K; candidate detection: any string matching wmbt:* (malformed candidates included), validated against the full shape after activation"
+    },
+    {
+      "key": "idiom.urn_builder",
+      "meaning": "The stack's canonical construct that builds a WMBT URN from the wagon id and sequence, which the core prefers over hand-typing the string.",
+      "bunValue": "URNBuilder.wmbt(wagon_id, sequence)"
+    },
+    {
+      "key": "roles.plan_artifact.kinds",
+      "meaning": "The concrete plan-artifact kinds that can contain a WMBT URN and trigger this rule; the neutral activation speaks of plan artifacts and the profile names the stack's kinds.",
+      "bunValue": "wmbt, wagon manifest, plan doc"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "idiom.urn_builder",
+      "group": "idiom",
+      "meaning": "The stack's canonical construct that builds a URN for an artifact from its parts (e.g. a WMBT URN from the wagon id and a sequence), which rules prefer over hand-typing the string.",
+      "bunValue": "URNBuilder.wmbt(wagon_id, sequence)",
+      "whyNoExistingKey": "The idiom group covers boundary, validation, markup and measurement constructs but has no key for the canonical URN construction helper; tooling.urn_resolver only resolves a URN to its artifact and does not build one."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "verifier_detail[0]",
+      "text": "Term wmbt_urn = the WMBT identifier; validate with regex ^wmbt:[a-z][a-z0-9-]*:[DLPCEMYRK][0-9]{3}$.",
+      "reason": "The verifier term id of this realization's check is a rule-local identifier; the core's verification names the check generically and the concrete pattern is carried by profile key urn.wmbt."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "text": "Valid examples from source: wmbt:resolve-dilemmas:E001, wmbt:burn-timebank:M045, wmbt:user-mgmt:C023.",
+      "reason": "Concrete instance URNs of this repository's wagons; the neutral core points at the profile-declared shape and the reference rewrite is delivered as the worked example."
+    },
+    {
+      "item": "avoid[1]",
+      "text": "Concrete invalid sequences (e.g. 1, 45, 000, 1000) and multi-letter / lowercase step codes.",
+      "reason": "Concrete anti-examples of the reference realization; the core keeps the role-level negation and does not repeat concrete examples."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given"
+      ],
+      "note": "Already role-level: any artifact kind, any author; 'plan doc'/'source code' restated as plan artifact/source."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Neutral as-is: a WMBT URN is created, modified or referenced."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "profile:urn.wmbt",
+        "profile:idiom.urn_builder"
+      ],
+      "note": "The concrete form, kebab-case wagon segment, step letters and 001-999 range become the urn.wmbt profile value; the concrete builder becomes idiom.urn_builder; the core keeps uniqueness, parent-wagon binding and shape conformance."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Rationale names only neutral artifacts (file names, acceptances, traceability tooling)."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]",
+        "profile:idiom.urn_builder"
+      ],
+      "note": "Builder-vs-hand-typing preference is neutral; the concrete builder name is profile data."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]",
+        "profile:urn.wmbt"
+      ],
+      "note": "Parent-wagon binding is core; the casing rule (kebab-case) comes from the declared shape."
+    },
+    {
+      "item": "prefer[2]",
+      "as": [
+        "core:prefer[2]",
+        "profile:urn.wmbt"
+      ],
+      "note": "Step-code vocabulary (D, L, P, C, E, M, Y, R, K) and 001-999 range come from the declared shape."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Uniqueness negation is already neutral."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]",
+        "bunOnly"
+      ],
+      "note": "Neutral negation in the core; the concrete invalid sequences stay as realization examples."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]",
+        "profile:urn.wmbt"
+      ],
+      "note": "Non-parent-wagon negation is core; the concrete casing violations (uppercase, underscores, leading digit) are the shape's kebab-case rule."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "profile:urn.wmbt"
+      ],
+      "note": "The concrete regex and range are the urn.wmbt value; the core cites the declared shape."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]"
+      ],
+      "note": "Neutral: wagon segment equals the containing wagon's id."
+    },
+    {
+      "item": "evidence[2]",
+      "as": [
+        "core:evidence[2]"
+      ],
+      "note": "Neutral uniqueness evidence."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "bunOnly",
+        "profile:urn.wmbt",
+        "core:verification"
+      ],
+      "note": "Term id is realization-only; the regex is the urn.wmbt value; 'validate each URN against the shape' becomes a generic verification entry."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "profile:urn.wmbt",
+        "core:verification"
+      ],
+      "note": "The 001-999 range is shape data; the subtlety that a pattern-matching sequence can still be out of range is kept generically in verification."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "profile:idiom.urn_builder",
+        "core:then"
+      ],
+      "note": "The canonical builder is profile idiom data referenced by the core obligation."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "Concrete valid example URNs have no neutral equivalent; the core relies on the profile shape plus the reference rewrite as worked example."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roles.plan_artifact.kinds"
+      ],
+      "note": "Kind names neutralized to plan artifact/source; the concrete plan-side kinds (wmbt, wagon manifest, plan doc) are the profile value. Trigger is URN content, not artifact type."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]"
+      ],
+      "note": "Task terms are neutral planner vocabulary and stay in core activation."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[2]",
+        "core:verification"
+      ],
+      "note": "Change values are neutral; the diff-level observer must catch candidate WMBT URNs (malformed included) before full shape and range validation, so malformed URNs cannot escape activation; the concrete candidate-detection scheme is carried by the urn.wmbt profile value; the observer requirement is folded into verification."
+    }
+  ],
+  "neutralityNotes": "The concrete URN grammar (the wmbt: scheme, kebab-case wagon segment, step-code vocabulary D/L/P/C/E/M/Y/R/K, three-digit zero-padded 001-999 sequence) is carried by profile key urn.wmbt rather than spelled out in the core, following the vocabulary's design that URN shapes are profile data; the same key supplies the candidate-detection scheme (in its concrete profile value, any string carrying the wmbt: scheme), so the diff-level observer activates on malformed candidate URNs and full shape and range validation is applied after activation; instantiated with that profile value plus the bunOnly items the core imposes exactly the source obligation. The canonical builder (URNBuilder.wmbt(wagon_id, sequence)) has no existing vocabulary key and is proposed as idiom.urn_builder while also being listed in profileRequirements. The rule declares no severity or disposition, so the core's verification states scope and coverage only. The verifier term id (wmbt_urn) and the concrete example URNs stay in the realization; 'wagon', 'WMBT' and the step codes are planner-structure vocabulary, not stack machinery, so they may appear in the core.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/planner-nodes/planner.wmbt.urn-naming.json",
+      "sha256": "5dda97df5e217e045902a9bfdf85eb96aa147e36a67eab097aa39cfabc99669a"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 3,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

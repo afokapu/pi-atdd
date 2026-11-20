@@ -1,0 +1,369 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.subject.invariants",
+  "legacyId": "planner.subject.invariants",
+  "core": {
+    "title": "Register a subject before typing any train under it",
+    "given": "A plan contains a typed train (a train identity of subject plus slug, in the profile's train URN shape) or a subject entry in the subject registry",
+    "when": "the planner types or re-identifies a train, edits the subject registry, or the plan reaches CONFIRM",
+    "then": "Ensure the subject exists in the subject registry before any train is typed under it.",
+    "prefer": [
+      "Add the subject entry to the subject registry first, then type trains under it",
+      "Choose as subject the durable object the train changes, written as a kebab-case noun-led name (this naming is mandatory, see avoid[1])",
+      "Reuse an existing registered subject when the train changes the same durable object"
+    ],
+    "avoid": [
+      "Typing a train under an unregistered subject",
+      "Any subject (registry entry or typed train) that is not ALL of: kebab-case, noun-led, and the durable object of the train's change. This is mandatory, not a preference; camelCase/snake_case/other non-kebab names fail, and a verb, an actor, a theme, a route, a category, an owner or a program name is never a valid subject",
+      "Duplicate subject entries in the registry (registry entries are unique-by-subject)",
+      "Two typed trains with the same subject+slug (typed trains are unique-by-subject+slug)",
+      "Leaving an existing misnamed or duplicated subject/identity in place because the current edit did not change it; CONFIRM validates the whole registry"
+    ],
+    "unless": [],
+    "why": "A train's identity is its subject plus slug, so the subject must be a registered, durable noun and identities must be unique for every typed train to resolve to exactly one stable subject.",
+    "evidence": [
+      "The subject-registry invariant check passes at the CONFIRM phase",
+      "Every typed train in the plan has its subject present in the subject registry",
+      "Every registry and typed-train subject is kebab-case, noun-led and the durable object of the train's change (not a verb, actor, theme, route, category, owner or program name)",
+      "No duplicate subject in the registry and no duplicate subject+slug among typed trains",
+      "On failure, evidence reports the subject, the slug and the registry status"
+    ],
+    "verification": [
+      "A registry-coherence check validates the whole subject registry and every typed train at the CONFIRM phase; it is confirm-blocking, so pre-existing violations also fail even when the current edit did not introduce them",
+      "The check covers: subject kebab-case and noun-led, the durable object of a train's change (not a verb/actor/theme/route/category/owner/program name); subject registered in the subject registry before the first train is typed under it; registry entries unique-by-subject; typed trains unique-by-subject+slug",
+      "On failure, the finding reports the subject, the slug and the subject's registry status",
+      "Severity 4, disposition strict",
+      "Registration, kebab-case and duplicates are mechanically checkable once a diff-level observer for typed trains and registry edits exists; noun-led durable object vs verb/actor/theme/route/category/owner/program name needs judgement (llm_judged)"
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "subject registry",
+            "plan artifact"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "task_term",
+          "values": [
+            "subject",
+            "train",
+            "slug",
+            "train identity",
+            "registry",
+            "the subject registry's file name"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "train typed under a new or an existing subject",
+            "subject registry entry added, renamed or edited",
+            "train subject or slug changed"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "phase",
+          "values": [
+            "CONFIRM"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "subject not registered",
+            "subject not kebab-case",
+            "subject is not a noun-led durable object",
+            "duplicate subject",
+            "duplicate subject+slug"
+          ],
+          "observability": "llm_judged"
+        }
+      ],
+      "fires": [
+        "A plan types a train under a subject that is not in the subject registry",
+        "A plan types a new train under a subject that is already registered (naming and subject+slug uniqueness must still hold)",
+        "A planner adds, renames or edits an entry in the subject registry, independently of any train",
+        "A plan adds a second train with the same subject+slug as an existing typed train",
+        "A registry entry or typed train uses a subject that is not kebab-case, not noun-led, or is a verb, actor, theme, route, category, owner or program name",
+        "CONFIRM runs and the existing registry or typed trains already violate naming, registration or uniqueness"
+      ],
+      "doesNotFire": [
+        "Changes outside the plan root that neither touch the subject registry nor type, rename or reference train identities, outside the CONFIRM validation run"
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roots.plan",
+      "meaning": "The root under which plan artifacts (typed trains and the subject registry) live; the check scans plan files for typed trains, and changes outside this root do not fire.",
+      "bunValue": "plan"
+    },
+    {
+      "key": "layout.subject_registry",
+      "meaning": "The single registry file in which every subject must be registered before any train is typed under it; registration, naming and uniqueness are all checked against it.",
+      "bunValue": "plan/_subjects.yaml"
+    },
+    {
+      "key": "urn.train",
+      "meaning": "The syntax of a typed train identity (subject plus slug), by which typed trains are recognised in plan files, planner tasks and train-identity references.",
+      "bunValue": "train:<subject>:<slug>"
+    }
+  ],
+  "proposedKeys": [
+    {
+      "key": "layout.subject_registry",
+      "group": "layout",
+      "meaning": "Path of the plan's subject registry: the single file in which every subject must be registered (unique-by-subject) before any train is typed under it, and against which naming and uniqueness are checked.",
+      "bunValue": "plan/_subjects.yaml",
+      "whyNoExistingKey": "roots.plan gives only the plan root and layout.plan_item the path of one plan artifact (e.g. a WMBT); no existing key names the shared subject-registry file that this rule's registration, naming and uniqueness checks run against."
+    }
+  ],
+  "bunOnly": [
+    {
+      "item": "evidence[0]",
+      "text": "Validator test_subject_invariants::test_repo_subject_registry_satisfies_invariants passes at CONFIRM",
+      "reason": "Names this rule's concrete validator id in the ATDD-Bun realization; the core keeps only the generic statement that the subject-registry invariant check passes at CONFIRM."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "Validation family: coherence; template: registry_entries_coherent; variant: planner_subject_invariants; subject_kind: subject",
+      "reason": "Validation-family, template, variant and subject-kind ids of this one rule's validator are realization ids; the core's verification describes the check generically."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:layout.subject_registry",
+        "profile:urn.train"
+      ],
+      "note": "Core says 'the subject registry' and 'train identity'; the registry file and the train URN shape instantiate from the profile."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Already neutral; CONFIRM is ATDD-method phase vocabulary, not stack-specific."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "profile:layout.subject_registry"
+      ],
+      "note": "One obligation (registration before first train); the concrete registry path comes from the profile."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Method-level rationale; no stack content."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]",
+        "profile:layout.subject_registry"
+      ],
+      "note": "Neutral ordering advice; registry file name from the profile."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]"
+      ],
+      "note": "kebab-case noun-led durable-object naming is ATDD-method naming, not stack-specific."
+    },
+    {
+      "item": "prefer[2]",
+      "as": [
+        "core:prefer[2]"
+      ],
+      "note": "Direct consequence of unique-by-subject; neutral."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Neutral; the concrete train-identity syntax instantiates from urn.train."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Mandatory naming prohibition is method-level; camelCase/snake_case are language-neutral naming styles."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]"
+      ],
+      "note": "Registry uniqueness; neutral."
+    },
+    {
+      "item": "avoid[3]",
+      "as": [
+        "core:avoid[3]"
+      ],
+      "note": "Typed-train uniqueness; neutral."
+    },
+    {
+      "item": "avoid[4]",
+      "as": [
+        "core:avoid[4]",
+        "core:verification"
+      ],
+      "note": "Whole-registry validation at CONFIRM is method-level; the confirm-blocking scope is restated in verification."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ],
+      "note": "Core states the check generically; the validator id is a realization detail kept in bunOnly."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]",
+        "profile:layout.subject_registry"
+      ],
+      "note": "Neutral registration evidence; registry path from the profile."
+    },
+    {
+      "item": "evidence[2]",
+      "as": [
+        "core:evidence[2]"
+      ],
+      "note": "Naming evidence; method-level, neutral."
+    },
+    {
+      "item": "evidence[3]",
+      "as": [
+        "core:evidence[3]"
+      ],
+      "note": "Uniqueness evidence; neutral."
+    },
+    {
+      "item": "evidence[4]",
+      "as": [
+        "core:evidence[4]",
+        "core:verification"
+      ],
+      "note": "Failure-report fields (subject, slug, registry status) are method-level concepts; stated generically in verification."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "Family/template/variant/subject-kind ids of this rule's validator; realization details per the notProfileKeys list."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "CONFIRM phase and confirm-blocking enforcement (pre-existing violations also fail) are method-level and stay with the rule."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "What a finding reports (subject, slug, registry status) described generically."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification",
+        "profile:layout.subject_registry"
+      ],
+      "note": "The check list is neutral once 'plan/_subjects.yaml' is replaced by the profile's subject registry."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Per-rule severity 4 and disposition strict belong to core verification, not to the profile."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roots.plan",
+        "profile:layout.subject_registry"
+      ],
+      "note": "Bun expresses scope as path globs (plan/_subjects.yaml, plan/**); the core states it as file kinds (subject registry, plan artifact) whose locations instantiate from the profile."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:layout.subject_registry",
+        "profile:urn.train"
+      ],
+      "note": "Task terms are neutral; '_subjects.yaml' is the registry file name from layout.subject_registry and 'train:<subject>:<slug>' the train URN shape from urn.train."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[2]"
+      ],
+      "note": "Diff-level change kinds are method-level; the observer requirement is captured by needs_new_observer and verification."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[3]",
+        "core:verification"
+      ],
+      "note": "CONFIRM phase fact; the note's confirm-blocking, whole-registry scope is restated in verification."
+    },
+    {
+      "item": "activation.facts[4]",
+      "as": [
+        "core:activation.facts[4]",
+        "core:verification"
+      ],
+      "note": "Finding kinds are method-level; which parts are mechanical vs llm_judged is restated in verification."
+    }
+  ],
+  "neutralityNotes": "Planner-method vocabulary kept in the core because it is ATDD-method-level, not stack-level: train, subject, slug, typed train, subject registry (as a concept), the CONFIRM phase, confirm-blocking enforcement, and the kebab-case noun-led durable-object naming rule. Stack-concrete data moved to the profile: the registry location (proposed layout.subject_registry = plan/_subjects.yaml, under roots.plan = plan) and the train-identity syntax (urn.train = train:<subject>:<slug>). Per-rule severity (4), disposition (strict), the confirm-blocking whole-registry scope and the failure-report fields stay in core verification; this rule's validator/template/variant/subject-kind ids remain bunOnly. The diff-level observer for typed trains and registry edits (needs_new_observer) and the llm_judged noun-led-durable-object judgement are stated as observability/verification scope, not as implemented checks; nothing else could not be made neutral.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/planner-nodes/planner.subject.invariants.json",
+      "sha256": "992948771045853525c3f063e80be9114538964e370aef4c99363f099cccb89a"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 1,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}
