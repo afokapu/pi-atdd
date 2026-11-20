@@ -316,8 +316,9 @@ export function bundledSources(): SourceSpec[] {
       revision: "2a66019a5ecf2b7a9f999ebfa04d04c9f548f19a",
       sha256: "61665ba225ffc6c0bed6952aa8f8c9d9c0e2f0d7df3982662a2cdf50eb327438" },
     // Package-authored conventions (PLT-87): rules owned by pi-atdd itself, not mirrored upstream.
+    // PLT-96 added the shared/coder/planner tracker rules and catalog/pi-atdd/relationships.yaml; pin re-reviewed.
     { id: "pi-atdd", path: join(packageRoot, "catalog/pi-atdd"), kind: "extension",
-      sha256: "589887d4408a693ec4a3fbe606ea11ac1e439d9eda9ab32c69b9b45a2e809b48" },
+      sha256: "00a1de5fdc7978063353fdfe0376951339ee34930ad28972989534b1d46e2765" },
   ];
 }
 function selectorFile(file: string): Selector[] {

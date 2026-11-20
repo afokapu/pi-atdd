@@ -303,7 +303,7 @@ export default function atdd(pi:ExtensionAPI):void {
       }
       const targets=[...byPath.keys()];
       const reasons:string[]=[];
-      let remaining=12_000;
+      let remaining=16_000; // PLT-96 budget raise (was 12_000): shell preflight page must hold a write's full rule set
       try{
         for(const path of targets){
           if(remaining<2_500)break; // targets not yet delivered are preflighted on retry
@@ -326,7 +326,7 @@ export default function atdd(pi:ExtensionAPI):void {
     }
     try{
       return preflightPath(ctx.cwd,path,event.toolName==="write"?"create":"edit",
-        "Pi pre-edit tool_call",12_000,true);
+        "Pi pre-edit tool_call",16_000,true); // PLT-96: same budget as the shell path (parity test)
     }catch(e){reset();return {block:true,reason:"ATDD rule activation failed: "+String(e)};}
   });
   const READ_ONLY_TOOLS=new Set(["read","ls","find","grep"]);
