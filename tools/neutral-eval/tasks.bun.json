@@ -1,0 +1,73 @@
+{
+  "tasks": [
+    {
+      "taskId": "F1-AUTH",
+      "target": "R-AUTH",
+      "acceptanceId": "ORD-EDIT-101",
+      "task": "Let customers replace the product list of a pending order in their order history. Add POST /orders/:id/items with JSON { items: string[] }. A successful response is 200 with the updated order; preserve its id, customerId and status, and replace (do not append) items in storage. The list must be non-empty and contain only non-blank strings; malformed bodies return 400. This is a signed-in customer feature: a missing or invalid session returns 401 before looking up or changing any order. An entry outside the customer's history is unavailable (403 or 404); a missing entry returns 404. Shipped or cancelled orders return 409, not a server error. Every rejected request leaves all stored orders untouched. Ignore any body customerId. Keep the existing endpoints working.",
+      "gwt": "Given a signed-in customer with a pending order containing old products\nWhen they POST a new non-empty item list to /orders/:id/items\nThen the response is 200 and only that order's item list is replaced",
+      "allowedPaths": [
+        "src/orders/routes/order-routes.ts"
+      ],
+      "visibleTests": [
+        "tests/orders/replace-items.acceptance.test.ts"
+      ],
+      "targetRelevantPaths": [
+        "src/orders/routes/order-routes.ts"
+      ]
+    },
+    {
+      "taskId": "F2-AUTH",
+      "target": "R-AUTH",
+      "acceptanceId": "ORD-REBUY-102",
+      "task": "Add a buy-again action to the customer order history: POST /orders/:id/reorder with JSON { items: string[] } selects products from a shipped purchase for a fresh pending order. Return 201 with the new stored order, a fresh non-colliding id, the current customerId and the requested items in order; repeated selections are allowed. Leave the original purchase and every other order unchanged. Each selected item must be a non-blank string present in the original purchase, and the list must not be empty; malformed bodies or unpurchased products return 400. Only shipped purchases support buy-again; pending or cancelled sources return 409, not a server error. This is a signed-in customer feature: missing or invalid sessions return 401 before looking up or changing orders. A missing history entry returns 404; an entry outside the customer's history is unavailable (403 or 404). Rejections must not create a draft or change any order. A body customerId does not select the customer. Keep existing endpoints working.",
+      "gwt": "Given a signed-in customer with a shipped purchase in their history\nWhen they select purchased products with POST /orders/:id/reorder\nThen a distinct pending order is stored and returned with 201 while the purchase is unchanged",
+      "allowedPaths": [
+        "src/orders/routes/order-routes.ts"
+      ],
+      "visibleTests": [
+        "tests/orders/reorder-selection.acceptance.test.ts"
+      ],
+      "targetRelevantPaths": [
+        "src/orders/routes/order-routes.ts"
+      ]
+    },
+    {
+      "taskId": "F3-ARCH",
+      "target": "R-ARCH",
+      "acceptanceId": "PRC-PAY-103",
+      "task": "Implement payment-plan previews in the supplied payment-service.ts and payment-plan.ts scaffolds. planPayment(totalCents, planId) uses the named plan from payment-terms.ts; operations can replace plans while the service is running, so each preview uses the latest values and unknown ids propagate UnknownPaymentPlanError. splitPayment(totalCents, terms) also supports previews with customer-specific terms, independent of configured plans. Terms are { depositBps, installments }. Round totalCents * depositBps / 10000 to the nearest cent (halves up), then spread the remainder over exactly installments payments: equal whole-cent amounts with any extra cents assigned to the earliest payments. Return { depositCents, installmentsCents: number[] }. Zero totals are valid. Require a non-negative safe-integer total, integer depositBps from 0 through 10000, and integer installments from 1 through 12; invalid arguments throw RangeError. Do not modify supplied terms. The fixture includes the operations configuration adapter; leave its API unchanged.",
+      "gwt": "Given a 1001-cent basket and a configured plan with a 2500-basis-point deposit and three installments\nWhen planPayment previews that plan\nThen the deposit is 250 cents and the installments are [251, 250, 250] cents",
+      "allowedPaths": [
+        "src/pricing/domain/payment-plan.ts",
+        "src/pricing/application/payment-service.ts"
+      ],
+      "visibleTests": [
+        "tests/pricing/payment-plan.acceptance.test.ts"
+      ],
+      "targetRelevantPaths": [
+        "src/pricing/domain/payment-plan.ts",
+        "src/pricing/application/payment-service.ts"
+      ]
+    },
+    {
+      "taskId": "F4-ARCH",
+      "target": "R-ARCH",
+      "acceptanceId": "LOY-REDEEM-104",
+      "task": "Implement a loyalty points redemption preview, not an award or ledger mutation, in the supplied redemption.ts and redemption-service.ts scaffolds. previewRedemption(requestedPoints, subtotalCents) uses the current policy from redemption-policy.ts. Operations may change that policy while the service is running and the next preview must reflect it. quoteRedemption(requestedPoints, subtotalCents, policy) also supports customer-specific policy previews independently of the operations policy. Policy is { centsPerPoint, maxPoints }. Spend no more than requestedPoints, maxPoints, or floor(subtotalCents / centsPerPoint), whichever is smallest. Return { pointsSpent, creditCents }, where creditCents = pointsSpent * centsPerPoint; leave any subtotal remainder undiscounted. Requested points, subtotal cents and maxPoints must be non-negative safe integers; centsPerPoint must be a positive safe integer. Invalid inputs or policies throw RangeError. Zero points, zero subtotal and a zero policy cap are valid. Do not change the supplied policy or touch a ledger. The fixture includes the operations configuration adapter; leave its API unchanged.",
+      "gwt": "Given a policy valuing each point at 2 cents with a 500-point cap and a 450-cent basket\nWhen 300 points are previewed for redemption\nThen the result spends 225 points for a 450-cent credit without changing a ledger",
+      "allowedPaths": [
+        "src/loyalty/domain/redemption.ts",
+        "src/loyalty/application/redemption-service.ts"
+      ],
+      "visibleTests": [
+        "tests/loyalty/redemption-preview.acceptance.test.ts"
+      ],
+      "targetRelevantPaths": [
+        "src/loyalty/domain/redemption.ts",
+        "src/loyalty/application/redemption-service.ts"
+      ]
+    }
+  ],
+  "notes": "Apply all of delta/ as an additive overlay to fixture/ before running any task. No existing fixture files were changed. Tasks are evaluated independently against that common base; do not overlay multiple references together (the AUTH tasks each replace the same existing route file). All allowedPaths are full replacement files in every reference. F3/F4 add unfinished calculation scaffolds and complete operations adapters; only the calculation and application scaffolds are editable. Existing fixture acceptance tasks are intentionally unfinished and are not part of these four targeted validation runs. Oracles are copied to tests/_oracle/<taskId>.oracle.test.ts. Domain direction and ambient configuration checks belong to the evaluation rubric; no rule labels or architectural advice appear in the product task text."
+}
