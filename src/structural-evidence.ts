@@ -26,7 +26,7 @@ export function discoverSourceEvidence(file: string, source: string): readonly S
   const syntax = /\.tsx$|\.jsx$/i.test(path) ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
   const sf = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, syntax);
   const facts = new Set<StructuralFact>();
-  if (sf.parseDiagnostics.length) return []; // incomplete syntax is UNKNOWN, not negative proof
+  if ((sf as ts.SourceFile & {parseDiagnostics?: readonly ts.Diagnostic[]}).parseDiagnostics?.length) return []; // incomplete syntax is UNKNOWN, not negative proof
 
   const test = TEST.test(path);
   if (test) {
