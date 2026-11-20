@@ -91,12 +91,13 @@ const textList = (x: unknown): string[] => Array.isArray(x) && x.every(v => type
 export const PROFILES = ["planner", "tester", "coder", "reviewer", "coach", "shared"] as const;
 export type Profile = typeof PROFILES[number];
 export const CONVENTION_ID = /^(planner|tester|coder|reviewer|coach|shared)\.[a-z0-9-]+\.[a-z0-9-]+$/;
-/** Old (v0.2.0) id -> profile-first id, shipped with the package (conventions/aliases.json). */
+/** Old (v0.2.0) id -> profile-first id, shipped with the package (conventions/aliases.json).
+ * Includes the legacy split-part ids (`splitParts`, PLT-87): they resolve like any other legacy id. */
 export function bundledAliases(): Map<string, string> {
   const path = join(packageRoot, "conventions/aliases.json");
   if (!existsSync(path)) return new Map();
-  const data = JSON.parse(readFileSync(path, "utf8")) as { aliases?: Record<string, string> };
-  return new Map(Object.entries(data.aliases ?? {}));
+  const data = JSON.parse(readFileSync(path, "utf8")) as { aliases?: Record<string, string>; splitParts?: Record<string, string> };
+  return new Map([...Object.entries(data.aliases ?? {}), ...Object.entries(data.splitParts ?? {})]);
 }
 /** Resolves an old or current id to the id loaded in this catalog (unknown ids are returned unchanged). */
 export function canonicalRuleId(catalog: Pick<Catalog, "rules" | "aliases">, id: string): string {
