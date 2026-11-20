@@ -54,7 +54,11 @@ Absent or empty `tracker:` means **unconfigured**: the check returns `notice`, n
 
 - Task start: broad code-change wording selects the obligation and its notice together (review P1). Non-code wording still reports an applicability gap.
 - Edit/create: a write to any repository file is code-changing by definition, so `tracker-code-write` selects the obligation and notice on every write (`always`, operations `edit`/`create`). This masks the coder-convention gap for writes, since a tracker rule now matches them.
-- **Open conflict (decision needed):** pre-edit pages have a 12,000-character budget and PLT-79 (`tests/shell-delivery.test.ts`, t10) requires a blocked write to pass on one retry. With the edit/create obligation, t10's first page holds the write's rules and the `tester.test.carries-urn-identity` rule no longer fits, so the retry is blocked again. Dropping the notice from edit/create does not fix it. Options: (a) raise the write budget to 16,000 (checked in a copy: all of `shell-delivery` passes); (b) drop edit/create selection and keep task-start only.
+- **Measured conflict and resolution (separate commit, labelled "budget raise").** PLT-79 (`tests/shell-delivery.test.ts`, t10) requires a blocked write to pass on one retry, which needs the write's whole fresh rule set in one page. Measured for the t10 write:
+  - Before (12,000): first page 11,963 chars = header 611 + hierarchy 2,501 + phase 3,044 + tracker mandatory 1,696 + notice 1,480 + binding 2,626. Retry still needs `tester.test.carries-urn-identity` (about 2,600), so the retry is blocked again.
+  - Shrink tried first: the obligation cut to one sentence and the notice dropped on edit/create gives a first page of 9,911 chars, and about 12,500 with carries-urn. That still misses 12,000 by about 500 chars; the rest is renderer overhead (source, digest and evidence lines per rule), which a rule cannot shrink.
+  - Resolution: the two pre-action budgets (shell preflight and pre-edit) rise from 12,000 to 16,000; the post-tool budget is unchanged. Result: `shell-delivery` 19/19, `npm run check` 137/137, smoke:catalog, smoke:install and smoke:pi pass.
+  - Alternative not taken: drop edit/create selection, which the review P1 rejects.
 - Change-time enforcement is the validator (`atdd tracker check`, which now fails when `--changed` is omitted) and CI.
 
 ## Enforced vs text-only
