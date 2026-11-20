@@ -1,12 +1,14 @@
 /**
  * PLT-101 Pi wiring for the Attention Strip. Domain rules live in attention.ts.
- * Strip is inert unless PI_ATDD_ATTENTION_ROLE is set. Trust gate matches pi-activation.ts.
+ * Inert unless PI_ATDD_ATTENTION_ROLE is set. Every entry point (tools, command, hooks)
+ * checks the project trust gate; tools fail closed when they receive no extension context.
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
-  ATTENTION_TYPES, CUSTOM_TYPE, RESOLUTION_TYPE, WIDGET_KEY, acceptableRaise, appendSpool, effectiveState,
-  fold, isLive, newItem, readLaunchConfig, readSpool, transition,
-  type Action, type AttentionEvent, type AttentionItem, type Cursor, type LaunchConfig, type StateRecord,
+  ATTENTION_TYPES, CUSTOM_TYPE, RESOLUTION_TYPE, WIDGET_KEY, appendSpool, effectiveState, ensureKey,
+  expiryRecords, fold, foldAll, newItem, operational, readLaunchConfig, readSpool, signEvent, transition,
+  verifyEvent,
+  type Action, type AttentionItem, type Cursor, type LaunchConfig, type SignedEvent, type StateRecord,
 } from "./attention.ts";
 
 export type StripOptions = {
@@ -21,34 +23,64 @@ export type StripOptions = {
 type Ctx = {
   isProjectTrusted: () => boolean;
   sessionManager: { getBranch: () => unknown[] };
-  ui: { notify: (message: string, level?: string) => void; setWidget: (key: string, lines: string[] | undefined) => void };
+  ui: {
+    notify: (message: string, level?: string) => void;
+    setWidget: (key: string, lines: string[] | undefined) => void;
+  };
 };
-type Data = AttentionEvent | Cursor;
+type Api = {
+  on: (name: string, fn: (event: unknown, ctx: Ctx) => unknown) => void;
+  registerTool: (def: unknown) => void;
+  registerCommand: (name: string, def: unknown) => void;
+  appendEntry: (customType: string, data: unknown) => void;
+};
 
 const schema = (properties: Record<string, unknown>, required: string[]) => ({ type: "object", properties, required });
-const textResult = (message: string, details: Record<string, unknown>) => ({ content: [{ type: "text", text: message }], details });
+const textResult = (message: string, details: Record<string, unknown>) =>
+  ({ content: [{ type: "text", text: message }], details });
 
-const isEvent = (d: Data): d is AttentionEvent => d.event === "raised" || d.event === "state";
+const trusted = (ctx: unknown): ctx is Ctx =>
+  typeof (ctx as Partial<Ctx> | null | undefined)?.isProjectTrusted === "function" &&
+  (ctx as Ctx).isProjectTrusted() === true;
 
-/** Hidden session entries that belong to this module, in branch order. */
-function branchData(ctx: Ctx): Data[] {
-  return (ctx.sessionManager.getBranch() as Array<{ type?: string; customType?: string; data?: unknown }>)
-    .filter(e => e?.type === "custom" && e.customType === CUSTOM_TYPE)
-    .map(e => e.data as Data);
+function requireTrusted(ctx: unknown): asserts ctx is Ctx {
+  if (!trusted(ctx)) throw new Error("ATDD attention requires a trusted project");
 }
+
+type Entry = { type?: string; customType?: string; data?: unknown };
+const ours = (ctx: Ctx): unknown[] =>
+  (ctx.sessionManager.getBranch() as Entry[])
+    .filter(e => e.type === "custom" && e.customType === CUSTOM_TYPE)
+    .map(e => e.data);
+
+function isCursor(d: unknown): d is Cursor {
+  if (typeof d !== "object" || d === null) return false;
+  const o = d as Record<string, unknown>;
+  return (o.event === "ingested" && Number.isInteger(o.offset)) ||
+    (o.event === "delivered" && typeof o.id === "string" && Number.isInteger(o.revision));
+}
+
+/** Verified attention records from this Coach or worker session. Other entries are ignored. */
+const sessionEvents = (ctx: Ctx, cfg: LaunchConfig, key: Buffer): SignedEvent[] =>
+  ours(ctx).flatMap(d => {
+    const ev = verifyEvent(d, cfg, key);
+    return ev ? [ev] : [];
+  });
+
+const keyOf = (ev: SignedEvent) =>
+  ev.event === "raised" ? "raised:" + ev.item.id : "state:" + ev.rec.id + ":" + ev.rec.revision;
 
 export function registerAttentionStrip(pi: ExtensionAPI, options: StripOptions = {}): void {
   const cfg = readLaunchConfig(options.env ?? process.env);
   if (!cfg) return;
   const now = options.now ?? (() => new Date());
-  const api = asApi(pi);
+  const api = pi as unknown as Api;
   if (cfg.role === "worker") registerWorker(api, cfg, now);
   else registerCoach(api, cfg, now, options);
 }
 
-type Api = ReturnType<typeof asApi>;
-
 function registerWorker(api: Api, cfg: LaunchConfig, now: () => Date): void {
+  const key = () => ensureKey(cfg.keyPath);
   api.registerTool({
     name: "attention_raise",
     label: "Raise attention",
@@ -59,43 +91,49 @@ function registerWorker(api: Api, cfg: LaunchConfig, now: () => Date): void {
       issue: { type: "string", description: "Linear identifier, e.g. PLT-101" },
       ttlHours: { type: "number", description: "Default 72, maximum 168" },
     }, ["type", "summary"]),
-    execute: async (_id: string, params: Record<string, unknown>) => {
+    execute: async (_id: string, params: Record<string, unknown>, _signal: unknown, _update: unknown, ctx: unknown) => {
+      requireTrusted(ctx);
       const item = newItem(params, cfg, now());
-      appendSpool(cfg.spool, { event: "raised", item });
+      appendSpool(cfg.spool, signEvent({ event: "raised", item }, key()));
       return textResult(`Raised ${item.id} (${item.type}). The Coach sees it on its next refresh.`, { id: item.id, item });
     },
   });
   api.registerTool({
     name: "attention_status",
     label: "Attention status",
-    description: "Show the current state of attention items this worker raised.",
+    description: "Show the open attention items this worker raised. Resolved, cancelled and expired items are removed.",
     parameters: schema({ id: { type: "string" } }, []),
-    execute: async (_id: string, params: Record<string, unknown>) => {
-      const mine = [...fold(readSpool(cfg.spool).events).values()].filter(it => it.from === cfg.identity);
+    execute: async (_id: string, params: Record<string, unknown>, _signal: unknown, _update: unknown, ctx: unknown) => {
+      requireTrusted(ctx);
+      const mine = [...fold(readSpool(cfg.spool, cfg, key()).events, now()).values()]
+        .filter(it => it.from === cfg.identity);
       if (typeof params.id === "string") {
         const item = mine.find(it => it.id === params.id);
-        return textResult(item ? `${item.id}: ${item.state}` : "not found", { item });
+        return item
+          ? textResult(`${item.id}: ${item.state}`, { item })
+          : textResult("not found: closed or expired items leave operational memory; the outcome arrives on your next turn",
+            { item: undefined });
       }
       return textResult(`${mine.length} item(s)`, { items: mine });
     },
   });
   api.on("before_agent_start", (_event, ctx) => {
-    if (!ctx.isProjectTrusted()) return;
-    return deliverResolutions(api, ctx, cfg);
+    if (!trusted(ctx)) return undefined;
+    return deliverResolutions(api, ctx, cfg, key());
   });
 }
 
-/** Worker sees each Coach state change for its items once, on its next turn. */
-function deliverResolutions(api: Api, ctx: Ctx, cfg: LaunchConfig) {
+/** The worker sees each Coach state change for its own items once, on its next turn. */
+function deliverResolutions(api: Api, ctx: Ctx, cfg: LaunchConfig, k: Buffer) {
   const delivered = new Map<string, number>();
-  for (const d of branchData(ctx)) {
-    if (d.event === "delivered") delivered.set(d.id, Math.max(delivered.get(d.id) ?? 0, d.revision));
+  for (const d of ours(ctx)) {
+    if (isCursor(d) && d.event === "delivered") delivered.set(d.id, Math.max(delivered.get(d.id) ?? 0, d.revision));
   }
-  const events = readSpool(cfg.spool).events;
-  const items = fold(events);
+  const events = readSpool(cfg.spool, cfg, k).events;
+  const items = foldAll(events);
   const latest = new Map<string, StateRecord>();
   for (const ev of events) {
-    if (ev.event !== "state" || ev.rec.from !== cfg.identity) continue;
+    if (ev.event !== "state" || ev.rec.from !== cfg.identity || !items.has(ev.rec.id)) continue;
     if (ev.rec.revision > (delivered.get(ev.rec.id) ?? 1)) latest.set(ev.rec.id, ev.rec);
   }
   if (latest.size === 0) return undefined;
@@ -117,34 +155,42 @@ function deliverResolutions(api: Api, ctx: Ctx, cfg: LaunchConfig) {
 
 function registerCoach(api: Api, cfg: LaunchConfig, now: () => Date, options: StripOptions): void {
   const pollMs = options.pollMs ?? 5000;
-  const setTimer = options.setInterval ?? ((fn, ms) => setInterval(fn, ms));
-  const clearTimer = options.clearInterval ?? ((h) => clearInterval(h as ReturnType<typeof setInterval>));
+  const setTimer = options.setInterval ?? ((fn: () => void, ms: number) => setInterval(fn, ms));
+  const clearTimer = options.clearInterval ?? ((h: unknown) => clearInterval(h as ReturnType<typeof setInterval>));
+  const key = () => ensureKey(cfg.keyPath);
   let live: Ctx | undefined;
   let timer: unknown;
 
-  /** Ingest new spool items into hidden entries, then return all branch data. */
-  const ingest = (ctx: Ctx): Data[] => {
-    const before = branchData(ctx);
-    const known = new Set(before.flatMap(d => (d.event === "raised" ? [d.item.id] : [])));
-    const offset = before.reduce((max, d) => (d.event === "ingested" ? Math.max(max, d.offset) : max), 0);
-    const spool = readSpool(cfg.spool, offset);
-    const added: Data[] = [];
+  /** Ingest verified spool records into the session, then return every verified record. */
+  const ingest = (ctx: Ctx): SignedEvent[] => {
+    const k = key();
+    const before = sessionEvents(ctx, cfg, k);
+    const seen = new Set(before.map(keyOf));
+    const offset = ours(ctx).reduce<number>(
+      (max, d) => (isCursor(d) && d.event === "ingested" ? Math.max(max, d.offset) : max), 0);
+    const spool = readSpool(cfg.spool, cfg, k, offset);
+    const added: SignedEvent[] = [];
     for (const ev of spool.events) {
-      if (ev.event !== "raised" || known.has(ev.item.id) || !acceptableRaise(ev.item, cfg)) continue;
-      known.add(ev.item.id);
+      const id = keyOf(ev);
+      if (seen.has(id)) continue;
+      seen.add(id);
       api.appendEntry(CUSTOM_TYPE, ev);
       added.push(ev);
     }
-    if (spool.offset !== offset) {
-      const cursor: Cursor = { event: "ingested", offset: spool.offset };
-      api.appendEntry(CUSTOM_TYPE, cursor);
-      added.push(cursor);
-    }
+    if (spool.offset !== offset) api.appendEntry(CUSTOM_TYPE, { event: "ingested", offset: spool.offset } satisfies Cursor);
     return [...before, ...added];
   };
 
-  const render = (ctx: Ctx, items: Map<string, AttentionItem>, at: Date) => {
-    const visible = [...items.values()].filter(it => isLive(it, at))
+  /** Session entry first, then the spool the worker reads. */
+  const commit = (rec: StateRecord): SignedEvent => {
+    const ev = signEvent({ event: "state", rec }, key());
+    api.appendEntry(CUSTOM_TYPE, ev);
+    appendSpool(cfg.spool, ev);
+    return ev;
+  };
+
+  const render = (ctx: Ctx, all: Map<string, AttentionItem>, at: Date) => {
+    const visible = [...operational(all, at).values()]
       .sort((a, b) => a.type.localeCompare(b.type) || a.createdAt.localeCompare(b.createdAt));
     if (visible.length === 0) return ctx.ui.setWidget(WIDGET_KEY, undefined);
     const lines = [`Attention · ${visible.length} live`, ...visible.map(it => {
@@ -156,44 +202,39 @@ function registerCoach(api: Api, cfg: LaunchConfig, now: () => Date, options: St
   };
 
   const refresh = (ctx: Ctx) => {
-    const at = now();
-    render(ctx, fold(ingest(ctx)), at);
-  };
-
-  /** Coach action: append the hidden entry first, then mirror to the spool for the worker. */
-  const act = (ctx: Ctx, id: string, action: Action) => {
+    if (!trusted(ctx)) return;
     const at = now();
     const data = ingest(ctx);
-    const rec = transition(fold(data.filter(isEvent)).get(id), action, cfg, at);
-    const ev: AttentionEvent = { event: "state", rec };
-    api.appendEntry(CUSTOM_TYPE, ev);
-    appendSpool(cfg.spool, ev);
-    const after = fold([...data.filter(isEvent), ev]);
-    render(ctx, after, at);
-    return after.get(id) as AttentionItem;
+    const expired = expiryRecords(foldAll(data), at, cfg).map(commit);
+    render(ctx, foldAll([...data, ...expired]), at);
   };
-  const need = (ctx: Ctx | undefined): Ctx => {
-    const c = ctx ?? live;
-    if (!c) throw new Error("no live Coach session");
-    return c;
+
+  const act = (ctx: unknown, id: string, action: Action): AttentionItem => {
+    requireTrusted(ctx);
+    const at = now();
+    const data = ingest(ctx);
+    const ev = commit(transition(foldAll(data).get(id), action, cfg, at));
+    const all = foldAll([...data, ev]);
+    render(ctx, all, at);
+    return all.get(id) as AttentionItem;
   };
+
   const itemResult = (item: AttentionItem, action: string) =>
     textResult(`${item.id}: ${action} → ${item.state}`, { id: item.id, item });
 
   api.on("session_start", (_event, ctx) => {
-    if (!ctx.isProjectTrusted()) return;
+    if (!trusted(ctx)) return;
     live = ctx;
     refresh(ctx);
     if (timer !== undefined) clearTimer(timer);
     timer = setTimer(() => { if (live) refresh(live); }, pollMs);
   });
   api.on("session_tree", (_event, ctx) => {
-    if (!ctx.isProjectTrusted()) return;
+    if (!trusted(ctx)) return;
     live = ctx;
     refresh(ctx);
   });
   api.on("before_agent_start", (_event, ctx) => {
-    if (!ctx.isProjectTrusted()) return;
     refresh(ctx);
   });
   api.on("session_shutdown", () => {
@@ -207,16 +248,16 @@ function registerCoach(api: Api, cfg: LaunchConfig, now: () => Date, options: St
     label: "Ack attention",
     description: "Acknowledge an open attention item (Coach).",
     parameters: schema({ id: { type: "string" } }, ["id"]),
-    execute: async (_id: string, params: Record<string, unknown>, _s: unknown, _u: unknown, ctx?: Ctx) =>
-      itemResult(act(need(ctx), String(params.id), { kind: "ack" }), "ack"),
+    execute: async (_id: string, params: Record<string, unknown>, _signal: unknown, _update: unknown, ctx: unknown) =>
+      itemResult(act(ctx, String(params.id), { kind: "ack" }), "ack"),
   });
   api.registerTool({
     name: "attention_snooze",
     label: "Snooze attention",
     description: "Snooze an attention item for a number of hours, capped at its TTL (Coach).",
     parameters: schema({ id: { type: "string" }, hours: { type: "number" } }, ["id", "hours"]),
-    execute: async (_id: string, params: Record<string, unknown>, _s: unknown, _u: unknown, ctx?: Ctx) =>
-      itemResult(act(need(ctx), String(params.id), { kind: "snooze", hours: Number(params.hours) }), "snooze"),
+    execute: async (_id: string, params: Record<string, unknown>, _signal: unknown, _update: unknown, ctx: unknown) =>
+      itemResult(act(ctx, String(params.id), { kind: "snooze", hours: Number(params.hours) }), "snooze"),
   });
   api.registerTool({
     name: "attention_resolve",
@@ -228,39 +269,34 @@ function registerCoach(api: Api, cfg: LaunchConfig, now: () => Date, options: St
       note: { type: "string" },
       ownerAnswer: { type: "string" },
     }, ["id", "scope", "note"]),
-    execute: async (_id: string, params: Record<string, unknown>, _s: unknown, _u: unknown, ctx?: Ctx) =>
-      itemResult(act(need(ctx), String(params.id), {
+    execute: async (_id: string, params: Record<string, unknown>, _signal: unknown, _update: unknown, ctx: unknown) =>
+      itemResult(act(ctx, String(params.id), {
         kind: "resolve", scope: params.scope, note: params.note, ownerAnswer: params.ownerAnswer,
       }), "resolve"),
   });
 
   api.registerCommand("attention", {
-    description: "Attention strip: /attention [ack|snooze <h>|resolve|cancel] <id> [text]",
+    description: "Attention strip: /attention [ack|snooze <id> <hours>|resolve <id> <note>|cancel <id> <note>]",
     handler: async (args: string, ctx: Ctx) => {
+      if (!ctx.isProjectTrusted()) {
+        ctx.ui.notify("ATDD attention requires a trusted project", "warning");
+        return;
+      }
       const [verb, id, ...rest] = args.trim().split(/\s+/).filter(Boolean);
       try {
         if (!verb) return refresh(ctx);
         const target = String(id ?? "");
-        const joined = rest.join(" ");
+        const text = rest.join(" ");
         const item = verb === "ack" ? act(ctx, target, { kind: "ack" })
           : verb === "snooze" ? act(ctx, target, { kind: "snooze", hours: Number(rest[0]) })
-          : verb === "resolve" ? act(ctx, target, { kind: "resolve", scope: "within_grant", note: joined })
-          : verb === "cancel" ? act(ctx, target, { kind: "cancel", note: joined })
+          : verb === "resolve" ? act(ctx, target, { kind: "resolve", scope: "within_grant", note: text })
+          : verb === "cancel" ? act(ctx, target, { kind: "cancel", note: text })
           : undefined;
-        if (!item) throw new Error("usage: /attention [ack|snooze <h>|resolve|cancel] <id> [text]");
+        if (!item) throw new Error("usage: /attention [ack|snooze <id> <hours>|resolve <id> <note>|cancel <id> <note>]");
         ctx.ui.notify(`${item.id} → ${item.state}`, "info");
       } catch (e) {
         ctx.ui.notify(String((e as Error).message ?? e), "error");
       }
     },
   });
-}
-
-function asApi(pi: ExtensionAPI) {
-  return pi as unknown as {
-    on: (name: string, fn: (event: unknown, ctx: Ctx) => unknown) => void;
-    registerTool: (def: unknown) => void;
-    registerCommand: (name: string, def: unknown) => void;
-    appendEntry: (customType: string, data: unknown) => void;
-  };
 }

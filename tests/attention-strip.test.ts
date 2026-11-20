@@ -9,7 +9,7 @@ import { appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from "n
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { registerAttentionStrip } from "../src/attention-strip.ts";
-import { ensureKey, signEvent, type StateRecord } from "../src/attention.ts";
+import { ensureKey, signEvent, type AttentionItem, type StateRecord } from "../src/attention.ts";
 
 type Entry = { type: string; customType?: string; data?: any };
 const WIDGET = "pi-atdd-attention";
@@ -421,7 +421,7 @@ test("review P1: same identity in another profile is invisible to the Coach and 
     const worker = start(w, "worker", WORKER);
     const coach = start(w, "coach", COACH);
     const key = ensureKey(w.key);
-    const foreign = {
+    const foreign: AttentionItem = {
       id: "ati_bbbbbbbbbbbb", type: "review", from: WORKER, profile: "pluggy", issue: null,
       summary: "pluggy item", createdAt: ISO(w.clock.t), ttl: ISO(w.clock.t + 72 * HOUR), state: "open", revision: 1,
     };

@@ -1,19 +1,29 @@
 /**
- * PLT-101 Attention Strip: pure domain (item schema, validation, fold, transitions)
- * and profile-scoped spool I/O. No Pi API here; attention-strip.ts wires it into Pi.
+ * PLT-101 Attention Strip: domain (schema, authenticity, fold, transitions) and
+ * profile-scoped spool I/O. No Pi API here; attention-strip.ts wires it into Pi.
  *
- * One event shape serves both the shared spool file and the hidden Pi session entries.
- * Session entries are the Coach's source of truth; the spool is the worker-visible channel.
+ * Authenticity: every raised item and every state record carries an HMAC-SHA256 over its
+ * canonical body, keyed by the profile's attention key (<agentDir>/attention/attention.key,
+ * created mode 0600). Records that are unsigned, mis-signed, malformed or belong to another
+ * profile are dropped on read. Limit: any process running as the same OS user can read the key
+ * file. This stops forgery by writes that do not hold the key (raw shell appends, injected text,
+ * cross-profile records). It does not stop a deliberate read of the key file.
+ *
+ * Operational memory: resolved, cancelled and expired items are dropped by operational(); the
+ * Coach records an explicit "expired" state when a TTL runs out.
  */
-import { randomBytes } from "node:crypto";
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 export const ATTENTION_TYPES = ["decision", "grant", "review", "intervention"] as const;
 export type AttentionType = (typeof ATTENTION_TYPES)[number];
 export type ResolveScope = "within_grant" | "owner_answer";
-export type AttentionState = "open" | "acked" | "snoozed" | "resolved" | "cancelled";
+export type AttentionState = "open" | "acked" | "snoozed" | "resolved" | "cancelled" | "expired";
+
+const STATES: readonly string[] = ["open", "acked", "snoozed", "resolved", "cancelled", "expired"];
+const TERMINAL: ReadonlySet<string> = new Set(["resolved", "cancelled", "expired"]);
 
 export const CUSTOM_TYPE = "pi-atdd-attention";
 export const WIDGET_KEY = "pi-atdd-attention";
@@ -41,7 +51,7 @@ export type StateRecord = {
   id: string;
   from: string;
   revision: number;
-  state: "acked" | "snoozed" | "resolved" | "cancelled";
+  state: Exclude<AttentionState, "open">;
   by: string;
   at: string;
   note?: string;
@@ -50,11 +60,19 @@ export type StateRecord = {
   snoozedUntil?: string;
 };
 
-/** Spool lines and hidden session entries share these shapes. */
-export type AttentionEvent = { event: "raised"; item: AttentionItem } | { event: "state"; rec: StateRecord };
+/** Spool lines and hidden session entries share these signed shapes. */
+export type SignedEvent =
+  | { event: "raised"; item: AttentionItem; mac: string }
+  | { event: "state"; rec: StateRecord; mac: string };
 export type Cursor = { event: "ingested"; offset: number } | { event: "delivered"; id: string; revision: number };
 
-export type LaunchConfig = { role: "worker" | "coach"; identity: string; profile: string; spool: string };
+export type LaunchConfig = {
+  role: "worker" | "coach";
+  identity: string;
+  profile: string;
+  spool: string;
+  keyPath: string;
+};
 
 /** Launch config comes from the launcher's environment, never from model output. Absent role = inert. */
 export function readLaunchConfig(env: NodeJS.ProcessEnv): LaunchConfig | undefined {
@@ -65,17 +83,95 @@ export function readLaunchConfig(env: NodeJS.ProcessEnv): LaunchConfig | undefin
   const profile = env.PI_ATDD_ATTENTION_PROFILE?.trim();
   if (!identity || !profile) throw new Error("attention launch config incomplete: identity and profile are required");
   const agentDir = env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent");
-  return { role, identity, profile, spool: join(agentDir, "attention", "spool.jsonl") };
+  return {
+    role, identity, profile,
+    spool: join(agentDir, "attention", "spool.jsonl"),
+    keyPath: join(agentDir, "attention", "attention.key"),
+  };
 }
 
-function text(value: unknown, field: string, max = MAX_TEXT): string {
-  const s = typeof value === "string" ? value.trim() : "";
-  if (!s) throw new Error(`${field} is required`);
-  if (s.length > max) throw new Error(`${field} exceeds ${max} characters`);
-  return s;
+/** Per-profile HMAC key. Created once with mode 0600; the same file is read by both roles. */
+export function ensureKey(keyPath: string): Buffer {
+  mkdirSync(dirname(keyPath), { recursive: true });
+  try {
+    writeFileSync(keyPath, randomBytes(32).toString("hex") + "\n", { flag: "wx", mode: 0o600 });
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+  }
+  const hex = readFileSync(keyPath, "utf8").trim();
+  if (!/^[0-9a-f]{64}$/.test(hex)) throw new Error("attention key file is malformed");
+  return Buffer.from(hex, "hex");
 }
 
-const plusHours = (from: Date, hours: number) => new Date(from.getTime() + hours * 3_600_000).toISOString();
+/** Stable JSON: sorted keys, undefined dropped, so signer and verifier see the same bytes. */
+export function canon(value: unknown): string {
+  if (Array.isArray(value)) return "[" + value.map(canon).join(",") + "]";
+  if (value !== null && typeof value === "object") {
+    const o = value as Record<string, unknown>;
+    return "{" + Object.keys(o).filter(k => o[k] !== undefined).sort()
+      .map(k => JSON.stringify(k) + ":" + canon(o[k])).join(",") + "}";
+  }
+  return JSON.stringify(value);
+}
+
+const macOf = (body: unknown, key: Buffer) => createHmac("sha256", key).update(canon(body)).digest("hex");
+
+function macOk(body: unknown, mac: unknown, key: Buffer): boolean {
+  if (typeof mac !== "string" || !/^[0-9a-f]{64}$/.test(mac)) return false;
+  return timingSafeEqual(Buffer.from(macOf(body, key), "hex"), Buffer.from(mac, "hex"));
+}
+
+export function signEvent(
+  body: { event: "raised"; item: AttentionItem } | { event: "state"; rec: StateRecord },
+  key: Buffer,
+): SignedEvent {
+  return { ...body, mac: macOf(body, key) } as SignedEvent;
+}
+
+const isId = (v: unknown): v is string => typeof v === "string" && /^ati_[0-9a-f]{12}$/.test(v);
+const isText = (v: unknown, max = MAX_TEXT): v is string =>
+  typeof v === "string" && v.trim().length > 0 && v.length <= max;
+const isIso = (v: unknown): v is string => typeof v === "string" && !Number.isNaN(Date.parse(v));
+const isRev = (v: unknown): boolean => Number.isInteger(v) && (v as number) >= 1;
+const absentOr = (v: unknown, check: (x: unknown) => boolean) => v === undefined || check(v);
+
+function validItem(x: unknown): x is AttentionItem {
+  if (typeof x !== "object" || x === null) return false;
+  const o = x as Record<string, unknown>;
+  return isId(o.id) && (ATTENTION_TYPES as readonly unknown[]).includes(o.type) &&
+    isText(o.from, 200) && isText(o.profile, 200) && (o.issue === null || typeof o.issue === "string") &&
+    isText(o.summary) && isIso(o.createdAt) && isIso(o.ttl) && STATES.includes(o.state as string) &&
+    isRev(o.revision) && absentOr(o.snoozedUntil, isIso);
+}
+
+function validRec(x: unknown): x is StateRecord {
+  if (typeof x !== "object" || x === null) return false;
+  const o = x as Record<string, unknown>;
+  return isId(o.id) && isText(o.from, 200) && isRev(o.revision) &&
+    ["acked", "snoozed", "resolved", "cancelled", "expired"].includes(o.state as string) &&
+    isText(o.by, 200) && isIso(o.at) &&
+    absentOr(o.note, x => typeof x === "string") &&
+    absentOr(o.scope, x => x === "within_grant" || x === "owner_answer") &&
+    absentOr(o.ownerAnswer, x => typeof x === "string") &&
+    absentOr(o.snoozedUntil, isIso);
+}
+
+/** A record counts only if it is well-formed, belongs to this profile and carries a valid MAC. */
+export function verifyEvent(raw: unknown, cfg: LaunchConfig, key: Buffer): SignedEvent | undefined {
+  if (typeof raw !== "object" || raw === null) return undefined;
+  const o = raw as Record<string, unknown>;
+  if (o.event === "raised") {
+    const item = o.item;
+    if (!validItem(item) || item.profile !== cfg.profile) return undefined;
+    return macOk({ event: "raised", item }, o.mac, key) ? { event: "raised", item, mac: o.mac as string } : undefined;
+  }
+  if (o.event === "state") {
+    const rec = o.rec;
+    if (!validRec(rec)) return undefined;
+    return macOk({ event: "state", rec }, o.mac, key) ? { event: "state", rec, mac: o.mac as string } : undefined;
+  }
+  return undefined;
+}
 
 /** Worker raise. `from` and `profile` come from launch config; any such fields in the input are ignored. */
 export function newItem(input: Record<string, unknown>, cfg: LaunchConfig, now: Date): AttentionItem {
@@ -86,34 +182,37 @@ export function newItem(input: Record<string, unknown>, cfg: LaunchConfig, now: 
   if (typeof hours !== "number" || !(hours > 0 && hours <= MAX_TTL_HOURS))
     throw new Error(`ttlHours must be greater than 0 and at most ${MAX_TTL_HOURS}`);
   const issue = typeof input.issue === "string" && input.issue.trim() ? input.issue.trim() : null;
+  const summary = typeof input.summary === "string" ? input.summary.trim() : "";
+  if (!summary) throw new Error("summary is required");
+  if (summary.length > MAX_TEXT) throw new Error(`summary exceeds ${MAX_TEXT} characters`);
   return {
     id: "ati_" + randomBytes(6).toString("hex"),
     type: type as AttentionType,
     from: cfg.identity,
     profile: cfg.profile,
     issue,
-    summary: text(input.summary, "summary"),
+    summary,
     createdAt: now.toISOString(),
-    ttl: plusHours(now, hours),
+    ttl: new Date(now.getTime() + hours * 3_600_000).toISOString(),
     state: "open",
     revision: 1,
   };
 }
 
-/** Rebuild the item set from events. Higher revision wins; events apply in log order. */
-export function fold(events: ReadonlyArray<AttentionEvent | Cursor>): Map<string, AttentionItem> {
+/** Every item, including closed ones (used for transitions and summaries). */
+export function foldAll(events: ReadonlyArray<SignedEvent>): Map<string, AttentionItem> {
   const items = new Map<string, AttentionItem>();
   for (const e of events) {
-    if (e.event === "ingested" || e.event === "delivered") continue; // cursors, not item facts
     if (e.event === "raised") {
       if (!items.has(e.item.id)) items.set(e.item.id, { ...e.item });
       continue;
     }
     const it = items.get(e.rec.id);
-    if (!it || e.rec.revision <= it.revision) continue;
+    if (!it || TERMINAL.has(it.state) || e.rec.from !== it.from || e.rec.revision <= it.revision) continue;
     it.revision = e.rec.revision;
     it.state = e.rec.state;
     if (e.rec.state === "snoozed") it.snoozedUntil = e.rec.snoozedUntil;
+    else delete it.snoozedUntil;
     if (e.rec.state === "resolved" || e.rec.state === "cancelled") {
       it.resolution = {
         by: e.rec.by, note: e.rec.note ?? "", at: e.rec.at,
@@ -125,15 +224,39 @@ export function fold(events: ReadonlyArray<AttentionEvent | Cursor>): Map<string
   return items;
 }
 
-/** Live = not resolved/cancelled and not past TTL. Expiry is computed, so it needs no event. */
+/** Live = not resolved, cancelled or expired, and not past TTL. */
 export function isLive(it: AttentionItem, now: Date): boolean {
-  return it.state !== "resolved" && it.state !== "cancelled" && Date.parse(it.ttl) > now.getTime();
+  return !TERMINAL.has(it.state) && Date.parse(it.ttl) > now.getTime();
+}
+
+/** Operational memory: closed and TTL-expired items are removed. */
+export function operational(all: ReadonlyMap<string, AttentionItem>, now: Date): Map<string, AttentionItem> {
+  const live = new Map<string, AttentionItem>();
+  for (const [id, it] of all) if (isLive(it, now)) live.set(id, it);
+  return live;
+}
+
+export function fold(events: ReadonlyArray<SignedEvent>, now: Date): Map<string, AttentionItem> {
+  return operational(foldAll(events), now);
 }
 
 /** A snooze that has run out shows as open again. */
-export function effectiveState(it: AttentionItem, now: Date): AttentionState {
+export function effectiveState(it: AttentionItem, now: Date): string {
   if (it.state === "snoozed" && it.snoozedUntil && Date.parse(it.snoozedUntil) <= now.getTime()) return "open";
   return it.state;
+}
+
+/** Coach-recorded expiry for every non-closed item whose TTL has run out. */
+export function expiryRecords(all: ReadonlyMap<string, AttentionItem>, now: Date, cfg: LaunchConfig): StateRecord[] {
+  const out: StateRecord[] = [];
+  for (const it of all.values()) {
+    if (TERMINAL.has(it.state) || Date.parse(it.ttl) > now.getTime()) continue;
+    out.push({
+      id: it.id, from: it.from, revision: it.revision + 1, state: "expired",
+      by: cfg.identity, at: now.toISOString(), note: "ttl expired",
+    });
+  }
+  return out;
 }
 
 export type Action =
@@ -142,17 +265,26 @@ export type Action =
   | { kind: "resolve"; scope: unknown; note: unknown; ownerAnswer?: unknown }
   | { kind: "cancel"; note: unknown };
 
-/** Coach transition. Returns the state record to append. Throws on any rule violation. */
+function text(value: unknown, field: string, max = MAX_TEXT): string {
+  const s = typeof value === "string" ? value.trim() : "";
+  if (!s) throw new Error(`${field} is required`);
+  if (s.length > max) throw new Error(`${field} exceeds ${max} characters`);
+  return s;
+}
+
+/** Coach transition. Returns the state record to record. Throws on any rule violation. */
 export function transition(item: AttentionItem | undefined, action: Action, cfg: LaunchConfig, now: Date): StateRecord {
   if (!item) throw new Error("unknown attention item");
-  if (!isLive(item, now)) throw new Error(`attention item ${item.id} is not live (${item.state} or expired)`);
+  if (TERMINAL.has(item.state)) throw new Error(`attention item ${item.id} is already ${item.state}`);
+  if (Date.parse(item.ttl) <= now.getTime()) throw new Error(`attention item ${item.id} has expired`);
   const base = { id: item.id, from: item.from, revision: item.revision + 1, by: cfg.identity, at: now.toISOString() };
   switch (action.kind) {
     case "ack":
       if (item.state !== "open") throw new Error(`cannot ack a ${item.state} item`);
       return { ...base, state: "acked" };
     case "snooze": {
-      if (!(action.hours > 0 && action.hours <= MAX_TTL_HOURS)) throw new Error(`hours must be greater than 0 and at most ${MAX_TTL_HOURS}`);
+      if (!(action.hours > 0 && action.hours <= MAX_TTL_HOURS))
+        throw new Error(`hours must be greater than 0 and at most ${MAX_TTL_HOURS}`);
       const until = Math.min(now.getTime() + action.hours * 3_600_000, Date.parse(item.ttl));
       return { ...base, state: "snoozed", snoozedUntil: new Date(until).toISOString() };
     }
@@ -171,36 +303,36 @@ export function transition(item: AttentionItem | undefined, action: Action, cfg:
   }
 }
 
-/** Read complete lines from `offset`. A partial last line is left for the next read. */
-export function readSpool(path: string, offset = 0): { events: AttentionEvent[]; offset: number } {
+/**
+ * Complete lines from `offset`. Malformed and unverified lines are skipped, never repaired.
+ * A partial last line is left for the next read. An offset past the end means the file was replaced.
+ */
+export function readSpool(path: string, cfg: LaunchConfig, key: Buffer, offset = 0): { events: SignedEvent[]; offset: number } {
   if (!existsSync(path)) return { events: [], offset };
   const buf = readFileSync(path);
-  const events: AttentionEvent[] = [];
-  let pos = offset;
-  let next = offset;
+  const events: SignedEvent[] = [];
+  let pos = offset > buf.length ? 0 : offset;
   for (;;) {
     const nl = buf.indexOf(10, pos);
     if (nl < 0) break;
     const line = buf.subarray(pos, nl).toString("utf8");
     pos = nl + 1;
-    next = pos;
+    let raw: unknown;
     try {
-      const ev = JSON.parse(line) as AttentionEvent;
-      if (ev && (ev.event === "raised" || ev.event === "state")) events.push(ev);
+      raw = JSON.parse(line);
     } catch {
-      // A corrupt line is skipped, never repaired.
+      continue;
     }
+    const ev = verifyEvent(raw, cfg, key);
+    if (ev) events.push(ev);
   }
-  return { events, offset: next };
+  return { events, offset: pos };
 }
 
-export function appendSpool(path: string, ev: AttentionEvent): void {
+/** A torn previous write must not swallow the next record: start on a fresh line when needed. */
+export function appendSpool(path: string, ev: SignedEvent): void {
   mkdirSync(dirname(path), { recursive: true });
-  appendFileSync(path, JSON.stringify(ev) + "\n");
-}
-
-/** Coach ingests only items raised under its own profile, with a valid type and a stamped author. */
-export function acceptableRaise(item: AttentionItem, cfg: LaunchConfig): boolean {
-  return item.profile === cfg.profile && typeof item.from === "string" && item.from.length > 0 &&
-    (ATTENTION_TYPES as readonly string[]).includes(item.type) && typeof item.summary === "string";
+  const current = existsSync(path) ? readFileSync(path) : Buffer.alloc(0);
+  const torn = current.length > 0 && current[current.length - 1] !== 10;
+  appendFileSync(path, (torn ? "\n" : "") + JSON.stringify(ev) + "\n");
 }

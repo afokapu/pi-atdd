@@ -190,3 +190,46 @@ Suite: `npm run check` green.
 - Code lives in `src/attention.ts` (pure domain and spool I/O) and `src/attention-strip.ts` (Pi wiring).
   `src/pi-activation.ts` calls one registration function. No new extension, no new dependency; tool schemas are
   plain JSON Schema objects.
+
+---
+
+## Review RETURN amendments (2026-11-20)
+
+These supersede the event shape, expiry and enforcement text above where they differ.
+
+- **Trust gate**: every tool `execute`, the `/attention` command and every hook check `isProjectTrusted()`.
+  A tool called with no extension context fails closed.
+- **Authenticity**: every raised item and every state record carries `mac`, an HMAC-SHA256 over its canonical body,
+  keyed by `<agentDir>/attention/attention.key` (created with mode 0600 by whichever role starts first).
+  Unsigned, mis-signed, malformed or other-profile records are dropped on read: never applied, never delivered.
+- **Limit (text-only, stated plainly)**: any process running as the same OS user can read the key file. The MAC stops
+  forgery by writes that do not hold the key (raw shell appends, injected text, cross-profile records). It does not
+  stop a worker that deliberately reads the key. Closing that needs a separate OS user or a Coach-only secret; out of scope.
+- **Malformed input**: strict shape validation on every record; bad lines are skipped, never thrown on. A torn last line
+  is left alone and the next append starts on a fresh line, so it cannot swallow a valid record.
+- **Closed items**: `resolved`, `cancelled` and `expired` items leave operational memory. `operational()` and `fold()`
+  drop them, so they are absent from the widget, from `attention_status` and from live views. Their state records stay
+  in the spool (the worker's delivery source) and in the Coach session.
+- **Expiry is an event**: the Coach appends one signed `expired` state record for each non-closed item past its TTL.
+  The worker is told about it on its next turn, once.
+- **Profile**: records for another profile are dropped during verification. `attention_status` and delivery only see
+  items with the worker's own identity and profile.
+
+### Enforced vs text-only (current)
+
+| Item | Enforced by code (tests) | Text-only / residual |
+|---|---|---|
+| Trust gate on tools, command and hooks | yes (trust test) | |
+| Unsigned, forged or mis-signed records not applied or delivered | yes (MAC; forgery test) | Key readable by same-user processes (see Limit) |
+| Other-profile items invisible to Coach and worker | yes (profile test) | |
+| Malformed and torn lines skipped, never throw | yes (malformed test) | |
+| Resolved, cancelled, expired items leave memory and widget | yes (acc2 test) | |
+| Expiry recorded once as `expired`; worker told once | yes (expiry test) | |
+| Worker sees a Coach resolution on its next turn, once | yes (acc4 test) | That the worker acts on it |
+| Owner's answer required for `owner_answer` | only that a non-empty answer is present | That the Coach really asked the owner |
+| Raises are attributable to a worker identity | `from` comes from launch config, not arguments | Within one profile, a worker holding the key can sign as another identity (residual) |
+| Worker raises when it should | | yes (prompt guidance) |
+| Coach keeps the strip empty and acts on items | | yes |
+| No secrets in summaries | | yes |
+| Spool growth and GC | no (Q3, deferred) | |
+| Test file `// URN:` header (`tester.test.carries-urn-identity`) | no | Not bound: no PLT-101 acceptance IDs exist in this repo's plan, and existing repo tests carry `// Acceptance:` only. Needs the planning authority. |
