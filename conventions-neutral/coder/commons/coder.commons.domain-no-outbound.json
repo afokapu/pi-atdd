@@ -1,0 +1,345 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.commons.domain-no-outbound",
+  "legacyId": "coder.bun.commons-domain-no-outbound",
+  "core": {
+    "title": "Commons domain modules import nothing outward",
+    "given": "A production source module assigned the domain role within the shared (commons) code tree — the intersection of the domain role location and the shared code tree placement",
+    "when": "it has an import (new or pre-existing) whose resolved target lies in the application or integration role",
+    "then": "Remove the outward import: the domain in the shared code tree MUST NOT import application or integration code; dependencies point inward only.",
+    "prefer": [
+      "Move genuinely domain-owned data or behavior into domain.",
+      "Invert an outer capability behind a domain-facing port.",
+      "During GREEN: prefer existing domain types, functions, and ports; introduce a new port only when the current behavior requires the domain to request an outer capability, and keep it as narrow as the acceptance requires."
+    ],
+    "avoid": [
+      "Importing outward as a temporary shortcut.",
+      "Moving unrelated application or integration behavior into domain.",
+      "Inventing a future-proof abstraction."
+    ],
+    "unless": [
+      "Test files and vendored/build directories are never scanned.",
+      "Imports that resolve outside the project graph (recognised per the profile's external-import idiom) are not layer-checked.",
+      "A file that no role is assigned to (per the profile's role assignment) is outside the rule, not in violation."
+    ],
+    "why": "The domain is the centre holding the rules and must not know what orchestrates or transports them; an outward import makes the rules unusable without the machinery, first seen as a domain test needing a database.",
+    "evidence": [
+      "The current behavioral acceptance passes.",
+      "The domain in the shared code tree imports no application or integration code: the stack's import-graph check reports no import from such a module resolving into the application or integration role."
+    ],
+    "verification": [
+      "Disposition: strict.",
+      "Severity 3.",
+      "Check scope: production source modules at the intersection of the shared code tree placement and the domain role location (profile: layout.commons_dir composed with roles.domain.path; the composed concrete trees are the profile values, not core text); files to which no role is assigned are out of scope, not violations.",
+      "An outbound import is an import whose resolved target lies in the application or integration role; the check applies to existing as well as newly changed imports.",
+      "Test files are never scanned; the exact vendored and generated trees that are never scanned are the stack's single excluded-trees list (roots.excluded), as classified by the checker.",
+      "Imports that resolve outside the project graph are not layer-checked; the profile states how such imports are recognised.",
+      "The check does not cover the inward direction: an application or integration module importing domain code does not fire this rule.",
+      "A finding from the stack's import-graph / clean-architecture detector is an optional signal or evidence, not a prerequisite."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "role",
+          "values": [
+            "domain"
+          ],
+          "observability": "observable_now",
+          "note": "The module is assigned the domain role and lies in the shared code tree; the subject scope is the intersection of the domain role location and the shared tree placement (profile: role assignment, roles.domain.path, layout.commons_dir); files with no assigned role are outside the rule."
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "source"
+          ],
+          "observability": "observable_now",
+          "note": "Only production source is scanned; test files and vendored/build trees are never scanned."
+        },
+        {
+          "fact": "operation",
+          "values": [
+            "imports_outer_layer"
+          ],
+          "observability": "needs_new_observer",
+          "note": "Import-graph observer: any import (existing or newly changed) in such a domain module whose resolved target lies in the application or integration role; imports resolving outside the project graph are excluded. Role/file-kind facts alone cannot resolve import targets. A detector finding is an optional signal/evidence, not a prerequisite."
+        }
+      ],
+      "fires": [
+        "A domain module in the shared code tree has an import (new or pre-existing) resolving into the application role.",
+        "A domain module in the shared code tree imports a helper from the integration role (e.g. a persistence or transport adapter).",
+        "A domain module in the shared code tree imports an outer-layer type as a temporary shortcut to make a test pass."
+      ],
+      "doesNotFire": [
+        "A test file under the domain tree imports application code (tests are not scanned).",
+        "A file in a vendored or build directory.",
+        "A domain module imports an external package specifier (outside the project graph).",
+        "A file whose path assigns it no role.",
+        "An application or integration module importing from domain (inward direction)."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roles.domain.path",
+      "meaning": "Where files of the domain role live stack-wide, independent of this rule's shared-tree scope; combined with the shared code tree placement (layout.commons_dir) its intersection is this rule's subject scope.",
+      "bunValue": "**/domain/** (any path carrying the `domain` layer segment)"
+    },
+    {
+      "key": "layout.commons_dir",
+      "meaning": "Placement of the shared (commons) code tree; this rule's subject scope is the intersection of this placement and the domain role location (roles.domain.path).",
+      "bunValue": "the `commons/` and `shared/` trees — composed with the `domain` layer segment this yields the subject globs **/commons/domain/** and **/shared/domain/**"
+    },
+    {
+      "key": "roles.application.path",
+      "meaning": "Where files of the application role live; an import from a scoped domain module resolving here is an outbound import.",
+      "bunValue": "**/application/** (any path carrying the `application` layer segment)"
+    },
+    {
+      "key": "roles.integration.path",
+      "meaning": "Where files of the integration role live; an import from a scoped domain module resolving here is an outbound import.",
+      "bunValue": "**/integration/** (any path carrying the `integration` layer segment)"
+    },
+    {
+      "key": "roles.assignment",
+      "meaning": "How a file is assigned to a role, and that a file with no assigned role is out of scope rather than in violation.",
+      "bunValue": "the path's layer segment; files with no layer segment are outside the rule, not in violation"
+    },
+    {
+      "key": "idiom.external_import",
+      "meaning": "How an import that resolves outside the project graph is recognised; such imports are not layer-checked.",
+      "bunValue": "bare npm specifiers"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "evidence[1]",
+      "text": "Commons domain imports no application or integration code: bun_clean_architecture_detector reports no import from a commons domain module resolving into application/ or integration/.",
+      "reason": "Names this rule's Bun validator/detector id (bun_clean_architecture_detector) and the Bun path shapes; the core states the check generically, and bun.json itself remains the worked reference example."
+    },
+    {
+      "item": "activation.facts[3]",
+      "text": "A bun_clean_architecture_detector finding is an optional signal/evidence, not a prerequisite.",
+      "reason": "Cites the Bun realization's detector id; the core keeps the optional-signal semantics in verification without naming the detector."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:roles.domain.path",
+        "profile:layout.commons_dir"
+      ],
+      "note": "'source module under a commons/domain/ or shared/domain/ tree' becomes the neutral subject: the domain role at its intersection with the shared code tree placement. Composing the two profile values (the shared/ and commons/ trees x the domain layer segment) yields the exact subject globs of the Bun realization."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when",
+        "profile:roles.application.path",
+        "profile:roles.integration.path"
+      ],
+      "note": "'import resolving into the commons application/ or integration/ layer' becomes role-resolved targets; where those roles live is profile data."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then"
+      ],
+      "note": "The one obligation, kept intact: remove the outward import; dependencies point inward only; 'commons domain' phrased as 'the domain in the shared code tree'."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Already stack-neutral; kept verbatim."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]"
+      ],
+      "note": "Role-level, already neutral."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]"
+      ],
+      "note": "Role-level (port-and-adapter inversion), already neutral."
+    },
+    {
+      "item": "prefer[2]",
+      "as": [
+        "core:prefer[2]"
+      ],
+      "note": "GREEN-phase instruction; phase concept and 'types, functions, ports' are not stack-specific."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Role-level, already neutral."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]"
+      ],
+      "note": "Shared do-not-broaden policy item; neutral as-is."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]",
+        "core:verification"
+      ],
+      "note": "Neutral exception; the exact never-scanned trees are the stack's single excluded-trees list owned by the checker, so the core keeps that deference in verification."
+    },
+    {
+      "item": "unless[1]",
+      "as": [
+        "core:unless[1]",
+        "profile:idiom.external_import"
+      ],
+      "note": "'bare npm specifiers' is the realization's idiom for imports outside the project graph; the profile supplies it, the core keeps the neutral exception."
+    },
+    {
+      "item": "unless[2]",
+      "as": [
+        "core:unless[2]",
+        "profile:roles.assignment"
+      ],
+      "note": "'no layer segment' is the realization's role assignment; the core phrases it as 'no role assigned' per the profile."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]",
+        "bunOnly"
+      ],
+      "note": "Neutral restatement in core:evidence[1] (generic import-graph check); the detector id and concrete path shapes are realization detail."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "profile:roles.domain.path",
+        "profile:layout.commons_dir"
+      ],
+      "note": "Scope restated generically in verification as the intersection of the domain role location and the shared tree placement; the composed concrete trees are exactly the profile values (never spelled out in core text); the term id commons_domain stays with the realization."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Outbound-import definition stated with roles, including 'applies to existing as well as newly changed imports'; term id outbound_import stays with the realization."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Skip test files; excluded trees defer to the stack-wide list classified by the checker."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification",
+        "profile:idiom.external_import"
+      ],
+      "note": "Neutral rule kept in verification; the bare-specifier recognition is supplied by the profile."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification",
+        "profile:roles.assignment"
+      ],
+      "note": "Out-of-scope-not-violation rule kept in verification; the assignment mechanism is profile data."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Per-rule severity is not a profile key; recorded in core verification."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roles.domain.path",
+        "profile:layout.commons_dir"
+      ],
+      "note": "The path_glob fact folds into the neutral role fact as the intersection of the domain role location and the shared tree placement; the two profile values compose to the realization's exact subject globs (**/commons/domain/**, **/shared/domain/**), which live only in bunValue, not in core text."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roles.assignment",
+        "profile:roles.domain.path"
+      ],
+      "note": "The layer fact becomes the role fact; the layer segment is the realization's role assignment mechanism and locates the domain role stack-wide, independent of the shared-tree scope carried by layout.commons_dir."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[1]"
+      ],
+      "note": "file_kind=source kept as-is; test files never scanned."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[2]",
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "The operation fact stays neutral (import-graph observer, needs_new_observer, outside-project-graph imports excluded); the detector-finding-is-optional clause goes to verification; the detector id itself is realization-only."
+    }
+  ],
+  "neutralityNotes": "The obligation itself is fully stack-neutral; only its anchors are realization data, and no core text names a stack, runtime, framework, language, package manager, file suffix or path. (1) The subject scope is expressed as an intersection of two independent profile keys — layout.commons_dir (the shared/commons tree placement) and roles.domain.path (the stack-wide domain role location) — which, instantiated with the Bun values (commons/ and shared/ trees x the `domain` layer segment), compose to the exact Bun subject globs **/commons/domain/** and **/shared/domain/**; that composition is recorded only in profileRequirements.bunValue, never in core text, so roles.domain.path is not overloaded with this rule's scope. The application/integration target locations (roles.application.path, roles.integration.path), the layer-segment role assignment (roles.assignment), and the bare-specifier external-import idiom (idiom.external_import) are likewise profile data, so another stack names its trees and imports differently without changing the core. (2) The only genuinely Bun-only content is the detector/validator id bun_clean_architecture_detector (evidence[1], activation.facts[3] note) and the term ids commons_domain / outbound_import, which stay in the Bun realization; core:verification describes the check generically. (3) Severity 3 and the strict disposition are per-rule enforcement, kept in core:verification rather than the profile, and the exact never-scanned trees remain deferred to the stack's single excluded-trees list (roots.excluded) as classified by the checker.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.commons-domain-no-outbound.json",
+      "sha256": "efa159e892a152bd1774e6eaa27c14e65d5a40eb911744bc5bcd496fbdee9eae"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 3,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

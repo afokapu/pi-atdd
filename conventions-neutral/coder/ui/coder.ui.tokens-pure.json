@@ -1,0 +1,380 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.ui.tokens-pure",
+  "legacyId": "coder.bun.design-tokens-pure",
+  "core": {
+    "title": "Token and foundation files hold values, not behaviour",
+    "given": "A code file in the design system's value layers (`tokens` or `foundations`), assigned by the profile's role assignment beneath the design root identified by the profile",
+    "when": "The file exists in the repository, existing or newly written, and the design-system check scans it",
+    "then": "The file contains only values (palette, spacing, radii, motion, scales): it imports no renderer, renders no markup, and branches with no control flow.",
+    "prefer": [
+      "Keep tokens/foundations value-only; move markup to the layers above them (primitives/components) and behaviour to the layer that owns it",
+      "During GREEN: leave the value in the token or foundation file",
+      "During GREEN: move only the markup or logic the current behaviour requires to the nearest existing owning layer",
+      "During GREEN: reuse an existing primitive or component before creating a new one"
+    ],
+    "avoid": [
+      "Moving behaviour into a different layer merely to silence the rule",
+      "Reorganizing unrelated tokens",
+      "Creating a generalized component unrelated to the current acceptance"
+    ],
+    "unless": [
+      "Test files and vendored/build trees are never scanned",
+      "Token files in the stack's declarative token form (the profile's declarative token form) are values by construction and are not scanned",
+      "A repository with no design root (per the profile) is not judged (self-scoping)"
+    ],
+    "why": "Tokens are what every other layer depends on; once they render or decide, the bottom of the hierarchy has behaviour and every primitive inherits it.",
+    "evidence": [
+      "The current behavioural or rendering acceptance passes",
+      "Token and foundation code files remain value-only: the design-system check reports no renderer imports, rendered markup or control flow in them"
+    ],
+    "verification": [
+      "This rule checks only the value layers (`tokens` and `foundations`): files of those layers are located by the profile's layer locations and assigned by its role assignment; files in the other design-system layers are not judged by this rule",
+      "The check scans token/foundation code files for renderer imports (the profile's renderer import set), rendered markup, and control-flow branching (the profile's value-file control-flow constructs); it applies to every in-scope file, existing or newly written",
+      "A repository with no design root (per the profile) is not judged (self-scoping): there is no system to connect to yet",
+      "A pure token is a declaration whose value is data — a string, number, or object of them, including references to other tokens as data (written in the stack's token-reference syntax); such declarations pass",
+      "The check does not cover test files (the union of the profile's unit-test, acceptance-test and e2e-test name patterns), vendored/build trees (never scanned; the checker owns the exact classification of vendored/build trees), or token files in the stack's declarative token form (the profile's declarative token form)",
+      "Disposition: strict (severity 2)"
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "role",
+          "values": [
+            "tokens",
+            "foundations"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "code (not a test file of any kind, not a declarative-token-form file)"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "renderer import",
+            "rendered markup",
+            "control flow"
+          ],
+          "observability": "observable_now"
+        }
+      ],
+      "fires": [
+        "A code file in the token layer imports a renderer (one of the profile's renderer imports)",
+        "A foundations code file returns or renders markup",
+        "A token code file computes a value with control flow",
+        "An existing, unchanged token file already contains one of the above when the check runs"
+      ],
+      "doesNotFire": [
+        "The repository has no design root (per the profile)",
+        "A token file in the stack's declarative token form under the tokens layer",
+        "A test file of any kind (unit, acceptance or e2e), or a file in a vendored/build tree (excluded; the checker owns the exact classification)",
+        "Files in the primitives, components or templates layers",
+        "A token file declaring only strings, numbers, objects of them, or references to other tokens as data (in the stack's token-reference syntax)"
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roots.design_system",
+      "meaning": "How the shared design system's root is identified: the directory names that mark a design root. Nothing else — layer assignment and layer locations come from other keys, and a repository with no such root is simply out of this rule's scope (self-scoping, a core condition).",
+      "bunValue": "A design root is a directory named `design`, `design_system`, or `design-system`."
+    },
+    {
+      "key": "roles.assignment",
+      "meaning": "How a file is assigned to a design-system layer role: the first directory beneath the design root names the layer, and the design-system layer catalog it yields; a file with no layer (or not under a design root) is out of scope, not a violation. Which layers this rule checks (tokens/foundations only) is a core condition referencing this assignment.",
+      "bunValue": "The first directory beneath the design root names the layer: `tokens`, `foundations`, `primitives`, `components`, `templates`. A file not under a design root has no role and is out of scope."
+    },
+    {
+      "key": "layout.locations#tokens_layer",
+      "meaning": "Where the design system's token layer files live (globs), scoping the value-only check to token files.",
+      "bunValue": "`**/design/tokens/**`, `**/design_system/tokens/**`, `**/design-system/tokens/**`"
+    },
+    {
+      "key": "layout.locations#foundations_layer",
+      "meaning": "Where the design system's foundations layer files live (globs), scoping the value-only check to foundation files.",
+      "bunValue": "`**/design/foundations/**`, `**/design_system/foundations/**`, `**/design-system/foundations/**`"
+    },
+    {
+      "key": "idiom.design_system#renderer_imports",
+      "meaning": "Import specifiers that count as importing a renderer (a markup/rendering library) into a design-system value layer; importing any of them in a token/foundation code file is the 'renderer import' finding.",
+      "bunValue": "`hono/jsx`, `react`, `preact`, `@kitajs/html`"
+    },
+    {
+      "key": "idiom.design_system#value_control_flow",
+      "meaning": "The control-flow constructs whose presence in a design-system value (token/foundation) code file violates value-only purity; any of them is the 'control flow' finding.",
+      "bunValue": "`if`, `for`, `while`, `switch`"
+    },
+    {
+      "key": "idiom.design_system#declarative_token_form",
+      "meaning": "The stack's declarative token-authoring file form: token files of this form are values by construction and are never scanned by the value-only check.",
+      "bunValue": "`.css` token files"
+    },
+    {
+      "key": "idiom.design_system#token_reference",
+      "meaning": "The syntax by which a token declaration references another token as data; such references still count as values in the pure-token definition.",
+      "bunValue": "`var(--…)` references"
+    },
+    {
+      "key": "suffix.unit_test",
+      "meaning": "Name patterns of unit-test files. The check excludes test files of every kind by taking the union of this key with the acceptance-test and e2e-test suffix keys; this key alone identifies unit tests, not all tests.",
+      "bunValue": "`*.test.*`, `*.spec.*`"
+    },
+    {
+      "key": "suffix.acceptance_test",
+      "meaning": "Name patterns of acceptance-test files. The check excludes test files of every kind by taking the union of this key with the unit-test and e2e-test suffix keys; this key alone identifies acceptance tests, not all tests.",
+      "bunValue": "`*.test.*`, `*.spec.*` (Bun applies this one pattern set to all test kinds, so the same values serve each kind)"
+    },
+    {
+      "key": "suffix.e2e_test",
+      "meaning": "Name patterns of end-to-end test files. The check excludes test files of every kind by taking the union of this key with the unit-test and acceptance-test suffix keys; this key alone identifies e2e tests, not all tests.",
+      "bunValue": "`*.test.*`, `*.spec.*` (Bun applies this one pattern set to all test kinds, so the same values serve each kind)"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "activation.facts[3]",
+      "text": "Findings are produced by the existing validator `bun_design_system_detector`, which scans token/foundation code files.",
+      "reason": "Detector/validator ids of this one rule are realization details (notProfileKeys); the core names the check generically."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "Layer placement is neutral (design-system value layers); the concrete design-root directories come from the profile's design-root key and the first-directory layer assignment from its role-assignment key. Token/foundation-only applicability stays a core condition.",
+      "as": [
+        "core:given",
+        "profile:roots.design_system",
+        "profile:roles.assignment"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "'The design-system validator scans it' neutralized to 'the design-system check scans it'; the existing-or-newly-written scope is kept.",
+      "as": [
+        "core:when"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "One obligation: value-only (no renderer import, no rendered markup, no control-flow branching); the renderer names and the prohibited control-flow constructs are the profile's concrete values under the dedicated map entries.",
+      "as": [
+        "core:then",
+        "profile:idiom.design_system#renderer_imports",
+        "profile:idiom.design_system#value_control_flow"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "Already stack-neutral design-system reasoning; kept verbatim.",
+      "as": [
+        "core:why"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "Role-level guidance; primitives/components are design-system layer names, not stack names.",
+      "as": [
+        "core:prefer[0]"
+      ]
+    },
+    {
+      "item": "prefer[1]",
+      "note": "GREEN-phase guidance; neutral.",
+      "as": [
+        "core:prefer[1]"
+      ]
+    },
+    {
+      "item": "prefer[2]",
+      "note": "GREEN-phase guidance; neutral.",
+      "as": [
+        "core:prefer[2]"
+      ]
+    },
+    {
+      "item": "prefer[3]",
+      "note": "GREEN-phase guidance; neutral.",
+      "as": [
+        "core:prefer[3]"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "Neutral.",
+      "as": [
+        "core:avoid[0]"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "Neutral.",
+      "as": [
+        "core:avoid[1]"
+      ]
+    },
+    {
+      "item": "avoid[2]",
+      "note": "Neutral.",
+      "as": [
+        "core:avoid[2]"
+      ]
+    },
+    {
+      "item": "unless[0]",
+      "note": "Test files and vendored/build trees are excluded generically. The concrete test patterns are the union of the profile's three test-kind suffix keys (each key keeps its own meaning; Bun happens to apply one pattern set to all test kinds). The vendored/build exclusion is kept only as checker-owned classification in core:verification — bun.json supplies no stack-wide excluded-roots list, so no roots.excluded requirement is made.",
+      "as": [
+        "core:unless[0]",
+        "core:verification",
+        "profile:suffix.unit_test",
+        "profile:suffix.acceptance_test",
+        "profile:suffix.e2e_test"
+      ]
+    },
+    {
+      "item": "unless[1]",
+      "note": "The neutral clause keeps 'the stack's declarative token form' and is bound to the declarative-token-form map entry; the concrete `.css` value is profile data, not bunOnly.",
+      "as": [
+        "core:unless[1]",
+        "profile:idiom.design_system#declarative_token_form"
+      ]
+    },
+    {
+      "item": "unless[2]",
+      "note": "Self-scoping is a rule condition kept in the core; what counts as a design root comes from the profile's design-root key.",
+      "as": [
+        "core:unless[2]",
+        "profile:roots.design_system"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "Neutral.",
+      "as": [
+        "core:evidence[0]"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "'The detector reports' neutralized to 'the design-system check reports'; the finding kinds are neutral.",
+      "as": [
+        "core:evidence[1]",
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "Split across profile keys by meaning: the design-root directory names belong to the design-root key; the first-directory layer assignment and layer catalog to the role-assignment key; the token/foundation locations to the layer-location entries. Which layers this rule judges (tokens/foundations) and self-scoping become core rule conditions in verification.",
+      "as": [
+        "profile:roots.design_system",
+        "profile:roles.assignment",
+        "profile:layout.locations#tokens_layer",
+        "profile:layout.locations#foundations_layer",
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "The pure-token definition is neutralized into verification; the token-reference syntax (`var(--…)`) is bound to the token-reference map entry instead of being left bunOnly.",
+      "as": [
+        "core:verification",
+        "profile:idiom.design_system#token_reference"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "Generic description of what the check scans; the concrete renderer list and the prohibited control-flow constructs are profile values under the dedicated map entries.",
+      "as": [
+        "core:verification",
+        "profile:idiom.design_system#renderer_imports",
+        "profile:idiom.design_system#value_control_flow"
+      ]
+    },
+    {
+      "item": "verifier_detail[3]",
+      "note": "Skip list kept generically in verification: test files of every kind via the union of the three test-kind suffix keys, declarative token files via the declarative-token-form entry, and vendored/build trees with checker-owned classification deferred in verification.",
+      "as": [
+        "core:verification",
+        "profile:suffix.unit_test",
+        "profile:suffix.acceptance_test",
+        "profile:suffix.e2e_test",
+        "profile:idiom.design_system#declarative_token_form"
+      ]
+    },
+    {
+      "item": "verifier_detail[4]",
+      "note": "Per-rule severity and disposition are rule data, not profile keys; stated in the core's verification.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "The path_glob fact is neutralized into the role fact (which design-system layer the file is in); the design-root directories come from the design-root key, the layer assignment from the role-assignment key, and the exact token/foundation globs from the layer-location entries.",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roots.design_system",
+        "profile:roles.assignment",
+        "profile:layout.locations#tokens_layer",
+        "profile:layout.locations#foundations_layer"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "The layer fact (tokens, foundations) merges into the same role fact; 'derived from the first directory beneath the design root' is the profile's role-assignment rule.",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roles.assignment"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "Neutral file_kind 'code (not a test file of any kind, not a declarative-token-form file)'; the concrete test patterns are the union of the three test-kind suffix keys and the declarative token form is profile data, while the vendored/build exclusion stays in verification with checker-owned classification.",
+      "as": [
+        "core:activation.facts[1]",
+        "core:verification",
+        "profile:suffix.unit_test",
+        "profile:suffix.acceptance_test",
+        "profile:suffix.e2e_test",
+        "profile:idiom.design_system#declarative_token_form"
+      ]
+    },
+    {
+      "item": "activation.facts[3]",
+      "note": "The three finding kinds are neutral; the producing validator id is a realization detail (bunOnly).",
+      "as": [
+        "core:activation.facts[2]",
+        "bunOnly"
+      ]
+    }
+  ],
+  "neutralityNotes": "Design-system layer names (tokens, foundations, primitives, components, templates) are treated as stack-neutral design-system vocabulary — the Vite twin shares them — so only directory shapes, file forms/patterns and import specifiers come from the profile or bunOnly. Profile keys are used strictly per their documented meanings: roots.design_system carries only the design-root directory names; roles.assignment carries the first-directory-beneath-the-design-root assignment and the layer catalog it yields; layout.locations entries carry the token/foundation layer locations (the exact in-scope globs). Token/foundation-only applicability and self-scoping are rule conditions in the core, referencing the profile's root and role mapping. idiom.design_system and layout.locations are referenced as map entries per vocabulary v3, so no keys are proposed. Test-file exclusions use the union of the three test-kind suffix keys (suffix.unit_test, suffix.acceptance_test, suffix.e2e_test), each keeping its own per-kind meaning; Bun merely applies the same pattern set (`*.test.*`, `*.spec.*`) to all three kinds. No roots.excluded requirement is made: bun.json supplies only checker-owned classification of vendored/build exclusions, which stays in core:verification as deference. The remaining realization-only detail is the validator id bun_design_system_detector (bunOnly). Severity 2 / strict disposition stays in core:verification as rule data.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.design-tokens-pure.json",
+      "sha256": "1208842bb105ee34b5e2f2d2803c13f8a1ca7c0692d4d4f42cb5f809735a3c39"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "rekey-v3 -> zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

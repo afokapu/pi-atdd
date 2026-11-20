@@ -1,0 +1,357 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.commons.cross-feature-imports-in",
+  "legacyId": "coder.bun.commons-cross-feature-imports-in",
+  "core": {
+    "title": "Reach sibling features of the shared tree only through the layer root",
+    "given": "A module inside one feature directory of the shared tree (the tree of code shared across features, where each feature directory is nested under a layer)",
+    "when": "it imports a capability of a sibling feature of the shared tree",
+    "then": "The import MUST go through the layer root, never directly into the sibling feature's internals.",
+    "prefer": [
+      "Reuse an export that already represents the required capability.",
+      "If the capability is intentionally shared, expose the smallest stable surface from the layer root.",
+      "If it is not a shared responsibility, keep the implementation local instead of reaching across."
+    ],
+    "avoid": [
+      "Importing a path inside a sibling feature's directory.",
+      "Exporting a sibling's internals wholesale.",
+      "Creating a generic shared module merely to make the import legal.",
+      "Moving unrelated code between features."
+    ],
+    "unless": [
+      "Test files and vendored/build trees are never scanned.",
+      "Imports that resolve outside the project graph (external-package specifiers, per the profile's external-import idiom) are not layer-checked.",
+      "A file with no layer segment (no role assigned, per the profile's assignment) is outside these rules rather than in violation of them."
+    ],
+    "why": "A feature's internals are its own; the layer root is the surface it deliberately exposes. Reaching past it couples two features through a path neither chose to publish, which is how a shared module quietly becomes unsplittable.",
+    "evidence": [
+      "The current behavioral acceptance passes.",
+      "The cross-feature dependency goes through the intended public boundary (the layer root); this rule's architecture check reports no finding."
+    ],
+    "verification": [
+      "Resolve each import of a module inside a feature directory of the shared tree and flag one whose resolved target sits inside a different feature directory of the shared tree.",
+      "Term shared feature: one feature directory of the shared tree (shape from the profile); its internals belong to it alone.",
+      "Term layer root: the surface a feature deliberately exposes; cross-feature use goes through it, or two features are coupled through a path neither published.",
+      "The observer resolves every import of every in-scope module (pre-existing or newly added/changed) and is not limited to diff edits.",
+      "Test files and vendored/build trees are never scanned; the exact excluded classification is the stack-wide never-scanned list owned by the stack's checker (profile roots.excluded).",
+      "Do not layer-check imports that resolve outside the project graph (per the profile's external-import idiom).",
+      "Files with no layer segment (no role assigned, per the profile's assignment) are out of scope, not violations.",
+      "Severity 3; disposition strict."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "role",
+          "values": [
+            "module inside a feature directory of the shared tree"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "source"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "import_resolves_into_sibling_feature"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "cross-feature import finding emitted by this rule's architecture check"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "A module inside one feature directory of the shared tree adds an import resolving to a file inside a different feature directory's internals.",
+        "A module inside one feature directory of the shared tree already contains (unchanged) an import resolving into another feature's internals.",
+        "An existing shared-tree module's import is retargeted from the layer root to a path inside a sibling feature directory."
+      ],
+      "doesNotFire": [
+        "A shared-tree feature module imports another feature's capability through the layer root.",
+        "A module imports a file inside its own feature directory.",
+        "A test file or a file in a vendored/build tree imports a sibling feature's internals.",
+        "An import uses a bare external-package specifier (resolves outside the project graph).",
+        "The importing file has no layer segment in its path."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "layout.commons_dir",
+      "meaning": "Where the shared-across-features tree lives and how it nests (layer, then feature); the rule scopes modules inside one feature directory of this tree.",
+      "bunValue": "commons/<layer>/<feature>/"
+    },
+    {
+      "key": "roles.assignment",
+      "meaning": "How a file is assigned to a layer (role) for this check, and that a file with no layer segment is out of scope rather than a violation.",
+      "bunValue": "the layer segment of the file's path; a file with no layer segment is out of scope, not a violation"
+    },
+    {
+      "key": "idiom.external_import",
+      "meaning": "How an import that resolves outside the project graph is recognised, so that it is excluded from the layer check.",
+      "bunValue": "bare npm specifiers (resolve outside the project graph)"
+    },
+    {
+      "key": "roots.excluded",
+      "meaning": "The stack-wide never-scanned list; test files and these trees are outside the check's scope, with the exact classification owned by the stack's checker.",
+      "bunValue": "vendored/build directories (never scanned)"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "activation.facts[0]",
+      "text": "path_glob: commons/*/*/** - importing module lives inside a commons feature directory commons/<layer>/<feature>/.",
+      "reason": "A concrete path-glob encoding of the Bun observer's scope; the neutral core states the scope at role level and takes the concrete directory shape from the profile (layout.commons_dir)."
+    },
+    {
+      "item": "activation.facts[3]",
+      "text": "finding: bun_clean_architecture_detector:coder.bun.commons-cross-feature-imports-in",
+      "reason": "Detector and finding ids of this one rule are realization details; the core keeps a generic finding fact and describes the check generically in verification."
+    },
+    {
+      "item": "evidence[1]",
+      "text": "bun_clean_architecture_detector reports no finding for this rule",
+      "reason": "Names the Bun detector; the core's evidence references this rule's architecture check generically, and per-rule detector ids stay with the realization."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:layout.commons_dir"
+      ],
+      "note": "The commons feature directory is generalized to 'one feature directory of the shared tree'; the concrete shape comes from the profile."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "'sibling commons feature' becomes 'sibling feature of the shared tree'; already stack-neutral otherwise."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then"
+      ],
+      "note": "Obligation kept verbatim minus the commons wording; 'layer root' is a rule-defined term (see verification)."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Fully stack-neutral; kept verbatim."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]"
+      ],
+      "note": "Already role-level."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]"
+      ],
+      "note": "Already role-level; 'layer root' is the rule's own term."
+    },
+    {
+      "item": "prefer[2]",
+      "as": [
+        "core:prefer[2]"
+      ],
+      "note": "Already role-level."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "'sibling commons feature's directory' generalized to 'sibling feature's directory'."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Already role-level."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]"
+      ],
+      "note": "Already role-level."
+    },
+    {
+      "item": "avoid[3]",
+      "as": [
+        "core:avoid[3]"
+      ],
+      "note": "Already role-level."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]",
+        "core:verification",
+        "profile:roots.excluded"
+      ],
+      "note": "Scan-scope exclusion; kept as an unless and as verifier scope, with the never-scanned trees from the stack-wide profile list."
+    },
+    {
+      "item": "unless[1]",
+      "as": [
+        "core:unless[1]",
+        "core:verification",
+        "profile:idiom.external_import"
+      ],
+      "note": "'Bare npm specifier' generalized to 'import resolving outside the project graph'; the Bun idiom comes from the profile."
+    },
+    {
+      "item": "unless[2]",
+      "as": [
+        "core:unless[2]",
+        "core:verification",
+        "profile:roles.assignment"
+      ],
+      "note": "Out-of-scope condition tied to how files are assigned a layer; the assignment idiom comes from the profile."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]"
+      ],
+      "note": "Already stack-neutral."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]",
+        "bunOnly"
+      ],
+      "note": "The boundary evidence is neutral; the detector name is a realization detail kept in bunOnly."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Check description generalized to shared-tree feature directories."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "profile:layout.commons_dir"
+      ],
+      "note": "Term definition; the concrete directory shape comes from the profile, the ownership of internals is neutral."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Term 'layer root' is defined only conceptually in the Bun source, so it travels into the core as a term definition; no profile value exists to extract."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification",
+        "profile:roots.excluded"
+      ],
+      "note": "Scan-scope exclusion; exact classification deferred to the stack-wide never-scanned list owned by the checker."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification",
+        "profile:idiom.external_import"
+      ],
+      "note": "External-import exclusion; Bun's 'bare npm specifier' form comes from the profile idiom."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "as": [
+        "core:verification",
+        "profile:roles.assignment"
+      ],
+      "note": "Out-of-scope rule for files with no layer segment; assignment idiom from the profile."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Per-rule severity and disposition are not profile keys; they belong to core verification."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:layout.commons_dir",
+        "bunOnly"
+      ],
+      "note": "Re-expressed as a role-level scope fact (the closed fact vocabulary has no path-glob fact); the concrete glob stays in bunOnly, the directory shape comes from the profile."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]"
+      ],
+      "note": "file_kind source is already neutral; test/vendored exclusion is carried by unless and verification."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[2]",
+        "core:verification"
+      ],
+      "note": "Change value is stack-neutral; the observer note (resolve every import, not only diff edits) is kept as a verification entry."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[3]",
+        "bunOnly"
+      ],
+      "note": "The finding fact is kept generically; the literal detector:rule id is a realization detail (bunOnly)."
+    }
+  ],
+  "neutralityNotes": "The obligation itself is stack-neutral; only observer encodings are Bun-specific (the path glob and the detector/finding id, both in bunOnly). 'Bare npm specifier' is generalized to 'imports resolving outside the project graph' with the Bun idiom carried by profile idiom.external_import. The term 'layer root' is defined only conceptually in bun.json (the surface a feature deliberately exposes) with no concrete module path, so the core carries the conceptual definition and each realization pins the concrete surface itself. The closed fact-type vocabulary has no path/location fact, so the scope fact is expressed as a role-level fact.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.commons-cross-feature-imports-in.json",
+      "sha256": "7be5623340da7d4f9822fcfb6ce4cc1660a9f2f69a2d24bf1efc8611dca3625c"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 1,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 4,
+      "agreeWithAuditor": true
+    }
+  }
+}

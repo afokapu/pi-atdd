@@ -1,0 +1,324 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.coverage.bidirectional-coverage-between-trains",
+  "legacyId": "planner.coverage.bidirectional-coverage-between-trains",
+  "core": {
+    "title": "Keep train and wagon references bidirectional (Train - Wagon Coverage)",
+    "given": "A plan containing trains and/or wagon manifests (either side may be empty), plus the plan's allow-list of wagons exempt from train membership",
+    "when": "the planner adds, removes, renames, or changes the status of a wagon manifest; adds, removes, or edits a train's participants; or changes the exemption allow-list",
+    "then": "Keep train-wagon coverage bidirectional with no orphan: every wagon appears in at least one train's participants (wagon -> train), and every wagon reference in a train's participants resolves to a wagon manifest (train -> wagon).",
+    "prefer": [
+      "When creating a wagon manifest, add it as a participant of at least one train in the same change.",
+      "When adding a wagon reference to a train's participants, create or point to an existing wagon manifest in the same change.",
+      "When renaming or removing a wagon, update every train participant that references it.",
+      "When removing a wagon from the exemption allow-list or promoting it out of draft status, add it to a train in the same change."
+    ],
+    "avoid": [
+      "Leaving an orphan on either side: a wagon in no train, or a train participant with no wagon manifest.",
+      "Adding a wagon to the exemption allow-list or marking it draft just to silence the coverage check."
+    ],
+    "unless": [
+      "wagon -> train direction only: the wagon is listed in the exemption allow-list or has draft status."
+    ],
+    "why": "Bidirectional coverage means each side references the other with no orphan: every non-exempt wagon is reachable from a train, and every wagon reference in a train resolves to a wagon manifest.",
+    "evidence": [
+      "The wagon -> train coverage check passes: every wagon appears in at least one train's participants, excepting allow-listed or draft wagons.",
+      "The train -> wagon coverage check passes: every wagon reference in a train's participants has a wagon manifest."
+    ],
+    "verification": [
+      "Two independent direction checks: wagon -> train requires every wagon manifest to appear in at least one train's participants; train -> wagon requires every wagon participant reference to resolve to a wagon manifest. Each check fires even when the other side (trains or wagons) is empty.",
+      "Exceptions apply to the wagon -> train direction only (the exemption allow-list and draft status); the train -> wagon direction has no exceptions.",
+      "Disposition: documentation-only.",
+      "Scope: the checks cover wagon/train reference structure only; edits to wagon content that do not change wagon identity, status, allow-list membership, or train participants are not covered."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "train",
+            "wagon_manifest",
+            "wagon_exemption_allow_list"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "operation",
+          "values": [
+            "create",
+            "edit",
+            "delete",
+            "rename"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "train participant added/removed",
+            "train added/removed",
+            "wagon manifest added/removed/renamed",
+            "wagon status changed from draft",
+            "wagon removed from the exemption allow-list"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "wagon -> train coverage check failure",
+            "train -> wagon coverage check failure"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "Planner adds a new non-draft wagon manifest, not listed in the exemption allow-list, that no train lists in its participants.",
+        "Planner adds a wagon manifest while the plan has no trains at all, and the wagon is neither draft nor in the exemption allow-list.",
+        "Planner adds a wagon reference to a train for which no wagon manifest exists (including when the plan has no wagon manifests).",
+        "Planner renames or deletes a wagon manifest still referenced by a train participant.",
+        "Planner removes or edits a train so that a non-draft, non-allow-listed wagon is no longer in any train.",
+        "Planner promotes a wagon out of draft status without adding it to any train, and it is not in the exemption allow-list.",
+        "Planner removes from the exemption allow-list a non-draft wagon that is not in any train."
+      ],
+      "doesNotFire": [
+        "A wagon with draft status is not yet in any train.",
+        "A wagon listed in the exemption allow-list is not in any train.",
+        "Edits to wagon content (features, WMBTs, acceptances) that do not change wagon identity, status, allow-list membership, or train participants."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roles.plan_artifact.kinds",
+      "meaning": "The concrete plan-artifact kinds this rule reads: the train artifacts, the wagon manifests, and the wagon exemption allow-list (the artifact whose entries exempt a wagon from train membership).",
+      "bunValue": "train, wagon_manifest, wagons_not_in_train_allow_list"
+    },
+    {
+      "key": "urn.wagon",
+      "meaning": "How a train's participant entry refers to a wagon — the reference whose resolution the train -> wagon direction checks.",
+      "bunValue": "a train participant entry beginning with `wagon:` (the `wagon:` participant)"
+    },
+    {
+      "key": "idiom.plan_syntax#wagon_draft_status",
+      "meaning": "How the plan marks a wagon manifest as draft, i.e. not yet required to be in a train.",
+      "bunValue": "status:draft on the wagon manifest"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "activation.facts[3]",
+      "text": "finding values: test_all_wagons_in_at_least_one_train, test_all_train_wagon_refs_exist",
+      "reason": "Validator/finding ids of this single rule are realization details (vocabulary notProfileKeys); the core names the two coverage checks generically by direction."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "validator test_all_wagons_in_at_least_one_train passes",
+      "reason": "Validator id is a Bun realization detail; the core evidence names the wagon -> train coverage check generically."
+    },
+    {
+      "item": "evidence[1]",
+      "text": "validator test_all_train_wagon_refs_exist passes",
+      "reason": "Validator id is a Bun realization detail; the core evidence names the train -> wagon coverage check generically."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "validator test_all_wagons_in_at_least_one_train",
+      "reason": "Validator id is a Bun realization detail; the direction requirement and its two exceptions are kept generically in core.verification."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "text": "validator test_all_train_wagon_refs_exist",
+      "reason": "Validator id is a Bun realization detail; the direction requirement and its no-exceptions rule are kept generically in core.verification."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "Neutralized 'wagons_not_in_train allow-list' to 'the plan's allow-list of wagons exempt from train membership'; the concrete artifact kind binds via profile roles.plan_artifact.kinds.",
+      "as": [
+        "core:given"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "Fully neutral as written; 'wagon' generalized to 'wagon manifest' where the artifact is meant.",
+      "as": [
+        "core:when"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "Same two-direction obligation; '`wagon:` participant' neutralized to 'wagon reference in a train's participants', bound to the profile's urn.wagon.",
+      "as": [
+        "core:then"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "Already role-level; 'wagon' read as the wagon manifest artifact.",
+      "as": [
+        "core:prefer[0]"
+      ]
+    },
+    {
+      "item": "prefer[1]",
+      "note": "Neutralized to 'wagon reference'; the concrete `wagon:` participant syntax comes from urn.wagon.",
+      "as": [
+        "core:prefer[1]",
+        "profile:urn.wagon"
+      ]
+    },
+    {
+      "item": "prefer[2]",
+      "note": "Already neutral.",
+      "as": [
+        "core:prefer[2]"
+      ]
+    },
+    {
+      "item": "prefer[3]",
+      "note": "Allow-list named via kinds; 'promoting it from draft' spelled by the profile's draft-status construct.",
+      "as": [
+        "core:prefer[3]",
+        "profile:roles.plan_artifact.kinds",
+        "profile:idiom.plan_syntax#wagon_draft_status"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "Already neutral; restates the two orphan directions.",
+      "as": [
+        "core:avoid[0]"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "Gaming guard kept; concrete allow-list name and status:draft spelling come from the profile.",
+      "as": [
+        "core:avoid[1]",
+        "profile:roles.plan_artifact.kinds",
+        "profile:idiom.plan_syntax#wagon_draft_status"
+      ]
+    },
+    {
+      "item": "unless[0]",
+      "note": "Both exceptions preserved exactly and only for the wagon -> train direction; concrete spellings from the profile.",
+      "as": [
+        "core:unless[0]",
+        "profile:roles.plan_artifact.kinds",
+        "profile:idiom.plan_syntax#wagon_draft_status"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "Neutralized '`wagon:` participant' to 'wagon reference'; 'non-exempt' keeps the same exception scope.",
+      "as": [
+        "core:why"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "Direction result kept generically; the validator id is Bun-only.",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "Direction result kept generically; the validator id is Bun-only.",
+      "as": [
+        "core:evidence[1]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "Direction requirement and its two exceptions go to core.verification; the validator id is Bun-only.",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "Direction requirement and no-exceptions rule go to core.verification; the validator id is Bun-only.",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "Per-rule disposition (documentation-only) belongs to core verification, not to the profile.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[3]",
+      "note": "Term gloss 'each side references the other, no orphan' is already carried by core.why.",
+      "as": [
+        "core:why"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "Neutral kind names (train, wagon_manifest, wagon_exemption_allow_list); the concrete kind names bind via the profile.",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roles.plan_artifact.kinds"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "Operations are already neutral.",
+      "as": [
+        "core:activation.facts[1]"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "Change kinds kept; 'wagon removed from wagons_not_in_train allow-list' neutralized to the exemption allow-list; draft promotion spelled by the profile.",
+      "as": [
+        "core:activation.facts[2]",
+        "profile:roles.plan_artifact.kinds",
+        "profile:idiom.plan_syntax#wagon_draft_status"
+      ]
+    },
+    {
+      "item": "activation.facts[3]",
+      "note": "Neutral finding values name the two direction checks generically; the concrete validator ids are Bun-only.",
+      "as": [
+        "core:activation.facts[3]",
+        "bunOnly"
+      ]
+    }
+  ],
+  "neutralityNotes": "The convention is a plan-model rule, so it is almost fully neutral already. 'train', 'wagon', 'WMBT', 'feature' and 'acceptance' are plan-artifact concepts present in the closed vocabulary (urn artifacts), not stack terms, and are kept. Three concrete bindings come from the profile: the plan-artifact kind names incl. the exemption allow-list (roles.plan_artifact.kinds: wagons_not_in_train_allow_list), the wagon reference syntax in a train's participants (urn.wagon: the `wagon:` prefix), and the draft status spelling (proposed idiom.plan_syntax#wagon_draft_status: status:draft). The two validator ids (test_all_wagons_in_at_least_one_train, test_all_train_wagon_refs_exist) and the finding ids are Bun realization details kept in bunOnly; core.verification describes the two direction checks generically, including that each fires even when the opposite side is empty, that exceptions apply only to the wagon -> train direction, and the documentation-only disposition.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/planner-nodes/planner.coverage.bidirectional-coverage-between-trains.json",
+      "sha256": "7c8c536b801159f4b36058ca5ced321fe3ee4015588785f247005a87f6f4db93"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 1,
+    "usefulness": 5,
+    "deriver": "rekey-v3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

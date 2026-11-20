@@ -1,0 +1,326 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.decomposition.keep-pivot-kill",
+  "legacyId": "planner.decomposition.keep-pivot-kill",
+  "core": {
+    "title": "Advance decomposition only through per-candidate keep/pivot/kill verdicts",
+    "given": "A decomposition session where the planner proposes candidates at the decomposition granularities the profile names (artifact-authoring kinds and reasoning kinds).",
+    "when": "The planner would advance past a candidate or act on it.",
+    "then": "Advance each candidate only on the operator's individual keep, pivot or kill verdict for that candidate.",
+    "prefer": [
+      "Keep: accept as-is and proceed.",
+      "Pivot: apply the operator's named modification, then re-confirm.",
+      "Kill: reject; if all candidates at a granularity are killed, re-propose.",
+      "Write an artifact only after a keep at an artifact-authoring (final) granularity, i.e. one of the plan-artifact kinds in the profile.",
+      "Reasoning granularities are real candidates, but a keep records the decision and writes no artifact."
+    ],
+    "avoid": [
+      "Advancing a candidate that has no individual verdict (several individually assigned verdicts may be delivered together).",
+      "Writing an artifact before a final-granularity keep, or a pivot before re-confirmation.",
+      "Erroring on a kept reasoning-level candidate, or recording kill when the operator kept it."
+    ],
+    "unless": [],
+    "why": "Per-unit verdicts keep the operator in control and recorded decisions truthful; only final granularities author an artifact.",
+    "evidence": [
+      "Each authored artifact traces to a recorded keep verdict (or a re-confirmed pivot) on that candidate at a final granularity.",
+      "Kept reasoning-granularity candidates appear as recorded decisions with no artifact and no error from the authoring step.",
+      "All-killed granularities are followed by a re-proposal, not by an artifact.",
+      "Every advanced candidate has its own recorded verdict."
+    ],
+    "verification": [
+      "The check treats as final exactly the candidate kinds the profile lists as plan-artifact kinds, and as reasoning the kinds the profile lists as reasoning decomposition kinds; verdicts are per candidate even when several individually assigned verdicts are delivered together.",
+      "The check must not let the authoring step fail on a kept reasoning-granularity candidate, and kill must not be the only verdict that leaves a session able to author artifacts (a regression guard).",
+      "Operator prose is interpreted as keep, pivot or kill to produce the recorded verdicts; the check verifies recorded verdicts against authored artifacts and recorded decisions, so that every advanced candidate and every authored artifact is supported by a recorded verdict."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "phase",
+          "values": [
+            "decomposition",
+            "planning"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "operation",
+          "values": [
+            "propose_candidate",
+            "author_artifact"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "task_term",
+          "values": [
+            "decompose",
+            "<profile plan-artifact kinds>",
+            "<profile reasoning decomposition kinds>"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "operator_verdict"
+          ],
+          "observability": "llm_judged"
+        }
+      ],
+      "fires": [
+        "The planner proposes a candidate at an artifact-authoring granularity and is about to write its artifact.",
+        "The operator pivots a candidate with a named modification and the planner considers writing it without re-confirmation.",
+        "The operator kills every candidate at a granularity.",
+        "The operator keeps a candidate at a reasoning granularity."
+      ],
+      "doesNotFire": [
+        "Editing an already-kept artifact outside a decomposition session (e.g. fixing a typo in an existing plan artifact).",
+        "Coder work implementing an already-planned artifact.",
+        "Reading or reviewing plans without proposing new candidates."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roles.plan_artifact.kinds",
+      "meaning": "The decomposition candidate kinds that author a plan artifact (the final granularities): an artifact is written only after a keep at one of these kinds, and their names are the task terms that signal decomposition work.",
+      "bunValue": "wagon, feature, WMBT, train, interlocking, contract, acceptance"
+    },
+    {
+      "key": "roles.plan_hierarchy#decomposition_reasoning_kinds",
+      "meaning": "The plan decomposition levels that record a decision but author no artifact (the reasoning granularities): a keep on one of these writes no artifact and must not fail the authoring step, and their names are also task terms.",
+      "bunValue": "heuristic, analog, main job"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "why",
+      "text": "only final granularities map to an author writer",
+      "reason": "'author writer' names the ATDD-Bun authoring tool; the core states the same fact functionally (final granularities author an artifact)."
+    },
+    {
+      "item": "evidence[1]",
+      "text": "no dispatch error",
+      "reason": "'dispatch' refers to the ATDD-Bun author dispatch; the core requires no error from the artifact-authoring step. The kind names in this item come from roles.plan_hierarchy#decomposition_reasoning_kinds."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "Final granularities (resolve to an atdd author writer): wagon, feature, WMBT, train, interlocking, contract, acceptance.",
+      "reason": "Names the ATDD-Bun authoring tool and ATDD-Bun's concrete granularity list; the core takes the kind list from roles.plan_artifact.kinds and speaks of artifact-authoring kinds."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "text": "Reasoning granularities (decision recorded, no artifact): heuristic, analog, main job. Author dispatch must not raise on a kept reasoning-granularity candidate (regression of #1929).",
+      "reason": "The 'author dispatch' tool name and the #1929 issue-tracker reference are ATDD-Bun realization details (the core keeps the regression guard generically in verification); the kind list comes from roles.plan_hierarchy#decomposition_reasoning_kinds."
+    },
+    {
+      "item": "activation.facts[1]",
+      "text": "(atdd author writer call)",
+      "reason": "The observer note names the ATDD-Bun authoring tool; the core keeps the neutral author_artifact operation."
+    },
+    {
+      "item": "activation.facts[3]",
+      "text": "(normalised by the natural-language-normalization convention)",
+      "reason": "Cross-reference to a specific ATDD-Bun companion convention; the core keeps only the llm_judged observability of the operator_verdict finding."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "The granularity list in parentheses is stack data; the core refers to the profile's candidate kinds.",
+      "as": [
+        "core:given",
+        "profile:roles.plan_artifact.kinds",
+        "profile:roles.plan_hierarchy#decomposition_reasoning_kinds"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "Already neutral.",
+      "as": [
+        "core:when"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "The single obligation, already neutral.",
+      "as": [
+        "core:then"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "Verdict definition, neutral.",
+      "as": [
+        "core:prefer[0]"
+      ]
+    },
+    {
+      "item": "prefer[1]",
+      "note": "Verdict definition, neutral.",
+      "as": [
+        "core:prefer[1]"
+      ]
+    },
+    {
+      "item": "prefer[2]",
+      "note": "Verdict definition, neutral.",
+      "as": [
+        "core:prefer[2]"
+      ]
+    },
+    {
+      "item": "prefer[3]",
+      "note": "The final-granularity list is the profile's plan-artifact kinds; the obligation itself is neutral.",
+      "as": [
+        "core:prefer[3]",
+        "profile:roles.plan_artifact.kinds"
+      ]
+    },
+    {
+      "item": "prefer[4]",
+      "note": "The reasoning-kind list is the profile's plan-hierarchy entry; the obligation is neutral.",
+      "as": [
+        "core:prefer[4]",
+        "profile:roles.plan_hierarchy#decomposition_reasoning_kinds"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "Neutral; the parenthetical that scopes per-unit verdicts is restated in core:verification.",
+      "as": [
+        "core:avoid[0]"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "Neutral.",
+      "as": [
+        "core:avoid[1]"
+      ]
+    },
+    {
+      "item": "avoid[2]",
+      "note": "Neutral; 'erroring' means the artifact-authoring step failing.",
+      "as": [
+        "core:avoid[2]"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "'author writer' is the ATDD-Bun tool; the core states it functionally.",
+      "as": [
+        "core:why",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "Neutral.",
+      "as": [
+        "core:evidence[0]"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "Kind names come from the plan-hierarchy profile entry; 'dispatch error' is the ATDD-Bun author dispatch.",
+      "as": [
+        "core:evidence[1]",
+        "profile:roles.plan_hierarchy#decomposition_reasoning_kinds",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "evidence[2]",
+      "note": "Neutral.",
+      "as": [
+        "core:evidence[2]"
+      ]
+    },
+    {
+      "item": "evidence[3]",
+      "note": "Neutral.",
+      "as": [
+        "core:evidence[3]"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "The final-granularity definition becomes the check's scope in core:verification with kinds from the profile; the authoring-tool wording is Bun-only.",
+      "as": [
+        "core:verification",
+        "profile:roles.plan_artifact.kinds",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "The regression guard is kept generically in core:verification; the kind list comes from the plan-hierarchy profile entry; 'author dispatch' and #1929 are realization details.",
+      "as": [
+        "core:verification",
+        "profile:roles.plan_hierarchy#decomposition_reasoning_kinds",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "Phase values are neutral; the note's granularity list is the profile's kinds.",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roles.plan_artifact.kinds",
+        "profile:roles.plan_hierarchy#decomposition_reasoning_kinds"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "Operations are neutral; the note's '(atdd author writer call)' names the Bun tool.",
+      "as": [
+        "core:activation.facts[1]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "'decompose' stays in the core; the granularity terms are the profile's kind names.",
+      "as": [
+        "core:activation.facts[2]",
+        "profile:roles.plan_artifact.kinds",
+        "profile:roles.plan_hierarchy#decomposition_reasoning_kinds"
+      ]
+    },
+    {
+      "item": "activation.facts[3]",
+      "note": "The operator_verdict finding and its llm_judged observability are neutral; the note's cross-reference to the natural-language-normalization convention is Bun-only. The check itself does not require a separate interpreter: operator prose is interpreted as keep, pivot or kill to produce recorded verdicts, and the check verifies recorded verdicts against authored artifacts and recorded decisions.",
+      "as": [
+        "core:activation.facts[3]",
+        "core:verification",
+        "bunOnly"
+      ]
+    }
+  ],
+  "neutralityNotes": "The decomposition-granularity taxonomy (which candidate kinds author artifacts versus record decisions) is stack data and comes entirely from the profile: roles.plan_artifact.kinds for the final granularities and roles.plan_hierarchy#decomposition_reasoning_kinds (plan decomposition levels that author no artifact) for the reasoning granularities. The ATDD-Bun authoring tool ('atdd author writer' / 'author dispatch') is referred to only functionally as the artifact-authoring step; its name and the #1929 regression reference stay in bunOnly. Planner, operator and coder are method-level agent roles rather than stack roles, so they remain in the core. Interpretation of operator prose as a verdict is a judged input (activation fact, llm_judged); the core does not prescribe where that interpretation happens, only that recorded verdicts support every advancement and authored artifact. bun.json declares no per-rule severity or disposition, so core:verification carries only the check's scope, its exclusions (verdicts delivered together) and the regression guard.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/planner-nodes/planner.decomposition.keep-pivot-kill.json",
+      "sha256": "42f589b5b84aa9b0654097f2eab5d0a0bd30a12d93fd62dcead316100504d50a"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "rekey-v3 -> zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

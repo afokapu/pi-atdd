@@ -1,0 +1,318 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.feature.footprint-scoring-compute-points",
+  "legacyId": "planner.feature.footprint-scoring.compute-points",
+  "splitOf": "planner.feature.footprint-scoring",
+  "core": {
+    "title": "Compute a feature's footprint points as the ceiling of summed component weights",
+    "given": "A feature's components are known, each with a product side, a layer (presentation, application, domain, integration), a granular component type from the coder conventions, and a count; side, layer and type together select one weight in the component-type weight table.",
+    "when": "The planner computes or revises the feature's architectural footprint.",
+    "then": "Footprint points = the sum over the feature's components of count x weight(side, layer, type) read from the component-type weight table, rounded UP (ceiling).",
+    "prefer": [
+      "Weights are listed per product side x layer x component type, verbatim, in the component-type weight table; the same component type can weigh differently by side and layer.",
+      "Every weight instantiates the universal 0-3 complexity scale: 0 = pure configuration/declaration; 0.5 = simple transformation/validation; 1 = single-responsibility business logic; 2 = complex orchestration, state or persistence; 3 = very complex algorithms or integrations. The profile's table instantiates this scale for the stack's component types."
+    ],
+    "avoid": [
+      "Rounding down, rounding to nearest, or leaving fractions (3.5 must become 4).",
+      "Estimating points by feel instead of summing the weights.",
+      "Retyping or omitting weighted components to lower the score."
+    ],
+    "unless": [],
+    "why": "Summing type weights makes a feature's size reproducible from its component inventory.",
+    "evidence": [
+      "Recomputing ceil(sum(count x weight)) from the feature's component inventory gives the stated points.",
+      "Source worked examples (verbatim; the arithmetic and ceiling are authoritative here): '2 controllers(2x1) + 1 repository(1x2) + 1 view(1x1) = 5 -> S' and '3 serializers(1.5) + 2 controllers(2) = 3.5 -> ceil 4 -> S'."
+    ],
+    "verification": [
+      "The check recomputes footprint = sum(component.count x weight[component side, layer, type]) and rounds UP (ceiling). It is component-based and uses the granular component types from the coder conventions.",
+      "Zero-weight components contribute 0, so whether they are listed does not affect the score and is not checked.",
+      "The check reads the component-type weight table verbatim (product side x layer x component type -> weight) from the structure profile; weights are not re-derived from the universal complexity rubric.",
+      "This check covers only the point arithmetic (sum and ceiling); mapping the resulting points to a size bracket is a separate sibling rule, not this one."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "change",
+          "values": [
+            "feature component inventory (side/layer/type/count) added or edited",
+            "feature footprint points added or edited"
+          ],
+          "observability": "needs_new_observer",
+          "note": "Branch A: a diff-level observer sees the footprint inputs or points change. Either branch A or branch B is sufficient."
+        },
+        {
+          "fact": "task_term",
+          "values": [
+            "footprint",
+            "component weight",
+            "component footprint",
+            "size this feature",
+            "estimate feature size"
+          ],
+          "observability": "llm_judged",
+          "note": "Branch B: an LLM judges that the planner is computing or revising a feature's component-weight footprint, with or without a plan-file edit. Literal terms only raise the prior. Generic size letters and 'split' are not triggers on their own."
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "feature plan",
+            "wagon plan listing features with components"
+          ],
+          "observability": "observable_now",
+          "note": "Hint only, not a gate."
+        },
+        {
+          "fact": "phase",
+          "values": [
+            "planning"
+          ],
+          "observability": "needs_new_observer",
+          "note": "Combination: (branch A OR branch B) AND phase=planning."
+        }
+      ],
+      "fires": [
+        "Planner computes footprint points for a feature from its component inventory, including initial sizing from a supplied inventory during a sizing discussion.",
+        "Planner adds, removes or retypes components in a feature's inventory, which changes its footprint."
+      ],
+      "doesNotFire": [
+        "Coder implements an already-sized feature without changing its component inventory.",
+        "Prose or doc edits that do not touch a feature's components or footprint.",
+        "Scoring wagon interconnection complexity (a separate axis, covered by the wagon complexity model)."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roles.layer_catalog#component_type_weights",
+      "meaning": "The component-type weight table the footprint formula reads: one numeric weight per product side x layer x granular component type. The top-level keys are the product sides' local names; the component types are the stack's coder-convention types; every weight instantiates the universal 0-3 complexity scale. The Bun value is the verbatim weight-table text of bun.json prefer[1..8] (source term component_type_weights), one line per product side x layer.",
+      "bunValue": "backend.presentation: controllers 1, routes 0, serializers 0.5, validators 0.5, middleware 1, guards 1, views 1.\nbackend.application: use_cases 2, handlers 1, ports 0, dtos 0, policies 1, workflows 2.\nbackend.domain: entities 1, value_objects 0.5, aggregates 2, services 1, specifications 0.5, events 0, exceptions 0.\nbackend.integration: repositories 2, clients 1, caches 0.5, engines 3, formatters 1, notifiers 1, queues 2, stores 1, mappers 0.5, schedulers 2, monitors 1.\nfrontend.presentation: views 1, components 0.5, containers 1, controllers 2, routes 0, layouts 1, styles 0, animations 0.5, forms 1, hooks 0.5, directives 0.5, filters 0.5.\nfrontend.application: use_cases 2, ports 0, policies 1, dtos 0.\nfrontend.domain: entities 1, value_objects 0.5, services 1, specifications 0.5, exceptions 0.\nfrontend.integration: repositories 2, clients 1, stores 1, serializers 0.5, mappers 0.5, interceptors 1, caches 0.5, synchronizers 2, monitors 1, validators 0.5, workers 2, connectors 1."
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "verifier_detail[3]",
+      "text": "Their 'S' labels are a bracket-mapping question, handled by planner.feature.footprint-scoring.map-bracket.",
+      "reason": "The sibling bracket-mapping rule's id belongs to the ATDD-Bun rule split; the core names the duty generically (points-to-bracket mapping is a separate sibling rule)."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "bun.json's 'stack (backend/frontend)' is renamed to 'product side'; the sides' local names are the top-level keys of the profile's weight table.",
+      "as": [
+        "core:given"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "Unchanged; planner and architectural footprint are stack-neutral.",
+      "as": [
+        "core:when"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "Formula and ceiling unchanged; 'the weights below' becomes the profile's component-type weight table.",
+      "as": [
+        "core:then"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "Unchanged.",
+      "as": [
+        "core:why"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "'per stack x layer x component type' kept as 'per product side x layer x component type'. The concrete exemplar (controllers 1 in backend.presentation, 2 in frontend.presentation) is table data and is not repeated; bun.json remains the reference example.",
+      "as": [
+        "core:prefer[0]"
+      ]
+    },
+    {
+      "item": "prefer[1]",
+      "note": "backend.presentation row of the weight table; its verbatim text is carried in the profile key's bunValue.",
+      "as": [
+        "profile:roles.layer_catalog#component_type_weights"
+      ]
+    },
+    {
+      "item": "prefer[2]",
+      "note": "backend.application row of the weight table; carried in the profile key's bunValue.",
+      "as": [
+        "profile:roles.layer_catalog#component_type_weights"
+      ]
+    },
+    {
+      "item": "prefer[3]",
+      "note": "backend.domain row of the weight table; carried in the profile key's bunValue.",
+      "as": [
+        "profile:roles.layer_catalog#component_type_weights"
+      ]
+    },
+    {
+      "item": "prefer[4]",
+      "note": "backend.integration row of the weight table; carried in the profile key's bunValue.",
+      "as": [
+        "profile:roles.layer_catalog#component_type_weights"
+      ]
+    },
+    {
+      "item": "prefer[5]",
+      "note": "frontend.presentation row of the weight table; carried in the profile key's bunValue.",
+      "as": [
+        "profile:roles.layer_catalog#component_type_weights"
+      ]
+    },
+    {
+      "item": "prefer[6]",
+      "note": "frontend.application row of the weight table; carried in the profile key's bunValue.",
+      "as": [
+        "profile:roles.layer_catalog#component_type_weights"
+      ]
+    },
+    {
+      "item": "prefer[7]",
+      "note": "frontend.domain row of the weight table; carried in the profile key's bunValue.",
+      "as": [
+        "profile:roles.layer_catalog#component_type_weights"
+      ]
+    },
+    {
+      "item": "prefer[8]",
+      "note": "frontend.integration row of the weight table; carried in the profile key's bunValue.",
+      "as": [
+        "profile:roles.layer_catalog#component_type_weights"
+      ]
+    },
+    {
+      "item": "prefer[9]",
+      "note": "Universal 0-3 scale kept; the exemplar component-type names in parentheses enumerate the reference taxonomy and sit with the profile table, so they are not repeated.",
+      "as": [
+        "core:prefer[1]"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "Unchanged; numbers are arithmetic, not stack facts.",
+      "as": [
+        "core:avoid[0]"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "Unchanged.",
+      "as": [
+        "core:avoid[1]"
+      ]
+    },
+    {
+      "item": "avoid[2]",
+      "note": "Unchanged.",
+      "as": [
+        "core:avoid[2]"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "Unchanged; recomputation is stack-neutral.",
+      "as": [
+        "core:evidence[0]"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "Kept verbatim: the canonical source's own worked examples; they use generic component-type names and demonstrate the ceiling.",
+      "as": [
+        "core:evidence[1]"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "Formula, coder-convention component types, and the zero-weight exclusion (whether zero-weight components are listed is not checked) go to verification[0] and verification[1].",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "The term component_type_weights IS the profile table; the verifier reads it verbatim (verification[2]). The term_id/label are source-term bookkeeping, not a stack fact.",
+      "as": [
+        "profile:roles.layer_catalog#component_type_weights",
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "The rubric term is the universal scale (core:prefer[1]); the verifier cites it but does not re-derive weights from it (verification[2]).",
+      "as": [
+        "core:prefer[1]",
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[3]",
+      "note": "The arithmetic-only scope is neutral (verification[3]); the sibling rule id is an ATDD-Bun split detail kept in bunOnly.",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "'stack/layer/type/count' neutralized to 'side/layer/type/count'; branch-A semantics and observability unchanged.",
+      "as": [
+        "core:activation.facts[0]"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "Planning vocabulary only; unchanged.",
+      "as": [
+        "core:activation.facts[1]"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "'wagon' is the framework's neutral bounded-slice concept (cf. layout.wagon_dir); kept. Hint only, not a gate.",
+      "as": [
+        "core:activation.facts[2]"
+      ]
+    },
+    {
+      "item": "activation.facts[3]",
+      "note": "Unchanged; the (A OR B) AND phase combination is neutral.",
+      "as": [
+        "core:activation.facts[3]"
+      ]
+    }
+  ],
+  "neutralityNotes": "The formula (sum of count x weight, ceiling) and the universal 0-3 complexity rubric are fully neutral and stay in the core. The concrete weight table could not stay in the core: its product-side axis is what bun.json itself calls 'stack' (backend/frontend), and its granular component types come from the stack's coder conventions (another stack's coder conventions yield a different taxonomy, e.g. hooks/directives/synchronizers are particular to this taxonomy). It is therefore carried by the proposed profile key roles.layer_catalog#component_type_weights, whose bunValue holds the verbatim weight-table text of bun.json prefer[1..8] (one line per product side x layer); instantiated with the Bun value, the core imposes exactly bun.json's obligation, no weaker (the zero-weight exclusion, the ceiling, the anti-gaming avoids and the branch semantics are all kept) and no stronger (nothing added; the rubric's exemplar type names and prefer[0]'s concrete exemplar are not restated because they are table data, with bun.json delivered as the reference example). The core renames 'stack (backend/frontend)' to 'product side' to avoid naming stacks; the sides' local names are the top-level keys of the weight table. The source worked examples in evidence[1] are kept verbatim: they are the canonical convention's own examples, use only generic architectural names, and carry the ceiling demonstration (3.5 -> ceil 4). 'Wagon' is retained in activation and doesNotFire as framework vocabulary (a bounded slice of the product, cf. layout.wagon_dir in the closed vocabulary). The only bunOnly residue is the ATDD-Bun sibling rule id for bracket mapping.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/splits/planner.feature.footprint-scoring.json",
+      "sha256": "2636c5bb1992ca46676245e99c9753037c20933b0892e4a8300fde3b958837c5",
+      "part": "planner.feature.footprint-scoring.compute-points"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 1,
+    "usefulness": 5,
+    "deriver": "rekey-v3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

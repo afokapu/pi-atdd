@@ -1,0 +1,390 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.boundaries.http-client",
+  "legacyId": "coder.bun.boundaries-http-client",
+  "core": {
+    "title": "Route outbound HTTP through the centralized client",
+    "given": "A source file playing a domain, application or presentation role performs, or needs to perform, outbound HTTP",
+    "when": "the agent writes, edits or is responsible for that file",
+    "then": "Make outbound HTTP through the project's centralized, contract-driven client (a client/adapter in the integration role), never via a direct call to the platform's raw HTTP primitive or a bare HTTP-client library.",
+    "prefer": [
+      "Use the project's existing integration-role HTTP client or adapter.",
+      "Let that boundary own transport concerns: headers, retries, decoding, error translation.",
+      "During GREEN: make only the outbound call and mapping the current acceptance requires.",
+      "During GREEN: reuse an existing client or port before a new abstraction; if no compliant boundary exists, add the smallest integration adapter the behavior requires."
+    ],
+    "avoid": [
+      "Calling a raw HTTP primitive or bare HTTP-client library directly just to make the test pass.",
+      "A generalized HTTP framework for hypothetical endpoints.",
+      "Migrating unrelated HTTP callers beyond the one the current acceptance touches."
+    ],
+    "unless": [
+      "Test files and the profile's never-scanned trees (vendored/build), which the check does not scan.",
+      "Files that the profile's role assignment leaves unassigned (outside the rule, not in violation of it)."
+    ],
+    "why": "The centralized client holds retries, timeouts, auth headers, tracing and error translation; a bare call site has none of them and never acquires them because nobody remembers it exists. Where a server-rendered fragment depends on an upstream call, a bare call there fails in a way the user sees (for example a blank swap).",
+    "evidence": [
+      "The stack's boundary check reports no bare outbound-HTTP call in the domain-, application- or presentation-role files of the affected source (the affected source satisfies this boundary rule).",
+      "The outbound call in the change is made via the integration-role client/adapter (or a port implemented there).",
+      "The current behavioral acceptance passes."
+    ],
+    "verification": [
+      "Severity 3; disposition strict — a finding of this rule is a violation, not a warning.",
+      "A static source check flags a bare outbound-HTTP call (the profile's bare-call forms) in files of the consumer roles (domain, application, presentation), scanning masked source so occurrences inside strings or comments do not count.",
+      "The integration role is excluded — it is the centralized client's own home.",
+      "Test files and the profile's never-scanned trees (vendored/build) are not scanned; the exact classification is owned by the stack's checker.",
+      "Imports that resolve outside the project graph are not role-checked.",
+      "A file that the profile's role assignment leaves unassigned is outside this rule rather than in violation of it."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "role",
+          "values": [
+            "domain",
+            "application",
+            "presentation"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "source"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "task_term",
+          "values": [
+            "HTTP",
+            "outbound HTTP",
+            "upstream",
+            "remote API",
+            "endpoint"
+          ],
+          "observability": "llm_judged"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "a finding of this rule's boundary check on an in-scope file"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "An application-role use case needs data from an upstream service and the agent is about to write the call.",
+        "A presentation-role handler already contains a bare HTTP-client call to load data for the fragment it renders.",
+        "A domain module makes a raw platform HTTP call to look up a remote value."
+      ],
+      "doesNotFire": [
+        "An integration-role adapter or the centralized HTTP client itself makes the raw HTTP call.",
+        "A test file makes an HTTP call against a test server.",
+        "A file in a never-scanned (vendored/build) tree contains a bare call.",
+        "A file that the role assignment leaves unassigned contains a bare call.",
+        "A bare call appears only inside a string or comment (masked source)."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roles.layers",
+      "meaning": "The stack's layer-role roster: the core treats domain, application and presentation as consumer roles and integration as the centralized client's home.",
+      "bunValue": "domain/, application/, presentation/ (consumer layers) and integration/ (home of transport adapters and the centralized HTTP client)"
+    },
+    {
+      "key": "roles.assignment",
+      "meaning": "How a file is assigned a role, and that a file with no role is out of scope rather than in violation.",
+      "bunValue": "Derived from the layer segment in the file path. Integration is excluded (the client's own home); files with no layer segment are out of scope."
+    },
+    {
+      "key": "roles.domain.path",
+      "meaning": "Where domain-role files live (scan scope of the check).",
+      "bunValue": "the `domain/` layer segment in the file path"
+    },
+    {
+      "key": "roles.application.path",
+      "meaning": "Where application-role files live (scan scope of the check).",
+      "bunValue": "the `application/` layer segment in the file path"
+    },
+    {
+      "key": "roles.presentation.path",
+      "meaning": "Where presentation-role files live (scan scope of the check).",
+      "bunValue": "the `presentation/` layer segment in the file path"
+    },
+    {
+      "key": "roles.integration.path",
+      "meaning": "Where integration-role files live; excluded from the check as the centralized client's home.",
+      "bunValue": "the `integration/` layer segment in the file path (excluded — the centralized client's own home)"
+    },
+    {
+      "key": "roots.excluded",
+      "meaning": "The stack-wide never-scanned trees; the core's unless and verification defer the exact classification to the stack's checker.",
+      "bunValue": "vendored/build directories (never scanned)"
+    },
+    {
+      "key": "idiom.module_boundaries#bare_http_calls",
+      "meaning": "The stack's concrete bare outbound-HTTP call forms (raw platform primitive and bare HTTP-client library calls) whose direct use in a consumer-role file this rule forbids.",
+      "bunValue": "A bare `fetch(` or `axios(` call, detected by scanning masked source (strings/comments masked out)"
+    },
+    {
+      "key": "idiom.external_import",
+      "meaning": "How an import that resolves outside the project graph is recognised, so such files are not role-checked.",
+      "bunValue": "Bare npm specifiers resolve outside the project graph and are not layer-checked"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "why",
+      "text": "In htmx apps a bare server-side fetch behind a rendered fragment fails as a blank swap the user sees.",
+      "reason": "Names the htmx framework and its fragment-swap failure mode; the core keeps the role-level version (a server-rendered fragment's upstream call failing visibly), and bun.json remains the worked reference example."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "bun_clean_architecture_detector reports no bare `fetch(`/`axios(` in domain/, application/ or presentation/ files of the affected source",
+      "reason": "Names the concrete detector, the concrete bare-call forms and the concrete path segments; the core states the check generically and takes call forms and role locations from the profile."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "Detector: bun_clean_architecture_detector (validator). Flags a bare `fetch(` or `axios(` call in consumer layers domain/, application/, presentation/, scanning masked source (strings/comments masked out).",
+      "reason": "Detector and validator ids are realization details of this one rule (notProfileKeys); the core verification describes the same check generically, with call forms from the profile."
+    },
+    {
+      "item": "activation.facts[2]",
+      "text": "task_term values \"fetch\", \"axios\"",
+      "reason": "Task terms naming the platform's HTTP primitive and one concrete HTTP-client library; the core keeps the stack-neutral task terms and the Bun terms stay as the realization's preventive signal."
+    },
+    {
+      "item": "activation.facts[3]",
+      "text": "finding value \"bun_clean_architecture_detector:boundaries-http-client\"",
+      "reason": "Finding id of this rule's Bun detector; the core refers generically to a finding of this rule's boundary check."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "Domain/application/presentation are neutral role names; how a file gets its role comes from the profile.",
+      "as": [
+        "core:given",
+        "profile:roles.assignment"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "Already stack-neutral.",
+      "as": [
+        "core:when"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "One neutral obligation; the concrete bare-call forms (platform `fetch()`, bare `axios`) instantiate from the profile key.",
+      "as": [
+        "core:then",
+        "profile:idiom.module_boundaries#bare_http_calls"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "Neutral rationale kept; the htmx-specific sentence has no stack-neutral equivalent and stays in the realization.",
+      "as": [
+        "core:why",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "Already role-level ('integration-layer' rendered as the integration role).",
+      "as": [
+        "core:prefer[0]"
+      ]
+    },
+    {
+      "item": "prefer[1]",
+      "note": "Already stack-neutral.",
+      "as": [
+        "core:prefer[1]"
+      ]
+    },
+    {
+      "item": "prefer[2]",
+      "note": "GREEN-phase qualifier is ATDD phase vocabulary, stack-neutral; kept verbatim.",
+      "as": [
+        "core:prefer[2]"
+      ]
+    },
+    {
+      "item": "prefer[3]",
+      "note": "GREEN-phase qualifier kept verbatim; 'integration adapter' rendered as the integration role.",
+      "as": [
+        "core:prefer[3]"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "Neutralized to 'raw HTTP primitive or bare HTTP-client library'; concrete forms from the profile.",
+      "as": [
+        "core:avoid[0]",
+        "profile:idiom.module_boundaries#bare_http_calls"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "Already stack-neutral.",
+      "as": [
+        "core:avoid[1]"
+      ]
+    },
+    {
+      "item": "avoid[2]",
+      "note": "Already stack-neutral.",
+      "as": [
+        "core:avoid[2]"
+      ]
+    },
+    {
+      "item": "unless[0]",
+      "note": "Test files plus the stack-wide never-scanned list; exact classification deferred to the stack's checker.",
+      "as": [
+        "core:unless[0]",
+        "profile:roots.excluded"
+      ]
+    },
+    {
+      "item": "unless[1]",
+      "note": "'No layer segment' neutralized to 'no role assigned'; the assignment mechanism is profile data.",
+      "as": [
+        "core:unless[1]",
+        "profile:roles.assignment"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "Neutral restatement of the check outcome in the core; detector id, call forms and path segments are Bun realization.",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "Already role-level.",
+      "as": [
+        "core:evidence[1]"
+      ]
+    },
+    {
+      "item": "evidence[2]",
+      "note": "Already stack-neutral.",
+      "as": [
+        "core:evidence[2]"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "Generic check description (consumer roles, masked source) in core verification; detector id and concrete call forms are realization details.",
+      "as": [
+        "core:verification",
+        "profile:idiom.module_boundaries#bare_http_calls",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "Integration-role exclusion is neutral; where that role lives is profile data.",
+      "as": [
+        "core:verification",
+        "profile:roles.integration.path"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "Never-scanned scope exclusion; exact tree classification owned by the stack's checker.",
+      "as": [
+        "core:verification",
+        "profile:roots.excluded"
+      ]
+    },
+    {
+      "item": "verifier_detail[3]",
+      "note": "Neutralized to 'imports that resolve outside the project graph are not role-checked'; how such imports are recognised is profile data.",
+      "as": [
+        "core:verification",
+        "profile:idiom.external_import"
+      ]
+    },
+    {
+      "item": "verifier_detail[4]",
+      "note": "No-role files are out of scope, not violations; assignment mechanism from the profile.",
+      "as": [
+        "core:verification",
+        "profile:roles.assignment"
+      ]
+    },
+    {
+      "item": "verifier_detail[5]",
+      "note": "Per-rule severity and disposition are rule facts, not profile keys; both kept in core verification.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "'layer' fact becomes the neutral 'role' fact with role values; the path-segment assignment mechanism and layer roster come from the profile.",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roles.assignment",
+        "profile:roles.layers"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "file_kind 'source' is neutral; bun.json states no concrete suffixes, so the source/test distinction instantiates via each stack's file-kind data (suffix keys) rather than a bunValue here.",
+      "as": [
+        "core:activation.facts[1]"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "Neutral task terms kept in the core; 'fetch'/'axios' name the platform primitive and a concrete library and stay Bun-only.",
+      "as": [
+        "core:activation.facts[2]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.facts[3]",
+      "note": "Neutral 'a finding of this rule's boundary check' in the core; the concrete finding id is a realization detail.",
+      "as": [
+        "core:activation.facts[3]",
+        "bunOnly"
+      ]
+    }
+  ],
+  "neutralityNotes": "The obligation, GREEN-phase preferences, do-not-broaden avoids, evidence and exceptions are fully stack-neutral; the only Bun-only content is the htmx rationale sentence, the detector/validator/finding ids, and the 'fetch'/'axios' task terms. The bare-call forms could not be expressed with an existing vocabulary key (they are call sites, not imports or machinery), so idiom.module_boundaries#bare_http_calls is proposed. bun.json states no concrete file suffixes, so file_kind 'source' vs test instantiates through each stack's file-kind data; in the Bun realization the detector's own classification carries it. 'During GREEN' and the acceptance-test references are ATDD phase vocabulary and assumed shared across stacks.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.boundaries-http-client.json",
+      "sha256": "85bbbba017285a0a92ed207e0bb88ab55b50db32555f87c3eb2959d546d7651d"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 1,
+    "usefulness": 5,
+    "deriver": "rekey-v3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

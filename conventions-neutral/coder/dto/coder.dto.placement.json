@@ -1,0 +1,399 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.dto.placement",
+  "legacyId": "coder.bun.dto-placement",
+  "core": {
+    "title": "Declare DTOs in the contracts location",
+    "given": "A source file that the stack's role assignment assigns to a layer role (any layer, not only a feature's), and that is not in the contracts location",
+    "when": "a type recognized as a DTO by the stack's DTO naming idiom is declared in or moved into it",
+    "then": "Declare the DTO type in the contracts location (a module owned by neither side of the boundary), not inside a layer's internal code (e.g. a feature's internal layer).",
+    "prefer": [
+      "Canonical placement: declare the DTO in the contracts location and import that shared boundary shape from both sides of the boundary.",
+      "During GREEN: reuse an existing contract type that already represents the payload.",
+      "During GREEN: add only the fields the current acceptance requires.",
+      "During GREEN: create a new DTO only for a genuinely distinct boundary shape."
+    ],
+    "avoid": [
+      "Declaring the DTO inside a layer's internal code (e.g. a feature layer) as a temporary shortcut.",
+      "Moving unrelated internal types into the contracts location.",
+      "Speculative fields for future callers.",
+      "Another feature importing a DTO declared inside one feature's layer (a private type leak)."
+    ],
+    "unless": [
+      "Test files and trees excluded by the stack's scan classification (e.g. vendored and build-output trees) are never scanned.",
+      "A file assigned to no layer role is outside these rules, not in violation."
+    ],
+    "why": "A DTO belongs to the contract (owned by neither side), not to either side; declared inside one feature's layer it becomes a private type that other features import anyway, so the boundary runs through somebody's internals.",
+    "evidence": [
+      "Every affected DTO declaration lives in the contracts location.",
+      "The stack's placement check reports no DTO-placement finding for any affected DTO declaration.",
+      "The current behavioral acceptance passes."
+    ],
+    "verification": [
+      "The check flags a DTO declaration (a type recognized by the stack's DTO naming idiom) in a scanned source file that is assigned to a layer role and not in the contracts location.",
+      "The check scans every DTO declaration in scanned files, pre-existing ones included; coder guidance fires on an added-or-moved declaration (change) or on a reported finding, combined with the file-kind and role facts.",
+      "Severity 3; disposition strict: the check fails on every finding; there is no advisory mode and no ratchet baseline.",
+      "Test files are never scanned (file-kind scope, not a tree exclusion), and a tree is exempt only when the stack's checker classifies it as excluded; the excluded trees are one stack-wide list (profile roots.excluded) whose exact classification is owned by the stack's checker.",
+      "Imports of external packages resolve outside the project graph and are not layer-checked (import-resolution exception); this does not exempt a locally declared DTO.",
+      "A file carrying no layer role is outside these rules rather than in violation of them."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "source"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "role",
+          "values": [
+            "assigned to a layer role",
+            "not in the contracts location"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "dto_declaration_added_or_moved"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "dto_placement_finding"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "A coder adds a DTO type in a source file assigned to a layer role and outside the contracts location (e.g. a feature's domain or application directory).",
+        "A coder moves an existing DTO declaration into a layer-assigned source file outside the contracts location.",
+        "The placement check reports an existing DTO declaration in a layer-assigned source file outside the contracts location (e.g. one another feature imports — a private type leak)."
+      ],
+      "doesNotFire": [
+        "A DTO declared in the contracts location.",
+        "A DTO declared in a test file (never scanned by file-kind scope) or in a tree the stack's checker excludes from scanning (e.g. a vendored or build-output tree).",
+        "A DTO in a file assigned to no layer role (outside the rules, not in violation).",
+        "A type not recognized as a DTO by the stack's DTO naming idiom.",
+        "An import of an external package (not layer-checked); this does not suppress a finding for a locally declared DTO."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roles.assignment",
+      "meaning": "How a file is assigned to a layer role (any layer segment, not only a feature's), and that a file with no layer role is out of scope rather than in violation.",
+      "bunValue": "the path's layer segment ('path has a layer segment'); a file with no layer segment is outside these rules, not in violation"
+    },
+    {
+      "key": "layout.contract_paths#contracts_dir",
+      "meaning": "The location where boundary-contract shapes (DTOs) are declared: owned by neither side of the boundary, identified by a path segment or glob relative to the source root.",
+      "bunValue": "a path segment `contracts` (declare the DTO in `contracts/`)"
+    },
+    {
+      "key": "idiom.dto_shape#dto_naming",
+      "meaning": "Name patterns by which a type is recognized as a DTO (a boundary shape).",
+      "bunValue": "type name ends in `DTO` (`*DTO` suffix)"
+    },
+    {
+      "key": "idiom.external_import",
+      "meaning": "How an import of an external package (outside the project graph) is recognised, so it can be excluded from layer checking.",
+      "bunValue": "a bare npm specifier"
+    },
+    {
+      "key": "roots.excluded",
+      "meaning": "Vendored and build-output trees that the check never scans; one stack-wide list whose exact classification is owned by the stack's checker. Test files are excluded by file-kind scope, not as a tree.",
+      "bunValue": "vendored/build directories are never scanned"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "activation.facts[0]",
+      "text": "language: typescript, bun (Bun realization; project toolchain is detectable).",
+      "reason": "Stack scoping of the Bun realization; a neutral core carries no language fact. Each stack realization gates the core on its own toolchain facts (e.g. profile tooling.languages)."
+    },
+    {
+      "item": "activation.facts[4]",
+      "text": "finding: bun_clean_architecture_detector:dto-placement.",
+      "reason": "Detector and finding ids of this rule are realization details; the core names the check generically (a DTO-placement finding)."
+    },
+    {
+      "item": "evidence[1]",
+      "text": "bun_clean_architecture_detector reports no dto-placement finding for any affected `*DTO` declaration.",
+      "reason": "Names the Bun detector and its finding id; the core's evidence refers generically to the stack's placement check."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "text": "contracts_module: a path segment `contracts` — where a boundary shape belongs, since it is owned by neither side.",
+      "reason": "The term id and the literal path segment are the Bun realization of the contracts location; the core refers to that location through the profile key layout.contract_paths#contracts_dir."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "text": "private_type_leak: a DTO declared inside one feature's layer that another feature imports anyway, running the boundary through somebody's internals.",
+      "reason": "The term id is realization vocabulary; the neutral concept is already carried by the core's avoid[3] and why."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "text": "Bare npm specifiers resolve outside the project graph and are not layer-checked (import-resolution exception; it does not exempt a local `*DTO` declaration).",
+      "reason": "Names npm specifically; how an external-package import is recognised comes from the profile (idiom.external_import), and the neutral exception text is kept in core verification."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "Neutral: any file assigned to a layer role by the stack's role assignment, not only a feature's, outside the contracts location; 'Bun' and the literal path segments are the Bun binding of these profile keys.",
+      "as": [
+        "core:given",
+        "profile:roles.assignment",
+        "profile:layout.contract_paths#contracts_dir"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "'Declared in or moved into it' is neutral; what counts as a DTO comes from the naming idiom.",
+      "as": [
+        "core:when",
+        "profile:idiom.dto_shape#dto_naming"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "One obligation: DTOs live in the contracts location, not inside a layer's internal code; a feature's internal layer is retained as the example, and 'contracts/' is the profile value.",
+      "as": [
+        "core:then",
+        "profile:layout.contract_paths#contracts_dir"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "Already stack-neutral (contract ownership, private type leak).",
+      "as": [
+        "core:why"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "'Canonical path' restated as canonical placement; the concrete directory is the profile value.",
+      "as": [
+        "core:prefer[0]",
+        "profile:layout.contract_paths#contracts_dir"
+      ]
+    },
+    {
+      "item": "prefer[1]",
+      "note": "Neutral as-is (contract type reuse during GREEN).",
+      "as": [
+        "core:prefer[1]"
+      ]
+    },
+    {
+      "item": "prefer[2]",
+      "note": "Neutral as-is (minimal fields).",
+      "as": [
+        "core:prefer[2]"
+      ]
+    },
+    {
+      "item": "prefer[3]",
+      "note": "Neutral as-is (distinct boundary shape only).",
+      "as": [
+        "core:prefer[3]"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "'Feature layer' restated as a layer's internal code with a feature layer as the example, matching the check's any-layer scope.",
+      "as": [
+        "core:avoid[0]"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "Neutral except the contracts location name, supplied by the profile.",
+      "as": [
+        "core:avoid[1]",
+        "profile:layout.contract_paths#contracts_dir"
+      ]
+    },
+    {
+      "item": "avoid[2]",
+      "note": "Neutral as-is.",
+      "as": [
+        "core:avoid[2]"
+      ]
+    },
+    {
+      "item": "avoid[3]",
+      "note": "Private type leak restated at role level; the term id stays with the realization (see verifier_detail[2]).",
+      "as": [
+        "core:avoid[3]"
+      ]
+    },
+    {
+      "item": "unless[0]",
+      "note": "Scan scope: test files excluded by file-kind scope; trees exempt only when the stack's checker classifies them as excluded (one stack-wide list), so no broader generated-tree exemption is implied.",
+      "as": [
+        "core:unless[0]",
+        "core:verification",
+        "profile:roots.excluded"
+      ]
+    },
+    {
+      "item": "unless[1]",
+      "note": "Out-of-scope-by-assignment, matching the roles.assignment key's semantics.",
+      "as": [
+        "core:unless[1]",
+        "core:verification",
+        "profile:roles.assignment"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "'under contracts/' becomes 'in the contracts location'.",
+      "as": [
+        "core:evidence[0]",
+        "profile:layout.contract_paths#contracts_dir"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "Neutral restatement (the placement check is clean) plus a bunOnly entry for the detector and finding ids.",
+      "as": [
+        "core:evidence[1]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "evidence[2]",
+      "note": "Neutral as-is (behavioral acceptance passes).",
+      "as": [
+        "core:evidence[2]"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "Generic check description; DTO recognition and the contracts location come from the profile.",
+      "as": [
+        "core:verification",
+        "profile:idiom.dto_shape#dto_naming",
+        "profile:layout.contract_paths#contracts_dir"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "The definition of the contracts location is profile data; the term id and literal segment are Bun vocabulary.",
+      "as": [
+        "profile:layout.contract_paths#contracts_dir",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "The private-type-leak concept is carried by the core's avoid[3] and why; the term id is realization vocabulary.",
+      "as": [
+        "core:avoid[3]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[3]",
+      "note": "Scan-scope exclusion: test files belong to file-kind scope (never scanned as source), trees to the stack-wide exclusion list owned by the checker; no unconditional generated-tree exemption.",
+      "as": [
+        "core:verification",
+        "profile:roots.excluded"
+      ]
+    },
+    {
+      "item": "verifier_detail[4]",
+      "note": "Import-resolution exception is neutral and check-scoping only; 'npm' is the Bun binding of idiom.external_import.",
+      "as": [
+        "core:verification",
+        "profile:idiom.external_import",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[5]",
+      "note": "Out-of-scope rule, mirrored from unless[1].",
+      "as": [
+        "core:verification",
+        "profile:roles.assignment"
+      ]
+    },
+    {
+      "item": "verifier_detail[6]",
+      "note": "Per-rule severity 3 and strict disposition both belong to core verification per the vocabulary's notProfileKeys; the check fails on every finding, with no advisory mode and no ratchet baseline.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "Language gating is per-realization stack scoping; the neutral core has no language fact.",
+      "as": [
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "file_kind: source; test files are never scanned by file-kind scope (not a tree exclusion), carried by unless[0] and verification.",
+      "as": [
+        "core:activation.facts[0]"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "Path-segment conditions restated as role conditions ('assigned to a layer role' — any layer, not only a feature's; 'not in the contracts location'); still no file-name restriction is implied.",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:roles.assignment",
+        "profile:layout.contract_paths#contracts_dir"
+      ]
+    },
+    {
+      "item": "activation.facts[3]",
+      "note": "Diff-level observer for an added-or-moved DTO declaration; it fires coder guidance and is not required for the check (kept in verification).",
+      "as": [
+        "core:activation.facts[2]",
+        "profile:idiom.dto_shape#dto_naming"
+      ]
+    },
+    {
+      "item": "activation.facts[4]",
+      "note": "Neutral finding fact plus a bunOnly entry for the detector:finding id; the scan-everything scope and the (change OR finding) combination live in core verification.",
+      "as": [
+        "core:activation.facts[3]",
+        "bunOnly"
+      ]
+    }
+  ],
+  "neutralityNotes": "The obligation itself (DTOs are declared in a contracts location owned by neither side, never inside a layer's internal code) is fully neutral; every concrete binding comes from the profile: roles.assignment (any layer role, no feature membership required), layout.contract_paths#contracts_dir (the contracts location), idiom.dto_shape#dto_naming (what counts as a DTO), idiom.external_import (external-package imports) and roots.excluded (excluded trees). Scope edges stay checker-scoped: test files are excluded by file-kind scope, and a tree is exempt only when the stack's checker classifies it as excluded (one stack-wide list), so the core grants no broader generated-tree exemption than Bun's vendored/build scope. Per the vocabulary's notProfileKeys, the rule's own severity (3) and strict disposition (fails on every finding; no advisory mode, no ratchet baseline) are carried in core verification. What could not be made neutral stays bunOnly: realization identifiers (detector bun_clean_architecture_detector, finding id dto-placement, term ids contracts_module/private_type_leak), the language facts (typescript/bun) and the bare npm specifier wording. 'Import' is used in the generic sense of one module depending on another; each realization binds it to its own module syntax. The during-GREEN phase guidance and the behavioral-acceptance proof were already neutral.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.dto-placement.json",
+      "sha256": "6eca3489e87196e98cdede47801c171c0180d53875149f19252cf9e8153b3be0"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "rekey-v3 -> zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

@@ -1,0 +1,468 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.plan.spec-is-schema-valid",
+  "legacyId": "planner.plan.spec-is-schema-valid",
+  "core": {
+    "title": "Keep hand-authored plan unit specs schema-valid",
+    "given": "A plan session where you hand-author unit specs of any authorable kind.",
+    "when": "You add or re-state a unit while drafting, or ratify the session before the lock.",
+    "then": "Keep every unit spec valid against its artifact schema: carried values well-formed (pattern, enum, type, additionalProperties) while drafting; kept units complete (required, minItems, minLength, minProperties) at ratification, before the lock.",
+    "prefer": [
+      "Fix malformed values as soon as the drafting pass refuses them; re-state the unit (an upsert keyed by its reference) as it fills in.",
+      "Complete every kept unit before ratification. A kind blocks when its schema describes the artifacts the authoring tool actually authors.",
+      "For a kind with no schema, rely on its writer's validator; if nothing checks it, say so explicitly."
+    ],
+    "avoid": [
+      "Treating an unfinished draft as a defect during drafting, or a malformed value as fine because it is a draft.",
+      "Ratifying with failing enforced or promoted-kind specs; a failure leaves the session unlocked.",
+      "Reading a clean result from an ungoverned kind as approval."
+    ],
+    "unless": [
+      "Advisory kinds — whose schema has drifted from what the authoring tool authors — report and never block; findings ride on the unit, survive session-history compaction and resurface at ratification. A repository may promote a kind to enforced via its configuration."
+    ],
+    "why": "The authoring tool emits artifacts that are schema-valid by construction; plan unit specs are hand-written, so this layer must keep that guarantee. Silence that reads as approval is the defect this rule prevents.",
+    "evidence": [
+      "The drafting pass refuses malformed carried values of enforced kinds the moment they are written.",
+      "The ratification pass validates completeness on kept units before the lock; a failure leaves the session unlocked.",
+      "Failure evidence identifies the session, the unit reference, the unit kind, the schema and the failed field.",
+      "Every authorable kind yields either a checked-valid result, schema findings, writer-validator findings, or an explicit 'not checked' report, never silent clean.",
+      "Advisory findings are present on the unit at ratification and do not block unless the kind is promoted by the repository's configuration."
+    ],
+    "verification": [
+      "Two passes: the drafting pass checks only value-shape validity of the values a spec already carries (pattern, enum, type, additionalProperties) — these are wrong the instant they are written, so the pass applies to incomplete drafts too; the ratification pass checks only completeness (required, minItems, minLength, minProperties), only on kept units, and only before the session is locked. Drafting is an upsert loop, so an unfinished spec is a draft there and a defect only once the operator asserts the set may be authored.",
+      "Disposition policy is owned by this rule, not the profile: enforced kinds raise, and so do kinds the repository promotes to enforced via the stack's exception-declaration mechanism; advisory kinds report and never block — an exception this rule itself authors — and their findings ride on the unit, survive session-history compaction and resurface at ratification.",
+      "The enforced/advisory assignment is made by the rule's own criterion: a kind blocks when its schema describes the artifacts the authoring tool actually authors, and reports when that schema has drifted from those artifacts. The stack realization fixes the concrete default assignment for each kind (deriving it by measuring that criterion); the profile supplies only the concrete kind names and the promotion mechanism, never the dispositions.",
+      "Every authorable kind is governed: each check outcome is checked-valid, schema findings, the kind's writer-validator findings, or an explicit not-checked report — never a silent clean. A kind whose artifact has no schema is governed by its writer's validator instead.",
+      "Atomicity: the ratification pass runs before the lock, so a failure leaves the session unlocked.",
+      "The check is confirm-blocking on the plan session (it runs at the confirmation phase); disposition strict, severity 4, applies to enforced and promoted kinds, while advisory kinds only report.",
+      "A failure identifies the session, the unit reference, the unit kind, the schema and the failed field.",
+      "Not covered: completeness is not enforced on drafts during the drafting phase nor on units dropped before ratification, and artifacts produced by the authoring tool outside a plan session are not re-checked (valid by construction)."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "phase",
+          "values": [
+            "drafting",
+            "pre-lock_ratification"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "operation",
+          "values": [
+            "add_or_upsert_unit_spec",
+            "ratify_session"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "any authorable plan unit kind"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "unit_kept_at_ratification",
+            "unit_dropped_before_ratification"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "checked_valid",
+            "spec_schema_violation",
+            "writer_validator_finding",
+            "kind_not_checked"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "The planner adds an ordinary, valid unit of any authorable kind while drafting: it is checked and yields a checked-valid outcome.",
+        "The planner ratifies a session: every kept unit is checked for completeness, including units that turn out valid.",
+        "The planner adds a unit while drafting whose spec carries a value violating a pattern, enum, type or additionalProperties constraint of its enforced schema.",
+        "An incomplete draft that also carries a malformed value: the malformed value is still refused while drafting.",
+        "The planner ratifies a session in which a kept unit of an enforced kind is missing a required field or violates minItems/minLength/minProperties.",
+        "A unit of an advisory kind violates its schema: findings are reported and carried on the unit to ratification, without blocking.",
+        "A repository promotes an advisory kind to enforced in its configuration: violations of that kind now block like an enforced kind.",
+        "A unit of a kind with no artifact schema is added: its writer's validator must check it.",
+        "A unit of a kind that nothing checks is added: the check must say explicitly that it is not checked, not return clean."
+      ],
+      "doesNotFire": [
+        "Completeness enforcement (required, minItems, minLength, minProperties) on an incomplete spec during drafting: incompleteness alone is not a defect in the draft. Well-formedness checking of the values it does carry still fires.",
+        "Completeness checking of a unit dropped (not kept) before ratification.",
+        "Artifacts generated by the authoring tool outside a plan session (already schema-valid by construction)."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roles.plan_artifact.kinds",
+      "meaning": "The concrete plan-unit artifact kinds that play the plan-artifact role in this stack, binding the neutral 'authorable kind' to this stack's kind names (schema-checked, schema-less and unchecked kinds alike). Names only: the open-set scope lives in core activation, and which kinds are enforced, advisory, promoted or writer-validator-governed is this rule's disposition policy, kept in core verification with the concrete default assignments preserved in the realization.",
+      "bunValue": "wagon, train, interlocking, embedded acceptance, feature, wmbt, contract"
+    },
+    {
+      "key": "idiom.plan_syntax#plan_session",
+      "meaning": "The plan-session tooling's names for the drafting phase, the pre-lock ratification phase, the add/upsert-unit operation (keyed by unit reference) and the locked state.",
+      "bunValue": "phases plan:Compose and plan:Ratify; operations add_unit (upserts by ref) and ratify; state locked"
+    },
+    {
+      "key": "tooling.commands#author",
+      "meaning": "The stack's artifact authoring tool, whose output is schema-valid by construction outside any plan session.",
+      "bunValue": "atdd author"
+    },
+    {
+      "key": "enforcement.exceptions#plan_spec_promotion",
+      "meaning": "Where and how the repository declares an intentional override of this rule's advisory exception: the configuration location and list syntax by which an authorable plan-unit kind is promoted from advisory (report-only) to enforced (blocking) schema validation. The promotion policy itself belongs to the rule (core verification); only the declaration mechanism is profile data.",
+      "bunValue": "plan.spec_validation.enforce in .atdd/config.yaml"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "evidence[0]",
+      "text": "check_unit_spec at Compose refuses malformed values of enforced kinds (test_plan_unit_spec_schema::test_compose_refuses_a_malformed_enforced_spec).",
+      "reason": "Names this realization's spec-check function and its validator test id; per rule 7 these ids stay with the realization."
+    },
+    {
+      "item": "evidence[2]",
+      "text": "Failure evidence includes session_id, unit_ref, unit_kind, schema_file, failed_field.",
+      "reason": "Exact finding-evidence field ids of this realization's check; the core states the fields generically."
+    },
+    {
+      "item": "prefer[1]",
+      "text": "Enforced (blocking) kinds by default: wagon, train, interlocking and the embedded acceptance shape.",
+      "reason": "This stack's default enforced-kind assignment, fixed by the rule-owned criterion; disposition assignments are rule/realization data, not profile data, so the concrete defaults are preserved here."
+    },
+    {
+      "item": "avoid[1]",
+      "text": "Ratifying with failing wagon, train, interlocking, embedded-acceptance or promoted-kind specs; a failure leaves the session unlocked.",
+      "reason": "Names this stack's default enforced kinds; the core says 'enforced or promoted-kind' and the default assignment is realization data, not profile data."
+    },
+    {
+      "item": "unless[0]",
+      "text": "Advisory kinds (schema drifted from what atdd authors; feature and wmbt by default) report and never block; findings ride on the unit through compaction and resurface at Ratify. A repo promotes a kind via plan.spec_validation.enforce in .atdd/config.yaml.",
+      "reason": "The default advisory kinds (feature, wmbt) are this stack's disposition assignment, kept as realization data; the promotion declaration (plan.spec_validation.enforce in .atdd/config.yaml) is realized via enforcement.exceptions#plan_spec_promotion, while the promotion policy itself stays in core verification."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "Term id well_formedness_at_compose; refusing them at Compose is what planner.plan.session-lifecycle asks of Compose (\"candidate decomposition convention-shaped\").",
+      "reason": "Source term id plus a cross-reference to this stack's session-lifecycle convention id and its quoted phrase."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "text": "Term id completeness_at_ratify; add_unit upserts by ref so a spec can be re-stated as it fills in.",
+      "reason": "Source term id; the concrete upsert operation name belongs to the plan-session tooling (realized via idiom.plan_syntax#plan_session)."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "text": "Enforced kinds RAISE: a kind whose schema describes the artifacts atdd actually authors. Measured over the source repo's plan/ tree: wagon (41/41), train (21/21), interlocking (8/8) and the embedded acceptance shape all validate, so all four enforce.",
+      "reason": "This stack's default enforced-kind assignment plus the empirical conformance measurements that derive it from the rule's criterion; the criterion is core verification, the assignment is realization data."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "text": "feature (134/188 failing) and wmbt (294/468 failing) are advisory; wmbt.schema.json's own $comment says it is not a file gate. Promotion: plan.spec_validation.enforce in .atdd/config.yaml.",
+      "reason": "This stack's default advisory-kind assignment with its drift measurements and a schema file's self-description; the report-and-never-block behaviour is core verification and the promotion declaration (plan.spec_validation.enforce in .atdd/config.yaml) is realized via enforcement.exceptions#plan_spec_promotion."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "text": "contract forced this: a contract IS a JSON schema, so it has no meta-schema; omitting it from the schema table made check_unit_spec report nothing for all three rules validate_contract enforces across 14 registered contracts (#2013).",
+      "reason": "The forcing example names this realization's kinds, check functions and issue; the core keeps only the stack-neutral governance obligation."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "text": "Term id atomicity; the Ratify pass runs before locked is set; the same contract the interlocking, verb-object and artifact-naming gates keep.",
+      "reason": "Source term id and cross-references to this stack's other gates; the phase and lock-state labels belong to the plan-session tooling (idiom.plan_syntax#plan_session)."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "text": "Validation: family=presence, template=conditional_requirement, variant=planner_plan_spec_is_schema_valid, phase=CONFIRM, enforcement=confirm-blocking, subject_kind=plan-session.",
+      "reason": "Validation-taxonomy and variant ids of this realization; the core's verification states confirm-blocking on the plan session generically."
+    },
+    {
+      "item": "verifier_detail[7]",
+      "text": "failure_evidence fields: session_id, unit_ref, unit_kind, schema_file, failed_field.",
+      "reason": "Exact finding-evidence field ids of this one rule's check."
+    },
+    {
+      "item": "activation.facts[2]",
+      "text": "Open set: enforced kinds (default wagon, train, interlocking, embedded acceptance), advisory kinds (default feature, wmbt), kinds promoted via plan.spec_validation.enforce in .atdd/config.yaml, kinds with no schema (e.g. contract, checked by the writer's validator), and kinds checked by nothing.",
+      "reason": "The fact's value is neutral (any authorable kind) and the open-set scope stays in core activation; the concrete kind names bind via roles.plan_artifact.kinds (names only), while the enforced/advisory default labels, the promotion declaration (enforcement.exceptions#plan_spec_promotion) and the writer-validator behaviour are this rule's disposition assignments and stack wiring — realization data, not profile data."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "Already neutral: plan session, hand-authored unit specs, authorable kinds.",
+      "as": [
+        "core:given"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "Compose/Ratify/add_unit become drafting, ratification-before-the-lock, add-or-restate; concrete labels from the profile.",
+      "as": [
+        "core:when",
+        "profile:idiom.plan_syntax#plan_session"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "One obligation, two phase-scoped clauses; phase names realized via the profile.",
+      "as": [
+        "core:then",
+        "profile:idiom.plan_syntax#plan_session"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "'atdd author' becomes the authoring tool, whose identity comes from the profile.",
+      "as": [
+        "core:why",
+        "profile:tooling.commands#author"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "Neutral upsert-by-reference re-stating; add_unit label from the profile.",
+      "as": [
+        "core:prefer[0]",
+        "profile:idiom.plan_syntax#plan_session"
+      ]
+    },
+    {
+      "item": "prefer[1]",
+      "note": "Core keeps the rule-owned blocking criterion; the concrete default enforced kinds are realization data (bunOnly), not profile data.",
+      "as": [
+        "core:prefer[1]",
+        "bunOnly",
+        "profile:tooling.commands#author"
+      ]
+    },
+    {
+      "item": "prefer[2]",
+      "note": "Writer's-validator and explicit-not-checked guidance is already neutral.",
+      "as": [
+        "core:prefer[2]"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "Draft-vs-defect distinction; 'at Compose' realized via the profile.",
+      "as": [
+        "core:avoid[0]",
+        "profile:idiom.plan_syntax#plan_session"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "'Promoted kind' is realized via the stack's exception-declaration configuration, bound by enforcement.exceptions#plan_spec_promotion; the concrete default kind list is bunOnly because disposition assignments are not profile data.",
+      "as": [
+        "core:avoid[1]",
+        "profile:enforcement.exceptions#plan_spec_promotion",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "avoid[2]",
+      "note": "Silent-clean-from-ungoverned-kind; already neutral.",
+      "as": [
+        "core:avoid[2]"
+      ]
+    },
+    {
+      "item": "unless[0]",
+      "note": "Advisory exception with carry-to-ratification is core; the promotion declaration comes from the stack's exception-declaration configuration (enforcement.exceptions#plan_spec_promotion); the default advisory kinds (feature, wmbt) are bunOnly realization data.",
+      "as": [
+        "core:unless[0]",
+        "profile:enforcement.exceptions#plan_spec_promotion",
+        "profile:tooling.commands#author",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "Neutral observation in core; check function and test id stay bunOnly.",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "Ratification completeness gate before the lock; Ratify/locked labels from the profile.",
+      "as": [
+        "core:evidence[1]",
+        "profile:idiom.plan_syntax#plan_session"
+      ]
+    },
+    {
+      "item": "evidence[2]",
+      "note": "Fields described generically in core; exact field ids bunOnly.",
+      "as": [
+        "core:evidence[2]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "evidence[3]",
+      "note": "Governance outcome enumeration; neutral.",
+      "as": [
+        "core:evidence[3]"
+      ]
+    },
+    {
+      "item": "evidence[4]",
+      "note": "Core states promotion generically; the concrete promotion declaration (where and how this stack overrides the advisory exception) is bound by enforcement.exceptions#plan_spec_promotion.",
+      "as": [
+        "core:evidence[4]",
+        "profile:enforcement.exceptions#plan_spec_promotion"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "Drafting-pass scope (carried values only, applies to incomplete drafts) is core:verification; term id and session-lifecycle cross-reference stay bunOnly.",
+      "as": [
+        "core:verification",
+        "profile:idiom.plan_syntax#plan_session",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "Ratification-pass scope (completeness, kept units, before lock, draft-not-defect rationale) is core:verification; term id stays bunOnly, add_unit label from the profile.",
+      "as": [
+        "core:verification",
+        "profile:idiom.plan_syntax#plan_session",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "Enforced-kinds-raise criterion is core:verification; the concrete default assignment and its measurements are bunOnly.",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[3]",
+      "note": "Advisory report-and-carry behaviour is core:verification; the promotion declaration binds via the stack's exception configuration (enforcement.exceptions#plan_spec_promotion); default advisory assignment and drift measurements are bunOnly.",
+      "as": [
+        "core:verification",
+        "profile:enforcement.exceptions#plan_spec_promotion",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[4]",
+      "note": "No-silent-ungoverned-kind governance is core:verification; the contract/#2013 forcing example is bunOnly, with 'contract' bound via the profile's plain list of kind names.",
+      "as": [
+        "core:verification",
+        "profile:roles.plan_artifact.kinds",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[5]",
+      "note": "Atomicity (fail before lock leaves session unlocked) is core; term id and gate cross-references bunOnly; locked label from the profile.",
+      "as": [
+        "core:verification",
+        "profile:idiom.plan_syntax#plan_session",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[6]",
+      "note": "Confirm-blocking on the plan session is core:verification; family/template/variant labels are this realization's validation taxonomy.",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[7]",
+      "note": "Generic failure-field scope in core; exact field ids bunOnly.",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[8]",
+      "note": "Per-rule severity and disposition (strict, severity 4) applied to enforced and promoted kinds, advisory as the rule's own exception; core verification, not profile data.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "Phase fact with neutral values (drafting, pre-lock ratification); concrete phase ids from the profile; still needs a plan-session observer.",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:idiom.plan_syntax#plan_session"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "Operation fact; add_unit/ratify are this stack's tool calls, observable now.",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:idiom.plan_syntax#plan_session"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "The open kind set stays in core activation; concrete kind names bind via the profile's plain list; the default enforced/advisory labels, promotion declaration and validator behaviour in the note are kept bunOnly.",
+      "as": [
+        "core:activation.facts[2]",
+        "profile:roles.plan_artifact.kinds",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.facts[3]",
+      "note": "Kept-vs-dropped unit status at ratification; needs a plan-session observer.",
+      "as": [
+        "core:activation.facts[3]",
+        "profile:idiom.plan_syntax#plan_session"
+      ]
+    },
+    {
+      "item": "activation.facts[4]",
+      "note": "Check-outcome fact (not a prerequisite); values already neutral; needs a plan-session observer.",
+      "as": [
+        "core:activation.facts[4]"
+      ]
+    }
+  ],
+  "neutralityNotes": "The schema-constraint keyword lists (pattern, enum, type, additionalProperties vs required, minItems, minLength, minProperties) are kept verbatim as the neutral names for the value-shape/completeness split; a stack with a different schema language maps them to its equivalents. Plan-session phase, operation and state labels (plan:Compose, plan:Ratify, add_unit, ratify, locked) are bound as the plan_session entry of the idiom.plan_syntax map key. The repository's promotion declaration (plan.spec_validation.enforce in .atdd/config.yaml) is bound as the plan_spec_promotion entry of enforcement.exceptions — where and how the stack declares an intentional override of the rule's advisory exception — mechanism only, since promotion behaviour is rule policy. The enforced/advisory dispositions are this rule's own policy: the classification criterion and the strict/confirm-blocking disposition live in core:verification, and the concrete default kind assignments (wagon, train, interlocking, embedded acceptance enforced; feature, wmbt advisory; contract schema-less) are preserved as bunOnly realization data. roles.plan_artifact.kinds binds only the plain list of concrete kind names (as a single string value), with the open-set scope kept in core activation. The 'every authorable kind is governed' obligation is kept inside this core even though bun.json's splitSuggestion would package it as its own rule — dropping it would weaken the core. Empirical conformance measurements, the contract/#2013 forcing example, term ids, validation-taxonomy ids and failure-evidence field ids remain bunOnly. activation.fires/doesNotFire are not numbered items, so they are carried into the core without classification entries.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/planner-nodes/planner.plan.spec-is-schema-valid.json",
+      "sha256": "66df8a135ddb941679d67d9dd21213496ce0beb767b72c6a5f8acae203e2e37c"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "rekey-v3 -> zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

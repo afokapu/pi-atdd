@@ -1,0 +1,344 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.dto.purity",
+  "legacyId": "coder.bun.dto-purity",
+  "core": {
+    "title": "Keep DTOs pure immutable data",
+    "given": "a DTO — the shape crossing a boundary — declared in a scanned source file assigned to a layer role (not a test role, not a never-scanned tree)",
+    "when": "that DTO is declared, changed, or present in any scanned file (including pre-existing declarations)",
+    "then": "the DTO MUST be pure immutable data: no behavior members, and every field immutable.",
+    "prefer": [
+      "Keep DTOs as immutable data: immutable fields only, no behavior members.",
+      "Put behavior in the layer that consumes or produces the DTO.",
+      "During GREEN: add only the immutable data fields the current boundary behavior requires.",
+      "During GREEN: reuse existing functions for transformation or behavior when available; add a small standalone function only when the current acceptance needs it."
+    ],
+    "avoid": [
+      "Attaching convenience operations (behavior members) to the DTO.",
+      "Making fields mutable to simplify implementation.",
+      "Introducing unrelated helpers or abstractions."
+    ],
+    "unless": [],
+    "why": "Behavior on a DTO means behaviour crossed the boundary too, coupling both sides to an implementation rather than data; a mutable field lets the receiver change what the sender said. Both look harmless in one file and become impossible to unpick once a second consumer exists.",
+    "evidence": [
+      "The stack's convention check reports no behavior member or mutable field on any DTO declaration in scanned files.",
+      "The current behavioral acceptance passes.",
+      "The affected DTO remains pure immutable data (all fields immutable, no behavior members)."
+    ],
+    "verification": [
+      "The check inspects every DTO declaration in scanned source files and flags any behavior member and any field not marked immutable in the stack's idiom.",
+      "Files assigned to a test role and the profile's never-scanned trees are outside the check; the exact classification is owned by the stack's checker.",
+      "External-package references (recognized per the stack's external-import idiom) resolve outside the project graph and are not part of role assignment.",
+      "A file with no role assignment is outside the rule rather than in violation of it.",
+      "Severity 3; disposition strict: the check fails on every finding, with no advisory mode and no ratchet baseline."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "source"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "dto_declaration_present"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "dto_declaration_added_or_modified"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "impure_dto"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "A coder adds or edits a DTO declaration in a source file assigned to a layer role.",
+        "A task adds a field to an existing DTO to carry data across a boundary.",
+        "A scanned source file assigned to a layer role already contains a DTO with a behavior member or a mutable field, even if the current change did not touch it.",
+        "The convention check reports a behavior member or a mutable field on any DTO declaration."
+      ],
+      "doesNotFire": [
+        "The DTO declaration lives in a test role or in a never-scanned tree.",
+        "The file carries no layer role.",
+        "The scanned files contain no DTO declaration at all."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roles.assignment",
+      "meaning": "How a file is assigned to a role: files assigned to a test role are never scanned by layer rules, and a file with no role is out of scope, not in violation.",
+      "bunValue": "A file carrying no layer segment is outside these rules rather than in violation of them. Test files are never scanned."
+    },
+    {
+      "key": "roots.excluded",
+      "meaning": "Vendored and generated trees that a repository-wide check never scans (the one stack-wide list); the exact excluded classification is owned by the stack's checker.",
+      "bunValue": "vendored/build directories are never scanned"
+    },
+    {
+      "key": "suffix.source",
+      "meaning": "Suffixes or name patterns that identify the production source files in scope.",
+      "bunValue": "**/*.ts, **/*.tsx"
+    },
+    {
+      "key": "tooling.languages",
+      "meaning": "Languages of production source.",
+      "bunValue": "typescript"
+    },
+    {
+      "key": "idiom.external_import",
+      "meaning": "How an import of an external package (outside the project graph) is recognised, so that such references are not part of role assignment.",
+      "bunValue": "Bare npm specifiers resolve outside the project graph and are not layer-checked."
+    },
+    {
+      "key": "idiom.dto_shape#dto_declaration",
+      "meaning": "How the stack declares and recognizes a DTO, the data shape crossing a boundary: the declaring construct and its naming pattern.",
+      "bunValue": "a `type` or `interface` declaration whose name ends in `DTO`"
+    },
+    {
+      "key": "idiom.dto_shape#dto_purity",
+      "meaning": "What pure immutable data means for a DTO in the stack: which member kinds count as behavior, and how field immutability is expressed.",
+      "bunValue": "no method members; every field declared `readonly`"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "evidence[0]",
+      "text": "bun_clean_architecture_detector reports no method member or non-readonly field on any `*DTO` declaration in scanned files.",
+      "reason": "Names this rule's Bun detector and its TypeScript member syntax (`*DTO`, `readonly`); the core keeps the generic evidence claim and the detector id stays with the realization."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "Detector parses each `*DTO` type/interface declaration body, splits its members on `;`, newline, or `,`, and flags any method member or any field lacking `readonly`.",
+      "reason": "The textual member-splitting mechanics and the TypeScript member syntax are implementation details of the Bun detector; the core describes the check generically."
+    },
+    {
+      "item": "activation.facts[4]",
+      "text": "finding: bun_clean_architecture_detector:dto-purity",
+      "reason": "Detector and finding ids of this one rule are realization details; the core names the finding kind generically."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "Boundary-shape framing kept; recognizing a `*DTO` type/interface is delegated to the stack's DTO-declaration idiom.",
+      "as": [
+        "core:given",
+        "profile:idiom.dto_shape#dto_declaration"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "Already stack-neutral: declared, changed, or pre-existing in any scanned file.",
+      "as": [
+        "core:when"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "'No method members and every field readonly' generalized to 'no behavior members, every field immutable'; the concrete meaning is the stack's idiom.",
+      "as": [
+        "core:then",
+        "profile:idiom.dto_shape#dto_purity"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "'A method on a DTO' generalized to behavior on a DTO; the coupling argument is unchanged.",
+      "as": [
+        "core:why"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "'Readonly fields only, no methods' becomes 'immutable fields only, no behavior members'.",
+      "as": [
+        "core:prefer[0]",
+        "profile:idiom.dto_shape#dto_purity"
+      ]
+    },
+    {
+      "item": "prefer[1]",
+      "note": "Role-level already: behavior goes to the consuming or producing layer.",
+      "as": [
+        "core:prefer[1]"
+      ]
+    },
+    {
+      "item": "prefer[2]",
+      "note": "'Readonly data fields' becomes 'immutable data fields'; 'During GREEN' is an ATDD phase term and stays.",
+      "as": [
+        "core:prefer[2]",
+        "profile:idiom.dto_shape#dto_purity"
+      ]
+    },
+    {
+      "item": "prefer[3]",
+      "note": "'Free function' becomes 'standalone function'; the reuse guidance is unchanged.",
+      "as": [
+        "core:prefer[3]"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "'Convenience methods' becomes 'convenience operations (behavior members)'.",
+      "as": [
+        "core:avoid[0]",
+        "profile:idiom.dto_shape#dto_purity"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "Already neutral.",
+      "as": [
+        "core:avoid[1]"
+      ]
+    },
+    {
+      "item": "avoid[2]",
+      "note": "Already neutral.",
+      "as": [
+        "core:avoid[2]"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "Core states the claim generically ('the check reports no behavior member or mutable field'); the detector id and TypeScript syntax remain Bun.",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "Already neutral.",
+      "as": [
+        "core:evidence[1]"
+      ]
+    },
+    {
+      "item": "evidence[2]",
+      "note": "'All fields readonly, no methods' becomes 'all fields immutable, no behavior members'.",
+      "as": [
+        "core:evidence[2]",
+        "profile:idiom.dto_shape#dto_purity"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "Generic check description enters core verification; the member-splitting mechanics stay Bun.",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "Never-scanned scope, split per the vocabulary: the vendored/build trees are the stack-wide roots.excluded list, and the test-file exclusion is carried by roles.assignment's test-role classification; the exact excluded classification is deferred to the stack's checker.",
+      "as": [
+        "core:verification",
+        "profile:roots.excluded",
+        "profile:roles.assignment"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "'Bare npm specifiers' is the stack's external-import idiom; the fact only scopes role assignment, adding no obligation.",
+      "as": [
+        "core:verification",
+        "profile:idiom.external_import"
+      ]
+    },
+    {
+      "item": "verifier_detail[3]",
+      "note": "A file with no role is out of scope, not a violation.",
+      "as": [
+        "core:verification",
+        "profile:roles.assignment"
+      ]
+    },
+    {
+      "item": "verifier_detail[4]",
+      "note": "Per-rule severity 3 and strict disposition are verification facts of the rule, not profile keys; strict = fails on every finding, no advisory mode, no ratchet baseline.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "language=typescript becomes the neutral file_kind=source fact, instantiated with the profile's source languages.",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:tooling.languages"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "The path globs are the stack's source suffixes; the fact's exclusion note is carried by roles.assignment (test-role files) and roots.excluded (vendored/build trees), plus doesNotFire.",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:suffix.source"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "'A type/interface whose name ends in DTO' is the stack's DTO-declaration idiom; whole-file scanning (pre-existing DTOs stay in scope) is kept.",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:idiom.dto_shape#dto_declaration"
+      ]
+    },
+    {
+      "item": "activation.facts[3]",
+      "note": "Already neutral; the diff-level trigger is a convenience, not a prerequisite.",
+      "as": [
+        "core:activation.facts[2]"
+      ]
+    },
+    {
+      "item": "activation.facts[4]",
+      "note": "The finding kind (behavior member or mutable field on any DTO) is kept generically; the detector finding id stays Bun.",
+      "as": [
+        "core:activation.facts[3]",
+        "bunOnly"
+      ]
+    }
+  ],
+  "neutralityNotes": "The TypeScript terms 'method member' and 'readonly' have no stack-neutral equivalent, so the obligation is stated as 'no behavior members, every field immutable' and its concrete meaning is delegated to the proposed keys idiom.dto_shape#dto_declaration and idiom.dto_shape#dto_purity (also listed in profileRequirements). 'During GREEN' is an ATDD phase term and was kept. Per-rule severity (3) and the strict disposition stay in core verification. The Bun detector's textual member-splitting mechanics and its detector/finding ids remain bunOnly. roots.excluded is restricted to the one stack-wide list of vendored/generated trees ('vendored/build directories'); the test-file exclusion is carried through roles.assignment and its test-role classification, and the core keeps the Bun text's deference of the exact never-scanned classification to the stack's checker.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.dto-purity.json",
+      "sha256": "94d3409964aa41ecc4ce4a45ca58030428922fa7586368fbfc10096560587deb"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 1,
+    "usefulness": 5,
+    "deriver": "rekey-v3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

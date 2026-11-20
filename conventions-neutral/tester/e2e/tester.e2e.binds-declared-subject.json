@@ -1,0 +1,378 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "tester.e2e.binds-declared-subject",
+  "legacyId": "tester.htmx.e2e-binds-declared-subject",
+  "core": {
+    "title": "Bind each journey spec to a train or journey declared by the plan artifacts",
+    "given": "The plan artifacts declare at least one train or journey, and a journey spec exists (a file of the profile's e2e test kind actually selected by the stack's e2e test runner, or a test file whose header comments carry a train or journey binding marker per the profile's binding syntax)",
+    "when": "the spec's binding is checked against the plan artifacts",
+    "then": "The train or journey the spec binds to MUST be declared by the plan artifacts.",
+    "prefer": [
+      "Bind to the declared subject the spec actually exercises: find the plan subject reached by its entrypoint and interactions; use that exact declared id in the spec's binding.",
+      "If the intended subject is absent from the plan, return to the authorized planning flow instead of inventing it in the tester repair."
+    ],
+    "avoid": [
+      "Choosing any resolvable declared subject merely to clear the finding (false journey coverage).",
+      "Changing the binding to match a convenient test that proves another journey.",
+      "Declaring a new train or journey solely so an existing spec has something to bind."
+    ],
+    "unless": [
+      "No plan (no trains, no journeys): out of scope.",
+      "Vendored and generated trees (the profile's never-scanned roots) are not scanned.",
+      "Malformed bindings are reported by the companion binding-header rule, not here."
+    ],
+    "why": "The binding traces an e2e test to the plan subject it exercises; no binding, two bindings, or an id the planning flow would reject is untraceable. Resolution is necessary but not sufficient: the bound subject must be the one the spec actually walks, and the plan changes only when product behavior requires it.",
+    "evidence": [
+      "The binding id in the spec's binding resolves to a train or journey declared by the plan artifacts.",
+      "The end-to-end path actually walks the bound subject.",
+      "The final observable assertion proves that subject's user-facing behavior.",
+      "The plan was not changed only to give the spec something to bind."
+    ],
+    "verification": [
+      "A journey spec is recognized two ways, so a misnamed one is still judged: a file of the profile's e2e name patterns that the stack's e2e test runner actually selects, or any test file whose header comments carry a train or journey binding marker per the profile's binding syntax. A test that merely mentions a journey URN in a string literal is not one.",
+      "Report specs with no binding, two bindings, or an id the planning flow would reject as untraceable; the check applies to all journey specs in the repository, existing or new.",
+      "Skip the profile's excluded vendored and generated roots; skip entirely when no trains and no journeys are declared; leave malformed binding headers to the companion binding-header rule.",
+      "Severity 3, disposition strict."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "a plan artifact (under the plan root) declaring at least one train or journey"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "test file matching the profile's e2e name patterns (candidate journey spec by filename; filename alone is not sufficient)"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "test file of the profile's e2e kind actually selected by the stack's e2e test runner"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "test file whose header comments carry a train or journey binding marker per the profile's binding syntax"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "binding id does not resolve to a declared train or journey in the plan artifacts"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "the bound declared subject is not the subject the spec's end-to-end path actually walks"
+          ],
+          "observability": "llm_judged"
+        }
+      ],
+      "fires": [
+        "The plan declares trains/journeys and an existing journey spec's binding names an id with no declaration in the plan artifacts.",
+        "A test file not matching the e2e name patterns whose binding header names an undeclared journey.",
+        "A journey spec has no binding, two bindings, or an id the planning flow would reject.",
+        "A spec's binding resolves to a declared subject but not the one its end-to-end path walks (prefer/avoid apply; the walked-subject obligation is owned by the companion split rule)."
+      ],
+      "doesNotFire": [
+        "The repository has no plan (no trains, no journeys).",
+        "Files under the profile's excluded vendored and generated roots.",
+        "A unit test that merely mentions a journey URN inside a string.",
+        "A file matching the e2e name patterns but not selected by the e2e test runner and with no binding-marker header.",
+        "A malformed binding header (reported by the companion binding-header rule instead)."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roots.plan",
+      "meaning": "Where the plan artifacts declaring trains and journeys live; bindings must resolve against declarations there.",
+      "bunValue": "plan/"
+    },
+    {
+      "key": "suffix.e2e_test",
+      "meaning": "Name patterns identifying candidate journey specs before the runner-selection or binding-marker check.",
+      "bunValue": "**/*.e2e.ts"
+    },
+    {
+      "key": "tooling.test_runner",
+      "meaning": "The stack's e2e test runner whose selection establishes that a candidate file is really a journey spec.",
+      "bunValue": "Playwright (test selection resolved from config testMatch/testDir)"
+    },
+    {
+      "key": "urn.binding.train",
+      "meaning": "The header-comment syntax by which a spec binds itself to a train.",
+      "bunValue": "// Train: or // URN: test:train:… header comments"
+    },
+    {
+      "key": "urn.binding.journey",
+      "meaning": "The header-comment syntax by which a spec binds itself to a journey.",
+      "bunValue": "// Journey: or // URN: test:journey:… header comments"
+    },
+    {
+      "key": "roots.excluded",
+      "meaning": "Vendored and generated trees never scanned by this check.",
+      "bunValue": "node_modules, dist, build, _generated"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "unless[2]",
+      "text": "Malformed bindings belong to tester.htmx.journey-binding-header.",
+      "reason": "Names the companion rule by its ATDD-Bun rule id; the core refers to the companion binding-header rule generically."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "text": "leave malformed headers to tester.htmx.journey-binding-header",
+      "reason": "The concrete skip list maps to the profile's roots.excluded, but the companion rule id is a realization-specific id with no neutral name yet."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "text": "Implemented by validator htmx_e2e_detector.",
+      "reason": "Detector/validator ids of this one rule are realization details; the core's verification describes the check generically."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:roots.plan",
+        "profile:suffix.e2e_test",
+        "profile:tooling.test_runner",
+        "profile:urn.binding.train",
+        "profile:urn.binding.journey"
+      ],
+      "note": "Neutralized: plan/ -> plan artifacts; *.e2e.ts run by Playwright -> e2e kind selected by the stack's e2e runner; journey marker header -> binding marker per profile binding syntax."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when",
+        "profile:roots.plan"
+      ],
+      "note": "'against plan/' becomes 'against the plan artifacts' via the plan root."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "profile:roots.plan"
+      ],
+      "note": "Single obligation: binding resolves to a declared train/journey; 'under plan/' supplied by the profile."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "'browser test' -> 'e2e test'; 'the planner would reject' -> 'the planning flow would reject'. Meaning unchanged."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]"
+      ],
+      "note": "Role-level repair guidance; 'in the header' generalized to 'in the spec's binding'."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]"
+      ],
+      "note": "Already neutral; content of the proposed plan-not-changed split rule stays here as in bun.json."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]"
+      ],
+      "note": "Scope exception, already neutral."
+    },
+    {
+      "item": "unless[1]",
+      "as": [
+        "core:unless[1]",
+        "profile:roots.excluded"
+      ],
+      "note": "Concrete tree list is the stack-wide excluded-roots value; the core keeps the neutral never-scanned exception."
+    },
+    {
+      "item": "unless[2]",
+      "as": [
+        "core:unless[2]",
+        "bunOnly"
+      ],
+      "note": "Neutral core names the companion binding-header rule generically; the ATDD-Bun rule id is bunOnly."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "profile:roots.plan"
+      ],
+      "note": "'under plan/' supplied by the plan root."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]"
+      ],
+      "note": "'browser path' -> 'end-to-end path'."
+    },
+    {
+      "item": "evidence[2]",
+      "as": [
+        "core:evidence[2]"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "evidence[3]",
+      "as": [
+        "core:evidence[3]"
+      ],
+      "note": "'plan/' -> 'the plan'."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "profile:suffix.e2e_test",
+        "profile:tooling.test_runner",
+        "profile:urn.binding.train",
+        "profile:urn.binding.journey"
+      ],
+      "note": "The browser_spec term generalizes to: profile e2e name patterns + runner selection, or binding-marker header per profile binding syntax; URN-in-a-string exclusion kept."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Generic untraceable-condition reporting; 'the planner would reject' -> 'the planning flow would reject'."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification",
+        "profile:roots.excluded",
+        "bunOnly"
+      ],
+      "note": "Skip rules map to verification with the excluded list from the profile; the companion rule id is bunOnly."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Severity 3 / strict disposition go to core verification; the validator id htmx_e2e_detector is bunOnly."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roots.plan"
+      ],
+      "note": "path_glob plan/** becomes a file_kind fact about plan artifacts declaring a train/journey, located via the plan root."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:suffix.e2e_test"
+      ],
+      "note": "path_glob **/*.e2e.ts becomes the profile's e2e name patterns; filename-alone insufficiency kept."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[2]",
+        "profile:tooling.test_runner"
+      ],
+      "note": "'run by Playwright' becomes 'selected by the stack's e2e test runner'; still needs a new observer resolving test selection."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[3]",
+        "profile:urn.binding.train",
+        "profile:urn.binding.journey"
+      ],
+      "note": "Marker strings supplied by the profile's binding syntax; URN-in-a-string-literal exclusion kept."
+    },
+    {
+      "item": "activation.facts[4]",
+      "as": [
+        "core:activation.facts[4]",
+        "profile:roots.plan"
+      ],
+      "note": "Neutral finding fact; the detector name from the note is bunOnly under verifier_detail[3]."
+    },
+    {
+      "item": "activation.facts[5]",
+      "as": [
+        "core:activation.facts[5]"
+      ],
+      "note": "Semantic walked-subject finding stays llm_judged; the companion split-rule id from the note is realization detail."
+    }
+  ],
+  "neutralityNotes": "No new profile keys were needed: the plan root, e2e name patterns, test runner, train/journey binding syntax and excluded roots all exist in the closed vocabulary. Realization-specific identifiers kept only in bunOnly: the validator id htmx_e2e_detector and the companion rule id tester.htmx.journey-binding-header; the core refers to companion rules generically. Sibling ids appearing in non-itemized fields (fires[3] and splitSuggestion naming tester.htmx.e2e-binding-matches-walked-subject and tester.htmx.plan-not-changed-to-rescue-spec) were likewise generalized in the core text; the split proposals themselves remain a Bun-sidecar concern, and their governing content is preserved in the core's prefer/avoid/why/evidence exactly as in bun.json.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/tester.htmx.e2e-binds-declared-subject.json",
+      "sha256": "5c7b6f6e335d0ef5980a2ca60ac618e0697792f24fece0ef8ab116442715593c"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 1,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

@@ -1,0 +1,320 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "tester.interlocking.smoke-coverage-for-station-master",
+  "legacyId": "tester.bun.interlocking-smoke-coverage-for-station-master",
+  "core": {
+    "title": "Smoke-test every exposed Station Master action through the real entrypoint",
+    "given": "An interlocking declares `entrypoint.exposed: true`, which requires at least one Station Master action (the user-facing route surface)",
+    "when": "Any such exposed action exists (e.g. added, edited, or flagged by the coverage check)",
+    "then": "Each exposed action MUST have an e2e smoke test, located where the stack keeps its e2e tests (profile: e2e test location), that drives it through the real entrypoint -> Station Master -> InterlockingRunner -> TrainRunner path.",
+    "prefer": [
+      "Call the real action endpoint; assert the Station Master chose the interlocking (InterlockingRunner) path, not a direct train.",
+      "Assert InterlockingRunner resolved a route, TrainRunner ran the selected train, and the trace records interlockingId/routeId/selectedTrainId.",
+      "If the interlocking is genuinely internal, set `entrypoint.exposed: false` with a reason; it leaves scope."
+    ],
+    "avoid": [
+      "Bypassing the real entrypoint/Station Master or invoking a train directly.",
+      "Merely naming the action, Station Master and runners without asserting route, train execution and trace ids.",
+      "Flipping a user-facing action to `exposed: false` to escape coverage."
+    ],
+    "unless": [
+      "`entrypoint.exposed: false` (internal-transition-only / library-only / planned-not-exposed): no Station Master action, out of scope."
+    ],
+    "why": "Exposed actions are critical user-facing routes; only an end-to-end smoke test proves the interlocking path and production runners execute. Criticality comes mechanically from `entrypoint.exposed`.",
+    "evidence": [
+      "For each `exposed: true` action, an e2e test exists that references the action name, a Station Master reference, and both production runners (InterlockingRunner and TrainRunner).",
+      "The smoke test hits the real endpoint and asserts interlocking-path choice, route resolution, selected-train execution and trace fields interlockingId/routeId/selectedTrainId.",
+      "The stack's interlocking coverage check reports no uncovered exposed action."
+    ],
+    "verification": [
+      "Scope: a per-stack check parses each interlocking's `entrypoint` declaration, enumerates the actions of `exposed: true` interlockings, and scans the consumer's e2e tests (the e2e test location from the profile) for coverage — a standing obligation for every exposed action, whether or not it was touched in the current change.",
+      "Enforced minimum signature per exposed action: one e2e test file referencing the action name AND a Station Master reference AND both production runners, recognised via the stack's Station Master and production-runner reference tokens (profile). An exposed action with a test file matching the full signature is satisfied and not flagged.",
+      "`entrypoint.exposed: true` requires at least one action; those action names are the Station Master actions checked. `exposed: false` interlockings carry no action and are never flagged.",
+      "The signature check proves reference presence only, not real execution or assertions; the gap between this minimum signature and the normative end-to-end proof is covered by the rule's prefer/avoid, which forbid merely naming the path components.",
+      "Disposition: strict — the rule fails on every finding, with no advisory mode and no ratchet baseline (severity 1, disposition strict per the strict-disposition policy). Strictness applies to exposed (user-facing) actions; `exposed: false` is out of scope. The criticality signal is derived mechanically from the core `entrypoint.exposed` field, not a judgement call."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "interlocking declaration with `entrypoint.exposed: true` and `entrypoint.actions`"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "role",
+          "values": [
+            "e2e_test (the smoke tests the check scans live in the stack's e2e test location)"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "exposed action without Station Master smoke test"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "Any interlocking declares `entrypoint.exposed: true` with an action, and no e2e test references that action name, a Station Master reference, InterlockingRunner and TrainRunner — whether or not the action was touched in the current change.",
+        "A new action is added to an exposed interlocking's `entrypoint.actions` without a matching smoke test.",
+        "An existing smoke test for an exposed action stops referencing one of the production runners (e.g. calls a train directly)."
+      ],
+      "doesNotFire": [
+        "An interlocking with `entrypoint.exposed: false` (internal-transition-only, library-only, planned-not-exposed).",
+        "An exposed action already covered by an e2e test referencing the action, the Station Master and both runners."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roles.e2e_test.path",
+      "meaning": "Where the stack's e2e (smoke) test files live; the coverage check scans exactly these files for each exposed action's smoke test, and the obligation places the smoke test there.",
+      "bunValue": "e2e/**/*.ts"
+    },
+    {
+      "key": "roles.runtime_components#station_master_reference",
+      "meaning": "How a reference to the Station Master (the dispatcher behind exposed entrypoint actions) is recognised in the stack's e2e tests — the reference tokens the enforced minimum signature accepts.",
+      "bunValue": "`StationMaster`/`stationMaster`"
+    },
+    {
+      "key": "roles.runtime_components#production_runner_references",
+      "meaning": "The references to the two production runners of the interlocking execution path (route resolution, train execution) that an action's smoke test must contain for the enforced minimum signature.",
+      "bunValue": "`InterlockingRunner`, `TrainRunner`"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "activation.facts[3]",
+      "text": "language: typescript — \"Bun stack; other stacks are owned by their own packages.\"",
+      "reason": "A language/stack scoping fact of the Bun sidecar; the stack-neutral core needs no language restriction, and each stack's realization scopes itself."
+    },
+    {
+      "item": "activation.facts[2]",
+      "text": "finding id `bun_interlocking_coverage: exposed action without Station Master smoke test`, emitted by the JS detector of the `bun_interlocking_coverage` family.",
+      "reason": "Finding and detector ids of this one rule are realization details; the core states the finding generically."
+    },
+    {
+      "item": "activation.doesNotFire[2]",
+      "text": "Non-Bun stack renderings of the same interlocking obligation.",
+      "reason": "Stack scoping of the Bun sidecar; a stack-neutral core has no \"other stacks\" exclusion — per-stack ownership is implicit."
+    },
+    {
+      "item": "evidence[2]",
+      "text": "The `bun_interlocking_coverage` detector reports no uncovered exposed action.",
+      "reason": "Names this rule's Bun detector family; the core refers to the stack's interlocking coverage check generically."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "JS detector (member of the `bun_interlocking_coverage` FAMILY) parses each interlocking's `entrypoint`; scans interlocking entrypoints and the consumer's `e2e/**/*.ts` tests.",
+      "reason": "Names the realization's detector family and the concrete test path; the core's verification describes the same check generically with the e2e test location taken from the profile."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "text": "One `e2e/**/*.ts` file referencing the action name AND a Station Master reference (`StationMaster` or `stationMaster`) AND both production runners (`InterlockingRunner`, `TrainRunner`).",
+      "reason": "The concrete path glob and reference-token spellings are stack-specific; the neutral signature is stated generically and instantiated through the profile keys (e2e test location, Station Master reference, production-runner references)."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "Fully neutral: `entrypoint.exposed` and Station Master actions are core ATDD domain concepts, not stack constructs.",
+      "as": [
+        "core:given"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "Kept; 'detector' generalized to 'coverage check' since applicability is unconditional for every exposed action.",
+      "as": [
+        "core:when"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "Same single obligation; the stack-specific `e2e/**/*.ts` location is supplied by the profile.",
+      "as": [
+        "core:then",
+        "profile:roles.e2e_test.path"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "Neutral as-is; criticality derives mechanically from `entrypoint.exposed`.",
+      "as": [
+        "core:why"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "Role-level example (real action endpoint, Station Master path choice); neutral as-is.",
+      "as": [
+        "core:prefer[0]"
+      ]
+    },
+    {
+      "item": "prefer[1]",
+      "note": "Neutral: runner names and trace fields are core domain vocabulary of the interlocking path.",
+      "as": [
+        "core:prefer[1]"
+      ]
+    },
+    {
+      "item": "prefer[2]",
+      "note": "Neutral: the exposure flag is a core field.",
+      "as": [
+        "core:prefer[2]"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "Neutral as-is.",
+      "as": [
+        "core:avoid[0]"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "Neutral anti-pattern guarding the gap between the signature check and the real proof.",
+      "as": [
+        "core:avoid[1]"
+      ]
+    },
+    {
+      "item": "avoid[2]",
+      "note": "Neutral metric-gaming anti-pattern.",
+      "as": [
+        "core:avoid[2]"
+      ]
+    },
+    {
+      "item": "unless[0]",
+      "note": "Exception kept verbatim; no exception dropped.",
+      "as": [
+        "core:unless[0]"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "Neutralized: the `e2e/**/*.ts` location and the token spellings (`StationMaster`/`stationMaster`, `InterlockingRunner`, `TrainRunner`) come from the profile; the obligation itself is unchanged.",
+      "as": [
+        "core:evidence[0]",
+        "profile:roles.e2e_test.path",
+        "profile:roles.runtime_components#station_master_reference",
+        "profile:roles.runtime_components#production_runner_references"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "Neutral as-is (endpoint, runner and trace-field names are core domain concepts).",
+      "as": [
+        "core:evidence[1]"
+      ]
+    },
+    {
+      "item": "evidence[2]",
+      "note": "Neutral part kept (coverage check reports no uncovered action); the detector family id is Bun-only.",
+      "as": [
+        "core:evidence[2]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "Check scope restated generically (parses entrypoints, scans e2e tests); the JS detector / family id and the concrete path are Bun-only.",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "The enforced minimum signature is core verification, stated generically; its concrete path and reference tokens are profile/bunOnly.",
+      "as": [
+        "core:verification",
+        "profile:roles.e2e_test.path",
+        "profile:roles.runtime_components#station_master_reference",
+        "profile:roles.runtime_components#production_runner_references",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "Fully neutral: restates the given's structural rule and the `exposed: false` non-flagging.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[3]",
+      "note": "Satisfaction condition of the signature check; neutral.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[4]",
+      "note": "Severity/disposition policy is not a profile key: strict (severity 1, disposition strict per policy.strict-disposition) for exposed actions, `exposed: false` out of scope, derived mechanically from `entrypoint.exposed`.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "Neutral: the interlocking entrypoint declaration is a core file kind; still needs a new observer to parse `exposed`/`actions`; alone it activates the rule for every exposed action.",
+      "as": [
+        "core:activation.facts[0]"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "The `path_glob` value `e2e/**/*.ts` becomes the e2e-test role's location from the profile; observability unchanged.",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:roles.e2e_test.path"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "The finding situation is core (illustrative signal, not a prerequisite); the concrete finding id is Bun-only.",
+      "as": [
+        "core:activation.facts[2]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.facts[3]",
+      "note": "Pure stack scoping (TypeScript/Bun); no stack-neutral equivalent — the core applies per stack via each realization.",
+      "as": [
+        "bunOnly"
+      ]
+    }
+  ],
+  "neutralityNotes": "The obligation itself is stack-neutral: `entrypoint.exposed`/`entrypoint.actions`, the Station Master, InterlockingRunner and TrainRunner, and the trace fields interlockingId/routeId/selectedTrainId are core ATDD domain concepts (design refs afokapu/atdd#1248, #1251) and are kept verbatim. Only four things were stack-specific: (1) the smoke-test location `e2e/**/*.ts`, moved to profile key `roles.e2e_test.path`; (2) the reference-token spellings the check matches, for which two idiom keys are proposed because the closed vocabulary has no slot for dispatcher/runner reference tokens; (3) the detector/finding ids (`bun_interlocking_coverage` family, validator ref), classified bunOnly with the check described generically in core verification; (4) the TypeScript/Bun scoping facts (activation.facts[3], doesNotFire[2]), which have no neutral equivalent since the core applies to every stack through its own realization.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/tester.bun.interlocking-smoke-coverage-for-station-master.json",
+      "sha256": "4c3f125a52d8f3ba80015a369098584cf7e625c4924801ec2d304b2e68c5700a"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 1,
+    "usefulness": 5,
+    "deriver": "rekey-v3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

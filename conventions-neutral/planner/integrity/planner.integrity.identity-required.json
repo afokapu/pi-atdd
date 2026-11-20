@@ -1,0 +1,313 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.integrity.identity-required",
+  "legacyId": "atdd-bun.planner.identity-required",
+  "core": {
+    "title": "Give every plan artifact its canonical identity",
+    "given": "Any plan artifact of a kind the stack recognizes, outside the vendored and generated trees this check never scans, whether new, edited, or existing and unchanged",
+    "when": "the plan set is authored or validated",
+    "then": "The artifact carries its canonical identity for its kind: the identity field the stack assigns to that plan-artifact kind, present, non-empty, and canonical for that artifact (not a placeholder and not another kind's field).",
+    "prefer": [
+      "Add the identity field for the artifact's kind; when you find an existing artifact without one, add it.",
+      "Use the same identity in every other plan artifact that references this one."
+    ],
+    "avoid": [
+      "Adding a placeholder identity just to pass the check; the identity must be the canonical one others reference.",
+      "Using another kind's identity field instead of the one canonical for the artifact's kind."
+    ],
+    "unless": [
+      "Vendored and generated trees are never scanned."
+    ],
+    "why": "An artifact without an identity cannot be referenced, bound, or traced, and every rule that resolves references silently skips it, so its gaps go unseen.",
+    "evidence": [
+      "Every recognized plan artifact outside the vendored and generated trees this check never scans, including existing unchanged ones, shows the identity field for its kind with a non-placeholder value.",
+      "The value is the identity other plan artifacts use to reference it.",
+      "The stack's plan-integrity check reports no identity finding for the plan set."
+    ],
+    "verification": [
+      "Scope: scan every recognized plan artifact in the plan set, whatever the author and whether new, edited, or existing and unchanged, not only changed ones; kinds the stack does not recognize as plan artifacts are out of scope.",
+      "The obligation covers a missing identity field and a present but noncanonical one (empty, placeholder, or another kind's field). The check compares the identity field against the artifact's kind, not merely whether some identity key is present; where the realizing check's coverage of noncanonical values is unspecified, canonicality of a present value is judged by a reviewer.",
+      "Vendored and generated trees are never scanned. The exact excluded trees are owned by this check's realization as the check's own exclusion list; they are deliberately not equated with the stack-wide never-scanned list, which is a separate concept and may be broader (substituting it would drop obligations on artifacts outside the check's own exclusions).",
+      "Check ordering (after parse, before identity-uniqueness checking) is implementation ordering, not an exemption: an artifact that fails to parse is reported by the parse rule, and it must still carry its identity once it parses.",
+      "Strict disposition, severity 3: the rule fails on every finding; no advisory mode, no ratchet baseline.",
+      "Realization details left open: the realizing validator's exact finding format and how it classifies artifact kinds are not fixed by the core; an observer that reports the recognized kind of each plan artifact may need to be added."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "plan artifact of a kind the stack recognizes"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "recognized artifact lacks its canonical identity (field absent, empty, or not the canonical identity for its kind)"
+          ],
+          "observability": "llm_judged"
+        }
+      ],
+      "fires": [
+        "A plan artifact of a recognized kind is written without its canonical identity field.",
+        "A recognized plan artifact is edited and its identity field is removed or left empty.",
+        "A recognized plan artifact carries an identity field, but the value is a placeholder or another kind's field rather than its canonical identity.",
+        "During plan validation, an existing, unchanged recognized artifact (from any author) is found without its canonical identity."
+      ],
+      "doesNotFire": [
+        "The artifact sits under a vendored or generated tree this check never scans.",
+        "The artifact's kind is not one the stack recognizes as a plan artifact."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roles.plan_artifact.kinds",
+      "meaning": "Which artifact kinds count as recognized plan artifacts, i.e. the scope of 'a kind the stack recognizes'; kinds not in this list are out of scope.",
+      "bunValue": "\"plan artifact of a kind the planner recognizes\" (activation.facts[0]); bun.json does not enumerate them - the recognized identity fields imply train, interlocking, journey, and urn-identified kinds, classified by validator planner_plan_integrity"
+    },
+    {
+      "key": "urn.declaration",
+      "meaning": "How a plan artifact declares its own URN, in the key's documented URN-specific sense: for kinds identified by a URN, this declaration is the artifact's canonical identity - the identity field whose presence the core requires and whose value other plan artifacts reference.",
+      "bunValue": "The `urn` field: a recognized URN-identified plan artifact carries its identity in `urn` (then/evidence[0] list `urn` among the identity fields; verifier_detail[1]: 'Recognized identity fields: train_id, interlocking_id, journey_id, urn'; fires: 'A recognized URN-identified plan artifact has no `urn`')"
+    },
+    {
+      "key": "urn.grammar#plan_identity_fields",
+      "meaning": "For each recognized plan-artifact kind not identified by its own URN, the name of the field in which the artifact declares its canonical identity (the value other plan artifacts reference). Kinds that declare a URN are covered by urn.declaration, not by this key.",
+      "bunValue": "train -> train_id, interlocking -> interlocking_id, journey -> journey_id (verifier_detail[1]: 'Recognized identity fields: train_id, interlocking_id, journey_id, urn'; then and evidence[0] name the same four; the `urn` field itself is delivered by urn.declaration)"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "prefer[0]",
+      "text": "e.g. `interlocking_id: interlocking:checkout`",
+      "reason": "Concrete example in the stack's plan vocabulary; the core keeps the fix hint role-level and bun.json remains the worked reference example."
+    },
+    {
+      "item": "avoid[1]",
+      "text": "(e.g. `urn` on an interlocking that needs `interlocking_id`)",
+      "reason": "Concrete example naming this stack's identity fields; the core states the anti-pattern at the kind level."
+    },
+    {
+      "item": "unless[0]",
+      "text": "Vendored and generated trees (`node_modules`, `dist`, `build`, `_generated`) are never scanned.",
+      "reason": "The exact four trees are this check's own exclusion list, owned by the realization; the core keeps the neutral exception and states the checker-owned scope in verification, without equating it with the stack-wide never-scanned list."
+    },
+    {
+      "item": "evidence[2]",
+      "text": "planner_plan_integrity reports no identity finding for the plan set.",
+      "reason": "Validator id of this one rule is a realization detail; the core names the plan-integrity check generically."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "Implemented by validator `planner_plan_integrity` (type validator). Its exact finding format and kind classification are not specified in the source.",
+      "reason": "Names this rule's validator id; only the neutral honesty about unspecified finding format and kind classification carries into core verification."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "text": "Ordering (graph): atdd-bun.planner.parse enables this rule, since identity is read only once an artifact parses; this rule enables atdd-bun.planner.identity-unique.",
+      "reason": "Names sibling rule ids of this stack's rule graph; the core keeps only the neutral statement that ordering is not an exemption."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "text": "Exclude path segments `node_modules`, `dist`, `build`, `_generated` from scanning.",
+      "reason": "The concrete segments are the check's own realization-owned exclusion list; the core states the exclusion and its checker-owned scope generically in verification and does not redefine the stack-wide never-scanned list."
+    },
+    {
+      "item": "activation.facts[0]",
+      "text": "The source names validator planner_plan_integrity as the implementation but does not specify how it classifies artifact kinds",
+      "reason": "Validator id is a realization detail; the core keeps the needs_new_observer fact and the generic caveat in verification."
+    },
+    {
+      "item": "activation.facts[1]",
+      "text": "path_glob values: !**/node_modules/**, !**/dist/**, !**/build/**, !**/_generated/**",
+      "reason": "The concrete globs are the check's own four-segment exclusion list, realization data; the neutral exception survives in core:unless[0] and doesNotFire, and the checker-owned exclusion scope is described in core verification."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "Already role-level; 'the vendored and generated trees this check never scans' refers to the check's own exclusion (exact trees are realization data, see verification). Scope conditions (any author; new, edited, or existing and unchanged) kept in full.",
+      "as": [
+        "core:given"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "Verbatim; neutral trigger that restricts neither operation nor author.",
+      "as": [
+        "core:when"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "Single obligation kept; the per-kind identity field names are supplied by two profile keys, each in its own scope: `urn` for URN-identified kinds comes from urn.declaration in its documented URN-declaration meaning, and the non-URN fields (train_id, interlocking_id, journey_id) come from the proposed urn.grammar#plan_identity_fields. Canonicality (non-placeholder, right field for the kind) is preserved from the finding fact and avoid items.",
+      "as": [
+        "core:then",
+        "profile:urn.declaration",
+        "profile:urn.grammar#plan_identity_fields"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "Verbatim; already stack-neutral.",
+      "as": [
+        "core:why"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "Fix hint kept neutrally (add the kind's identity field, also to existing artifacts); the concrete example is Bun plan vocabulary and stays in bun.json.",
+      "as": [
+        "core:prefer[0]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "prefer[1]",
+      "note": "Verbatim and neutral; remains a preference, not an added obligation.",
+      "as": [
+        "core:prefer[1]"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "Verbatim; neutral anti-gaming rule that defines what 'canonical' excludes.",
+      "as": [
+        "core:avoid[0]"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "Generalized to 'another kind's identity field'; the concrete example is dropped to bunOnly.",
+      "as": [
+        "core:avoid[1]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "unless[0]",
+      "note": "The single exception is kept neutrally in full; the exact four trees are this check's realization-owned exclusion and stay in bunOnly, deliberately not equated with the stack-wide roots.excluded list (the stack-wide list is a separate, broader concept).",
+      "as": [
+        "core:unless[0]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "Neutralized ('trees this check never scans', 'identity field for its kind'); the `urn` field for URN-identified kinds comes from urn.declaration and the non-URN per-kind fields from urn.grammar#plan_identity_fields; 'existing unchanged ones' and 'non-placeholder' kept.",
+      "as": [
+        "core:evidence[0]",
+        "profile:urn.declaration",
+        "profile:urn.grammar#plan_identity_fields"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "Verbatim; neutral.",
+      "as": [
+        "core:evidence[1]"
+      ]
+    },
+    {
+      "item": "evidence[2]",
+      "note": "Core states it generically ('the stack's plan-integrity check reports no identity finding'); the validator id is bunOnly.",
+      "as": [
+        "core:evidence[2]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "Validator id is a realization detail (bunOnly); the unspecified finding format and kind classification become a neutral verification caveat.",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "Scope (every recognized artifact, not only changed ones; unrecognized kinds out of scope; field must match the kind) is neutral and goes to verification; the recognized identity-field names split across the two profile keys - `urn` from urn.declaration (URN declaration syntax), train_id, interlocking_id, journey_id from the proposed urn.grammar#plan_identity_fields.",
+      "as": [
+        "core:verification",
+        "profile:urn.declaration",
+        "profile:urn.grammar#plan_identity_fields"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "'Ordering is not an exemption; the artifact must still carry its identity once it parses' is kept neutrally in verification; the sibling rule ids are bunOnly.",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[3]",
+      "note": "The exclusion is kept neutrally in verification as checker-owned scope (the exact trees are the check's realization-owned list, not the stack-wide roots.excluded list); the concrete segment enumeration is bunOnly.",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[4]",
+      "note": "Strict disposition and severity 3 are per-rule enforcement, not profile keys; 'every finding fails' with no advisory mode or ratchet baseline.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "file_kind fact kept with needs_new_observer; which kinds are recognized is profile data (roles.plan_artifact.kinds); the observer gap and the validator-name mention split into verification and bunOnly.",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roles.plan_artifact.kinds",
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "The path_glob fact's concrete values are the check's own four-segment exclusion list (realization data, bunOnly), not the stack-wide roots.excluded list; the neutral exception is carried by core:unless[0] and doesNotFire. The neutral fact vocabulary has no path fact, so this is not a core fact and the remaining facts re-index (Bun facts[2] becomes core facts[1]).",
+      "as": [
+        "core:unless[0]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "finding fact kept verbatim in substance (llm_judged) and re-indexed to facts[1]; the coverage caveat (canonicality judged by a reviewer until the validator's coverage is specified) goes to verification.",
+      "as": [
+        "core:activation.facts[1]",
+        "core:verification"
+      ]
+    }
+  ],
+  "neutralityNotes": "The obligation itself is fully stack-neutral (a plan artifact must carry the canonical identity of its kind); everything concrete lives in the profile or the realization. The per-kind identity declaration is split across two keys, each kept to its own documented scope: urn.declaration is used only for how a URN-identified plan artifact declares its own URN (the Bun `urn` field), and the non-URN per-kind identity fields (train_id, interlocking_id, journey_id) are covered by no existing key - urn.<artifact> gives URN value shapes and urn.binding.<artifact> how source or test files bind to an artifact - so urn.grammar#plan_identity_fields is proposed for exactly that non-URN mapping. The recognized-kind list comes from roles.plan_artifact.kinds (bun.json never enumerates the kinds - they are implied by the recognized identity fields and classified by the realizing validator). The exact four excluded trees (node_modules, dist, build, _generated) are this check's own realization-owned exclusion list and stay in bunOnly; core verification describes the checker-owned exclusion scope and deliberately does not equate it with the stack-wide roots.excluded list, which is a separate concept that may be broader - substituting it would drop obligations on recognized artifacts outside the check's own exclusions. The neutral activation-fact vocabulary has no path fact, so the Bun path_glob fact is expressed through unless/doesNotFire plus the realization-owned list, and the core's facts are re-indexed (Bun facts[2] becomes core facts[1]). Kind-specific fires examples (interlocking_id, journey_id, urn) were generalized to the recognized-kind level; the concrete examples remain in bun.json, which is delivered as the worked reference. Validator and sibling-rule ids (planner_plan_integrity, atdd-bun.planner.parse, atdd-bun.planner.identity-unique) stay bunOnly. Note that even the Bun source does not fix how kinds are classified or how much of the noncanonical case the validator detects; the core keeps that honesty in verification rather than inventing coverage.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/atdd-bun.planner.identity-required.json",
+      "sha256": "0f1a372bf3551312c2d6aaaf03c63514251f6ff3498694a6e77546a106a38dfd"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 1,
+    "usefulness": 5,
+    "deriver": "rekey-v3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

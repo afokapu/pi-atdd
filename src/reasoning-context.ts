@@ -5,6 +5,7 @@
  * prerequisite; no inferred Flow↔Bun edges. Legacy text/path selectors emit
  * explicit evidence facts rather than acting as an undocumented oracle.
  */
+import { DEFAULT_PROFILE, profileByName, roleOfPath, type StructureProfile } from "./profile.ts";
 import { canonicalRuleId, matchesGlob, termMatches, validateSelectors, type Catalog, type Convention, type Relation, type Selector } from "./catalog.ts";
 import { PositiveReasoner, groundKey, type Fact, type Proof, type Rule, type Delta } from "./inference.ts";
 
@@ -85,11 +86,6 @@ function typedRules(catalog: Catalog): Rule[] {
   });
   return typed;
 }
-function pathLayer(path: string): string | undefined {
-  const parts = path.replaceAll("\\", "/").split("/");
-  return ["domain", "application", "integration", "presentation", "assembly"]
-    .find(layer => parts.includes(layer));
-}
 function collectReasons(proof: Proof): string[] {
   const reasons = new Set<string>();
   const visit = (p: Proof): void => {
@@ -129,7 +125,9 @@ export class ReasoningSession {
   private readonly observations = new Map<string, Map<string, Fact>>();
   private readonly catalog: Catalog;
   private readonly selectors: Selector[];
-  constructor(catalog: Catalog, selectors: Selector[]) {
+  private readonly profile: StructureProfile;
+  constructor(catalog: Catalog, selectors: Selector[], profile: StructureProfile = profileByName(DEFAULT_PROFILE)) {
+    this.profile = profile;
     validateSelectors(catalog,selectors);
     this.catalog = catalog; this.selectors = selectors;
     this.engine = new PositiveReasoner([...selectorRules, ...typedRules(catalog)]);
@@ -165,7 +163,7 @@ export class ReasoningSession {
     add("operation", [ob.scope, ob.operation]);
     if (ob.path) {
       add("file", [ob.scope, ob.path], "path:" + ob.path + " observed by " + ob.provenance);
-      const layer = pathLayer(ob.path);
+      const layer = roleOfPath(this.profile, ob.path); // role-level fact: the stack's local layer names never reach the rules
       if (layer) add("file_layer", [ob.scope, layer], "layer:" + layer + " from " + ob.path);
     }
     if (ob.phase) add("phase", [ob.scope, ob.phase]);

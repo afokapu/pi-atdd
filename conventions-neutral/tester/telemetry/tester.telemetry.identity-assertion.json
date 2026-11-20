@@ -1,0 +1,384 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "tester.telemetry.identity-assertion",
+  "legacyId": "tester.bun.telemetry-identity-assertion",
+  "core": {
+    "title": "Assert the exact telemetry URN in telemetry tests",
+    "given": "A test is a telemetry test: it claims telemetry URNs in its binding header(s), or is identified as one by a telemetry URN segment in its path or by colocation with the telemetry emitter.",
+    "when": "Writing, changing or checking that test, including edits to its binding header(s) or to a claimed item's identity.",
+    "then": "Every telemetry URN claimed in the test's binding header appears verbatim in the test's code as an assertion string (a string literal that takes part in an assertion, not an unused literal); a telemetry test with no such header asserts at least one concrete telemetry URN. Once generated contracts ship, the item's contract identifier satisfies this the same way.",
+    "prefer": [
+      "Name the telemetry item in the assertion itself: assert that the emitter was called with the item's exact URN string and its payload."
+    ],
+    "avoid": [
+      "Asserting the mocked emitter was called with any argument.",
+      "Asserting a URN prefix or a captured-anything matcher.",
+      "Relying on the URN in the binding header or any comment — comments do not assert.",
+      "A quoted URN present in code but never used in an assertion."
+    ],
+    "unless": [
+      "The repository has not adopted this rule family — the rule is inert until adoption, like every rule in the family."
+    ],
+    "why": "An any-call assertion proves emission, not that the planned item fired; renames and copy-paste drift hide there. Exact URNs keep assertion and plan from silently diverging.",
+    "evidence": [
+      "For each telemetry URN claimed in the test's binding header(s), the same URN occurs verbatim as a quoted string in the comment-masked test source, and that string takes part in an assertion (not an unused literal).",
+      "For a telemetry test with no binding header (identified by URN segment or colocation), at least one concrete telemetry URN string is asserted in comment-masked code.",
+      "The stack's telemetry-test check reports no finding for this rule, and a reviewer confirms the matching strings are used in assertions."
+    ],
+    "verification": [
+      "Claimed URNs are the URNs listed in the test's telemetry binding header(s) (binding syntax from the profile). Which files count as test files comes from the profile's role assignment for the test roles (roles.assignment and each test role's kinds), and which languages the test-file scope covers comes from the profile's language scopes (tooling.language_scopes#test_files); the stack does not differentiate test kinds for this rule. Applicability is determined by the test file's classification (binding header / URN segment / colocation), never by task wording; task terms are a non-gating discovery hint only.",
+      "Mask comments (comment syntax from the profile) before searching; header and comment occurrences never satisfy the rule.",
+      "The match must be the concrete URN verbatim inside a string literal: not a prefix, not a captured-anything matcher, not a comment.",
+      "Mechanical check: each claimed URN is found as a quoted string in comment-masked source. The obligation is that this string takes part in an assertion (used directly or nested in an asserted value); literal presence alone is the detector's approximation.",
+      "Telemetry tests identified only by URN segment or colocation must assert at least one concrete telemetry URN string in code (any concrete telemetry URN of the profile's telemetry URN space satisfies this, not only one example shape).",
+      "When generated contracts ship, a contract identifier for the item satisfies the check the same way as the URN literal (equally acceptable, not preferred).",
+      "The rule is inert until the repository adopts the telemetry rule family.",
+      "Severity 3, disposition strict: every finding fails the check; no advisory mode and no ratchet baseline."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "unit_test",
+            "acceptance_test",
+            "e2e_test"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "telemetry test: telemetry binding header present, telemetry URN segment in path, or colocated with the telemetry emitter"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "telemetry adoption enabled in repository"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "task_term",
+          "values": [
+            "telemetry",
+            "event",
+            "emit",
+            "URN"
+          ],
+          "observability": "observable_now"
+        }
+      ],
+      "fires": [
+        "A test with a telemetry binding header whose code only asserts that the emitter was called, with any argument.",
+        "A telemetry test whose claimed URN appears only in the binding header or another comment, not in an assertion string in code.",
+        "A telemetry test whose claimed URN appears only as an unused string literal (e.g. a constant never used in any assertion).",
+        "A telemetry test identified only by URN segment or colocation that asserts no concrete telemetry URN.",
+        "A telemetry test asserting a URN prefix or a captured-anything matcher instead of the full URN.",
+        "A task that renames a telemetry item or edits a test's telemetry binding header without touching assertions, leaving claimed and asserted URNs out of sync."
+      ],
+      "doesNotFire": [
+        "A non-telemetry test file (no telemetry binding header, no telemetry URN segment, not colocated with the telemetry emitter).",
+        "A repository that has not adopted the telemetry rule family (rule inert).",
+        "A telemetry test whose assertions contain every claimed URN verbatim as a string literal (whether passed directly or nested in an asserted value).",
+        "Once generated contracts ship, a test asserting the generated contract identifier for the item."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roles.assignment",
+      "meaning": "How a file is assigned to a test role for this rule: in this stack the test runner's complete test-file classification assigns a file to every test role alike (the stack does not differentiate unit, acceptance and e2e test files), and a file that is not a test file is out of scope. The classification is the runner's own recognition, not a suffix list — the note's example suffix is illustrative only — and it applies across every language of the stack's test-file scope (the languages themselves are recorded under tooling.language_scopes#test_files).",
+      "bunValue": "\"Bun test files (e.g. *.test.ts).\" — the runner's complete test-file classification; *.test.ts is an example, not the recognition rule, and test files in both of the stack's languages are equally covered"
+    },
+    {
+      "key": "roles.unit_test.kinds",
+      "meaning": "The concrete artifact kind that plays the unit_test role here: the runner's test files, undifferentiated across the test roles (see roles.assignment; the languages of the test-file scope are recorded under tooling.language_scopes#test_files).",
+      "bunValue": "\"Bun test files (e.g. *.test.ts)\" — the runner's whole test-file classification (example suffix not exhaustive; test files in all covered languages included)"
+    },
+    {
+      "key": "roles.acceptance_test.kinds",
+      "meaning": "The concrete artifact kind that plays the acceptance_test role here: the runner's test files, undifferentiated across the test roles (see roles.assignment; the languages of the test-file scope are recorded under tooling.language_scopes#test_files).",
+      "bunValue": "\"Bun test files (e.g. *.test.ts)\" — the runner's whole test-file classification (example suffix not exhaustive; test files in all covered languages included)"
+    },
+    {
+      "key": "roles.e2e_test.kinds",
+      "meaning": "The concrete artifact kind that plays the e2e_test role here: the runner's test files, undifferentiated across the test roles (see roles.assignment; the languages of the test-file scope are recorded under tooling.language_scopes#test_files).",
+      "bunValue": "\"Bun test files (e.g. *.test.ts)\" — the runner's whole test-file classification (example suffix not exhaustive; test files in all covered languages included)"
+    },
+    {
+      "key": "tooling.language_scopes#test_files",
+      "meaning": "The languages covered by the check's test-file scope: which languages' test files the stack recognizes and this rule covers. The core itself scopes by test role and declares no language fact; the Bun realization gates on language, and instantiating the core on this stack restores that exact language gating (typescript, javascript) from this profile value.",
+      "bunValue": "typescript, javascript (activation.facts[1] values, note: \"Bun family of rules.\")"
+    },
+    {
+      "key": "idiom.comment_marker",
+      "meaning": "Line-comment syntax of the stack's source files, used to mask comments and binding headers before searching for asserted URNs.",
+      "bunValue": "//"
+    },
+    {
+      "key": "urn.telemetry",
+      "meaning": "The URN space of telemetry items: every concrete telemetry URN, of any kind. Claimed URNs of any shape within this space must be matched verbatim, and a headerless telemetry test may satisfy the rule with any concrete telemetry URN from this space; the event form is one example, not the exclusive shape.",
+      "bunValue": "any concrete `telemetry:` URN — the `telemetry:`-prefixed URN space generally (e.g. `telemetry:event:be:example:item-accepted`); claimed URNs and headerless assertions are not limited to the event form"
+    },
+    {
+      "key": "urn.binding.telemetry",
+      "meaning": "The syntax by which a test file declares (binds itself to) the telemetry URNs it claims; claimed URNs of any shape within the telemetry URN space are binding.",
+      "bunValue": "`// Telemetry:` header comment(s) listing the claimed telemetry URNs (e.g. `// Telemetry: telemetry:event:...`)"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "activation.facts[1]",
+      "text": "language: typescript, javascript (observable_now) — \"Bun family of rules.\"",
+      "reason": "The presence of a language activation fact is the ATDD-Bun realization's family-scoping mechanism; the neutral core scopes by test role and declares no language fact of its own, so the fact as an activation item stays with the realization. The covered languages themselves are profile data, not realization-only: the test-file scope's languages are recorded under tooling.language_scopes#test_files (typescript, javascript), so an instantiation of the core reproduces Bun's exact language gating from the profile."
+    },
+    {
+      "item": "prefer[0]",
+      "text": "Name the item in the assertion itself: expect(emit).toHaveBeenCalledWith(\"telemetry:event:be:example:item-accepted\", { item_id: \"i-1\" });",
+      "reason": "The assertion call and its example URN/payload are the stack's test-runner idiom; the core keeps the pattern at role level and bun.json remains the delivered worked example."
+    },
+    {
+      "item": "evidence[2]",
+      "text": "bun_telemetry_test validator reports no finding for this rule",
+      "reason": "The validator id of this rule is a realization detail; the core's evidence names the stack's telemetry-test check generically."
+    },
+    {
+      "item": "verifier_detail[7]",
+      "text": "Implementation: validator bun_telemetry_test.",
+      "reason": "Detector/validator ids of this rule are realization details; severity and disposition stay in core verification, which names the check generically."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "\"A Bun test\" becomes \"a test\" (kinds carried by the file_kind fact); the `// Telemetry:` header becomes the telemetry binding header (urn.binding.telemetry); URN-segment/colocation identification kept unchanged.",
+      "as": [
+        "core:given"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "Already stack-neutral; \"header\" generalized to binding header.",
+      "as": [
+        "core:when"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "One obligation kept with all three clauses: verbatim assertion string (not an unused literal), headerless test asserts at least one concrete URN (any concrete telemetry URN of urn.telemetry's space, not only the event shape), and the generated-contracts alternative.",
+      "as": [
+        "core:then"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "Already stack-neutral; carried verbatim.",
+      "as": [
+        "core:why"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "The pattern (name the item in the assertion itself) is core; the concrete assertion call and example URN are the stack's test-runner idiom and stay with the realization.",
+      "as": [
+        "core:prefer[0]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "Mocking the emitter is a role-level testing concept; already neutral.",
+      "as": [
+        "core:avoid[0]"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "\"Captured-anything matcher\" treated as a near-universal mocking concept; already neutral.",
+      "as": [
+        "core:avoid[1]"
+      ]
+    },
+    {
+      "item": "avoid[2]",
+      "note": "\"Header\" generalized to binding header; comments-do-not-assert kept.",
+      "as": [
+        "core:avoid[2]"
+      ]
+    },
+    {
+      "item": "avoid[3]",
+      "note": "Already stack-neutral; carried verbatim.",
+      "as": [
+        "core:avoid[3]"
+      ]
+    },
+    {
+      "item": "unless[0]",
+      "note": "Inert-until-adoption is family-level and stack-neutral; also restated in core verification and the change activation fact.",
+      "as": [
+        "core:unless[0]"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "Comment masking kept; the comment syntax itself comes from idiom.comment_marker; header syntax from urn.binding.telemetry.",
+      "as": [
+        "core:evidence[0]"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "Headerless identification (URN segment / colocation) kept neutral; \"concrete telemetry: URN\" resolves to any concrete telemetry URN of the profile's telemetry URN space (urn.telemetry), not only the event form.",
+      "as": [
+        "core:evidence[1]",
+        "profile:urn.telemetry"
+      ]
+    },
+    {
+      "item": "evidence[2]",
+      "note": "The no-finding + reviewer confirmation evidence is core; the validator id bun_telemetry_test is Bun-only.",
+      "as": [
+        "core:evidence[2]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "Claimed URNs = those listed in the binding header(s), whatever their shape within the telemetry URN space; the header syntax is profile data.",
+      "as": [
+        "core:verification",
+        "profile:urn.binding.telemetry"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "Comment masking is a generic check step; the comment syntax is profile data.",
+      "as": [
+        "core:verification",
+        "profile:idiom.comment_marker"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "Verbatim-in-a-string-literal match (no prefix, no captured-anything matcher, no comment) is neutral; the term id `exact_identity` is a realization identifier and stays with the realization.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[3]",
+      "note": "The detector's approximation limit (literal presence vs. assertion use, nested values counting) is generic check scope.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[4]",
+      "note": "Segment/colocation-identified tests must assert one concrete telemetry URN; urn.telemetry is the whole concrete `telemetry:` URN space (event form only an example), so a non-event concrete telemetry URN satisfies this exactly as in Bun.",
+      "as": [
+        "core:verification",
+        "profile:urn.telemetry"
+      ]
+    },
+    {
+      "item": "verifier_detail[5]",
+      "note": "Generated-contracts alternative (equally acceptable, not preferred) is neutral and also kept in core then.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[6]",
+      "note": "Inert until family adoption; restates core:unless[0] for the verifier.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[7]",
+      "note": "Severity 3 and strict disposition are per-rule enforcement (core verification); the validator id is a realization detail (bunOnly).",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[8]",
+      "note": "Applicability by file classification, never by task wording; merged with the non-gating task-term hint and the profile-sourced role assignment and test-file language scope (roles.assignment / test-role kinds / tooling.language_scopes#test_files) in core verification.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "Bun's single undifferentiated \"test\" file kind maps to the neutral test roles through role assignment: recognition is the runner's complete test-file classification (roles.assignment), which plays every test role alike (the three kinds entries); the note's `*.test.ts` is an example, not an exhaustive suffix list, and test files in every language of the stack's test-file scope (tooling.language_scopes#test_files) are equally covered by that same classification. No suffix key is used, since the stack declares no actual suffix/name-pattern rule.",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roles.assignment",
+        "profile:roles.unit_test.kinds",
+        "profile:roles.acceptance_test.kinds",
+        "profile:roles.e2e_test.kinds"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "The language fact as an activation item (gating on typescript/javascript, \"Bun family of rules\") is the Bun realization's family-scoping device and stays with the realization; the neutral core scopes by test role and needs no language fact of its own. The covered languages are profile data, not realization-only: the test-file scope's languages are recorded under tooling.language_scopes#test_files (typescript, javascript), so instantiating the core on this stack restores Bun's exact language gating. tooling.languages keeps only its documented production-source meaning and is not used by this core.",
+      "as": [
+        "profile:tooling.language_scopes#test_files",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "Telemetry-test classification (binding header / URN segment / colocation) is neutral and needs_new_observer; the concrete header and URN syntaxes are profile data, with the URN space covering all concrete telemetry URNs. The Bun note's validator reference is covered by the bunOnly validator entry.",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:urn.binding.telemetry",
+        "profile:urn.telemetry"
+      ]
+    },
+    {
+      "item": "activation.facts[3]",
+      "note": "Adoption change fact kept neutral; needs_new_observer.",
+      "as": [
+        "core:activation.facts[2]"
+      ]
+    },
+    {
+      "item": "activation.facts[4]",
+      "note": "Task terms kept verbatim (telemetry, event, emit, URN); the NON-GATING hint is preserved in core verification (applicability never by task wording).",
+      "as": [
+        "core:activation.facts[3]"
+      ]
+    }
+  ],
+  "neutralityNotes": "The telemetry URN space and the binding-header syntax use existing vocabulary v3 keys (the urn group's artifact param includes telemetry): urn.telemetry denotes every concrete telemetry URN — the event form telemetry:event:... is retained only as an example, so claimed non-event URNs and headerless tests asserting any concrete telemetry URN keep Bun's exact treatment — and urn.binding.telemetry carries the binding-header syntax; no keys are proposed. Test-file recognition is profile data through role assignment, not suffixes: Bun declares no suffix/name-pattern rule of its own, so the runner's complete test-file classification is recorded in roles.assignment and the three test roles' kinds entries (the note's `*.test.ts` is an example, not the recognition rule). The languages of the test-file scope are profile data under tooling.language_scopes#test_files (typescript, javascript); the Bun language activation fact itself remains with the realization as the family's scoping device, and the core needs no language fact because instantiating it on this stack restores the exact gate from that profile value (roles.assignment describes test recognition but does not replace this language-scope value). Comment masking (// -> idiom.comment_marker) is profile-sourced. Kept as bunOnly: the language activation fact (as an activation item; its language values live in the profile), the validator id bun_telemetry_test, and the concrete assertion idiom in prefer[0] (the core states the pattern at role level; bun.json stays the worked example). 'String literal', 'captured-anything matcher', 'comment masking' and 'mocked emitter' are treated as near-universal testing concepts and kept in core wording. The 'generated contracts ship' provision names no stack and is kept verbatim. Severity 3 / strict disposition are per-rule enforcement and live in core verification, not the profile.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/tester.bun.telemetry-identity-assertion.json",
+      "sha256": "e890942c023b4c52adee5f1dd3dec44fc0d2b26773a427895bb7f28a689a627f"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "rekey-v3 -> zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

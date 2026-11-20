@@ -1,0 +1,328 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.architecture.hierarchy-import",
+  "legacyId": "coder.bun.design-hierarchy-import",
+  "core": {
+    "title": "Imports point inward through the layer hierarchy",
+    "given": "A non-test source module, in any code tree the layer rules apply to (shared/commons and feature code alike), that the profile's role assignment places in a layer role",
+    "when": "It imports another project module (an import that resolves inside the project graph, not an external package)",
+    "then": "The import MUST point inward: presentation -> application -> domain; integration -> application, domain; only the composition root may reach any layer.",
+    "prefer": [
+      "When an inner layer needs an outer capability, use an existing inward-facing port.",
+      "During GREEN: introduce the smallest missing port only when the current behavior cannot otherwise be implemented correctly, and limit its contract to what the acceptance requires.",
+      "During GREEN: reuse the nearest existing compliant dependency path (shared phase-loop policy)."
+    ],
+    "avoid": [
+      "Reclassifying or merging layers merely to make one import legal.",
+      "Adding an outward-pointing dependency as a temporary step.",
+      "Spreading 'knows everything' wiring outside the composition root.",
+      "Broadening the change by redesigning adjacent modules (shared phase-loop policy: do not broaden)."
+    ],
+    "unless": [
+      "Test files (unit, acceptance and e2e test roles) and the stack's excluded vendored/build trees are never scanned.",
+      "Imports of external packages, recognised by the stack's external-import idiom, resolve outside the project graph and are not layer-checked.",
+      "A file that the role assignment places in no layer role is outside these rules, not in violation."
+    ],
+    "why": "It governs feature code too, where most layering damage happens. The composition-root exemption makes it workable: something must know about everything, and confining that to the composition root is the point of having one.",
+    "evidence": [
+      "Every affected import still points in an allowed direction (no finding from the stack's layer-hierarchy import check).",
+      "The current behavioral acceptance passes."
+    ],
+    "verification": [
+      "The check resolves each project import of an in-scope file to its target layer role and flags an edge the hierarchy does not permit.",
+      "Allowed edges (inward import): presentation -> application -> domain; integration -> application, domain. This is the permitted direction.",
+      "Composition-root exemption: the composition root may import any layer.",
+      "Scope: skip test files and the excluded vendored/build trees; skip external-package imports; files with no layer role are out of scope, not violations.",
+      "Severity 3, disposition strict."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "source"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "role",
+          "values": [
+            "presentation",
+            "application",
+            "domain",
+            "integration",
+            "composition_root"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "operation",
+          "values": [
+            "project_import"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "A domain module imports an application, integration, presentation or composition-root module.",
+        "An application module imports from presentation or integration.",
+        "An integration module imports from presentation.",
+        "A feature module (not only shared/commons code) has an import whose target layer is outward of its own layer.",
+        "A change moves or edits code so that an existing import of an in-scope file is affected."
+      ],
+      "doesNotFire": [
+        "The composition root imports any layer to wire them together.",
+        "A test file imports across layers.",
+        "Files under the stack's excluded vendored/build trees.",
+        "An import of an external package (outside the project graph).",
+        "A file that is assigned no layer role."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roles.layers",
+      "meaning": "The stack's layer roles and their local names, covering presentation, application, domain, integration and the composition root.",
+      "bunValue": "presentation, application, domain, integration, assembly"
+    },
+    {
+      "key": "roles.composition_root.name",
+      "meaning": "The stack's local name for the composition root that is exempt from the hierarchy.",
+      "bunValue": "assembly"
+    },
+    {
+      "key": "roles.assignment",
+      "meaning": "How a file is assigned to a layer role, and that a file with no layer role is out of scope rather than a violation.",
+      "bunValue": "Layer read from the file path's layer segment, in commons and feature code alike; files without a layer segment are out of scope."
+    },
+    {
+      "key": "layout.code_trees",
+      "meaning": "The code trees to which the layer rule applies.",
+      "bunValue": "commons and feature code"
+    },
+    {
+      "key": "idiom.external_import",
+      "meaning": "How an import of an external package (outside the project graph, not layer-checked) is distinguished from a project import.",
+      "bunValue": "Bare npm package specifier import (outside the project graph); project imports are non-bare-npm imports."
+    },
+    {
+      "key": "roots.excluded",
+      "meaning": "The vendored/build trees that are never scanned.",
+      "bunValue": "vendored/build directories"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "evidence[0]",
+      "text": "no bun_clean_architecture_detector finding",
+      "reason": "Detector id of this rule's Bun check is a realization detail; the core names the check generically."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "text": "Validator ref: bun_clean_architecture_detector.",
+      "reason": "Validator id of this rule's Bun check is a realization detail; severity and disposition go to core verification."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:roles.assignment",
+        "profile:layout.code_trees"
+      ],
+      "note": "'Bun source module' neutralized to source module; 'path has a layer segment' becomes role assignment; 'commons or feature' from layout.code_trees."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when",
+        "profile:idiom.external_import"
+      ],
+      "note": "'another project module' = import inside the project graph, distinguished from external packages by the profile idiom."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "profile:roles.layers",
+        "profile:roles.composition_root.name"
+      ],
+      "note": "Role names are neutral; 'assembly' is the Bun local name of the composition root."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why",
+        "profile:roles.composition_root.name"
+      ],
+      "note": "'assembly exemption' rendered as composition-root exemption."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]"
+      ],
+      "note": "Already stack-neutral."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]"
+      ],
+      "note": "Already stack-neutral. The shared phase-loop node's obligations are carried as core prefer[2] (GREEN-scoped reuse of the nearest compliant path, as in the node) and avoid[3] (do not broaden / do not redesign adjacent modules, unscoped as in the node)."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Already stack-neutral."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Already stack-neutral."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]"
+      ],
+      "note": "Already stack-neutral."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]",
+        "profile:roots.excluded"
+      ],
+      "note": "Test files expressed via test roles; vendored/build directories from roots.excluded."
+    },
+    {
+      "item": "unless[1]",
+      "as": [
+        "core:unless[1]",
+        "profile:idiom.external_import"
+      ],
+      "note": "'Bare npm specifiers' is the Bun value of the external-import idiom."
+    },
+    {
+      "item": "unless[2]",
+      "as": [
+        "core:unless[2]",
+        "profile:roles.assignment"
+      ],
+      "note": "'No layer segment' is the Bun form of 'no layer role'."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ],
+      "note": "Obligation neutral; detector id is bunOnly."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]"
+      ],
+      "note": "Already stack-neutral; also the 'Prove' clause of the shared phase-loop node."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Generic description of the check."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "core:then",
+        "profile:roles.layers"
+      ],
+      "note": "Allowed edges restate the then obligation."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification",
+        "profile:roles.composition_root.name"
+      ],
+      "note": "Composition-root exemption; 'assembly' is the Bun name."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification",
+        "profile:roots.excluded",
+        "profile:idiom.external_import",
+        "profile:roles.assignment"
+      ],
+      "note": "Scope exclusions of the check."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Severity 3 / strict to core verification; validator ref bunOnly."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]"
+      ],
+      "note": "Non-test source files; exclusions carried by unless/verification."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:roles.assignment",
+        "profile:roles.composition_root.name",
+        "profile:layout.code_trees"
+      ],
+      "note": "Bun fact 'layer' is not in the closed fact set; expressed as fact 'role' with assembly -> composition_root."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[2]",
+        "profile:idiom.external_import"
+      ],
+      "note": "Project (non-external) imports, every affected import not only new ones."
+    }
+  ],
+  "neutralityNotes": "The Bun activation fact 'layer' is mapped to the closed fact 'role' (assembly -> composition_root). Test-file identification is expressed through the test roles; Bun gives no concrete suffix, so no suffix key is required. The Bun shared node policy.phase-loop ('During GREEN: reuse the nearest existing compliant dependency path. Do not broaden: do not redesign adjacent modules. Prove: the current behavioral acceptance passes.') is stack-neutral and is carried into the core explicitly with its original scoping: reuse-nearest-path (GREEN-scoped) as prefer[2], no-adjacent-redesign (no phase restriction) as avoid[3], and the proof as evidence[1]. It is not a numbered item of this rule, so it has no classification entry of its own. Nothing else had to stay Bun-specific beyond the detector/validator id.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.design-hierarchy-import.json",
+      "sha256": "9dc7b46cb05bce90aa13993036977748833e20323ca848dcdfd6cb9d2c5f6726"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 1,
+    "vocabularyVersion": 1,
+    "verdict": "PASS",
+    "rounds": 3,
+    "usefulness": 5,
+    "deriver": "pi-claude-cli/claude-opus-5-5",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

@@ -1,0 +1,371 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "tester.journey.no-acceptance-marker",
+  "legacyId": "tester.htmx.journey-no-acceptance-marker",
+  "core": {
+    "title": "Keep Acceptance and WMBT bindings out of journey specs",
+    "given": "A journey spec: a test file that the stack's role assignment does not exclude from journey-spec candidacy, and that either (a) is recognized by the stack's e2e-test naming AND is of an e2e-test kind (both conditions are required on this naming branch), or (b) carries a train or journey binding in its header comments, whatever its name. Test files that the stack's role assignment excludes from journey-spec candidacy are never journey specs, even when they carry journey bindings.",
+    "when": "the spec is written or edited",
+    "then": "The journey spec MUST NOT carry the acceptance or WMBT header binding lines.",
+    "prefer": [
+      "Move acceptance assertions out of the journey spec into an acceptance test that declares the Acceptance/WMBT pair.",
+      "Or simply drop the acceptance/WMBT binding lines and keep the spec bound only to its train or journey."
+    ],
+    "avoid": [
+      "Giving one test both a journey identity (train/journey) and an acceptance identity (Acceptance/WMBT).",
+      "Renaming a journey spec away from the stack's e2e-test naming to escape the check while it keeps a journey binding — misnamed specs are still judged.",
+      "Treating a test file that the stack's role assignment excludes from journey-spec candidacy as a journey spec."
+    ],
+    "unless": [
+      "Vendored and generated trees are never scanned (the stack's excluded roots)."
+    ],
+    "why": "Journey and acceptance identities are exclusive: a journey test binds to a train or journey, an acceptance test to an Acceptance/WMBT pair. Carrying both makes the test ambiguous about what it proves.",
+    "evidence": [
+      "The journey-spec header scan reports no journey spec whose header comments contain the acceptance or WMBT binding lines.",
+      "Either fix is valid: the acceptance/WMBT lines were dropped from the journey spec, or — if acceptance assertions were moved — they appear in an acceptance test carrying the Acceptance/WMBT pair."
+    ],
+    "verification": [
+      "A header-comment scan over test files. A file is a journey spec when it is not excluded from journey-spec candidacy by the stack's role assignment and either (a) matches the stack's e2e-test naming AND is of an e2e-test kind — naming alone is not enough — or (b) its header comment lines carry a train or journey binding, so a misnamed spec is still judged.",
+      "The scan matches header comment binding lines only, not string literals — a test that merely mentions a journey URN in a string literal is not flagged.",
+      "Test files that the stack's role assignment excludes from journey-spec candidacy are excluded unconditionally, even when they carry journey bindings. Which files (if any) are excluded is stack data from the profile's role assignment; a stack that excludes none simply has no such files. Classifying a test file's kind needs a classifier.",
+      "Vendored and generated trees are never scanned; the exact exclusion is the stack-wide excluded-roots list owned by the checker.",
+      "Disposition: strict — a finding blocks the check run rather than merely warning; severity 3. Severity and disposition are per-rule enforcement facts held with the rule, not profile keys."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "e2e_test_by_name"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "e2e_test_kind",
+            "test_not_excluded_from_journey_candidacy"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "header_comment_journey_marker",
+            "header_comment_acceptance_or_wmbt_marker"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "operation",
+          "values": [
+            "create",
+            "modify"
+          ],
+          "observability": "observable_now"
+        }
+      ],
+      "fires": [
+        "A test file of an e2e-test kind, recognized by the stack's e2e-test naming, carries the acceptance binding line.",
+        "A test file of an e2e-test kind not named as an e2e test, and not excluded from journey-spec candidacy, whose header carries a journey or train binding also carries the WMBT binding.",
+        "An agent adds acceptance/WMBT binding lines to an existing journey spec to link it to an acceptance."
+      ],
+      "doesNotFire": [
+        "A test file excluded from journey-spec candidacy by the stack's role assignment, carrying the acceptance and WMBT bindings, with or without a journey marker — it is never a journey spec.",
+        "A test file excluded from journey-spec candidacy by the stack's role assignment whose header carries a journey binding together with acceptance/WMBT binding lines.",
+        "A test that merely mentions a journey URN inside a string literal.",
+        "Files under the stack's vendored and generated (excluded) trees."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "suffix.e2e_test",
+      "meaning": "The name patterns that mark a file as an e2e test (one of the two conditions of the naming branch).",
+      "bunValue": "**/*.e2e.*, **/*.e2e.ts"
+    },
+    {
+      "key": "roles.e2e_test.kinds",
+      "meaning": "The concrete test kinds that play the e2e-test role; a file on the naming branch must be of one of these kinds.",
+      "bunValue": "playwright_test — a test file run by Playwright"
+    },
+    {
+      "key": "roles.assignment",
+      "meaning": "How a test file is assigned to the e2e-test role, and which test files are out of scope for journey-spec candidacy (excluded unconditionally, even with journey bindings). May exclude nothing.",
+      "bunValue": "A test file run by Playwright is an e2e test; any non-bun (test_not_bun) test file bound to a train/journey via header comments is a journey-spec candidate; bun test files are never journey specs — excluded unconditionally, even if they carry journey markers."
+    },
+    {
+      "key": "urn.binding.train",
+      "meaning": "The syntax by which a test file's header binds it to a train, so a misnamed spec with a journey identity is still judged.",
+      "bunValue": "`// Train:` and `// URN: test:train:…` header lines"
+    },
+    {
+      "key": "urn.binding.journey",
+      "meaning": "The syntax by which a test file's header binds it to a journey, so a misnamed spec with a journey identity is still judged.",
+      "bunValue": "`// Journey:` and `// URN: test:journey:…` header lines"
+    },
+    {
+      "key": "urn.binding.acceptance",
+      "meaning": "The syntax by which a test file declares its acceptance binding — a forbidden line in a journey spec.",
+      "bunValue": "`// Acceptance:` header line"
+    },
+    {
+      "key": "urn.binding.wmbt",
+      "meaning": "The syntax by which a test file declares its WMBT binding — a forbidden line in a journey spec.",
+      "bunValue": "`// WMBT:` header line"
+    },
+    {
+      "key": "idiom.comment_marker",
+      "meaning": "The line-comment syntax of the stack's test files, so the header scan reads comment lines only and not string literals.",
+      "bunValue": "`//` line comments"
+    },
+    {
+      "key": "roots.excluded",
+      "meaning": "The stack-wide vendored and generated trees that are never scanned.",
+      "bunValue": "`node_modules`, `dist`, `build`, `_generated`"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "avoid[2]",
+      "text": "Treating a bun test file as a journey spec.",
+      "reason": "The specific excluded runner (bun test) is a Bun realization fact; the core states the exclusion generically via the profile's role assignment without assuming every stack separates runners."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "text": "A bun test file is never a journey spec — exclude bun test files unconditionally, even if they carry journey markers.",
+      "reason": "Runner-specific exclusion of the Bun stack; the core keeps the unconditional-exclusion mechanism generic (roles.assignment) and does not tie it to the stack's test-runner key."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "The htmx_e2e_detector reports no browser spec whose header comments contain `// Acceptance:` or `// WMBT:` lines.",
+      "reason": "Names this rule's validator id (htmx_e2e_detector), a realization detail; the core describes the check generically."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "text": "Validator implementation: htmx_e2e_detector. Severity 3, disposition strict (see policy.strict-disposition).",
+      "reason": "The detector id and the shared-node reference are realization details; severity and disposition are kept generically in core:verification."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:suffix.e2e_test",
+        "profile:roles.e2e_test.kinds",
+        "profile:roles.assignment",
+        "profile:urn.binding.train",
+        "profile:urn.binding.journey"
+      ],
+      "note": "Naming branch requires both e2e naming and e2e-test kind (Playwright in Bun); binding branch covers any non-excluded test file; the bun test exclusion comes from the profile's role assignment."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when",
+        "core:activation.facts[3]"
+      ],
+      "note": "Already neutral; mirrored by the operation fact."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "profile:urn.binding.acceptance",
+        "profile:urn.binding.wmbt"
+      ],
+      "note": "One obligation; the forbidden lines are the profile's acceptance and WMBT binding syntax."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Already stack-neutral."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]"
+      ],
+      "note": "Role-level fix."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]",
+        "profile:urn.binding.acceptance",
+        "profile:urn.binding.wmbt"
+      ],
+      "note": "Binding lines come from the profile."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]",
+        "profile:suffix.e2e_test"
+      ],
+      "note": "Renaming escape is neutral; the naming pattern comes from the profile."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]",
+        "profile:roles.assignment",
+        "bunOnly"
+      ],
+      "note": "Generic: files excluded by role assignment are not journey specs; the bun-test identity of the excluded files is Bun-only and supplied by roles.assignment."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]",
+        "core:verification",
+        "profile:roots.excluded"
+      ],
+      "note": "Stack-wide excluded roots; exact list deferred to the checker."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ],
+      "note": "Neutral evidence keeps the check generic; the detector id is realization-only."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]"
+      ],
+      "note": "Already stack-neutral."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:given",
+        "core:verification",
+        "profile:suffix.e2e_test",
+        "profile:roles.e2e_test.kinds",
+        "profile:urn.binding.train",
+        "profile:urn.binding.journey"
+      ],
+      "note": "browser_spec: e2e-named file run by Playwright (naming AND kind) or any test file with a journey header; misnamed specs still judged."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "profile:idiom.comment_marker"
+      ],
+      "note": "Header-comment-only scope, not string literals."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification",
+        "core:avoid[2]",
+        "profile:roles.assignment",
+        "bunOnly"
+      ],
+      "note": "Unconditional exclusion kept generically via role assignment; bun test as the excluded set is Bun-only. tooling.test_runner is not used."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:then",
+        "profile:urn.binding.acceptance",
+        "profile:urn.binding.wmbt"
+      ],
+      "note": "Forbidden lines are the profile's binding syntax."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification",
+        "core:unless[0]",
+        "profile:roots.excluded"
+      ],
+      "note": "Skip-list scoping."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Severity 3 and strict disposition to core verification; detector id and shared-node reference realization-only."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "core:activation.facts[1]",
+        "profile:suffix.e2e_test",
+        "profile:roles.e2e_test.kinds"
+      ],
+      "note": "Path glob becomes the e2e-naming file-kind fact; the Bun note's 'run by Playwright' is carried by the e2e-test-kind fact, both required on the naming branch."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:roles.e2e_test.kinds",
+        "profile:roles.assignment"
+      ],
+      "note": "playwright_test -> e2e_test_kind; test_not_bun -> test not excluded from journey candidacy by role assignment; needs a classifier."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[2]",
+        "profile:urn.binding.train",
+        "profile:urn.binding.journey",
+        "profile:urn.binding.acceptance",
+        "profile:urn.binding.wmbt",
+        "profile:idiom.comment_marker"
+      ],
+      "note": "Header-comment scanner finding; concrete lines come from the profile."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[3]"
+      ],
+      "note": "Already neutral."
+    }
+  ],
+  "neutralityNotes": "Train, journey, Acceptance and WMBT are ATDD artifact concepts (urn parameters), not stack names. The naming branch now requires both the profiled e2e naming (suffix.e2e_test) and an e2e-test kind (roles.e2e_test.kinds; Playwright in Bun), matching bun.json. tooling.test_runner is no longer used: the unconditional exclusion of bun test files is expressed generically as files that the profile's role assignment (roles.assignment) excludes from journey-spec candidacy, which a single-runner stack may leave empty, and the concrete bun-test exclusion is also kept explicitly in bunOnly (avoid[2], verifier_detail[2]). The detector id and policy.strict-disposition reference are realization details in bunOnly; core:verification carries severity 3 and strict disposition generically.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/tester.htmx.journey-no-acceptance-marker.json",
+      "sha256": "01bb1c95c3c0889163588096dc7bdfd4393e89bb7460ed22d08774c44f0fa3e4"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 4,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3 -> pi-claude-cli/claude-opus-5-5",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

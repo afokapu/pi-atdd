@@ -1,0 +1,480 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.interface.structure-rules",
+  "legacyId": "planner.interface.structure-rules",
+  "core": {
+    "title": "Derive contract layout (FLAT, FACETED, COLLECTION) from the artifact name",
+    "given": "An artifact named {domain}:{resource}[.{category}] (colon = hierarchy, dot = facet; optional category for nested resources) is declared, or its contract schemas/tests are placed, moved or corrected",
+    "when": "the planner chooses or states its contract layout within the contract tree (schema and test locations per the profile: layout.contract_paths#contract_flat, layout.contract_paths#contract_faceted, layout.contract_paths#contract_collection)",
+    "then": "Determine the layout in order: (1) a dot facet in the name → FACETED, schema at layout.contract_paths#contract_faceted; (2) a resource holding multiple schema files → COLLECTION, schemas at layout.contract_paths#contract_collection; (3) otherwise → FLAT, schema at layout.contract_paths#contract_flat.",
+    "prefer": [
+      "FLAT (single schema, single resource): schema at layout.contract_paths#contract_flat; schema tests at the FLAT test location (layout.contract_paths#contract_tests).",
+      "FACETED (category as dot facet): schema at layout.contract_paths#contract_faceted; schema tests at the FACETED test location (layout.contract_paths#contract_tests).",
+      "COLLECTION (one artifact, several related schemas in one directory): schemas at layout.contract_paths#contract_collection; schema tests at the COLLECTION test location (layout.contract_paths#contract_tests); optional master-index schema (layout.contract_paths#contract_catalog); each schema's metadata: collection: true, resource (same for all), member (identifies the schema).",
+      "Example comments cue noun number (plural → COLLECTION, singular → FLAT); the source gives no precedence over the order in then.",
+      "Unresolved source conflict: the source's dotted FLAT examples contradict 'dot → FACETED' with no stated criterion. Follow the order by default; if you depart, state the mapping in the plan and flag the ambiguity.",
+      "The source's generic physical pattern (layout.contract_paths#contract_generic) and the concrete layout patterns disagree on the schema file suffix; this discrepancy is unresolved — name the file suffix explicitly in the plan."
+    ],
+    "avoid": [
+      "Over-nesting a single resource: storing a single-schema resource in its own resource directory instead of the flat schema location (layout.contract_paths#contract_flat).",
+      "Contract paths not derivable from the logical name (layout chosen ad hoc)."
+    ],
+    "unless": [],
+    "why": "A deterministic name→layout mapping lets the path be derived from the logical name, keeps simple resources flat and supports faceted and multi-schema resources without ambiguity; domain-based organization gives clear ownership and REST API mapping.",
+    "evidence": [
+      "Every artifact name resolves to one layout per the determination order (FACETED, COLLECTION or FLAT, at the profile's layout patterns). Where a path matches only a source example that conflicts with the order (a dotted name mapped FLAT, an example-only path prefix not derivable from {domain}, a generic-pattern vs concrete-layout file-suffix discrepancy), the outcome is 'unresolved conflict' for reviewer decision — neither auto-pass by example name nor auto-fail — and the plan must state the chosen mapping.",
+      "Schema tests sit in the test location matching the layout (per layout.contract_paths#contract_tests).",
+      "COLLECTION members carry metadata {collection: true, resource: <shared>, member: <specific>}; the optional master index (layout.contract_paths#contract_catalog) acts as the collection's index.",
+      "No single-schema resource is stored over-nested (a resource directory holding only the resource's own schema) instead of the flat location."
+    ],
+    "verification": [
+      "Deterministic check: map each declared artifact name to its expected layout by the determination order — (1) dot facet → FACETED, (2) multiple schema files → COLLECTION, (3) otherwise FLAT — using the profile's layout patterns, and compare with the actual contract tree.",
+      "Strict disposition on source conflicts: any path matching only a source example that conflicts with the determination order — a dotted name mapped FLAT, a path prefix that appears only in examples and is not derivable from {domain}, or a generic-pattern vs concrete-layout file-suffix discrepancy — is reported 'unresolved conflict' for reviewer decision; neither auto-pass by example-name match nor auto-fail; matching an example name alone is not a compliance criterion.",
+      "The generic-vs-concrete file-suffix discrepancy is reported unresolved, never silently normalised; the plan must state the schema file suffix explicitly.",
+      "Example-comment cues (plural noun → COLLECTION, singular noun → FLAT) carry no stated precedence over the determination order; the check does not treat them as rules and does not generalise example-only path prefixes into routing rules.",
+      "Collection check: member schemas carry the collection metadata; the master index is optional; schema tests sit in the layout-matching test location; no single-schema resource is stored over-nested.",
+      "Observability limits: file-kind matching relies on the profile's contract layout patterns (glob-matchable); detecting added/renamed artifact names and moved/renamed schema or schema-test files needs a diff-level observer; whether a planner is choosing a layout and whether a resource will hold several schemas needs semantic reading (llm-judged), not a mechanical check."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "contract_schema",
+            "contract_catalog",
+            "contract_schema_test"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "json_schema",
+            "plan",
+            "wagon_manifest",
+            "acceptance",
+            "doc"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "task_term",
+          "values": [
+            "contract",
+            "schema",
+            "artifact name",
+            "interface",
+            "produce",
+            "consume",
+            "facet",
+            "collection",
+            "layout",
+            "relocate",
+            "move schema",
+            "over-nested"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "artifact_name_added_or_renamed",
+            "contract_schema_file_added_moved_or_renamed",
+            "contract_schema_test_added_or_moved"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "artifact_name_to_contract_path_mismatch",
+            "single_resource_over_nested",
+            "dotted_name_layout_unresolved"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "task_term",
+          "values": [
+            "planner states or chooses a contract layout",
+            "resource will hold several related schemas"
+          ],
+          "observability": "llm_judged"
+        }
+      ],
+      "fires": [
+        "A plan or wagon declares a new artifact {domain}:{resource} and names where its contract schema will live.",
+        "A planner introduces a dot-faceted artifact name {domain}:{resource}.{category} in a produce/consume list.",
+        "A planner specifies a resource that will hold several related schema files under one artifact name.",
+        "A plan proposes an over-nested single-schema layout (a resource directory holding only the resource's own schema) instead of the flat schema location.",
+        "A task relocates, renames or corrects the layout of existing contract schemas or schema tests (e.g. flattening an over-nested resource, converting between FACETED and COLLECTION).",
+        "A doc or acceptance describes the expected contract path for an existing artifact name."
+      ],
+      "doesNotFire": [
+        "Editing fields inside an existing schema without changing the artifact name, its file location or its test location.",
+        "Work that neither names, places, moves nor corrects any contract artifact or schema file.",
+        "Code-layer file placement outside the contract tree (governed by other layout conventions)."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "layout.contract_paths#contract_flat",
+      "meaning": "Where a single-schema (FLAT) artifact's contract schema file lives.",
+      "bunValue": "contracts/{domain}/{resource}.schema.json"
+    },
+    {
+      "key": "layout.contract_paths#contract_faceted",
+      "meaning": "Where a dot-faceted (FACETED) artifact's contract schema file lives, one per facet category.",
+      "bunValue": "contracts/{domain}/{resource}/{category}.schema.json"
+    },
+    {
+      "key": "layout.contract_paths#contract_collection",
+      "meaning": "Where the several member schemas of a COLLECTION artifact live.",
+      "bunValue": "contracts/{domain}/{resource}/*.schema.json"
+    },
+    {
+      "key": "layout.contract_paths#contract_tests",
+      "meaning": "Where contract-schema tests live for each layout, and how they are named.",
+      "bunValue": "FLAT: contracts/{domain}/tests/{resource}_schema_test.*; FACETED: contracts/{domain}/{resource}/tests/{category}_schema_test.*; COLLECTION: contracts/{domain}/{resource}/tests/*_schema_test.*"
+    },
+    {
+      "key": "layout.contract_paths#contract_catalog",
+      "meaning": "Name of the optional master-index schema of a collection.",
+      "bunValue": "catalog.schema.json"
+    },
+    {
+      "key": "layout.contract_paths#contract_generic",
+      "meaning": "The convention source's generic physical pattern for contract paths, whose file suffix may disagree with the concrete layout patterns (the disagreement is itself an obligation of the core: report unresolved, name the suffix in the plan).",
+      "bunValue": "contracts/{domain}/{resource}[/{category}].json"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "prefer[0]",
+      "text": "Source examples: 'match:dilemma.current -> contracts/dilemma/current.schema.json # singular noun -> flat (NOT dilemma/current/current.schema.json)'; 'mechanic:decision.choice -> contracts/decision/choice.schema.json # single resource -> flat'; 'fragment:pool -> contracts/fragment/pool.schema.json'.",
+      "reason": "Concrete path examples of the reference tree; the neutral FLAT obligation is in the core and points at the profile pattern; bun.json itself is delivered as the reference example."
+    },
+    {
+      "item": "prefer[1]",
+      "text": "Source examples: 'ux:foundations.color -> contracts/commons/ux/foundations/color.schema.json # has dot facet -> nested; faceted, alternative to collection'; 'ux:primitives.icon'.",
+      "reason": "Concrete example paths, including the literal commons/ prefix which the source gives no routing rule for; example data has no stack-neutral equivalent beyond the core's layout obligation."
+    },
+    {
+      "item": "prefer[2]",
+      "text": "Source examples: 'ux:foundations -> contracts/commons/ux/foundations/*.schema.json # plural noun -> collection'; 'ux:primitives -> contracts/commons/ux/primitives/*.schema.json'.",
+      "reason": "Concrete example paths (plural-noun collections) of the reference tree; kept only in the delivered reference example."
+    },
+    {
+      "item": "avoid[0]",
+      "text": "'fragment:pool -> contracts/fragment/pool/pool.schema.json' instead of contracts/fragment/pool.schema.json.",
+      "reason": "Concrete counter-example paths; the neutral over-nesting prohibition is in core:avoid[0]."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "text": "Member metadata example: {\"domain\": \"ux\", \"resource\": \"foundations\", \"collection\": true, \"member\": \"color\"}; member e.g. 'color', 'spacing'; resource same for all e.g. 'foundations'.",
+      "reason": "Example metadata values of the reference tree; the neutral core requires the metadata fields (collection, resource, member) without the example data."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "text": "Source examples (FLAT): 'match:dilemma.current -> contracts/dilemma/current.schema.json ...'; 'fragment:pool -> contracts/fragment/pool.schema.json ...'; 'mechanic:decision.choice -> contracts/decision/choice.schema.json ...'.",
+      "reason": "Concrete example names and paths; the neutral rule (any dotted name mapped FLAT → 'unresolved conflict', example-name match is not a compliance criterion) is in core verification."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "text": "Source examples (FACETED): 'ux:foundations.color -> contracts/commons/ux/foundations/color.schema.json # has dot facet -> nested'; 'ux:primitives.icon'; the literal commons/ prefix.",
+      "reason": "Example data; the neutral rule (an example-only prefix not derivable from {domain} is reported unresolved, not auto-accepted) is in core verification."
+    },
+    {
+      "item": "verifier_detail[7]",
+      "text": "Source examples (COLLECTION): 'ux:foundations -> contracts/commons/ux/foundations/*.schema.json # plural noun -> collection (color, spacing, typography)'; 'ux:primitives -> contracts/commons/ux/primitives/*.schema.json # plural noun -> collection (icon, shape, mask)'.",
+      "reason": "Example data; the neutral statement (noun-number heuristic with no stated precedence over the determination order) is in the core."
+    },
+    {
+      "item": "verifier_detail[8]",
+      "text": "Source counter-example: 'fragment:pool -> contracts/fragment/pool/pool.schema.json # over-nested; single resource must be flat'.",
+      "reason": "Concrete counter-example path; the obligation it illustrates is core:avoid[0]/core:evidence[3]."
+    },
+    {
+      "item": "activation.facts[0]",
+      "text": "path_glob values: contracts/**/*.schema.json; contracts/**/*.json; contracts/**/catalog.schema.json; contracts/**/tests/*_schema_test.*",
+      "reason": "Concrete activation globs of the reference tree; other stacks derive matchable locations from their profile's contract layout keys, so the core activates on contract file kinds instead."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "The logical-name grammar {domain}:{resource}[.{category}] and separator semantics are methodology-level naming, not stack data; kept verbatim.",
+      "as": [
+        "core:given"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "'under contracts/' is realized by the profile's contract-tree layout keys; the core says 'within the contract tree'.",
+      "as": [
+        "core:when"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "Determination order is neutral; the concrete paths it yields come from the profile.",
+      "as": [
+        "core:then",
+        "profile:layout.contract_paths#contract_faceted",
+        "profile:layout.contract_paths#contract_collection",
+        "profile:layout.contract_paths#contract_flat"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "Rationale kept; 'REST API mapping' is the source's rationale, names no stack.",
+      "as": [
+        "core:why"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "FLAT obligation neutral; test placement via profile; source examples bunOnly.",
+      "as": [
+        "core:prefer[0]",
+        "profile:layout.contract_paths#contract_flat",
+        "profile:layout.contract_paths#contract_tests",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "prefer[1]",
+      "note": "FACETED obligation neutral; test placement via profile; source examples (incl. commons/ paths) bunOnly.",
+      "as": [
+        "core:prefer[1]",
+        "profile:layout.contract_paths#contract_faceted",
+        "profile:layout.contract_paths#contract_tests",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "prefer[2]",
+      "note": "Collection obligation neutral; the metadata field names are interface content kept in the core; example paths bunOnly.",
+      "as": [
+        "core:prefer[2]",
+        "profile:layout.contract_paths#contract_collection",
+        "profile:layout.contract_paths#contract_tests",
+        "profile:layout.contract_paths#contract_catalog",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "prefer[3]",
+      "note": "Statement about example-comment noun cues and absence of precedence; fully neutral.",
+      "as": [
+        "core:prefer[3]"
+      ]
+    },
+    {
+      "item": "prefer[4]",
+      "note": "Unresolved source conflict handling; fully neutral.",
+      "as": [
+        "core:prefer[4]"
+      ]
+    },
+    {
+      "item": "prefer[5]",
+      "note": "Suffix discrepancy stated without naming suffixes; both concrete values come from the profile (generic pattern vs layout patterns).",
+      "as": [
+        "core:prefer[5]",
+        "profile:layout.contract_paths#contract_generic"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "Over-nesting prohibition neutral; concrete counter-example path bunOnly.",
+      "as": [
+        "core:avoid[0]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "Derivability requirement; fully neutral.",
+      "as": [
+        "core:avoid[1]"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "One-layout resolution plus the 'unresolved conflict' disposition; conflict classes named neutrally (dotted-flat, example-only prefix, suffix discrepancy).",
+      "as": [
+        "core:evidence[0]",
+        "core:verification"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "Test placement matching the layout; concrete test paths via profile.",
+      "as": [
+        "core:evidence[1]",
+        "profile:layout.contract_paths#contract_tests"
+      ]
+    },
+    {
+      "item": "evidence[2]",
+      "note": "Member metadata kept in core (interface content); catalog file name via profile.",
+      "as": [
+        "core:evidence[2]",
+        "profile:layout.contract_paths#contract_catalog"
+      ]
+    },
+    {
+      "item": "evidence[3]",
+      "note": "No over-nested single-schema resource; the concrete path pattern is realized by profile:layout.contract_paths#contract_flat vs a resource directory.",
+      "as": [
+        "core:evidence[3]"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "Determination order restated for the verifier; duplicates core:then.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "Logical pattern and colon/dot semantics are in core:given; generic physical pattern is profile data; suffix-discrepancy reporting (no silent normalisation) is verification.",
+      "as": [
+        "core:verification",
+        "profile:layout.contract_paths#contract_generic"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "FLAT verifier expectation; concrete patterns via profile.",
+      "as": [
+        "core:verification",
+        "profile:layout.contract_paths#contract_flat",
+        "profile:layout.contract_paths#contract_tests"
+      ]
+    },
+    {
+      "item": "verifier_detail[3]",
+      "note": "FACETED verifier expectation; concrete patterns via profile.",
+      "as": [
+        "core:verification",
+        "profile:layout.contract_paths#contract_faceted",
+        "profile:layout.contract_paths#contract_tests"
+      ]
+    },
+    {
+      "item": "verifier_detail[4]",
+      "note": "Collection verifier expectation; concrete patterns via profile; metadata example values bunOnly.",
+      "as": [
+        "core:verification",
+        "profile:layout.contract_paths#contract_collection",
+        "profile:layout.contract_paths#contract_tests",
+        "profile:layout.contract_paths#contract_catalog",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[5]",
+      "note": "Neutral rule: any dotted name mapped FLAT (example names included) → 'unresolved conflict', not auto-pass; the example strings are bunOnly.",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[6]",
+      "note": "Neutral rule: example-only prefixes must not be generalised and non-derivable prefixes are unresolved, not auto-accepted; example strings bunOnly.",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[7]",
+      "note": "Neutral rule: noun-number heuristic has no precedence over the determination order; example strings bunOnly.",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[8]",
+      "note": "Counter-example path is example data (bunOnly); the over-nesting check it illustrates is core:verification / core:avoid[0] / core:evidence[3].",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "path_glob is not a neutral fact kind; converted to a file_kind fact over contract file kinds; the literal globs are realization data and the matchable locations come from the profile's layout keys.",
+      "as": [
+        "core:activation.facts[0]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "File kinds are neutral (json_schema is a format, not a stack).",
+      "as": [
+        "core:activation.facts[1]"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "Task terms are neutral.",
+      "as": [
+        "core:activation.facts[2]"
+      ]
+    },
+    {
+      "item": "activation.facts[3]",
+      "note": "Change kinds are neutral; the diff-level observer requirement is noted in core verification.",
+      "as": [
+        "core:activation.facts[3]"
+      ]
+    },
+    {
+      "item": "activation.facts[4]",
+      "note": "Finding kinds are semantic descriptions, not realization ids; concrete detector/validator ids stay in the realization and the check is described generically in core verification.",
+      "as": [
+        "core:activation.facts[4]"
+      ]
+    },
+    {
+      "item": "activation.facts[5]",
+      "note": "llm-judged layout/multi-schema intent; neutral.",
+      "as": [
+        "core:activation.facts[5]"
+      ]
+    }
+  ],
+  "neutralityNotes": "The artifact logical-name grammar {domain}:{resource}[.{category}] (colon = hierarchy, dot = facet) and the collection metadata field names (collection, resource, member) stay in the core: they are methodology-level interface content, name no stack, runtime, framework, language, package manager, file suffix or path, and are the rule's subject matter. Every concrete path, test-path pattern, the catalog file name and both sides of the .json vs .schema.json discrepancy moved to proposed layout.* profile keys, since the closed vocabulary has no contract-tree keys; instantiated with these values the core reproduces the Bun obligation exactly (no exception or condition dropped, none added). The 'unresolved conflict' disposition, the no-auto-pass-by-example-name rule and the no-generalisation rule for example-only prefixes are per-rule verification, not profile keys. Source examples — including the literal commons/ prefix, which the source gives no routing rule for — remain only in bun.json, the delivered reference example. The path_glob activation fact was converted to a file_kind fact because path_glob is outside the neutral fact vocabulary; its literal globs are realization data. 'REST API mapping' in why is the source's rationale and was kept.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/planner-nodes/planner.interface.structure-rules.json",
+      "sha256": "afbe9b9c289c8e2d062a7c49b1534311d1091e8b27e99856b42040967c743795"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 1,
+    "usefulness": 5,
+    "deriver": "rekey-v3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

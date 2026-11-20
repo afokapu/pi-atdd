@@ -1,0 +1,306 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "tester.telemetry.timing-semantics",
+  "legacyId": "tester.bun.telemetry-timing-semantics",
+  "core": {
+    "title": "Exercise every declared timing semantic in a bound telemetry test",
+    "given": "In an adopted repository, a tracking-plan item declares timing semantics (post-commit, absent-after-rollback, correlation-across-async) in its timing list",
+    "when": "The item and its bound telemetry tests are evaluated — on any plan or test change, or for existing unchanged items (standing scope)",
+    "then": "For each declared semantic, at least one test bound to the item must reference the corresponding behaviour (commit, rollback, correlation/context) in code or a test title.",
+    "prefer": [
+      "Declare the timing semantic on the tracking-plan item, and name that behaviour in the bound test's title or assertions.",
+      "Assert the behaviour: emission only after commit, none after rollback, correlation context kept across the async handoff."
+    ],
+    "avoid": [
+      "Satisfying a semantic only via a test comment or tracking-plan prose.",
+      "Relying on return-value tests for transaction-time telemetry.",
+      "Claiming the lexical check proves ordering statically — false precision."
+    ],
+    "unless": [
+      "The item declares no timing (empty timing list, e.g. diagnostic logs, internal spans).",
+      "The rule family is not yet adopted: the rule is inert until adoption."
+    ],
+    "why": "Transaction-time bugs (the event fired before its commit, the rollback that still emits, the context lost across an async handoff) escape return-value tests; the plan declares when ordering matters, so bound tests must speak to it.",
+    "evidence": [
+      "For every adopted tracking-plan item with a non-empty timing list (changed or not), each declared semantic is matched by at least one test bound to the item whose code or test title references commit / rollback / correlation-context respectively.",
+      "The stack's telemetry-test check reports no timing-semantics finding."
+    ],
+    "verification": [
+      "Semantic → behaviour mapping: post-commit = emission only after the transaction commits (probe for 'commit'); absent-after-rollback = never emitted when the transaction rolls back (probe for 'rollback'); correlation-across-async = correlation context continues across an async handoff (probe for 'correlation'/'context').",
+      "The check is plan-driven and lexical by design: the item's timing list is the source of truth, and a match counts only in test code or test titles — comments (comment syntax per the stack profile) and tracking-plan prose never satisfy. It deliberately does not prove ordering statically; it cannot, and pretending otherwise would be false precision.",
+      "Standing scope: every item with declared timing in an adopted repository is checked, each semantic independently, whether or not the item or its tests changed; only tests bound to the item (binding syntax from the profile) count, and only test files in the languages the profile declares for its telemetry tests are scanned. Items with an empty or absent timing list are not judged, which keeps diagnostic logs and internal spans out of scope. Inert until adoption, like every rule in this family.",
+      "Severity 3, disposition strict: the checker fails on every finding; there is no advisory mode and no ratchet baseline."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "tracking plan (plan artifact)",
+            "telemetry test (a test file bound to a tracking-plan item)"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "repository has adopted the telemetry rule family and its tracking plan contains any item with a non-empty timing list (standing state, whether the item, its bound tests, or neither changed)"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "declared timing semantic not referenced by any bound test"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "A tracking-plan item declares post-commit and no test bound to it mentions commit in code or test title.",
+        "A plan-only change adds absent-after-rollback to an item whose existing, unchanged bound tests only assert return values, never rollback.",
+        "An existing, unchanged item declares correlation-across-async and the only mention of correlation/context is in a code comment or in the tracking-plan prose.",
+        "An item declares post-commit and absent-after-rollback, and bound tests reference commit but nothing references rollback."
+      ],
+      "doesNotFire": [
+        "A diagnostic log or internal span whose tracking-plan item has an empty or absent timing list.",
+        "An item declaring only post-commit (its sole semantic) with a bound test whose title or assertions reference commit.",
+        "A repository that has not adopted the telemetry rule family (the rule is inert until adoption)."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roles.plan_artifact.kinds",
+      "meaning": "The concrete plan-artifact kind that carries the timing list (the tracking plan) and by which plan files are recognized as in scope.",
+      "bunValue": "tracking-plan"
+    },
+    {
+      "key": "urn.binding.telemetry",
+      "meaning": "How a telemetry test file binds itself to a tracking-plan item; only tests bound this way count as the item's tests.",
+      "bunValue": "tests bound to a tracking-plan item via a Telemetry: header"
+    },
+    {
+      "key": "tooling.language_scopes#telemetry_tests",
+      "meaning": "The languages of the test files this check scans for behaviour references: only bound telemetry-test files written in these languages are matched. A stack realizing the core declares its own telemetry-test languages here.",
+      "bunValue": "typescript, javascript"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "when",
+      "text": "its Telemetry:-bound tests",
+      "reason": "The concrete binding construct (a Telemetry: header) is stack-specific; the core says 'bound' and takes the binding syntax from the profile (urn.binding.telemetry)."
+    },
+    {
+      "item": "prefer[0]",
+      "text": "Declare on the item, name it in the bound test: \"timing\": [\"post-commit\"] with test(\"emits the planned event once the invocation commits\", () => { ... }).",
+      "reason": "Concrete plan-markup and test-runner syntax; per the neutral-example rule the core keeps the move role-level and bun.json remains the reference example."
+    },
+    {
+      "item": "evidence[1]",
+      "text": "The bun_telemetry_test validator reports no timing-semantics finding.",
+      "reason": "Names this rule's validator id, a realization detail; the core's verification describes the check generically."
+    },
+    {
+      "item": "activation.facts[0]",
+      "text": "test files carrying a Telemetry: header are identifiable by file kind/path",
+      "reason": "The concrete identification of a telemetry test (a test file carrying a Telemetry: header) is stack data supplied by the profile (urn.binding.telemetry); the core fact names the kinds role-neutrally."
+    },
+    {
+      "item": "activation.facts[1]",
+      "text": "…a binder resolving Telemetry: headers to items (validator bun_telemetry_test).",
+      "reason": "The needed-observer note names the Bun validator id and the concrete binding header; both are realization details behind the neutral standing-scope fact."
+    },
+    {
+      "item": "activation.facts[2]",
+      "text": "Lexical detector finding from bun_telemetry_test. It establishes only that a bound test references the behaviour; it does not prove runtime ordering.",
+      "reason": "Detector/validator id of this rule is a realization detail; the finding itself and the no-runtime-ordering caveat are kept neutrally in the core fact and in verification."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "Neutral as-is; the timing semantics are the rule family's own domain vocabulary, not stack vocabulary.",
+      "as": [
+        "core:given"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "Standing evaluation scope kept; 'Telemetry:-bound' is the profile's binding idiom, with the concrete header Bun-only.",
+      "as": [
+        "core:when",
+        "profile:urn.binding.telemetry",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "Neutral as-is; 'bound test' is resolved through the profile binding key.",
+      "as": [
+        "core:then"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "'context lost across an await' generalized to 'across an async handoff'; the bug class is stack-neutral.",
+      "as": [
+        "core:why"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "Core keeps the move (declare on the item, name it in the bound test); the concrete markup/test snippet stays in the Bun reference.",
+      "as": [
+        "core:prefer[0]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "prefer[1]",
+      "note": "Neutral as-is; the three behaviours are the semantics' definitions.",
+      "as": [
+        "core:prefer[1]"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "Neutral; the comment/prose exclusion is enforced by the check (see verification); the comment syntax itself is stack data (idiom.comment_marker), not stated in bun.json.",
+      "as": [
+        "core:avoid[0]"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "Neutral as-is.",
+      "as": [
+        "core:avoid[1]"
+      ]
+    },
+    {
+      "item": "avoid[2]",
+      "note": "Neutral; its verifier-side force comes from verifier_detail[1], mirrored in core verification.",
+      "as": [
+        "core:avoid[2]"
+      ]
+    },
+    {
+      "item": "unless[0]",
+      "note": "Neutral exception, kept exactly (empty/absent timing list).",
+      "as": [
+        "core:unless[0]"
+      ]
+    },
+    {
+      "item": "unless[1]",
+      "note": "Neutral exception (inert until adoption), kept exactly.",
+      "as": [
+        "core:unless[1]"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "'bound via a Telemetry: header' becomes 'bound to the item', with the binding syntax from the profile.",
+      "as": [
+        "core:evidence[0]",
+        "profile:urn.binding.telemetry"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "Core states it generically ('the stack's telemetry-test check'); the validator id is Bun-only.",
+      "as": [
+        "core:evidence[1]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "Semantic → behaviour mapping and the keyword probes are stack-neutral; kept verbatim in verification.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "Plan-driven lexical design, timing list as source of truth, code/title-only matching excluding comments and plan prose, and the deliberate non-proof of ordering; comment syntax per the stack profile (idiom.comment_marker), whose Bun value bun.json does not state.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "Standing scope, per-semantic independence, only bound tests count, empty-timing items not judged, inert until adoption; backs unless[0], unless[1] and when.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[3]",
+      "note": "Severity 3 and strict disposition are per-rule facts, not profile keys; merged with the strict-disposition policy node into core verification.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "Core fact names the two kinds role-neutrally; the tracking-plan kind value and the header-based identification of telemetry tests come from the profile; the note's 'Telemetry: header' phrasing is Bun-only.",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roles.plan_artifact.kinds",
+        "profile:urn.binding.telemetry",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "Standing adoption + non-empty-timing change fact is neutral; the observer note's validator id and binding-header phrasing are Bun-only.",
+      "as": [
+        "core:activation.facts[1]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "The finding is neutral; its detector id and provenance note are realization details (the no-runtime-ordering caveat survives in verification).",
+      "as": [
+        "core:activation.facts[2]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.facts[3]",
+      "note": "The language values (typescript, javascript) are the languages of the test files the check scans for behaviour references — a check-scope datum the profile carries as tooling.language_scopes#telemetry_tests (existing vocabulary v3 map entry), not the stack's production-source languages (which is why tooling.languages does not fit). The core folds this scope into its standing-scope verification ('only test files in the languages the profile declares for its telemetry tests are scanned'), so a stack realizing the core must declare its own telemetry-test languages there; the core itself adds no language condition, and its closed activation-fact vocabulary has no language fact, so no core activation fact is added. The note 'Bun realization.' is provenance only.",
+      "as": [
+        "core:verification",
+        "profile:tooling.language_scopes#telemetry_tests"
+      ]
+    }
+  ],
+  "neutralityNotes": "The tracking plan, the telemetry test and the three timing semantics (post-commit, absent-after-rollback, correlation-across-async), including the commit/rollback/correlation-context probes, are the rule family's own domain vocabulary and stay in the core; they are not stack-specific. Every stack-specific datum the core depends on comes through an existing vocabulary v3 key: the test-to-item binding construct (bun.json's 'Telemetry: header') via the parametric key urn.binding.telemetry, the tracking-plan plan-artifact kind via roles.plan_artifact.kinds, and the languages of the test files the check scans via the map entry tooling.language_scopes#telemetry_tests (bun.json's typescript/javascript activation fact — a check-scope datum over test files, not the stack's production-source languages, which is why tooling.languages does not fit). The core's standing-scope verification references that language scope, so a stack realizing the core must explicitly declare its telemetry-test languages there; the core adds no language condition of its own. The check's comment exclusion needs the stack's comment syntax (idiom.comment_marker), but bun.json never states it, so no bunValue could be given and it is only referenced from verification. Severity 3 and the strict disposition stay in core verification per the notProfileKeys rule, alongside the validator id bun_telemetry_test being Bun-only.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/tester.bun.telemetry-timing-semantics.json",
+      "sha256": "8778a2a903455adb3990832c4147cf8de9efe78dbc75945d7578d79f9f84639b"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "rekey-v3 -> zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

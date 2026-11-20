@@ -1,0 +1,439 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.docs.journey-view-current",
+  "legacyId": "planner.docs.journey-view-current",
+  "core": {
+    "title": "Keep the journey view generated from the current plan",
+    "given": "The repository documents itself (its documentation tree exists) and its plan declares at least one journey or interlocking.",
+    "when": "You finish any plan work or review in that repository, whether or not you touched the plan or the generated view; pre-existing drift and generator upgrades count.",
+    "then": "The generated journey view must contain exactly, byte-for-byte, what the stack's generator renders from the current plan: the view's index page plus one diagram per journey map, per journey's nominal path, and per routed train.",
+    "prefer": [
+      "Regenerate and commit the view with the stack's generation command.",
+      "Fix what the view shows in the plan, then regenerate.",
+      "If the view's index page is hand-written, move its content elsewhere first.",
+      "Keep the gaps table (unreached interlockings, open routes, unrouted trains) visible and accurately rendered; it is part of the contract."
+    ],
+    "avoid": [
+      "Hand-editing or adding files in the generated view; change the plan, never the generated files.",
+      "Leaving the view missing or stale, or keeping files the generator does not produce.",
+      "Skipping the page when the plan has interlockings but no journey; it shows every interlocking as unreached.",
+      "Treating the view as acceptance evidence; it renders planned behaviour only."
+    ],
+    "unless": [
+      "The repository does not document itself (no documentation tree).",
+      "The plan declares no journey and no interlocking."
+    ],
+    "why": "A hand-drawn journey page drifts from the plan the moment either changes; generating it and failing on any difference keeps documented journeys equal to planned ones and lets reviewers judge a decomposition without reading the plan's raw interlocking declarations.",
+    "evidence": [
+      "Running the stack's generation command against the current plan produces no diff in the generated view (no missing, changed or extra files).",
+      "The committed view shows, top down: each journey map (entry action, interlockings, chosen routes, trains run, continuations and terminal outcomes); each journey's nominal path end to end as one sequence across its interlockings; every path as a table; each interlocking's routes with their guards; each train as a sequence diagram; and a table of what the plan leaves unconnected.",
+      "For a plan with interlockings but no journey, the page exists and lists every interlocking as unreached, which is the truthful state of the decomposition.",
+      "The view answers who hands what to whom, which guard selects which route, and where each path ends."
+    ],
+    "verification": [
+      "State-based invariant: a validator compares the committed view files with a fresh render of the current plan produced by the installed generator, and reports any mismatch whether or not the current change touched the plan or the view (pre-existing drift, generator upgrade).",
+      "Comparison is byte-for-byte between the committed view files and that fresh render; a missing, stale, hand-edited or extra file in the view is each a violation. Whether the render embeds fields that vary between runs, and whether any normalisation is applied, is a property of the stack's generator, not of this core.",
+      "Expected file set: the view's index page plus one diagram per journey map, per journey's nominal path, and per routed train; the index-page file name and the diagram format are supplied by the profile.",
+      "Scope gates are repository-state checks: skip when the documentation tree does not exist, or when the plan declares no journey and no interlocking; the second gate requires parsing plan content for actual declarations, which a plan path match alone cannot establish. A plan with interlockings but no journey is in scope.",
+      "Diff-level hints (a plan journey/interlocking/route/train added, modified or removed; a view file edited, added or removed; the installed generator's version changed) make a mismatch likely but are not required for the check to fire.",
+      "Term 'the view': the generated page, top down: each journey as a map (entry action, interlockings, the routes they choose, the trains they run, continuations and terminal outcomes); the journey's nominal path walked end to end as one sequence across its interlockings; every path as a table; each interlocking's routes with their guards; each train as a sequence diagram; and a table of what the plan leaves unconnected.",
+      "Term 'generated': byte-for-byte what the installed generator renders from the current plan.",
+      "Severity 3, disposition strict."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "documentation tree present (the repository documents itself)"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "plan declares >=1 journey or >=1 interlocking"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "generated journey view files (index page and diagrams)"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "journey view missing, stale, hand-edited or extra file"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "plan journey/interlocking/route/train added, modified or removed",
+            "journey view file edited, added or removed",
+            "installed generator/renderer version changed"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "In a repository that documents itself and whose plan declares journeys or interlockings, a planner adds, renames or rewires a journey, interlocking, route or train in the plan and does not regenerate the journey view.",
+        "In such a repository, someone edits the view's index page or one of its diagrams by hand.",
+        "In a repository whose plan declares interlockings but no journey, no journey page is committed.",
+        "In such a repository, the view contains a file the generator would not produce (e.g. a diagram for a removed train).",
+        "In such a repository, the committed view was already stale or missing before the current task, even though the task touched neither the plan nor the view.",
+        "In such a repository, an upgrade of the installed generator changes the rendered output and the committed view is not regenerated."
+      ],
+      "doesNotFire": [
+        "The repository has no documentation tree.",
+        "The plan declares no journey and no interlocking.",
+        "A plan edit leaves the rendered output byte-identical AND the committed view already matched the generator output (an unchanged render never excuses existing missing, stale or extra files)."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roots.docs",
+      "meaning": "Root of the repository's self-documentation tree; its existence is scope gate 1 and the no-documentation exception.",
+      "bunValue": "docs/"
+    },
+    {
+      "key": "layout.locations#journey_view_dir",
+      "meaning": "Directory of the generated journey view (index page and diagrams) that must match the generator output exactly.",
+      "bunValue": "docs/purpose/journeys/"
+    },
+    {
+      "key": "layout.locations#journey_view_index_page",
+      "meaning": "File name of the generated journey view's index page inside the view directory; the generator owns it, and a hand-written one must be moved aside before regenerating.",
+      "bunValue": "index.adoc"
+    },
+    {
+      "key": "idiom.docs_syntax#journey_view_diagram_format",
+      "meaning": "Documentation-construct entry: the format of the generated diagrams the view contains (one per journey map, per journey's nominal path, and per routed train).",
+      "bunValue": "SVG"
+    },
+    {
+      "key": "tooling.commands#docs_generator",
+      "meaning": "The command that regenerates the journey view from the current plan.",
+      "bunValue": "bun run atdd-bun docs journeys"
+    },
+    {
+      "key": "roots.plan",
+      "meaning": "Root of the plan artifacts the view is generated from and parsed for journey/interlocking declarations.",
+      "bunValue": "plan"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "prefer[2]",
+      "text": "(the generator refuses to overwrite it without --force)",
+      "reason": "The ATDD-Bun generator's overwrite guard and --force flag; other stacks' generators behave differently, and the neutral obligation is carried by the core's advice to move hand-written index content elsewhere first."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "text": "Rendered output carries no timestamp and no package version, so it changes only when the plan or the renderer changes; no normalisation of such fields is needed.",
+      "reason": "A determinism property of the ATDD-Bun renderer's output, not a stack-neutral requirement; the core keeps only the neutral byte-for-byte equality with a fresh render, and a stack whose generator embeds varying fields addresses normalisation in its own realization."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "text": "Generator refuses to overwrite a hand-written docs/purpose/journeys/index.adoc unless run with --force.",
+      "reason": "Generator-specific overwrite guard and flag; the view directory and index-page file name it names are bound by the profile (layout.locations#journey_view_dir, layout.locations#journey_view_index_page), and the guard itself adds nothing to the neutral obligation beyond prefer[2]."
+    },
+    {
+      "item": "activation.facts[3]",
+      "text": "docs_capability",
+      "reason": "Validator/finding identifier of this rule's ATDD-Bun realization; the core names the check generically."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "docs/ and plan/ become the documentation and plan roots supplied by the profile.",
+      "as": [
+        "core:given",
+        "profile:roots.docs",
+        "profile:roots.plan"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "'renderer upgrades' neutralized to 'generator upgrades'; no paths or tools named.",
+      "as": [
+        "core:when"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "The single obligation is byte-for-byte equality with a fresh render; the view directory, index-page file name, diagram format, generation command and plan root all come from the profile, so no part of then remains bunOnly.",
+      "as": [
+        "core:then",
+        "profile:layout.locations#journey_view_dir",
+        "profile:layout.locations#journey_view_index_page",
+        "profile:idiom.docs_syntax#journey_view_diagram_format",
+        "profile:tooling.commands#docs_generator",
+        "profile:roots.plan"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "Regeneration is neutral; the exact command is the profile's generation command.",
+      "as": [
+        "core:prefer[0]",
+        "profile:tooling.commands#docs_generator"
+      ]
+    },
+    {
+      "item": "prefer[1]",
+      "note": "Already stack-neutral.",
+      "as": [
+        "core:prefer[1]"
+      ]
+    },
+    {
+      "item": "prefer[2]",
+      "note": "The core keeps 'move hand-written index content elsewhere first'; the index page's concrete file name comes from the profile, and only the generator's overwrite refusal and --force flag are ATDD-Bun specifics.",
+      "as": [
+        "core:prefer[2]",
+        "profile:layout.locations#journey_view_index_page",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "prefer[3]",
+      "note": "The gaps-table contract is plan-domain, stack-neutral.",
+      "as": [
+        "core:prefer[3]"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "docs/purpose/journeys/ replaced by the view directory from the profile.",
+      "as": [
+        "core:avoid[0]",
+        "profile:layout.locations#journey_view_dir"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "Stack-neutral.",
+      "as": [
+        "core:avoid[1]"
+      ]
+    },
+    {
+      "item": "avoid[2]",
+      "note": "Stack-neutral.",
+      "as": [
+        "core:avoid[2]"
+      ]
+    },
+    {
+      "item": "avoid[3]",
+      "note": "Stack-neutral.",
+      "as": [
+        "core:avoid[3]"
+      ]
+    },
+    {
+      "item": "unless[0]",
+      "note": "No-documentation-tree exception; the tree's location comes from the profile.",
+      "as": [
+        "core:unless[0]",
+        "profile:roots.docs"
+      ]
+    },
+    {
+      "item": "unless[1]",
+      "note": "Stack-neutral; mirrors scope gate 2.",
+      "as": [
+        "core:unless[1]"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "'reading interlocking YAML' neutralized to 'reading the plan's raw interlocking declarations'; rationale imposes no format-specific obligation.",
+      "as": [
+        "core:why"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "Generation command and view directory supplied by the profile.",
+      "as": [
+        "core:evidence[0]",
+        "profile:tooling.commands#docs_generator",
+        "profile:layout.locations#journey_view_dir"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "The structural walkthrough is neutral; 'index.adoc' is realized through the profile's index-page key, not bunOnly.",
+      "as": [
+        "core:evidence[1]",
+        "profile:layout.locations#journey_view_index_page"
+      ]
+    },
+    {
+      "item": "evidence[2]",
+      "note": "Stack-neutral.",
+      "as": [
+        "core:evidence[2]"
+      ]
+    },
+    {
+      "item": "evidence[3]",
+      "note": "Stack-neutral.",
+      "as": [
+        "core:evidence[3]"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "Byte-for-byte comparison of committed view files with a fresh render by the installed generator; the view path comes from the profile.",
+      "as": [
+        "core:verification",
+        "profile:layout.locations#journey_view_dir"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "The expected-file-set rule and the four violation kinds are neutral (core:verification); 'index.adoc' and 'SVG' are the stack's concrete index-page name (a location, bound by layout.locations#journey_view_index_page) and diagram format (a documentation construct, bound by idiom.docs_syntax#journey_view_diagram_format), rather than bunOnly.",
+      "as": [
+        "core:verification",
+        "profile:layout.locations#journey_view_index_page",
+        "profile:idiom.docs_syntax#journey_view_diagram_format"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "The no-timestamp/no-version determinism is a property of the ATDD-Bun renderer, not a stack-neutral requirement, so it is bunOnly; the byte-for-byte comparison obligation itself is carried in core:verification via verifier_detail[0] and verifier_detail[1].",
+      "as": [
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[3]",
+      "note": "Term 'journey_view' folded into the verification entry defining the view's structure; tables and sequence diagrams are documentation constructs, not stack constructs.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[4]",
+      "note": "Term 'generated': byte-for-byte what the installed generator renders from the current plan ('installed package' generalized).",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[5]",
+      "note": "Scope gate and state-based semantics kept; docs/ from the profile; the plan-declaration gate needs plan-content parsing.",
+      "as": [
+        "core:verification",
+        "profile:roots.docs"
+      ]
+    },
+    {
+      "item": "verifier_detail[6]",
+      "note": "The generator's overwrite guard and --force flag are realization details of the ATDD-Bun generator; the directory and index-page name it names are profile-bound through other items.",
+      "as": [
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[7]",
+      "note": "Per-rule severity and disposition belong to core verification, not to the profile.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "Gate 1 as repository-state existence of the documentation tree; the note's 'existence, not diff' semantics live in the scope-gate verification entry.",
+      "as": [
+        "core:activation.facts[0]",
+        "core:verification",
+        "profile:roots.docs"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "Gate 2 kept as needs_new_observer (parsing plan declarations); the parsing requirement is restated in verification.",
+      "as": [
+        "core:activation.facts[1]",
+        "core:verification",
+        "profile:roots.plan"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "The view location comes from the profile, and the note's concrete kinds '(index.adoc and SVGs)' are bound by the index-page location key and the diagram-format documentation-construct key, so no part is bunOnly.",
+      "as": [
+        "core:activation.facts[2]",
+        "profile:layout.locations#journey_view_dir",
+        "profile:layout.locations#journey_view_index_page",
+        "profile:idiom.docs_syntax#journey_view_diagram_format"
+      ]
+    },
+    {
+      "item": "activation.facts[3]",
+      "note": "The finding text is neutral and its state-based semantics go to verification; the 'docs_capability' id is a realization detail (bunOnly).",
+      "as": [
+        "core:activation.facts[3]",
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.facts[4]",
+      "note": "'installed package/renderer version' neutralized to 'installed generator/renderer version'; the hints-are-optional semantics are restated in verification.",
+      "as": [
+        "core:activation.facts[4]",
+        "core:verification"
+      ]
+    },
+    {
+      "item": "activation.fires",
+      "note": "All six examples neutralized: plan edits, hand-edited view, interlockings-without-journey, extra generated file, pre-existing drift, generator upgrade.",
+      "as": [
+        "core:activation.fires"
+      ]
+    },
+    {
+      "item": "activation.doesNotFire",
+      "note": "All three non-fires neutralized (no documentation tree, no journey/interlocking, byte-identical render with already-matching view).",
+      "as": [
+        "core:activation.doesNotFire"
+      ]
+    }
+  ],
+  "neutralityNotes": "Journey, interlocking, route, guard and train are plan-domain terms (journey already appears in the closed urn vocabulary) and are treated as stack-neutral. Two things could not be made neutral and are kept in bunOnly: (1) the ATDD-Bun renderer's determinism (output carries no timestamp and no package version, hence no normalisation is needed) is a realization property, so the core requires only byte-for-byte equality with a fresh render and a stack whose generator embeds varying fields must address comparison in its own realization; (2) the generator's refusal to overwrite a hand-written index without --force is realization-specific, with only the safe-handling advice (move hand-written content first) kept neutral. The concrete shape of the view's output is profile data: the documentation root (roots.docs), the plan root (roots.plan), the view directory and the index-page file name (layout.locations#journey_view_dir, layout.locations#journey_view_index_page), the diagram format (idiom.docs_syntax#journey_view_diagram_format, a documentation construct) and the generation command (tooling.commands#docs_generator). All keys come from the closed vocabulary v3; nothing is proposed.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/planner.docs.journey-view-current.json",
+      "sha256": "d0ec13265c69a6fd85104e8a84fbf02acddfd78601391f5ca0bc9575aeee127f"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "rekey-v3 -> zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

@@ -1,0 +1,294 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.error-response.bare-string",
+  "legacyId": "coder.bun.error-response-bare-string",
+  "core": {
+    "title": "Error responses carry a structured, coded payload, never a bare string literal body",
+    "given": "Non-test source contains an error response: a response carrying a client-error or server-error status (4xx/5xx)",
+    "when": "that error response's body is a bare string literal, whether the body or the status was the part written or changed",
+    "then": "The error response MUST carry a structured payload with an error code, not a bare string literal body.",
+    "prefer": [
+      "The boundary returns a coded, structured payload for the error and renders any user-facing fragment separately."
+    ],
+    "avoid": [
+      "A bare string literal as the body of an error response returned by the boundary."
+    ],
+    "unless": [
+      "The response status is 2xx or 3xx (out of scope).",
+      "The body is a variable or a rendered fragment, which is not a bare literal.",
+      "The code is in a test file."
+    ],
+    "why": "Where the stack's presentation client renders the response body into the page the user sees, a bare error string is not merely unstructured data a client must parse but content rendered to the user verbatim, including whatever internal detail it carries (a stack frame, a table name, an upstream message); the structured payload is both the machine-readable contract and the boundary that stops internals leaking into the page. This is sharper where bodies are rendered into the live page than in a pure JSON API, which is why it is enforced rather than advised.",
+    "evidence": [
+      "The stack's convention check reports no finding of this rule (an error response with a bare string literal body) on changed non-test files.",
+      "Reviewer sees no changed non-test error response with a bare string literal body; where a literal body was replaced, it is a structured payload with an error code. Bodies that are variables or rendered fragments are not in scope."
+    ],
+    "verification": [
+      "Severity 4; strict disposition: the rule fails on every finding; it is enforced, not advisory.",
+      "A stack check flags an error response (a response with a 4xx/5xx status) whose body is a bare string literal; the exact syntactic pattern matched (the stack's response construct and its literal body form) is a realization detail of the stack's checker.",
+      "The check does not flag: responses with a 2xx or 3xx status, whatever their body; error responses whose body argument is a variable, an identifier, or a rendered fragment (any non-literal expression); or code in test files. Which files count as test files follows the stack's profile and the checker's classification, exactly as the reference realization defers it."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "source",
+            "!test"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "response_with_error_status_and_literal_body"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "error-response.bare-string"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "Non-test source returns an error response (a 4xx/5xx status) whose body is a bare string literal, whatever the status value.",
+        "A change sets the status of a response with a string-literal body from a success or redirect status to an error status (status-only change)."
+      ],
+      "doesNotFire": [
+        "A response with a 2xx or 3xx status, whatever its body.",
+        "An error response whose body is a variable or a rendered fragment.",
+        "Code in test files."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "idiom.security#error_response_payload",
+      "meaning": "The stack's response construct for a response carrying an error status, and its form of a structured, serialized payload body: the concrete referents of the core's 'error response (a response with a 4xx/5xx status)' and 'structured payload with an error code'. Only stack data lives here; this rule's literal-body detection pattern and worked example stay in the realization.",
+      "bunValue": "A response is the web-standard `Response` object: `new Response(<body>, { status })` returns a raw body, `Response.json(<payload>, { status })` serializes a structured payload as the response body."
+    },
+    {
+      "key": "tooling.languages",
+      "meaning": "The languages of production source, which replace the reference realization's language activation fact when the core is realized for a stack.",
+      "bunValue": "typescript, javascript"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "verifier_detail[0]",
+      "text": "Detector pattern: flag `new Response(\"<literal>\", { status: 4xx|5xx })` — first argument a string literal, status in 400–599.",
+      "reason": "The concrete response-constructor syntax and literal form are this rule's realization-level flagging condition; the core states the check generically (an error response whose body is a bare string literal) and defers the exact pattern to each stack's checker. This pattern is deliberately NOT profile data."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "text": "Implementation: validator `bun_security_hygiene_detector`; finding alias ERROR-BARE-STRING-001.",
+      "reason": "Detector, validator and finding ids of this rule are realization details; the core's verification names the check generically."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "text": "rendered_verbatim term: what htmx does with a bare error string — swaps it into the live DOM, internal detail included; the structured payload is also the boundary that stops leakage.",
+      "reason": "Names the stack's client-side framework (htmx) and its DOM-swapping mechanism; the core generalizes to 'the presentation client renders the response body into the page the user sees'."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "bun_security_hygiene_detector reports no ERROR-BARE-STRING-001 finding on changed non-test files.",
+      "reason": "Validator and finding-alias ids are realization details; the core's evidence names the stack's check generically."
+    },
+    {
+      "item": "activation.facts[2]",
+      "text": "Code-level fact: changed non-test code contains a `Response` whose status is 4xx|5xx and whose body is a string literal (e.g. a status changed from 200 to 500 on a literal body); realized today by bun_security_hygiene_detector.",
+      "reason": "The concrete `Response` class and the detector id are Bun realization details; the neutral change fact keeps the observable situation (an error response with a literal body in changed non-test code)."
+    },
+    {
+      "item": "activation.facts[3]",
+      "text": "Detector finding from bun_security_hygiene_detector flagging `new Response(\"<literal>\", { status: 4xx|5xx })`; values: [\"ERROR-BARE-STRING-001\"].",
+      "reason": "The finding alias and validator id are realization details; the core keeps a neutral finding fact keyed to this rule's own id."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "'Bun source' -> 'source'; the concrete response construct is supplied by the proposed profile key idiom.security#error_response_payload (stack data only — response construction and payload serialization); 'error response (4xx/5xx status)' is the neutral form of the error_response term.",
+      "as": [
+        "core:given"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "Neutral verbatim; 'Response' -> 'error response'; body-or-status-was-the-edited-part condition kept so status-only changes stay in scope.",
+      "as": [
+        "core:when"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "The single obligation, kept as-is minus the `Response` class name; what a structured, coded payload concretely is comes from the proposed profile key idiom.security#error_response_payload.",
+      "as": [
+        "core:then"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "htmx/DOM rendering generalized to 'the stack's presentation client renders the response body into the page the user sees'; the concrete mechanism stays in the Bun reference and in the bunOnly entry for verifier_detail[5].",
+      "as": [
+        "core:why"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "Core keeps the role-level preference (coded structured payload at the boundary, user-facing fragment rendered separately); the concrete `Response.json` worked example is deliberately not repeated and is not profile data — bun.json is the worked reference example.",
+      "as": [
+        "core:prefer[0]"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "Core keeps the role-level avoidance; the concrete `new Response(\"order not found\", ...)` example stays in the Bun reference.",
+      "as": [
+        "core:avoid[0]"
+      ]
+    },
+    {
+      "item": "unless[0]",
+      "note": "Verbatim; 2xx/3xx are protocol-level status classes, not stack names.",
+      "as": [
+        "core:unless[0]"
+      ]
+    },
+    {
+      "item": "unless[1]",
+      "note": "Verbatim and already neutral.",
+      "as": [
+        "core:unless[1]"
+      ]
+    },
+    {
+      "item": "unless[2]",
+      "note": "Kept as an exception; which files count as test files is deferred to the stack profile / the checker, as the Bun text defers it.",
+      "as": [
+        "core:unless[2]",
+        "core:verification"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "Neutral form: the stack's check reports no finding of this rule; the validator/alias names are carried by a bunOnly entry.",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "Neutral reviewer check; the concrete `Response.json({ error_code: ... })` example stays in the Bun reference, not in the core and not in the profile.",
+      "as": [
+        "core:evidence[1]"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "Generic scope (error response + bare literal body) goes to verification; the concrete constructor pattern is this rule's realization detail and is carried by a bunOnly entry — it is not profile data.",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "The error_response term defines the core's given and the check's scope (4xx/5xx in, 2xx/3xx ignored); the concrete `Response` class name itself is stack-specific and supplied via the proposed profile key idiom.security#error_response_payload.",
+      "as": [
+        "core:given",
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "Non-literal bodies (variable/identifier/rendered fragment) are out of the check's scope and mirror unless[1].",
+      "as": [
+        "core:verification",
+        "core:unless[1]"
+      ]
+    },
+    {
+      "item": "verifier_detail[3]",
+      "note": "Test-file exclusion is check scoping; the exact test-file classification is deferred to the profile / checker in core:verification.",
+      "as": [
+        "core:verification",
+        "core:unless[2]"
+      ]
+    },
+    {
+      "item": "verifier_detail[4]",
+      "note": "Validator and finding alias ids of this rule are realization details; core:verification describes the check generically.",
+      "as": [
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[5]",
+      "note": "The leakage rationale feeds the core's why in neutral form; the htmx/DOM term definition is carried by a bunOnly entry.",
+      "as": [
+        "core:why",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "'language' is not a neutral activation fact; the languages of production source are profile data (typescript, javascript for Bun).",
+      "as": [
+        "profile:tooling.languages"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "file_kind source/!test is neutral; which files are tests comes from the stack profile / checker.",
+      "as": [
+        "core:activation.facts[0]"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "The change fact is neutral (kept verbatim: response_with_error_status_and_literal_body); the `Response` construct and detector id in the note are bunOnly.",
+      "as": [
+        "core:activation.facts[1]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.facts[3]",
+      "note": "The core keeps a neutral finding fact keyed to this rule's id (error-response.bare-string); the alias ERROR-BARE-STRING-001 and validator name are bunOnly.",
+      "as": [
+        "core:activation.facts[2]",
+        "bunOnly"
+      ]
+    }
+  ],
+  "neutralityNotes": "HTTP status classes (4xx/5xx, 2xx/3xx) are kept in the core: they are protocol-level facts shared by every realization of this obligation family (both the Bun and the python-pytest sibling speak HTTP statuses), not stack, runtime or framework names; the concrete construct that carries a status comes from the proposed profile key idiom.security#error_response_payload. 'Bare string literal' is kept as a cross-stack syntactic notion — both known realizations flag string literals — while each stack's checker defines the exact literal forms (the Bun pattern stays in the realization, not the profile). The htmx-specific rationale is generalized to 'the presentation client renders the response body into the page the user sees'; the concrete mechanism (htmx swapping into the live DOM) is preserved in bun.json and the bunOnly entry for verifier_detail[5]. What counts as a test file is not pinned in the core: the Bun text itself defers the exclusion to its checker, so the core keeps that deference in verification. Per audit r2 feedback, idiom.error_types is no longer used: it means how domain and boundary errors are typed and raised, not response construction or payload serialization. The core does need profile data for response/payload construction, so a narrowly defined idiom key (idiom.security#error_response_payload) is proposed, carrying only stack data; this rule's flagging condition (first argument a string literal, status 400–599) and its worked example remain in the Bun realization and its bunOnly entries. tooling.languages covers the language fact; nothing else was missing.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.error-response-bare-string.json",
+      "sha256": "c363a542ad0ad9ba11f61f24332298a180849bcfb937aa8a0fccb962e882406d"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 1,
+    "usefulness": 5,
+    "deriver": "rekey-v3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

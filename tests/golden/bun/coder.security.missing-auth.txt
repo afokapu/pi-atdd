@@ -1,0 +1,19 @@
+Title: Authorise inside every state-changing route handler
+Given: A Bun route handler for POST, PUT, PATCH or DELETE (a `routes` entry of `Bun.serve` or a method branch of a `fetch` handler) in non-test source.
+When: The handler exists in the inspected source (any in-scope mutating handler, changed or not).
+Then: The handler body MUST itself call a recognisable authorisation guard before any write.
+Prefer:
+- Call the guard first and let it throw or return early, e.g.
+  POST: async (req) => {
+    const user = await requireUser(req);   // authorise before any write
+    ...
+  }
+- If the handler delegates to a wrapper that authorises internally, call it by a recognised guard name, or add the wrapper/project guard name to the rule's recognised set.
+Avoid:
+- Relying on auth performed in a sibling route or another handler — it protects nothing for this handler.
+- Suppressing the rule because the project uses its own guard helper instead of adding that helper's name to the recognised set.
+- Adding auth requirements to GET/HEAD reads to satisfy the rule (out of scope; creates noise on the most common route in the codebase).
+Unless:
+- GET and HEAD handlers are out of scope (reads).
+- Test files are excluded.
+Why: A mutating handler with no auth call is the shape that leaks writes; public GETs are normal in a hypermedia/htmx app (how fragments load), so requiring auth on reads would be noise on the most common route — only mutating methods are checked, deliberately.

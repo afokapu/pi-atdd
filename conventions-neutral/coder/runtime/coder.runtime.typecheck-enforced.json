@@ -1,0 +1,509 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.runtime.typecheck-enforced",
+  "legacyId": "coder.bun.runtime-typecheck-enforced",
+  "core": {
+    "title": "Wire a real no-emit typecheck into a typed project's check path",
+    "given": "A consumer project of the profiled stack with a dependency manifest and at least one statically typed source file (the stack-identification markers, the manifest and the typed source kinds come from the profile).",
+    "when": "the project is worked on or validated (standing obligation).",
+    "then": "The project has the stack's typechecker (or an equivalent native implementation) declared among its dependencies, the language's type configuration, and a no-emit typecheck step wired into the check path used to validate the project.",
+    "prefer": [
+      "A check-path step dedicated to the no-emit typecheck (the recognized commands and step names come from the profile), invoked by the steps a developer or CI runs to validate the project.",
+      "During GREEN: reuse the existing typechecker and strict type configuration (which checker is the project's choice); add only the minimal missing dependency, configuration or step; fix type errors arising from the current behavior instead of weakening typecheck options."
+    ],
+    "avoid": [
+      "A typecheck no developer or CI step invokes.",
+      "Relying on execution or transpilation of typed sources as if it verified types: a runtime that strips or ignores type annotations checks nothing.",
+      "A type configuration that turns strict checking off outright, or enables no option of the language's strict family, while inheriting from no base configuration (the strictness options and the inheritance syntax come from the profile).",
+      "Disabling strict checks or adding blanket ignores.",
+      "Replacing the project's typechecker without necessity, or migrating unrelated configuration while establishing the check."
+    ],
+    "unless": [
+      "No typed source files: out of scope.",
+      "Strictness only: a type configuration that inherits from a base configuration is never reported.",
+      "The convention-authoring repository is never scanned; its deliberately-wrong sources are fixtures."
+    ],
+    "why": "A stack may execute or transpile typed sources without checking them; without a typechecker that is actually wired in and run, nothing confirms the code conforms to its declared types — structure checks verify shape only — so by default such a stack is less type-safe than one whose toolchain checks types as a matter of course.",
+    "evidence": [
+      "The dependency manifest declares the stack's typechecker (or an equivalent native implementation) among its production or development dependencies, and the language's type configuration exists.",
+      "Some step of the check path runs a recognized no-emit typecheck, or is recognized as the typecheck step by name, and the check path is part of what a developer or CI runs to validate the project.",
+      "The no-emit typecheck succeeds through the repository's normal check path.",
+      "The current behavioral acceptance passes.",
+      "The type configuration is not demonstrably non-strict (or inherits from a base configuration)."
+    ],
+    "verification": [
+      "Scope: only genuinely typed projects — a dependency manifest AND at least one typed source file (the typed source kinds come from the profile). Projects with no typed sources carry no obligation at all.",
+      "Scan scope and stack identity: the check reads the consumer repository within the profile's scan scope, and a tree counts as a project of the stack through the profile's identification markers (its native lockfiles and its runtime configuration file).",
+      "The obligation is deliberately unforced in four ways (scope, how, where, strictness): the rule states a norm, not a blessed incantation.",
+      "How: any check-path step that runs a recognized no-emit typecheck of the stack satisfies it, and so does a step recognized as the typecheck by name (commands and step names come from the profile). The check verifies that types ARE checked; WHICH checker is the project's business.",
+      "Where: the typechecker counts from the project's production or development dependency lists (the manifest that carries them comes from the profile).",
+      "Check path: the steps a developer or CI runs to validate the project; a typecheck that exists but is never invoked is not wired in — it is a tool sitting beside the build, not part of it.",
+      "Strictness is reported only when demonstrably off: the type configuration disables strictness outright, or enables no option of the strict family while inheriting from no base configuration (the strictness options, the disable syntax and the inheritance syntax come from the profile; which options belong to the strict family is the stack's to enumerate). A configuration that inherits from anything is not judged: the check cannot resolve the base, and reporting what it cannot see would be a false positive — a rule that reports what it cannot see is worse than one that stays quiet.",
+      "Complementary, not overlapping, with the stack's structure checks: they verify that a declared structure exists (shape), not that code conforms to it — only an actually run typecheck verifies conformance.",
+      "The check applies to consumer repositories only; the convention-authoring repository is never scanned — its deliberately-wrong source fixtures must not typecheck.",
+      "Disposition: strict — every finding fails the check, with no advisory mode and no ratchet baseline. Severity 2."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "dependency manifest",
+            "type configuration file",
+            "typed source file"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "stack-identification markers: native lockfile, runtime configuration file"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "operation",
+          "values": [
+            "edit",
+            "validate"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "repository-is-convention-hub"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "no-emit typecheck not wired into the check path",
+            "type configuration demonstrably non-strict"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "Any work on or validation of a consumer project with a dependency manifest and typed source files, regardless of whether the current change touches dependencies, type configuration or check scripts.",
+        "A typed project has no typechecker (or equivalent) among its declared dependencies.",
+        "A typed project has no type configuration.",
+        "A typed project has the typechecker and a type configuration, but no check-path step runs a no-emit typecheck.",
+        "A typed project's type configuration that inherits from no base configuration turns strict checking off, or enables no option of the strict family."
+      ],
+      "doesNotFire": [
+        "A project with no typed source files (untyped source only).",
+        "Strictness of a type configuration that inherits from a base configuration (never reported; the other requirements still apply).",
+        "The convention-authoring repository, whose deliberately-wrong sources are fixtures.",
+        "The wiring requirement only: a project using any recognized no-emit typecheck in any check-path step, or a step recognized as the typecheck by name, satisfies that requirement — the rule still fires if the typechecker dependency or the type configuration is missing, or the configuration is demonstrably non-strict."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roots.scan",
+      "meaning": "The repository-wide scan scope of this standing check — where the manifest, type configuration and typed sources are read from.",
+      "bunValue": "the consumer repository root (activation.facts[2] note: 'Read at the consumer repository root'; patterns package.json, tsconfig*.json, **/*.ts, **/*.tsx read from there)"
+    },
+    {
+      "key": "tooling.manifest",
+      "meaning": "The dependency manifest whose presence (with typed sources) defines scope, and in which the typechecker dependency is declared.",
+      "bunValue": "\"package.json\" (given; activation.facts[1]; activation.facts[2])"
+    },
+    {
+      "key": "suffix.source",
+      "meaning": "The source file kinds — the statically typed sources — whose presence (with the manifest) activates the obligation; in this stack every source kind is typed.",
+      "bunValue": "[\"*.ts\", \"*.tsx\"] (activation.facts[1]); read as **/*.ts, **/*.tsx within the scan scope (activation.facts[2])"
+    },
+    {
+      "key": "tooling.lockfile.native",
+      "meaning": "The native lockfiles that, as stack-identification markers, help recognize a tree as a project of the profiled stack.",
+      "bunValue": "[\"bun.lock\", \"bun.lockb\"] (activation.facts[3])"
+    },
+    {
+      "key": "tooling.stack_signals",
+      "meaning": "The remaining stack-identification markers (here the runtime's own configuration file) that recognize a tree as a project of the profiled stack.",
+      "bunValue": "\"bunfig.toml\" (activation.facts[3])"
+    },
+    {
+      "key": "tooling.typecheck#typecheck_config",
+      "meaning": "(pattern) The language's type-configuration file: what must exist for types to be configured, whose strictness the check judges, and which variants of it the checker reads within the scan scope.",
+      "bunValue": "\"tsconfig.json\" must exist (then; evidence[0]); the checker reads \"tsconfig*.json\" at the scan root (activation.facts[2])"
+    },
+    {
+      "key": "tooling.typecheck#typecheck_checker_dependencies",
+      "meaning": "(list) The typechecker (or equivalent native implementation) that satisfies the dependency requirement when declared in the project's production or development dependencies.",
+      "bunValue": "\"TypeScript (or a native preview such as tsgo)\", counted from dependencies or devDependencies (then; evidence[0]; verifier_detail[2])"
+    },
+    {
+      "key": "tooling.typecheck#typecheck_no_emit_commands",
+      "meaning": "(list) Commands recognized as running a no-emit typecheck; any of them in any check-path step satisfies the wiring (HOW) requirement.",
+      "bunValue": "\"tsc --noEmit\", \"tsgo --noEmit\", \"vue-tsc\", \"svelte-check\", \"astro check\", \"tsc --build\" (verifier_detail[1]; prefer[0])"
+    },
+    {
+      "key": "tooling.typecheck#typecheck_step_names",
+      "meaning": "(list) Check-path step names recognized as the typecheck step regardless of the command they run.",
+      "bunValue": "\"typecheck\" / \"check-types\" / \"types\" (verifier_detail[1]; evidence[1]; doesNotFire[3])"
+    },
+    {
+      "key": "tooling.typecheck#typecheck_strictness",
+      "meaning": "(text) How the type configuration expresses strictness: which option disables it outright, which options belong to the language's strict family, and how base-configuration inheritance is written.",
+      "bunValue": "\"strict\": false disables strictness outright; strict-family options such as \"strict\" and \"noImplicitAny\" (examples, not an exhaustive detector list); inheritance via the \"extends\" field (avoid[2]; verifier_detail[4])"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "why",
+      "text": "\"Bun strips types and ships no typechecker, so without a wired, actually run typecheck a Bun stack is by default less type-safe than a tsc-based one\"",
+      "reason": "The concrete runtime gap (type stripping, no bundled tsc) is Bun-specific; the core states the general gap — a stack may run typed code without checking it."
+    },
+    {
+      "item": "avoid[1]",
+      "text": "\"Relying on Bun: it strips types and bundles no tsc.\"",
+      "reason": "Names the runtime and its toolchain; the neutral anti-pattern (execution/transpilation is not a typecheck) is core:avoid[1]."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "text": "\"every detector in this stack is regex-over-source and verifies SHAPE. E.g. coder.bun.interlocking-resolution-model-exists confirms an InterlockingResolution declaring its eight fields is present, but cannot confirm that what resolveTrain actually returns conforms to it\"",
+      "reason": "Project-specific detector id and worked example; the neutral complementarity rationale (shape vs conformance) is kept in core:verification."
+    },
+    {
+      "item": "verifier_detail[7]",
+      "text": "\"Bun executes .ts by STRIPPING types; it ships bun test, bun install, bun build, Bun.serve and a TS/JSX transpiler, but no typechecker (no bundled tsc); ... resolveTrain() can return something structurally wrong and Bun will run it happily.\"",
+      "reason": "Entirely about the Bun runtime's toolset; its neutral kernel lives in core:why and core:verification."
+    },
+    {
+      "item": "verifier_detail[8]",
+      "text": "\"The hub is a package repository with no Bun application; its detectors are .mjs and its .ts files are deliberately-wrong fixtures that must NOT typecheck (e.g. fixtures/dirty/interlocking_resolution_model/...)\"",
+      "reason": "The hub's concrete nature, detector suffixes and fixture paths are stack-specific; the neutral consumer-vs-hub exclusion is core:unless[2] and core:verification."
+    },
+    {
+      "item": "activation.facts[6]",
+      "text": "Finding value \"coder.bun.runtime-typecheck-enforced\" (the validator's own id, per implementation ref).",
+      "reason": "Detector/validator/finding ids of this rule are realization details; the core's finding fact states the failure conditions generically."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "'A consumer Bun project with a package.json and at least one .ts/.tsx source' becomes 'a consumer project of the profiled stack with a dependency manifest and at least one typed source file'; Bun identity is observed through the profile's stack markers (native lockfiles, runtime configuration file).",
+      "as": [
+        "core:given",
+        "profile:tooling.manifest",
+        "profile:suffix.source",
+        "profile:tooling.lockfile.native",
+        "profile:tooling.stack_signals"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "Already neutral; standing obligation carried as-is in meaning.",
+      "as": [
+        "core:when"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "TypeScript/tsgo, tsconfig.json and the no-emit typecheck script become the profile's checker dependency, type configuration and recognized no-emit commands; like the Bun rule, then carries one obligation (the wired typecheck) — strictness stays in avoid/unless/evidence/verification.",
+      "as": [
+        "core:then",
+        "profile:tooling.typecheck#typecheck_checker_dependencies",
+        "profile:tooling.typecheck#typecheck_config",
+        "profile:tooling.typecheck#typecheck_no_emit_commands"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "Neutral kernel: a stack may run typed code without checking it, and shape checks cannot confirm conformance. The Bun mechanics are bunOnly.",
+      "as": [
+        "core:why",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "The concrete commands (tsc --noEmit, tsgo --noEmit) and the 'typecheck' script name move to the profile; the core keeps the shape of the preferred move.",
+      "as": [
+        "core:prefer[0]",
+        "profile:tooling.typecheck#typecheck_no_emit_commands",
+        "profile:tooling.typecheck#typecheck_step_names"
+      ]
+    },
+    {
+      "item": "prefer[1]",
+      "note": "GREEN-scoped remediation is already stack-neutral; 'compiler options' generalized to typecheck options.",
+      "as": [
+        "core:prefer[1]"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "Already neutral.",
+      "as": [
+        "core:avoid[0]"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "Neutral anti-pattern kept (execution/transpilation verifies nothing); the Bun sentence is bunOnly.",
+      "as": [
+        "core:avoid[1]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "avoid[2]",
+      "note": "Neutral condition kept: strictness disabled outright, or no strict-family option, while inheriting from no base. The concrete spellings (\"strict\": false; strict, noImplicitAny) and the extends-based inheritance are stack idiom data in the profile, so another stack's profile can instantiate the strictness test; the inherits-base reporting exception stays in the core.",
+      "as": [
+        "core:avoid[2]",
+        "profile:tooling.typecheck#typecheck_config",
+        "profile:tooling.typecheck#typecheck_strictness"
+      ]
+    },
+    {
+      "item": "avoid[3]",
+      "note": "Already neutral.",
+      "as": [
+        "core:avoid[3]"
+      ]
+    },
+    {
+      "item": "avoid[4]",
+      "note": "Already neutral do-not-broaden items.",
+      "as": [
+        "core:avoid[4]"
+      ]
+    },
+    {
+      "item": "unless[0]",
+      "note": "'No .ts/.tsx sources' becomes 'no typed source files', with the kinds from the profile.",
+      "as": [
+        "core:unless[0]",
+        "profile:suffix.source"
+      ]
+    },
+    {
+      "item": "unless[1]",
+      "note": "'A tsconfig that extends a base is never reported' becomes 'a type configuration that inherits from a base configuration'; how inheritance is written is idiom data in the profile.",
+      "as": [
+        "core:unless[1]",
+        "profile:tooling.typecheck#typecheck_config",
+        "profile:tooling.typecheck#typecheck_strictness"
+      ]
+    },
+    {
+      "item": "unless[2]",
+      "note": "Hub exclusion neutralized to the convention-authoring repository; the hub's concrete description is bunOnly under verifier_detail[8].",
+      "as": [
+        "core:unless[2]"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "package.json / dependencies / devDependencies / tsconfig.json become the manifest, the checker dependency and the type configuration; 'dependencies or devDependencies' reads as production or development dependency lists.",
+      "as": [
+        "core:evidence[0]",
+        "profile:tooling.manifest",
+        "profile:tooling.typecheck#typecheck_checker_dependencies",
+        "profile:tooling.typecheck#typecheck_config"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "The recognized-checker list and the typecheck / check-types / types names move to the profile.",
+      "as": [
+        "core:evidence[1]",
+        "profile:tooling.typecheck#typecheck_no_emit_commands",
+        "profile:tooling.typecheck#typecheck_step_names"
+      ]
+    },
+    {
+      "item": "evidence[2]",
+      "note": "Already neutral.",
+      "as": [
+        "core:evidence[2]"
+      ]
+    },
+    {
+      "item": "evidence[3]",
+      "note": "Already neutral (phase-loop proof), not a profile key.",
+      "as": [
+        "core:evidence[3]"
+      ]
+    },
+    {
+      "item": "evidence[4]",
+      "note": "'tsconfig.json is not demonstrably non-strict (or extends a base config)' becomes the type-configuration wording; what counts as demonstrably non-strict is the idiom data in the profile.",
+      "as": [
+        "core:evidence[4]",
+        "profile:tooling.typecheck#typecheck_config",
+        "profile:tooling.typecheck#typecheck_strictness"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "Scope exclusion (genuinely typed projects only) is generic check scoping.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "The HOW recognition rule ('types ARE checked; WHICH checker is the project's business') is neutral; the recognized commands and names are profile data.",
+      "as": [
+        "core:verification",
+        "profile:tooling.typecheck#typecheck_no_emit_commands",
+        "profile:tooling.typecheck#typecheck_step_names"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "WHERE neutralized to production/development dependency lists; which dependency counts (TypeScript) and which manifest fields carry them come from the profile.",
+      "as": [
+        "core:verification",
+        "profile:tooling.typecheck#typecheck_checker_dependencies",
+        "profile:tooling.manifest"
+      ]
+    },
+    {
+      "item": "verifier_detail[3]",
+      "note": "The check_path definition (invoked vs sitting beside the build) is fully neutral.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[4]",
+      "note": "demonstrably_not_strict and the inherits-is-not-judged rationale are neutral; the strictness spellings, the strict-family options and the inheritance syntax are the idiom data in the profile, exactly as the Bun text treats its flag list as examples.",
+      "as": [
+        "core:verification",
+        "profile:tooling.typecheck#typecheck_strictness",
+        "profile:tooling.typecheck#typecheck_config"
+      ]
+    },
+    {
+      "item": "verifier_detail[5]",
+      "note": "'Deliberately unforced in four ways (SCOPE, HOW, WHERE, STRICTNESS)' is neutral.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[6]",
+      "note": "The neutral complementarity rationale (shape vs conformance) is kept; the stack's detector mechanics, the detector id and the project example are bunOnly.",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[7]",
+      "note": "Purely the Bun runtime's toolset; its neutral kernel lives in core:why and core:verification.",
+      "as": [
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[8]",
+      "note": "The consumer-vs-hub exclusion is neutral verification scope; the hub's concrete nature and fixture path are bunOnly.",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[9]",
+      "note": "Per-rule severity (2) and the strict disposition belong to core verification, not the profile.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "The 'language' fact is re-expressed as the typed-source file kind (the neutral fact vocabulary has no language fact). tooling.languages is deliberately not used: its documented meaning is all languages of production source, which cannot carry the typed subset in a mixed-language profile; the typed-source activation is the profile's source kinds.",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:suffix.source"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "The scope file kinds (manifest, type config, typed sources) fold into the neutral file_kind fact.",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:tooling.manifest",
+        "profile:tooling.typecheck#typecheck_config",
+        "profile:suffix.source"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "The repository-root scan scope is the profile's roots.scan (the core's verification refers only to the profiled scan scope; the location value stays in the profile); each read pattern is a profile entry (manifest, type-configuration pattern, source kinds). Nothing Bun-only remains.",
+      "as": [
+        "core:activation.facts[0]",
+        "core:verification",
+        "profile:roots.scan",
+        "profile:tooling.manifest",
+        "profile:tooling.typecheck#typecheck_config",
+        "profile:suffix.source"
+      ]
+    },
+    {
+      "item": "activation.facts[3]",
+      "note": "Stack identification is expressed neutrally as marker files from the profile: the native lockfiles (tooling.lockfile.native: bun.lock, bun.lockb) and the runtime configuration file (tooling.stack_signals: bunfig.toml); the core's given and second activation fact carry the mechanism.",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:tooling.lockfile.native",
+        "profile:tooling.stack_signals"
+      ]
+    },
+    {
+      "item": "activation.facts[4]",
+      "note": "operation edit/validate and the standing-obligation note are already neutral.",
+      "as": [
+        "core:activation.facts[2]"
+      ]
+    },
+    {
+      "item": "activation.facts[5]",
+      "note": "Hub-classification finding neutralized to repository-is-convention-hub; observability needs_new_observer kept.",
+      "as": [
+        "core:activation.facts[3]"
+      ]
+    },
+    {
+      "item": "activation.facts[6]",
+      "note": "The failure conditions (missing typechecker dependency, missing type configuration, no wired no-emit typecheck, demonstrably non-strict configuration; evaluated on every in-scope consumer project) are neutral; the validator/finding id is bunOnly.",
+      "as": [
+        "core:activation.facts[4]",
+        "bunOnly"
+      ]
+    }
+  ],
+  "neutralityNotes": "The obligation itself (a wired, actually run no-emit typecheck for a typed project, plus its enabling dependency and configuration) and the four deliberate unforcings (scope, how, where, strictness) generalize cleanly; the strictness sub-obligation stays in avoid/unless/evidence/verification, matching the Bun rule's one-obligation then and its split suggestion. Typed-source activation is expressed through the profile's source-kind suffixes, not tooling.languages, whose documented meaning (all languages of production source) cannot carry the typed subset in a mixed-language profile. The v3 vocabulary now covers everything the core needs — the tooling.typecheck map (type configuration, checker dependencies, no-emit commands, step names, strictness idioms) and tooling.stack_signals for stack identification — so no keys are proposed. What could not be made neutral: (1) the Bun gap rationale (type stripping, no bundled typechecker) stays bunOnly while the core states the general gap; (2) detector/validator/finding ids and the project-specific shape-detector example remain realization details; (3) which options belong to the strict family is the stack's to enumerate — the profile carries the option spellings and inheritance syntax as idiom data, and the core keeps the inherits-base reporting exception; (4) how a tree is recognized as a project of the stack is profile data (native lockfiles plus the runtime configuration file as a stack signal), so only the concrete Bun values remain in the realization.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.runtime-typecheck-enforced.json",
+      "sha256": "450f8925b564c39012cad905f98ebd5148300c12b0373ac312c88d7b194ab5ce"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "rekey-v3 -> zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 4,
+      "agreeWithAuditor": true
+    }
+  }
+}

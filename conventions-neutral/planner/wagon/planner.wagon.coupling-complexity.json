@@ -1,0 +1,314 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.wagon.coupling-complexity",
+  "legacyId": "planner.wagon.coupling-complexity",
+  "core": {
+    "title": "Report each wagon's coupling complexity and flag those above the soft threshold",
+    "given": "A plan whose wagons declare produce/consume artifacts, forming a directed wagon graph keyed on artifact names.",
+    "when": "You plan or validate the plan, including unchanged plans and threshold-only configuration changes.",
+    "then": "Report every wagon's coupling complexity (fan_in x fan_out over the produce->consume name graph) and flag, as advisory and non-blocking, each wagon whose coupling complexity strictly exceeds the configured soft threshold (calibration default 6).",
+    "prefer": [
+      "Run plan validation so each wagon's complexity is visible while planning.",
+      "fan_in = wagons consumed from; fan_out = wagons consuming its outputs; reason on the product (Henry-Kafura).",
+      "Optionally review flagged wagons' separability."
+    ],
+    "avoid": [
+      "Blocking or halting planning on the advisory.",
+      "Keying coupling on optional contract declarations instead of artifact names.",
+      "Renaming/merging artifact names only to lower the product."
+    ],
+    "unless": [],
+    "why": "High fan_in x fan_out marks an entangled wagon that hurts separability; non-blocking reporting keeps complexity visible until the threshold is calibrated.",
+    "evidence": [
+      "Plan-validation output reports coupling complexity for every wagon, with advisory findings only for wagons whose fan_in x fan_out strictly exceeds the configured threshold.",
+      "The validation run's exit status is unaffected by coupling-complexity findings (advisory, non-blocking)."
+    ],
+    "verification": [
+      "Compute coupling complexity from the directed wagon graph built on produce/consume artifact names (not optional contract declarations): fan_in = number of distinct wagons a wagon consumes from; fan_out = number of distinct wagons that consume its outputs; proxy = fan_in x fan_out (Henry-Kafura).",
+      "Report the proxy for every wagon on every plan-validation run, including unchanged plans; emit an advisory finding only when the proxy strictly exceeds the configured soft threshold (calibration default 6).",
+      "Non-blocking enforcement: advisory disposition only, never blocks or fails the run; severity 2; exit status is unaffected.",
+      "Promotion to a hard threshold or strict disposition is deferred to corpus calibration."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "operation",
+          "values": [
+            "plan validation/reporting run"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "wagon manifest declaring produce/consume artifacts",
+            "planner configuration"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "wagon produce/consume artifact name added, removed or renamed",
+            "coupling-complexity threshold setting changed"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "coupling-complexity advisory finding"
+          ],
+          "observability": "observable_now"
+        }
+      ],
+      "fires": [
+        "A plan-validation run covers any plan, including an unchanged existing plan: every wagon's fan_in x fan_out is reported.",
+        "A planner adds a consume entry that raises a wagon's fan_in x fan_out above the threshold (default 6): reported and flagged advisory.",
+        "Only the coupling-complexity threshold setting is changed in configuration: all wagons re-reported and flags recomputed against the new cutoff.",
+        "A wagon's product is at or below the threshold: still reported, but no advisory flag (reporting still fires)."
+      ],
+      "doesNotFire": [
+        "Work that involves neither a wagon graph nor plan validation (for example, editing application code outside planning).",
+        "Deciding whether to block or halt planning: this rule never fires as a blocker."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "enforcement.runner",
+      "meaning": "The stack's command that runs plan validation; the coupling-complexity reporter runs inside it on every invocation, and its output is where the per-wagon report and advisory findings appear.",
+      "bunValue": "atdd validate planner"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "then",
+      "text": "flag ... each wagon above the soft threshold planner.wagon.coupling_complexity_threshold (default 6)",
+      "reason": "The config key name is a rule-specific key in the ATDD-Bun planner configuration; the core refers generically to the configured soft threshold and keeps only the calibration default (6)."
+    },
+    {
+      "item": "avoid[1]",
+      "text": "Keying coupling on the nullable contract field instead of artifact names.",
+      "reason": "The nullable contract field is a field of the ATDD-Bun wagon-manifest schema; the core generalizes to optional contract declarations."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "Build the directed wagon graph from produce->consume artifact NAMES (not the nullable contract field).",
+      "reason": "Names the ATDD-Bun wagon-manifest schema field (nullable contract field); the core's verification states the same exclusion at the level of optional contract declarations."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "text": "threshold from config key planner.wagon.coupling_complexity_threshold, default 6",
+      "reason": "Rule-specific ATDD-Bun planner configuration key; not a stack-structure fact, so it stays with the realization while the core says 'configured soft threshold'."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "text": "Terms: coupling_complexity = fan_in x fan_out over the cross-wagon produce/consume graph (Henry-Kafura proxy); soft_threshold = config-driven advisory cutoff (planner.wagon.coupling_complexity_threshold, default 6), over it emits an advisory finding.",
+      "reason": "The term definitions are neutral and live in the core's verification, but the soft_threshold term names the ATDD-Bun config key planner.wagon.coupling_complexity_threshold."
+    },
+    {
+      "item": "activation.facts[2]",
+      "text": "planner.wagon.coupling_complexity_threshold changed",
+      "reason": "Change value names the rule-specific ATDD-Bun config key; the core uses the neutral 'coupling-complexity threshold setting changed'."
+    },
+    {
+      "item": "activation.facts[3]",
+      "text": "planner.wagon.coupling-complexity advisory",
+      "reason": "Finding id of this one rule in the ATDD-Bun realization; the core names the finding generically as a coupling-complexity advisory finding."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given"
+      ],
+      "note": "Plan-domain wording (wagons, produce/consume artifacts, name-keyed graph) is framework-level, not stack-level; already neutral."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when",
+        "profile:enforcement.runner"
+      ],
+      "note": "Neutral trigger kept; the concrete plan-validation command is supplied by the profile."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "bunOnly"
+      ],
+      "note": "One obligation preserved (report all, flag strictly-above-threshold as advisory); the rule-specific config key name stays in the realization."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Separability rationale is stack-neutral."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]",
+        "profile:enforcement.runner"
+      ],
+      "note": "Neutralized to 'run plan validation'; the command comes from the profile."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]"
+      ],
+      "note": "Metric definition is neutral; Henry-Kafura is a literature citation, not a stack."
+    },
+    {
+      "item": "prefer[2]",
+      "as": [
+        "core:prefer[2]"
+      ],
+      "note": "Optional planner guidance; neutral as-is."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Non-blocking constraint; neutral as-is, also enforced via core:verification."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]",
+        "bunOnly"
+      ],
+      "note": "Core keeps the exclusion (coupling keyed on artifact names, not optional contract declarations); the exact nullable contract field is the ATDD-Bun manifest schema detail."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]"
+      ],
+      "note": "Metric-gaming anti-pattern; neutral as-is."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "profile:enforcement.runner"
+      ],
+      "note": "Neutralized to plan-validation output; strictly-exceeds condition preserved."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]",
+        "core:verification"
+      ],
+      "note": "Exit-status neutrality kept in evidence; the per-rule severity 2 / advisory disposition goes to core:verification."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Graph construction on artifact names (and the contract-field exclusion) is generic check scope; the schema-field name is realization-only."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "fan_in/fan_out/proxy definition is stack-neutral; also mirrors prefer[1]."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Report-all plus strictly-exceeds advisory rule is generic; the config key name is ATDD-Bun-specific."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Non-blocking disposition and severity belong to core verification, not to a profile key."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Deferred promotion to hard threshold / strict disposition is a stack-neutral enforcement scope statement."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "The two term definitions are absorbed into the core's verification vocabulary; the soft_threshold term's config key name is realization-only."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:enforcement.runner"
+      ],
+      "note": "Neutral operation value 'plan validation/reporting run' kept; the concrete command value comes from the profile."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]"
+      ],
+      "note": "File-kind hints are kind-level descriptions (wagon manifest, planner configuration); no suffix or path named."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[2]",
+        "bunOnly"
+      ],
+      "note": "Change fact kept (needs_new_observer); the second value's config key name is realization-only."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[3]",
+        "bunOnly"
+      ],
+      "note": "Finding fact kept with a generic finding value; the concrete finding id is realization-only."
+    }
+  ],
+  "neutralityNotes": "Plan-domain vocabulary (wagon, wagon manifest, produce/consume artifact, plan validation, planner configuration) is treated as framework-level rather than stack-level and is kept in the core; the profile vocabulary itself models wagons and plan artifacts stack-neutrally (layout.wagon_dir, layout.plan_item). The concrete plan-validation command is delivered through enforcement.runner, the only profile key needed. Three kinds of content could not be made neutral and stay bunOnly: (a) the rule-specific planner configuration key name planner.wagon.coupling_complexity_threshold (the core says 'configured soft threshold' but keeps the calibration default 6 so the obligation is identical); (b) the finding id of this rule; (c) the wagon-manifest schema detail 'nullable contract field', generalized in the core to optional contract declarations. Severity 2 and the advisory disposition are per-rule enforcement facts and live in core:verification, not in a profile key.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/planner-nodes/planner.wagon.coupling-complexity.json",
+      "sha256": "4d7699693e7daffa1d647f430ef85b661ea5a5d0b0bfe235b1e53cf90c95e421"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

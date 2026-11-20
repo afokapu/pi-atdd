@@ -1,0 +1,267 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.interface.orphan-detection",
+  "legacyId": "planner.interface.orphan-detection",
+  "core": {
+    "title": "Resolve every artifact URN to a registered contract",
+    "given": "A bounded product slice declares artifact URNs that reference contracts (shape per urn.contract), whether new or already existing, and a contract registry exists.",
+    "when": "You check, validate, plan or change bounded product slices, their artifact declarations or the contract registry.",
+    "then": "Ensure every artifact URN resolves to a matching contract in the registry (per urn.grammar#contract_id); any unresolved URN is an orphan and a violation.",
+    "prefer": [
+      "Validate that all artifact URNs resolve to registry contracts first (migration phase2), then generate the missing contracts for any orphaned URNs (migration phase3).",
+      "Treat orphan detection output as a work list of contracts to create, so each artifact gets a defined schema, version and API.",
+      "Check every artifact URN, not only those of the stack's documented contract-reference shape; if you cannot establish how a URN form maps to a registry id, report it as unresolved rather than skipping it."
+    ],
+    "avoid": [
+      "Leaving any artifact URN that names no contract in the registry, including pre-existing ones.",
+      "Removing or renaming a registry contract when it leaves an artifact URN with no remaining matching contract."
+    ],
+    "unless": [],
+    "why": "Artifact URNs are the bidirectional link between a product slice's artifacts and its contracts; a URN that resolves to no contract breaks that link and leaves the artifact's schema, version and API undefined.",
+    "evidence": [
+      "Every artifact URN maps to a registry contract (for URNs of the stack's contract-reference shape, a registry entry at some version).",
+      "Migration phase2 validation reports zero unresolved URNs; any orphans found were remediated by generating contracts (phase3)."
+    ],
+    "verification": [
+      "State-based check: every artifact URN declared anywhere in scope must resolve to a matching registry contract; each unresolved URN is one violation, regardless of whether its declaration changed in the current edit (pre-existing orphans included).",
+      "The check resolves each artifact URN against registry contract ids using the stack's resolution rule (urn.contract, urn.grammar#contract_id); it must check all artifact URNs, not only those of the documented shape — a URN whose resolution cannot be established is reported as unresolved, never skipped.",
+      "Enforcing this rule requires an observer/resolver that matches artifact URNs to registry contract ids; the reference realization has none established yet (needs_new_observer, carried by tooling.urn_resolver).",
+      "Migration phases only order remediation (phase2 = validate all URNs resolve; phase3 = generate missing contracts for orphaned URNs); a phase2 run reporting zero unresolved URNs is compliant and is not a firing; phase alone never makes the rule fire and does not limit when the constraint applies.",
+      "The exact identification of artifact-declaration files and contract-registry entries (by path/kind) is owned by this rule's checker in each realization."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "product-slice artifact declaration (e.g. a manifest declaring artifact URNs)",
+            "contract registry entry"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "orphaned URN (artifact URN with no matching contract in the registry)"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "phase",
+          "values": [
+            "migration phase2 (validate URNs resolve)",
+            "migration phase3 (generate missing contracts)"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "Any artifact URN, new or already existing and unchanged, has no matching contract in the registry.",
+        "A plan artifact, product slice or registry is inspected or validated (inside or outside a migration) and at least one unresolved artifact URN exists.",
+        "A registry contract is removed or renamed and no remaining registry contract matches an artifact URN that referenced it.",
+        "A migration phase2 validation finds at least one artifact URN that does not resolve to a registry contract."
+      ],
+      "doesNotFire": [
+        "Every artifact URN resolves to an existing registry contract at some version, including when a migration phase2 validation runs and reports zero unresolved URNs.",
+        "A registry contract is removed or renamed but every artifact URN still resolves to a remaining matching contract (e.g. another version)."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "urn.contract",
+      "meaning": "The URN shape by which a bounded product slice's artifact declaration references a registered contract — the artifact URN this rule resolves.",
+      "bunValue": "contract:<domain>:<name>"
+    },
+    {
+      "key": "urn.grammar#contract_id",
+      "meaning": "The id shape of a registered contract entry and how a contract-reference URN maps to it (any version matches).",
+      "bunValue": "URN contract:<domain>:<name> matches registry id <domain>:<name>:v<N> for any version N"
+    },
+    {
+      "key": "tooling.urn_resolver",
+      "meaning": "The command that resolves an artifact URN to its target, used to match contract-reference URNs to registry contract ids.",
+      "bunValue": "none — source implementation.type is none, so no existing resolver is established"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "avoid[0]",
+      "text": "e.g. contract:ux:phantom with no ux:phantom:v* id",
+      "reason": "Concrete URN illustration instantiating the profile shapes; kept only in the reference realization (bun.json is the worked example)."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "Positive/negative examples: contract:ux:foundations resolves to id ux:foundations:v1 (linked, not orphan); contract:ux:phantom with no contract id ux:phantom:v* in registry (orphan = violation).",
+      "reason": "Concrete URN examples of the profile-driven resolution rule; the core keeps only the generic rule (check every URN; an unestablishable resolution is unresolved, not skipped)."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "text": "Term ids: orphan_violation ('Orphaned URN definition'), orphan_remediation ('Resolving orphaned URNs').",
+      "reason": "Finding/term ids of this one rule are realization details (notProfileKeys); the core describes the check generically."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "Neutralized 'wagon' to 'bounded product slice'; the example URN shape is profile data.",
+      "as": [
+        "core:given",
+        "profile:urn.contract"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "Directly neutral (roles only).",
+      "as": [
+        "core:when"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "One obligation; the concrete resolution example is carried by the two profile keys.",
+      "as": [
+        "core:then",
+        "profile:urn.contract",
+        "profile:urn.grammar#contract_id"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "Neutralized 'wagon artifacts' to 'a product slice's artifacts'.",
+      "as": [
+        "core:why"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "Validate-then-generate remediation order; the migration phase labels are the method's own process terms, naming no stack.",
+      "as": [
+        "core:prefer[0]"
+      ]
+    },
+    {
+      "item": "prefer[1]",
+      "note": "Already stack-neutral.",
+      "as": [
+        "core:prefer[1]"
+      ]
+    },
+    {
+      "item": "prefer[2]",
+      "note": "Check every URN form; unknown resolution is unresolved, not skipped. The referenced URN shape is profile data.",
+      "as": [
+        "core:prefer[2]",
+        "profile:urn.contract"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "Obligation is neutral; the concrete example URN stays in the reference realization.",
+      "as": [
+        "core:avoid[0]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "Registry-side consequence; directly neutral.",
+      "as": [
+        "core:avoid[1]"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "The parenthetical shapes are profile data.",
+      "as": [
+        "core:evidence[0]",
+        "profile:urn.contract",
+        "profile:urn.grammar#contract_id"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "Phase labels are method terms; content kept.",
+      "as": [
+        "core:evidence[1]"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "Generic rule (check all URN forms; unestablishable resolution = unresolved) goes to verification; shapes to profile keys; concrete examples stay bunOnly.",
+      "as": [
+        "core:verification",
+        "profile:urn.contract",
+        "profile:urn.grammar#contract_id",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "Per-URN, edit-independent violation counting is generic verification; term ids are realization details.",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "Phase semantics (validate/generate; zero-unresolved phase2 is compliant) are neutral and also underpin prefer[0] and evidence[1].",
+      "as": [
+        "core:verification",
+        "core:prefer[0]",
+        "core:evidence[1]"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "File kinds neutralized; the note's state-based applicability (every URN, changed or not) is kept in verification.",
+      "as": [
+        "core:activation.facts[0]",
+        "core:verification"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "Firing condition neutral; the needed resolver (none established in the source) maps to tooling.urn_resolver and to verification.",
+      "as": [
+        "core:activation.facts[1]",
+        "core:verification",
+        "profile:tooling.urn_resolver"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "Phase values kept as method terms; the note (phase only orders remediation, never fires alone, does not limit scope) is kept in verification.",
+      "as": [
+        "core:activation.facts[2]",
+        "core:verification"
+      ]
+    }
+  ],
+  "neutralityNotes": "'Wagon' is neutralized to 'bounded product slice' (the vocabulary's own gloss of layout.wagon_dir); bun.json states no wagon path, so no existing key could carry an exact Bun value for it. The migration phase labels (phase2 validate / phase3 generate) are kept in the core: they are the convention's own remediation procedure from the canonical source and name no stack. The concrete resolution examples (contract:ux:foundations -> ux:foundations:v1; contract:ux:phantom) remain only in bun.json, which is delivered as the worked reference example. Identification of artifact-declaration files and contract-registry entries is deferred to each realization's checker (bun.json says only 'identified by path/kind', so no profile key could carry a concrete Bun value). Term ids orphan_violation/orphan_remediation are bunOnly per notProfileKeys.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/planner-nodes/planner.interface.orphan-detection.json",
+      "sha256": "554653c3b48c847962145b4183873ccffa1a0467b60706cf90e69957d0704db5"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 1,
+    "usefulness": 5,
+    "deriver": "rekey-v3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

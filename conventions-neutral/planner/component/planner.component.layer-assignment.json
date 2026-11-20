@@ -1,0 +1,416 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.component.layer-assignment",
+  "legacyId": "planner.component.layer-assignment",
+  "core": {
+    "title": "Assign each component's layer from its artifact type and responsibility",
+    "given": "A planned component has an artifact type (events, states, data or configs) and a responsibility.",
+    "when": "The planner assigns, changes or reassesses its layer, or its responsibility changes.",
+    "then": "Assign a layer from the artifact type's typical layers, chosen by responsibility: events → integration|application; states → domain|application; data → domain|application|integration; configs → application|integration.",
+    "prefer": [
+      "Events (publishers sit at boundaries): publishing to external systems → integration; emitting internal events → application.",
+      "States: tracking core business state → domain; coordinating state/lifecycle → application.",
+      "Data (spans layers by responsibility): business logic → domain; coordinating the workflow → application; persisting to a store → integration.",
+      "Configs: coordinating setup → application; loading settings (e.g. from an external config store) → integration.",
+      "Treat the mapping as the default, defensible placement, not an absolute prohibition — findings are reported but do not block."
+    ],
+    "avoid": [
+      "Placing an external event publisher in the domain layer.",
+      "Deciding the layer case by case or from the component name alone, ignoring its responsibility."
+    ],
+    "unless": [],
+    "why": "A typical-layer mapping per artifact type gives a default, defensible placement for each component, so layer assignment is consistent rather than guessed case by case.",
+    "evidence": [
+      "The layer-assignment check for the plan's components passes (advisory: findings are reported, not blocking).",
+      "Each component's layer is in its artifact type's typical-layer set and the stated responsibility matches the chosen layer (boundary/external or settings loading/persistence → integration, coordination → application, core business state/logic → domain).",
+      "Compliant example: a state tracker placed in the domain layer. Non-compliant: an external event publisher placed in the domain layer."
+    ],
+    "verification": [
+      "A layer-assignment check scans the planned components: each component's layer, resolved to its layer role using the stack's layer names (profile: roles.layers), must fall within its artifact type's typical-layer set (events: integration, application; states: domain, application; data: domain, application, integration; configs: application, integration).",
+      "The check mechanically verifies only membership in the typical-layer set; that the stated responsibility matches the chosen layer is judged from the plan's own component statement (see evidence), and the file-kind activation examples are illustrative, not an exhaustive gate.",
+      "Advisory disposition (severity 2): findings are reported but do not block.",
+      "The concrete validator, finding and term identifiers of this rule are realization details; the core names the check generically."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "phase",
+          "values": [
+            "planning"
+          ],
+          "observability": "needs_new_observer",
+          "note": "Fires while the planner authors or revises component entries; the planning phase must be exposed by the harness."
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "plan",
+            "component-spec"
+          ],
+          "observability": "llm_judged",
+          "note": "Illustrative examples only, not an exhaustive gate: any planner artifact that declares a component with an artifact type, responsibility or layer qualifies. The stack's concrete plan-artifact kinds come from the profile."
+        },
+        {
+          "fact": "change",
+          "values": [
+            "component_added",
+            "component_layer_changed",
+            "component_artifact_type_changed",
+            "component_responsibility_changed",
+            "component_layer_reassessed"
+          ],
+          "observability": "needs_new_observer",
+          "note": "Diff-level fact: a component entry is added, its layer/artifact type/responsibility is edited, or an existing placement is being reviewed."
+        },
+        {
+          "fact": "task_term",
+          "values": [
+            "component",
+            "layer",
+            "responsibility",
+            "publisher",
+            "emitter",
+            "tracker",
+            "handler",
+            "persister",
+            "configurator",
+            "loader"
+          ],
+          "observability": "observable_now",
+          "note": "Task text mentions components, their responsibility or layer placement."
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "component layer assignment"
+          ],
+          "observability": "needs_new_observer",
+          "note": "The layer-assignment check reports a component whose layer is outside its artifact type's typical layers."
+        }
+      ],
+      "fires": [
+        "Planner adds an event-publisher component and must choose its layer",
+        "Planner declares a state-tracker component and sets its layer",
+        "Planner changes a config component's layer or artifact type",
+        "Planner changes a component's responsibility (e.g. a data component goes from coordinating a workflow to persisting to a store), so its existing placement must be reassessed",
+        "Planner reviews existing component placements in a plan",
+        "The layer-assignment check flags an external event publisher assigned to the domain layer"
+      ],
+      "doesNotFire": [
+        "Coder edits implementation code without touching planned component layer assignments",
+        "Planner edits acceptance wording that changes neither the component's responsibility nor its artifact type or layer",
+        "Checking that a component has exactly one layer (covered by planner.component.layer-consistency)"
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roles.plan_artifact.kinds",
+      "meaning": "The concrete planner-artifact kinds that can declare a component with an artifact type, responsibility or layer; the activation's file-kind examples are drawn from them.",
+      "bunValue": "plan, wagon, wmbt, component-spec"
+    },
+    {
+      "key": "roles.layers",
+      "meaning": "The stack's layer-role local names as written in plans, so a component's layer reference can be resolved to its layer role before comparison with the typical-layer set.",
+      "bunValue": "Layers are written qualified by side, e.g. backend.domain, backend.application, backend.integration"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "verifier_detail[0]",
+      "text": "Term-id packaging of the mapping: events_layers=[integration, application]; states_layers=[domain, application]; data_layers=[domain, application, integration]; configs_layers=[application, integration].",
+      "reason": "Sidecar term-registry ids of this one rule; the mapping itself is the core obligation (then) and verification names the check generically."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "text": "Term labels: events_layers 'Layers for event components'; states_layers 'Layers for state components'; data_layers 'Layers for data components'; configs_layers 'Layers for config components'.",
+      "reason": "Verifier-facing labels of this rule's sidecar term registry; they carry no stack-neutral obligation."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "text": "Term rationales keyed by term_id (events 'Event publishers at boundaries (external integration or internal application)'; states 'State trackers manage business state (domain) or coordinate (application)'; data 'Data handlers span layers based on responsibility'; configs 'Configuration components coordinate setup or load settings').",
+      "reason": "The rationale content is already carried by core prefer[0]–[3]; only the term_id-keyed packaging is realization-specific."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "text": "Source illustrative examples (events): MatchStartedPublisher → backend.integration (publishes to external systems); StateCommittedEmitter → backend.application (emits internal events).",
+      "reason": "Named components from the originating application with side-qualified layer names; the concrete worked example is delivered by bun.json itself."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "text": "Source illustrative examples (states): TimebankTracker → backend.domain (tracks core business state); SessionManager → backend.application (coordinates session lifecycle).",
+      "reason": "Named components from the originating application with side-qualified layer names; the concrete worked example is delivered by bun.json itself."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "text": "Source illustrative examples (data): ChoiceMaker → backend.domain (business logic for making choice); ChoiceHandler → backend.application (coordinates choice workflow); ChoicePersister → backend.integration (persists to database).",
+      "reason": "Named components from the originating application with side-qualified layer names; the concrete worked example is delivered by bun.json itself."
+    },
+    {
+      "item": "verifier_detail[7]",
+      "text": "Source illustrative examples (configs): MatchConfigurator → backend.application (coordinates match setup); ConfigLoader → backend.integration (loads from external config store). The external store is an example; loading settings in general maps to integration.",
+      "reason": "Named components from the originating application; the general principle (loading settings maps to integration regardless of store) is kept in core prefer[3]."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "Validator test_component_layer_assignment::test_component_layer_assignment passes for the plan's components.",
+      "reason": "The validator id of this rule is a realization detail; the core states the generic check and its advisory disposition."
+    },
+    {
+      "item": "activation.facts[4]",
+      "text": "finding value 'component_layer_assignment'.",
+      "reason": "The finding id of this rule's validator is a realization detail; the core activation names the finding situation generically."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given"
+      ],
+      "note": "Stack-neutral as written; the artifact-type taxonomy is convention content."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Stack-neutral as written."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then"
+      ],
+      "note": "The typical-layer mapping names only layer roles; identical obligation to Bun."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Stack-neutral as written."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]"
+      ],
+      "note": "Role-level guidance; no stack content."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]"
+      ],
+      "note": "Role-level guidance; no stack content."
+    },
+    {
+      "item": "prefer[2]",
+      "as": [
+        "core:prefer[2]"
+      ],
+      "note": "Role-level guidance; no stack content."
+    },
+    {
+      "item": "prefer[3]",
+      "as": [
+        "core:prefer[3]"
+      ],
+      "note": "Role-level guidance; the external config store stays an illustrative 'e.g.'."
+    },
+    {
+      "item": "prefer[4]",
+      "as": [
+        "core:prefer[4]",
+        "core:verification"
+      ],
+      "note": "Default-placement guidance kept in prefer; the advisory disposition and severity 2 move to verification, not the profile."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Role-level anti-example (domain layer)."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Stack-neutral anti-pattern."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Generic check-pass evidence with advisory note in core; the validator id is bunOnly."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]",
+        "core:verification"
+      ],
+      "note": "Typical-set membership plus responsibility-match judgement; verification states the mechanical check covers only membership."
+    },
+    {
+      "item": "evidence[2]",
+      "as": [
+        "core:evidence[2]",
+        "profile:roles.layers"
+      ],
+      "note": "Role-level example pair; 'backend.domain' in Bun is the stack's local layer name."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:then",
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "The mapping is the core obligation and drives the check; the term_id packaging is bunOnly."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "profile:roles.layers"
+      ],
+      "note": "Layer references are resolved to layer roles via the stack's layer names before comparison; the side-qualified spelling is profile data, the suffix comparison becomes generic role resolution."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "Term-registry labels of this rule's realization."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:prefer[0]",
+        "core:prefer[1]",
+        "core:prefer[2]",
+        "core:prefer[3]",
+        "bunOnly"
+      ],
+      "note": "Rationale content duplicates core prefer items; the term_id-keyed packaging is bunOnly."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "Named application examples with stack-specific layer spellings."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "Named application examples with stack-specific layer spellings."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "Named application examples with stack-specific layer spellings."
+    },
+    {
+      "item": "verifier_detail[7]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "Named application examples; the general principle is kept in core prefer[3]."
+    },
+    {
+      "item": "verifier_detail[8]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Advisory disposition, severity 2 — per-rule enforcement, in core verification."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]"
+      ],
+      "note": "Planning phase is a process fact, not a stack fact."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:roles.plan_artifact.kinds"
+      ],
+      "note": "Core keeps neutral illustrative kinds and the not-an-exhaustive-gate note; wagon/wmbt are the profile's plan-artifact kinds."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[2]"
+      ],
+      "note": "Diff-level facts about plan artifacts; stack-neutral."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[3]"
+      ],
+      "note": "Task terms are rule-specific and neutral; kept in core activation."
+    },
+    {
+      "item": "activation.facts[4]",
+      "as": [
+        "core:activation.facts[4]",
+        "bunOnly"
+      ],
+      "note": "Finding situation in core; the finding id is bunOnly."
+    },
+    {
+      "item": "activation.fires",
+      "as": [
+        "core:activation.fires"
+      ],
+      "note": "Neutralized: 'Validator flags' → 'the layer-assignment check flags'; otherwise unchanged."
+    },
+    {
+      "item": "activation.doesNotFire",
+      "as": [
+        "core:activation.doesNotFire"
+      ],
+      "note": "Kept verbatim; the sibling rule reference is convention-level, not stack-specific."
+    }
+  ],
+  "neutralityNotes": "The typical-layer mapping and the events/states/data/configs artifact-type taxonomy are convention content, not stack facts, and reference only layer-role names, so they stay in the core. The stack contributes data through the profile: how layer roles are spelled in plans (roles.layers, e.g. side-qualified backend.domain) and the concrete plan-artifact kinds (roles.plan_artifact.kinds, e.g. wagon, wmbt). Named component examples (MatchStartedPublisher, TimebankTracker, Choice*, ConfigLoader), the validator/finding ids and the sidecar term-registry ids/labels are bunOnly; bun.json itself remains the worked reference example. Per-rule advisory disposition and severity 2 are kept in core verification, not the profile. The doesNotFire cross-reference to the sibling planner.component.layer-consistency rule is kept as a convention-level reference. Nothing in the obligation resisted neutralization.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/planner-nodes/planner.component.layer-assignment.json",
+      "sha256": "c0002ae80b69d7cb1633de2baa79dc32fa506f555b18f72e65a4dda32468790e"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 1,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

@@ -1,0 +1,18 @@
+Title: Drive interlocking tests through the production runners, not mocks (Bun)
+Given: A Bun e2e test (e2e/**/*.ts) that exercises an interlocking route or train
+When: the test is written or changed to prove route/train behavior
+Then: Drive the production InterlockingRunner.resolveTrain -> TrainRunner.execute chain so the asserted evidence comes from the real runners, with no mock, substituted runner or hand-built resolver standing in for them.
+Prefer:
+- Call `new InterlockingRunner(interlockingYamlPath).resolveTrain(action, inputs)` with guard-relevant inputs; it resolves the guarded route to exactly one `trainId`.
+- Pass that `trainId` to the production `TrainRunner` and execute the selected train through the real runtime path.
+- Assert the selected train and the route- or acceptance-specific result of its execution.
+Avoid:
+- MockInterlockingRunner / MockTrainRunner.
+- mock.module(...) on a runner module (bun:test idiom; worst case: swaps the ENTIRE route-control module).
+- bun:test spyOn/mock/mock.restore aimed at a runner; vi.mock/jest.mock around a runner module (migrating suites); vi.spyOn/jest.spyOn replacing runner behavior (resolveTrain/execute).
+- A local `resolveTrain` function or `*Resolver` class standing in for InterlockingRunner.
+- Importing the real runners only to satisfy the detector while assertions come from a parallel fake path.
+- Asserting a plan literal without driving production resolution and execution.
+Unless:
+- Not an interlocking test: no interlocking route/train/interlocking token and no runner symbol.
+Why: A test that replaces either runner with a double exercises the double, not production route control — a descriptive green proving nothing about production.

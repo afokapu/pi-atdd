@@ -1,0 +1,413 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.dead-code.reachability",
+  "legacyId": "coder.bun.dead-code-reachability",
+  "core": {
+    "title": "Keep every source file reachable from a structural root",
+    "given": "A source file in a scanned tree that contains a structural root",
+    "when": "The tree is scanned as a whole (any file, pre-existing or changed, including edits to manifest-declared script entry points)",
+    "then": "Every source file MUST be reachable, forwards or backwards, from a structural root through runtime (non-type-only) import edges.",
+    "prefer": [
+      "First decide if the file should exist at runtime: what responsibility it claims, which module would naturally import it, and whether it is obsolete, half-integrated, or types-only.",
+      "Delete genuinely unused code.",
+      "Wire required runtime behavior through the module that owns it.",
+      "Move a type into its using module when the file has no runtime values."
+    ],
+    "avoid": [
+      "Dummy imports, barrel-style re-export modules or other synthetic edges solely for reachability.",
+      "Side-effect imports unless the side effect is required runtime behavior.",
+      "Renaming/relocating a file merely to exploit structural-root detection.",
+      "Keeping obsolete code \"just in case\".",
+      "Treating a type-only reference (erased before runtime) as keeping a module alive."
+    ],
+    "unless": [
+      "The stack's index modules are themselves structural roots and are never reported.",
+      "Test files are entrypoints, excluded.",
+      "A scan root with no structural root is skipped."
+    ],
+    "why": "An unreachable file signals unclear ownership or incomplete integration, not a request to manufacture an edge; repair by removing code with no runtime responsibility or connecting it through its real owner.",
+    "evidence": [
+      "The reachability finding is gone after the change.",
+      "Any new import represents a real runtime dependency (not type-only, not synthetic, not a gratuitous side-effect import).",
+      "Deleted code has no required caller or entry point.",
+      "No new architecture or dependency-flow violation was created.",
+      "The refactor introduces no new violations of the stack's ATDD convention set.",
+      "Existing behavior and tests remain green."
+    ],
+    "verification": [
+      "The check builds the module dependency graph of each scanned tree, walks it from the structural roots in both directions (forwards and backwards), and reports every file in neither reachable set.",
+      "A structural root is a file the graph is walked from — an entry point the repository itself declares; which files are structural roots (name patterns and manifest-declared script targets) comes from the profile.",
+      "The invariant is whole-tree: it covers every eligible source file in a scanned tree, including pre-existing files and edits to manifest-declared scripts, not only changed files.",
+      "Type-only references are erased before runtime, create no runtime edge, and cannot keep a module alive; a module whose only connection to any structural root, in either direction, is a type-only reference is unreachable. The check must distinguish type-only from runtime references — a reader that cannot make that distinction under-reports dead modules.",
+      "References to external packages are outside the graph by construction; which references are external comes from the profile.",
+      "Exclusions that scope the check: the stack's index modules are structural and never reported; test files are excluded as entrypoints (which files count as tests comes from the profile's test kinds); a scanned tree containing no structural root is skipped rather than reporting every file as dead.",
+      "Severity 2; disposition strict: the check fails on every finding; no advisory mode, no ratchet baseline."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "source"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "manifest"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "unreachable_source_file"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "A source file (new or pre-existing) is in neither the forward nor the backward reachable set of any structural root.",
+        "A module's only connection to any structural root, in either direction, is a type-only reference, so it has no runtime edge to the graph.",
+        "A manifest-declared script entry point that ran a file is removed, and that file is not otherwise reachable forwards or backwards from any remaining structural root."
+      ],
+      "doesNotFire": [
+        "The file is itself a structural root (for example the stack's index module).",
+        "The file is a test file.",
+        "The scanned tree contains no structural root at all (it is skipped).",
+        "The file is itself the target of a manifest-declared script.",
+        "The file has no importer but itself imports, at runtime, a module that reaches a structural root (backward reachability).",
+        "The reference is to an external package (outside the graph)."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "suffix.source",
+      "meaning": "Which file suffixes identify the source files that the whole-tree reachability invariant covers.",
+      "bunValue": ".ts/.tsx"
+    },
+    {
+      "key": "tooling.manifest",
+      "meaning": "The manifest file whose scripts declare script-based structural roots; editing its scripts can change reachability without any source edit.",
+      "bunValue": "package.json"
+    },
+    {
+      "key": "idiom.external_import",
+      "meaning": "How an import of an external package (outside the project graph) is recognised, so that only in-project references form the graph's edges.",
+      "bunValue": "Import specifiers resolve relative or through the `@/` alias; npm/bare specifiers are outside the graph by construction."
+    },
+    {
+      "key": "idiom.module_boundaries#structural_roots",
+      "meaning": "How the stack's structural roots (entry points the dependency graph is walked from) are recognised: file-name patterns plus manifest-declared script targets.",
+      "bunValue": "a file named index, wagon, composition, main or app, or a file a script in the nearest package.json runs (e.g. `bun run docs/gen.ts`)"
+    },
+    {
+      "key": "idiom.module_boundaries#type_only_import",
+      "meaning": "How a type-only dependency reference — erased before runtime and therefore creating no runtime edge — is written and recognised.",
+      "bunValue": "an `import type` edge. Erased at compile time, so it creates no runtime edge and cannot keep a module alive"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "activation.facts[2]",
+      "text": "finding values [\"DEAD-CODE-REACHABILITY-TS-001\"], observability needs_new_observer; emitted by bun_ts_metrics_detector after a whole-tree scan of the import graph.",
+      "reason": "Finding and detector ids of this one rule are realization details (notProfileKeys); the core keeps a generic finding fact and names the check generically."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "Root vocabulary: a file named index, wagon, composition, main or app, or a file a script in the nearest package.json runs (e.g. `bun run docs/gen.ts`).",
+      "reason": "The concrete root-name list and the `bun run` script example name stack-specific files and commands; the core speaks of structural roots identified through the profile (idiom.module_boundaries#structural_roots)."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "text": "The import graph is built with Bun's in-process TypeScript parser, which returns actual import records and omits type-only ones. Unlike the Python sibling's five-regex reader (which counts a module whose only referrer is a type import as reachable though it is dead), this detector reports such modules as dead. Same obligation, measured correctly — available only because the runtime is Bun; this rule is MORE ACCURATE than its Python sibling and this is the one place the port is not a transcription.",
+      "reason": "Compares this realization's parser fidelity with the Python sibling's regex reader; capability claims about one runtime's detector are realization facts, not obligations. Only the neutral kernel (the check must distinguish type-only from runtime references) enters core verification."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "text": "Fixture check: on a fixture where the Python detector finds one dead file, this detector finds two.",
+      "reason": "Realization-specific fidelity fixture comparing two detectors of the same obligation."
+    },
+    {
+      "item": "verifier_detail[7]",
+      "text": "Realized by `bun_ts_metrics_detector` (validator); core alias DEAD-CODE-REACHABILITY-TS-001.",
+      "reason": "Detector, validator and finding ids of this single rule are realization details (notProfileKeys); severity 2 and strict disposition are kept in core verification."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "'TS/TSX file' becomes 'source file'; which suffixes are source files comes from the profile.",
+      "as": [
+        "core:given",
+        "profile:suffix.source"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "'package.json script edits' becomes 'edits to manifest-declared script entry points'; the manifest is a profile value. Whole-tree scope kept.",
+      "as": [
+        "core:when",
+        "profile:tooling.manifest"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "Language names replaced by 'source file'; the 'runtime (non-type-only) import edges' qualifier is kept as a neutral concept whose concrete syntax is the profile value.",
+      "as": [
+        "core:then",
+        "profile:suffix.source",
+        "profile:idiom.module_boundaries#type_only_import"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "Already stack-neutral; carried verbatim.",
+      "as": [
+        "core:why"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "Carried near-verbatim; 'import' kept as the neutral module-graph verb.",
+      "as": [
+        "core:prefer[0]"
+      ]
+    },
+    {
+      "item": "prefer[1]",
+      "note": "Verbatim.",
+      "as": [
+        "core:prefer[1]"
+      ]
+    },
+    {
+      "item": "prefer[2]",
+      "note": "Verbatim.",
+      "as": [
+        "core:prefer[2]"
+      ]
+    },
+    {
+      "item": "prefer[3]",
+      "note": "Verbatim.",
+      "as": [
+        "core:prefer[3]"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "'barrel exports' generalized to 'barrel-style re-export modules'; no stack named.",
+      "as": [
+        "core:avoid[0]"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "Verbatim.",
+      "as": [
+        "core:avoid[1]"
+      ]
+    },
+    {
+      "item": "avoid[2]",
+      "note": "Verbatim; 'structural-root detection' is a neutral check concept.",
+      "as": [
+        "core:avoid[2]"
+      ]
+    },
+    {
+      "item": "avoid[3]",
+      "note": "Verbatim.",
+      "as": [
+        "core:avoid[3]"
+      ]
+    },
+    {
+      "item": "avoid[4]",
+      "note": "'an `import type` referrer' neutralized to 'a type-only reference (erased before runtime)'; the concrete syntax is the profile value.",
+      "as": [
+        "core:avoid[4]",
+        "profile:idiom.module_boundaries#type_only_import"
+      ]
+    },
+    {
+      "item": "unless[0]",
+      "note": "index.ts/index.tsx becomes 'the stack's index modules'; they are part of structural-root identification, supplied by the profile. The `__init__.py` analogy is dropped (it names another stack).",
+      "as": [
+        "core:unless[0]",
+        "profile:idiom.module_boundaries#structural_roots"
+      ]
+    },
+    {
+      "item": "unless[1]",
+      "note": "Already neutral; which files count as tests comes from the profile's test kinds (bun.json itself does not name them).",
+      "as": [
+        "core:unless[1]"
+      ]
+    },
+    {
+      "item": "unless[2]",
+      "note": "Verbatim; 'scan root' is neutral.",
+      "as": [
+        "core:unless[2]"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "Verbatim.",
+      "as": [
+        "core:evidence[0]"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "Kept; 'type-only' resolved through the profile.",
+      "as": [
+        "core:evidence[1]",
+        "profile:idiom.module_boundaries#type_only_import"
+      ]
+    },
+    {
+      "item": "evidence[2]",
+      "note": "Verbatim.",
+      "as": [
+        "core:evidence[2]"
+      ]
+    },
+    {
+      "item": "evidence[3]",
+      "note": "Verbatim.",
+      "as": [
+        "core:evidence[3]"
+      ]
+    },
+    {
+      "item": "evidence[4]",
+      "note": "'no new ATDD Bun violations' neutralized to 'no new violations of the stack's ATDD convention set'; same obligation, no stack named.",
+      "as": [
+        "core:evidence[4]"
+      ]
+    },
+    {
+      "item": "evidence[5]",
+      "note": "Verbatim.",
+      "as": [
+        "core:evidence[5]"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "Neutral half — a structural root is a file the graph is walked from, an entry point the repository declares — goes to core verification; the root-name list and `bun run` example are the profile value / bunOnly.",
+      "as": [
+        "core:verification",
+        "profile:idiom.module_boundaries#structural_roots",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "Graph construction, bidirectional walk and reporting are fully neutral.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "Neutral rule: external-package references are outside the graph by construction; how external vs in-project references are recognised (npm/bare vs relative/`@/`) is exactly the profile key's meaning.",
+      "as": [
+        "core:verification",
+        "profile:idiom.external_import"
+      ]
+    },
+    {
+      "item": "verifier_detail[3]",
+      "note": "Neutral half — type-only edges are erased before runtime, create no runtime edge, cannot keep a module alive — goes to core verification; the `import type` syntax is the profile value, and the regex-vs-parser capability remark is carried by verifier_detail[4].",
+      "as": [
+        "core:verification",
+        "profile:idiom.module_boundaries#type_only_import"
+      ]
+    },
+    {
+      "item": "verifier_detail[4]",
+      "note": "Neutral kernel — the check must distinguish type-only from runtime references or it under-reports dead modules — goes to core verification; the Bun-parser vs Python-regex comparison, the fixture claim and the 'MORE ACCURATE' statement are bunOnly.",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[5]",
+      "note": "Realization-specific fixture comparing this detector with the Python sibling; no neutral obligation content.",
+      "as": [
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[6]",
+      "note": "Exclusions that only scope the check; mirrors unless[0..2] on the verifier side, with the exact index/test classification deferred to the profile and the checker.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[7]",
+      "note": "Severity 2 and strict disposition (no advisory mode, no ratchet baseline) go to core verification; the detector id and finding alias are bunOnly per notProfileKeys.",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "'language: typescript/tsx' becomes 'file_kind: source'; the whole-tree scope (pre-existing files too, not only changed ones) is kept in the fact's meaning and core verification.",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:suffix.source"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "'file_kind: package.json' becomes 'file_kind: manifest'; the manifest and its script-declared roots are profile values.",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:tooling.manifest"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "The neutral finding fact is 'a source file unreachable from any structural root' (needs_new_observer); the finding id and detector are bunOnly.",
+      "as": [
+        "core:activation.facts[2]",
+        "bunOnly"
+      ]
+    }
+  ],
+  "neutralityNotes": "The neutral obligation is reachability through runtime edges; everything stack-specific was kept out without weakening it. Two concepts the core needs have no closed-vocabulary key and are proposed: idiom.module_boundaries#structural_roots (which files are entry points) and idiom.module_boundaries#type_only_import (what a type-only, erased reference looks like). The Bun root-name vocabulary (index/wagon/composition/main/app, `bun run` script targets), the Bun-parser vs Python-regex fidelity comparison and its fixture, and the finding/detector ids remain bunOnly. Which files count as tests is deferred to the profile's test kinds, since bun.json itself never names test suffixes. 'import' and 'barrel-style re-export' are retained as stack-neutral module-graph vocabulary. The `__init__.py` analogy in unless[0] was dropped because it names another stack.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.dead-code-reachability.json",
+      "sha256": "e2c9a67656714da79e36b844108173f8f24e46ae133ad09e1344bb44659a2980"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 1,
+    "usefulness": 5,
+    "deriver": "rekey-v3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

@@ -1,0 +1,343 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.train.registry-coherence",
+  "legacyId": "planner.train.registry-coherence",
+  "core": {
+    "title": "Keep the train registry and per-train documents mutually coherent",
+    "given": "At CONFIRM, the corpus contains a train registry (profile: layout.registries#train_registry) and per-train documents at the per-train document location (profile: layout.locations#train_documents), whatever this plan changed.",
+    "when": "The planner confirms a plan.",
+    "then": "Every train-registry row must name a path that resolves to an existing file anywhere on disk, and every per-train document at the per-train document location (profile: layout.locations#train_documents), other than registry sidecars (profile: layout.locations#train_document_sidecars), must be named by a registry row: no dangling rows, no orphan documents.",
+    "prefer": [
+      "Plan a train's registry row and document as one change, both derived from its train_id.",
+      "Remove a train's row and document together.",
+      "Fix pre-existing dangling rows or orphan documents before confirming."
+    ],
+    "avoid": [
+      "Writing a row before its document exists (dangling row): consumers resolve through it and some crash.",
+      "Leaving a document no row names (orphan document): inert, but residue of document-before-registry ordering.",
+      "Counting registry sidecars as per-train documents."
+    ],
+    "unless": [
+      "Registry sidecars at the per-train document location (profile: layout.locations#train_document_sidecars) are not per-train documents, so they need no registry row."
+    ],
+    "why": "Consumers resolve trains through the registry, so a row naming an absent file breaks them; unregistered documents are residue of document-before-registry ordering and must be reportable.",
+    "evidence": [
+      "The corpus-wide train registry / per-train document coherence check passes at CONFIRM.",
+      "Each failure identifies the train, the direction (dangling row or orphan document), the registry value and the document value."
+    ],
+    "verification": [
+      "Corpus-wide check at CONFIRM: evaluated over the whole corpus, not only artifacts touched by the current plan; pre-existing violations are findings, and any finding blocks confirmation.",
+      "Dangling direction: for each registry row, the named path must resolve to an existing file anywhere on disk, with no repository boundary; a target outside the repository is still checked, and a missing external target is still reported. The target location is not restricted to the per-train document location, and no sidecar exclusion applies to this direction.",
+      "Orphan direction: each per-train document at the per-train document location (profile: layout.locations#train_documents) must be named by some registry row; registry sidecars (profile: layout.locations#train_document_sidecars) are excluded from this enumeration only.",
+      "Each finding reports the train, the direction (dangling row or orphan document), the registry value and the document value.",
+      "Disposition strict: fails on every finding, no advisory mode, no ratchet baseline (severity 3); enforcement is confirm-blocking.",
+      "The check reports dangling rows as findings instead of crashing the way registry consumers do when they resolve a row to an absent file.",
+      "The check does not cover coherence inside the registry-sidecar trees; those are governed by their own rules."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "phase",
+          "values": [
+            "CONFIRM"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "train registry",
+            "per-train document"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "dangling row (a registry row names a path that resolves to no file)",
+            "orphan document (no registry row names the document)"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "At CONFIRM, any train-registry row names a path that does not resolve to an existing file, wherever that path points, inside or outside the repository.",
+        "At CONFIRM, a per-train document at the per-train document location (not a registry sidecar) is named by no registry row.",
+        "A dangling row or orphan document already existed before this plan, and the plan only edits unrelated content: confirmation still checks and reports it.",
+        "A plan adds, renames, moves or removes a train row or document without updating the other side."
+      ],
+      "doesNotFire": [
+        "Orphan direction only: registry sidecars at the per-train document location are not enumerated as per-train documents needing a row; a registry row naming a missing sidecar path is still a dangling row.",
+        "A content-only edit to a train document when every row resolves and every document is registered (the corpus is coherent in both directions).",
+        "Coherence inside the registry-sidecar trees, which is governed by its own rules."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "layout.registries#train_registry",
+      "meaning": "Path of the registry artifact that enumerates every train (each row naming a train document path); its rows are the subjects of the dangling direction.",
+      "bunValue": "plan/_trains.yaml"
+    },
+    {
+      "key": "layout.locations#train_documents",
+      "meaning": "Location (glob) of the per-train document tree; the documents enumerated there (minus registry sidecars) are the subjects of the orphan direction, and the dangling direction's targets are deliberately not restricted to it.",
+      "bunValue": "plan/_trains/**"
+    },
+    {
+      "key": "layout.locations#train_document_sidecars",
+      "meaning": "Names or globs inside the per-train document tree that are registry sidecars (supporting artifacts), not per-train documents; they are excluded from the orphan enumeration only, never from the dangling direction.",
+      "bunValue": "underscore-prefixed names under plan/_trains: _aliases.yaml and the _interlockings/ subtree"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "avoid[3]",
+      "text": "Repointing planner.train.registry's validator ref; the conventions sweep owns it.",
+      "reason": "Names another convention node of this corpus, its validator binding and the sweep that pins it; other realizations have different registry rules and binding owners, so this governance instruction has no stack-neutral equivalent."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "Validator test_train_registry_coherence::test_every_registry_row_resolves_and_every_document_is_registered passes at CONFIRM.",
+      "reason": "Validator id of this rule's realization; the core states generically that the corpus-wide coherence check passes at CONFIRM."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "text": "_interlockings coherence is checked by planner.interlocking.registry-mirrors-document and planner.train.interlocking-home.",
+      "reason": "Cross-references to sibling rules of this corpus; the core only says sidecar-tree coherence is governed by its own rules."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "text": "Validation: family=coherence, template=cross_artifact_existence_agreement, variant=planner_train_registry_existence, subject_kind=train.",
+      "reason": "Validation-metadata identifiers of this rule's validator registration; the neutral facts (whole corpus at CONFIRM, confirm-blocking) are in core:verification."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "text": "test_route_space_admission dies on a dangling row with a bare FileNotFoundError rather than reporting it; every consumer walking the registry resolves through rows; this validator reports dangling rows instead.",
+      "reason": "Names this realization's consumer test and its runtime crash mode; the core keeps only the generic fact (consumers crash on dangling rows, this check reports them)."
+    },
+    {
+      "item": "activation.facts[2]",
+      "text": "finding ids dangling_row, orphan_document",
+      "reason": "Finding ids emitted by this rule's detector; the core names the two finding directions descriptively."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "Corpus-wide, change-independent framing kept; the concrete registry path and per-train document location instantiate layout.registries#train_registry and layout.locations#train_documents.",
+      "as": [
+        "core:given"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "Already neutral.",
+      "as": [
+        "core:when"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "The single obligation, both directions; dangling targets resolve to a file anywhere on disk (no repository boundary), and 'non-underscore' is recast as registry sidecars via layout.locations#train_document_sidecars.",
+      "as": [
+        "core:then"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "Already neutral; kept verbatim.",
+      "as": [
+        "core:why"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "Already neutral (train_id is method vocabulary).",
+      "as": [
+        "core:prefer[0]"
+      ]
+    },
+    {
+      "item": "prefer[1]",
+      "note": "Already neutral.",
+      "as": [
+        "core:prefer[1]"
+      ]
+    },
+    {
+      "item": "prefer[2]",
+      "note": "Already neutral; 'orphans' phrased as orphan documents.",
+      "as": [
+        "core:prefer[2]"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "Already neutral (dangling row direction, consumer consequence).",
+      "as": [
+        "core:avoid[0]"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "Already neutral (orphan direction, document-before-registry residue).",
+      "as": [
+        "core:avoid[1]"
+      ]
+    },
+    {
+      "item": "avoid[2]",
+      "note": "'underscore sidecars' generalized to registry sidecars; which names are sidecars is profile data.",
+      "as": [
+        "core:avoid[2]",
+        "profile:layout.locations#train_document_sidecars"
+      ]
+    },
+    {
+      "item": "avoid[3]",
+      "note": "Names planner.train.registry and the conventions sweep of this corpus; no neutral equivalent.",
+      "as": [
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "unless[0]",
+      "note": "The exception is core; the Bun parenthetical (_aliases.yaml, _interlockings/) instantiates the sidecar key.",
+      "as": [
+        "core:unless[0]",
+        "profile:layout.locations#train_document_sidecars"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "Generic pass-at-CONFIRM fact is core; the validator id is a realization detail.",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "Failure-report shape restated with neutral words (train, direction, registry value, document value).",
+      "as": [
+        "core:evidence[1]"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "Dangling direction: target unrestricted — any existing file anywhere on disk, outside the repository included, no sidecar exclusion; generic scope goes to verification.",
+      "as": [
+        "core:then",
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "Orphan direction: every per-train document at the per-train document location named by a row; the enumeration location is profile data (layout.locations#train_documents).",
+      "as": [
+        "core:then",
+        "core:verification",
+        "profile:layout.locations#train_documents"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "Sidecar exclusion scoped to Direction 2 only is core verification; the concrete sidecar names are profile data; the sibling-rule cross-references are bunOnly.",
+      "as": [
+        "core:verification",
+        "profile:layout.locations#train_document_sidecars",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[3]",
+      "note": "Whole-corpus evaluation at CONFIRM, confirm-blocking are core; family/template/variant/subject_kind ids are realization metadata.",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[4]",
+      "note": "Failure-evidence fields described generically (train, direction, registry value, document value).",
+      "as": [
+        "core:evidence[1]",
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[5]",
+      "note": "Per-rule severity and disposition are core verification, not profile keys.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[6]",
+      "note": "Generic fact (consumers crash on dangling rows; the check reports instead) is core; the named test and crash mode are realization details.",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[7]",
+      "note": "Orphans inert but reportable — already carried by why and avoid[1].",
+      "as": [
+        "core:why",
+        "core:avoid[1]"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "Phase fact is core; the corpus-wide-regardless-of-diff framing also lands in verification.",
+      "as": [
+        "core:activation.facts[0]",
+        "core:verification"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "Recast from path_glob to file_kind; the concrete values plan/_trains.yaml and plan/_trains/** instantiate layout.registries#train_registry and layout.locations#train_documents. layout.plan_item is deliberately not used: the vocabulary defines it as the path pattern of one plan artifact, not a whole per-train document subtree.",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:layout.registries#train_registry",
+        "profile:layout.locations#train_documents"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "The two finding directions are core; the exact finding codes dangling_row/orphan_document are realization ids.",
+      "as": [
+        "core:activation.facts[2]",
+        "bunOnly"
+      ]
+    }
+  ],
+  "neutralityNotes": "The core keeps ATDD-method vocabulary shared across realizations (train, train_id, registry, planner, the CONFIRM phase) but names no stack artifact, path or suffix. All three concrete locations go through existing vocabulary v3 map keys as entries, so no new keys are proposed: the registry path is layout.registries#train_registry, the per-train document tree is layout.locations#train_documents (layout.plan_item stays what the vocabulary defines — the path pattern of a single plan artifact — and does not fit a whole document subtree), and the sidecar names are layout.locations#train_document_sidecars. The dangling direction deliberately has no repository boundary: a row's target is checked wherever it points, inside or outside the repository, and a missing external target is reported. The underscore-prefix sidecar marker is treated as profile data (the Bun value of layout.locations#train_document_sidecars), not as part of the obligation. Sibling-rule cross-references (planner.train.registry, planner.interlocking.registry-mirrors-document, planner.train.interlocking-home), the validator and finding ids, and the validation family/template/variant metadata stay bunOnly; their neutral content (two directions, sidecar exclusion scoped to the orphan direction only, whole-corpus confirm-blocking evaluation, strict disposition, failure-report shape) lives in core.verification.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/planner-nodes/planner.train.registry-coherence.json",
+      "sha256": "cb503084395450fb2676c8f948d6c748bc147a3a36530147e1434e6d91b18be0"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "rekey-v3 -> zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

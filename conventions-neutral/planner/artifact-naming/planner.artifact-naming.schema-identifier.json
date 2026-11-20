@@ -1,0 +1,340 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.artifact-naming.schema-identifier",
+  "legacyId": "planner.artifact-naming.schema-identifier",
+  "core": {
+    "title": "Use the bare artifact name as a contract schema's identity",
+    "given": "You are planning, authoring or editing a contract schema, or a wagon manifest produce/consume entry that references one.",
+    "when": "The schema's identity field is set, changed or present, or a reference to the contract is written.",
+    "then": "Set the contract schema's identity field to the bare artifact identity given by the profile's contract identity shape — with no namespace prefix and no version segment.",
+    "prefer": [
+      "Required: record the contract's version in a separate top-level version field of the schema, never inside the identity field.",
+      "Write the wagon manifest produce/consume reference in the profile's contract-reference shape, using exactly the referenced schema's artifact identity as the referenced name.",
+      "Keep the identity field stable across versions; express a new version through the separate version field."
+    ],
+    "avoid": [
+      "Adding a version suffix to the identity field; it breaks identity stability across versions.",
+      "Prefixing the identity field with the profile's forbidden identity prefix."
+    ],
+    "unless": [],
+    "why": "Keeping the version out of the identity means the artifact keeps the same identity across versions, so the identity field and contract references always point to one stable artifact.",
+    "evidence": [
+      "Each contract schema's identity field matches the profile's contract identity shape, with no forbidden identity prefix and no version segment.",
+      "Each contract schema has a separate top-level version field.",
+      "Wagon manifest produce/consume references match the profile's contract-reference shape, and their referenced artifact name equals the referenced schema's identity field."
+    ],
+    "verification": [
+      "Scope: contract schemas and wagon manifests wherever the profile locates those plan-artifact kinds; documents that are neither, and manifest edits that do not touch produce/consume contract references, are out of scope.",
+      "The invariant applies to the whole schema, not only to edited fields; there are no exceptions (the rule declares none).",
+      "The check extracts the identity value, the separate version field and the produce/consume contract references from schemas and manifests; this requires a diff/content observer for those values (the change facts are needs_new_observer in this realization).",
+      "Flag any identity value that does not match the profile's contract identity shape, carries a trailing version segment, or starts with the profile's forbidden identity prefix.",
+      "Flag contract schemas lacking a separate top-level version field.",
+      "Flag produce/consume references whose referenced artifact name differs from the referenced schema's identity field.",
+      "Per-rule severity and disposition stay with the realization (the reference sidecar declares none beyond kind: rule, status: active); detector, validator, finding and term ids of this rule are realization details."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "contract schema (any, including one with a missing, prefixed or versioned identity field, or a missing version field)",
+            "wagon manifest with produce/consume entries"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "operation",
+          "values": [
+            "create",
+            "edit",
+            "review"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "contract schema added or edited",
+            "identity field value added, changed or missing",
+            "version field added, changed or missing",
+            "produce/consume contract reference added or edited"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "task_term",
+          "values": [
+            "contract",
+            "schema",
+            "identity field",
+            "version",
+            "produce",
+            "consume"
+          ],
+          "observability": "observable_now"
+        }
+      ],
+      "fires": [
+        "A planner writes a new contract schema and sets its identity field.",
+        "A planner bumps a contract's version and is tempted to put the version into the identity field.",
+        "A planner edits any part of an existing contract schema whose identity is prefixed, versioned or missing, or which lacks a separate version field.",
+        "A planner adds or edits a wagon manifest produce/consume entry that references a contract."
+      ],
+      "doesNotFire": [
+        "Documents that are neither contract schemas nor wagon manifests (e.g. prose docs, plans without contract references).",
+        "Wagon manifest edits that do not touch produce/consume contract references."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "urn.contract",
+      "meaning": "The artifact-identity shape a contract schema's bare identity value must match (no namespace prefix, no version segment).",
+      "bunValue": "{theme}:{resource}[.{category}]"
+    },
+    {
+      "key": "urn.grammar#contract_identity_field",
+      "meaning": "The identity field by which a contract schema declares its artifact identity; the core's 'identity field' takes its concrete name from here.",
+      "bunValue": "$id"
+    },
+    {
+      "key": "urn.grammar#contract_reference_shape",
+      "meaning": "The reference shape by which a wagon manifest produce/consume entry names a contract; its artifact-name part must equal the referenced schema's identity value.",
+      "bunValue": "contract:{artifact_name}"
+    },
+    {
+      "key": "urn.grammar#forbidden_identity_prefix",
+      "meaning": "The namespace prefix that must not appear at the start of a contract schema's identity value.",
+      "bunValue": "urn:contract:"
+    },
+    {
+      "key": "roles.plan_artifact.kinds",
+      "meaning": "The plan-artifact kinds this rule scopes to: the contract schema and the wagon manifest with produce/consume entries.",
+      "bunValue": "contract schema (any, including schemas with a missing, prefixed or versioned $id, or a missing version field); wagon manifest with produce/consume entries"
+    },
+    {
+      "key": "roles.plan_artifact.path",
+      "meaning": "Where those plan-artifact kinds live, so the check can scope schema and manifest scanning.",
+      "bunValue": "contract schema directories; wagon manifests (produce/consume)"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "verifier_detail[0]",
+      "text": "Term id_field = 'the $id of a contract schema.' Values: id_pattern '{theme}:{resource}[.{category}]'; urn_reference 'contract:{artifact_name}'; version 'separate top-level field'.",
+      "reason": "The term id and its value table are this rule's realization packaging for the checker; the normative values are profile data (urn.contract, urn.grammar#contract_identity_field, urn.grammar#contract_reference_shape) and the generic extraction duty sits in core:verification."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "text": "Valid example from source: $id = mechanic:timebank.exhausted.",
+      "reason": "Concrete worked example stays with the Bun reference realization and is not repeated in the core."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "text": "Counter-example from source: mechanic:timebank.exhausted:v1 (version in $id breaks identity stability).",
+      "reason": "Concrete counter-example value; only the generic duty (flag any trailing version segment in the identity) is neutral and sits in core:verification."
+    },
+    {
+      "item": "activation.facts[4]",
+      "text": "task term '$id'",
+      "reason": "The literal field name '$id' is the realization's name for the schema identity field; the core uses 'identity field' and takes the concrete name from the profile."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "Neutral already; kept, with '$id' generalized to 'identity field' (concrete name from urn.grammar#contract_identity_field).",
+      "as": [
+        "core:given"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "Same neutralization: 'the schema's $id' -> 'the schema's identity field'.",
+      "as": [
+        "core:when"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "One obligation: the core keeps the bare, version-independent identity duty; the concrete grammar comes from urn.contract and the forbidden prefix from urn.grammar#forbidden_identity_prefix; '$id' becomes 'identity field'.",
+      "as": [
+        "core:then",
+        "profile:urn.contract",
+        "profile:urn.grammar#forbidden_identity_prefix"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "'$id and the contract: reference' generalized to 'the identity field and contract references'.",
+      "as": [
+        "core:why"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "The 'Required:' force is preserved verbatim; only '$id' -> 'identity field'; a separate top-level version field is neutral.",
+      "as": [
+        "core:prefer[0]"
+      ]
+    },
+    {
+      "item": "prefer[1]",
+      "note": "The core requires the reference to use the profile's contract-reference shape (urn.grammar#contract_reference_shape) and exactly the referenced schema's artifact identity.",
+      "as": [
+        "core:prefer[1]",
+        "profile:urn.grammar#contract_reference_shape"
+      ]
+    },
+    {
+      "item": "prefer[2]",
+      "note": "'$id' -> 'identity field'; otherwise unchanged.",
+      "as": [
+        "core:prefer[2]"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "Kept without the concrete '...:v1' illustration, which is not repeated in the core (bun.json is the delivered reference example).",
+      "as": [
+        "core:avoid[0]"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "The concrete forbidden prefix 'urn:contract:' is profile data (urn.grammar#forbidden_identity_prefix); the core forbids the profile's forbidden identity prefix.",
+      "as": [
+        "core:avoid[1]",
+        "profile:urn.grammar#forbidden_identity_prefix"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "Grammar and prefix parameterized: matches the profile's contract identity shape with no forbidden identity prefix and no version segment.",
+      "as": [
+        "core:evidence[0]",
+        "profile:urn.contract",
+        "profile:urn.grammar#forbidden_identity_prefix"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "Unchanged; a separate top-level version field is already neutral.",
+      "as": [
+        "core:evidence[1]"
+      ]
+    },
+    {
+      "item": "evidence[2]",
+      "note": "Reference shape parameterized: references match the profile's contract-reference shape (urn.grammar#contract_reference_shape) and name exactly the schema's identity.",
+      "as": [
+        "core:evidence[2]",
+        "profile:urn.grammar#contract_reference_shape"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "The term id and value table are realization packaging (bunOnly); id_pattern is urn.contract, the identity field is urn.grammar#contract_identity_field, urn_reference is urn.grammar#contract_reference_shape, and the generic extraction duty is in core:verification.",
+      "as": [
+        "core:verification",
+        "profile:urn.contract",
+        "profile:urn.grammar#contract_identity_field",
+        "profile:urn.grammar#contract_reference_shape",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "Worked example; no neutral equivalent needed beyond the profile-supplied shape in then/evidence[0].",
+      "as": [
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "The generic flag (any trailing version segment in the identity) is core:verification; the concrete counter-example string is bunOnly.",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[3]",
+      "note": "Flag identity values starting with the forbidden prefix, now supplied by urn.grammar#forbidden_identity_prefix.",
+      "as": [
+        "core:verification",
+        "profile:urn.grammar#forbidden_identity_prefix"
+      ]
+    },
+    {
+      "item": "verifier_detail[4]",
+      "note": "Flag schemas lacking the separate top-level version field; fully neutral.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "Kind values kept with '$id' neutralized to 'identity field'; the concrete kinds are also profile data for scoping.",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roles.plan_artifact.kinds"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "Operations create/edit/review are already neutral.",
+      "as": [
+        "core:activation.facts[1]"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "The neutral fact vocabulary has no path-glob fact kind; location scoping is pure profile data, so the core keeps no path fact.",
+      "as": [
+        "profile:roles.plan_artifact.path"
+      ]
+    },
+    {
+      "item": "activation.facts[3]",
+      "note": "Change values neutralized ('$id value' -> 'identity field value'); the needs_new_observer requirement is also stated in core:verification.",
+      "as": [
+        "core:activation.facts[3]",
+        "core:verification"
+      ]
+    },
+    {
+      "item": "activation.facts[4]",
+      "note": "Neutral task terms kept in the core; the literal '$id' term is the realization's name for the identity field (bunOnly).",
+      "as": [
+        "core:activation.facts[4]",
+        "bunOnly"
+      ]
+    }
+  ],
+  "neutralityNotes": "All concrete identifier syntax is now profile data: the artifact-identity grammar comes from urn.contract ({theme}:{resource}[.{category}]), the forbidden namespace prefix from urn.grammar#forbidden_identity_prefix ('urn:contract:'), the contract-reference shape from urn.grammar#contract_reference_shape (contract:{artifact_name}) and the identity field's concrete name from urn.grammar#contract_identity_field ($id) — moved off idiom.plan_syntax, whose scope is plan constructs, onto urn.grammar, which explicitly covers identity fields and reference shapes. The core keeps the neutral obligations: bare version-independent identity, separate top-level version field (kept as a mandatory 'Required:' prefer), identity stability across versions, and reference equality with the schema's identity. 'Wagon manifest' and 'contract schema' are ATDD structural concepts; the concrete artifact kinds and their locations come from roles.plan_artifact.kinds and roles.plan_artifact.path, and because the neutral activation vocabulary has no path-glob fact kind, activation.facts[2] is carried only as profile data. Worked example and counter-example values stay bunOnly. The sidecar's bookkeeping fields (audit, splitSuggestion, additions, trace) are realization metadata outside the neutral item numbering and are not classified.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/planner-nodes/planner.artifact-naming.schema-identifier.json",
+      "sha256": "4259671e5b415bcad25b4a3f6afbd8d40f1ee95c30eab60aad5876ab2c974ae3"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 4,
+    "deriver": "rekey-v3 -> zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 4,
+      "agreeWithAuditor": true
+    }
+  }
+}

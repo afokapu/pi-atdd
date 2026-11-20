@@ -1,0 +1,369 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.steps.linguistic-patterns",
+  "legacyId": "planner.steps.linguistic-patterns",
+  "core": {
+    "title": "Recognize and phrase each JTBD step through its step's slotted templates",
+    "given": "A planning artifact contains, or is to contain, a JTBD job-step statement",
+    "when": "The planner recognizes/classifies that statement's step, or writes or rewords it",
+    "then": "Recognize and phrase the statement through one of the fixed slotted templates of a single step: its template determines its step, and its slots bind the step verb to concrete objects, constraints or outcomes.",
+    "prefer": [
+      "define: Define {object} as {specification}; Plan {approach} for {outcome}; Select {option} from {alternatives}; Determine {criteria} for {decision}",
+      "locate: Locate {resource} within {constraint}; Gather {inputs} from {sources}; Access {data} via {method}; Retrieve {information} in {timeframe}",
+      "prepare: Prepare {environment} for {activity}; Set up {infrastructure} with {configuration}; Organize {resources} by {criteria}; Examine {inputs} for {validation}",
+      "confirm: Confirm {precondition} before {action}; Validate {input} against {criteria}; Prioritize {items} by {importance}; Decide {path} based on {conditions}",
+      "execute: Execute {action} within {constraint}; Perform {operation} on {target}; Transact {change} to {system}; Administer {process} per {protocol}",
+      "monitor: Monitor {metric} for {threshold}; Verify {state} remains {condition}; Track {progress} against {target}; Check {status} every {interval}",
+      "modify: Modify {parameter} when {condition}; Update {configuration} to {value}; Adjust {setting} for {optimization}; Maintain {state} within {bounds}",
+      "resolve: Resolve {issue} using {method}; Troubleshoot {problem} via {diagnosis}; Fix {error} within {timeframe}; Handle {exception} with {fallback}",
+      "conclude: Conclude {job} with {summary}; Store {results} in {location}; Finish {process} by {action}; Close {session} after {cleanup}"
+    ],
+    "avoid": [
+      "Vague, unslotted phrasing such as \"Do the thing with the stuff\".",
+      "Classifying a statement into a step whose templates it does not match, or using another step's template.",
+      "Filling slots with placeholders or vague nouns just to match the template surface."
+    ],
+    "unless": [],
+    "why": "Templated phrasings make step classification and acceptance authoring deterministic — the same surface grammar always maps to the same step.",
+    "evidence": [
+      "Each step statement's leading verb and slot structure match one of the four templates listed for its classified step.",
+      "Positive examples: \"Define {object} as {specification}\", \"Monitor {metric} for {threshold}\"; negative example: \"Do the thing with the stuff\".",
+      "Reviewer can re-derive the step classification from the phrasing alone and it equals the declared step."
+    ],
+    "verification": [
+      "No mechanical detector: whether a statement's surface grammar matches a step's templates, whether slots are bound to concrete objects rather than placeholders, and whether the classification re-derived from phrasing equals the declared step are all judged by review/LLM.",
+      "Templates are defined per step name of the job-step taxonomy: a statement is checked against the four templates of a single step, not against every step's templates.",
+      "Task-term and file-kind triggers are contextual hints only; keywords alone are not a sufficient trigger for the rule.",
+      "Detecting added, reworded or (re)classified step statements would need a diff-level observer over planning artifacts; recognizing unchanged statements requires no such observer."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "task_term",
+          "values": [
+            "JTBD",
+            "job step",
+            "step",
+            "acceptance",
+            "classify",
+            "review"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "plan artifact",
+            "acceptance"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "operation",
+          "values": [
+            "read",
+            "classify",
+            "review",
+            "write",
+            "edit"
+          ],
+          "observability": "llm_judged"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "step statement added or reworded",
+            "step classification assigned or changed"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "step phrasing does not match any template of its step",
+            "statement matches no step template"
+          ],
+          "observability": "llm_judged"
+        }
+      ],
+      "fires": [
+        "Planner classifies an existing, unchanged statement into one of the nine JTBD steps (define, locate, prepare, confirm, execute, monitor, modify, resolve, conclude) by recognizing its template.",
+        "Planner reviews existing step statements in a planning artifact for conformance, even when no text is changed.",
+        "Planner writes a new step statement under one of the nine JTBD steps.",
+        "Planner rewords an existing step statement or reclassifies it to another step.",
+        "Planner derives acceptances from a step statement whose step must first be recognized from its phrasing."
+      ],
+      "doesNotFire": [
+        "Work on planning prose that is not a JTBD step statement (e.g. background notes, rationale) and involves no step classification.",
+        "Work that neither recognizes/classifies JTBD step statements nor authors/rewords them (e.g. implementation edits that never consult a step statement)."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roles.plan_artifact.kinds",
+      "meaning": "The concrete artifact kinds that play the plan-artifact role (where JTBD step statements live), so the core's 'plan artifact' file-kind and task-term triggers resolve to the stack's local kinds and names.",
+      "bunValue": "plan, wagon, wmbt (activation.facts[1]: planning artifacts in which JTBD step statements live, read or written)"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "activation.facts[0]",
+      "text": "\"WMBT\", \"wagon\" among the task_term values",
+      "reason": "Bun-local names of the plan-artifact role; the neutral core keeps only stack-neutral task terms and the realization adds its local plan-artifact names via the profile kinds."
+    },
+    {
+      "item": "activation.facts[1]",
+      "text": "\"plan\", \"wagon\", \"wmbt\"",
+      "reason": "Bun's concrete plan-artifact file kinds; the core says 'plan artifact' and takes the local kinds from the profile (roles.plan_artifact.kinds)."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "Term patterns_by_step",
+      "reason": "The sidecar term id is a realization detail; the per-step template data it names (9 steps x 4 slotted templates) is the rule's own neutral content, carried in core prefer[0..8]."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "text": "Step names are those of planner.steps.jtbd-taxonomy (patterns are defined per step name).",
+      "reason": "Concrete cross-reference to a sibling rule id of the ATDD-Bun rule set; the core refers to the job-step taxonomy generically in core.verification."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given"
+      ],
+      "note": "Already neutral: names only a planning artifact and a JTBD job-step statement."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Already neutral; covers both recognition/classification and authoring/rewording."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then"
+      ],
+      "note": "One obligation, stack-neutral; verifier_detail[1] restates it."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Methodology rationale (deterministic classification); neutral."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]"
+      ],
+      "note": "The four define-step templates; the rule's own normative data, no stack content."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]"
+      ],
+      "note": "The four locate-step templates; rule data, neutral."
+    },
+    {
+      "item": "prefer[2]",
+      "as": [
+        "core:prefer[2]"
+      ],
+      "note": "The four prepare-step templates; rule data, neutral."
+    },
+    {
+      "item": "prefer[3]",
+      "as": [
+        "core:prefer[3]"
+      ],
+      "note": "The four confirm-step templates; rule data, neutral."
+    },
+    {
+      "item": "prefer[4]",
+      "as": [
+        "core:prefer[4]"
+      ],
+      "note": "The four execute-step templates; rule data, neutral; verifier_detail[2] calls out one of them."
+    },
+    {
+      "item": "prefer[5]",
+      "as": [
+        "core:prefer[5]"
+      ],
+      "note": "The four monitor-step templates; rule data, neutral; evidence[1] cites one of them."
+    },
+    {
+      "item": "prefer[6]",
+      "as": [
+        "core:prefer[6]"
+      ],
+      "note": "The four modify-step templates; rule data, neutral."
+    },
+    {
+      "item": "prefer[7]",
+      "as": [
+        "core:prefer[7]"
+      ],
+      "note": "The four resolve-step templates; rule data, neutral; verifier_detail[2] calls out one of them."
+    },
+    {
+      "item": "prefer[8]",
+      "as": [
+        "core:prefer[8]"
+      ],
+      "note": "The four conclude-step templates; rule data, neutral."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Vague unslotted phrasing; the quoted negative example is methodology-level, not stack-specific."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Direct consequence of per-step template binding; neutral."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]"
+      ],
+      "note": "Metric-gaming guard against placeholder slots; neutral."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]"
+      ],
+      "note": "Verb-and-slot check against the step's four templates; neutral."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]"
+      ],
+      "note": "Positive/negative examples of the rule's own templates; stack-neutral."
+    },
+    {
+      "item": "evidence[2]",
+      "as": [
+        "core:evidence[2]"
+      ],
+      "note": "Review re-derivation of the declared step; neutral and echoed in core.verification."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "The generic description (per-step slotted templates, 9 steps x 4) is the rule's neutral data summarized for the verifier; the term id 'patterns_by_step' is a realization detail."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:then"
+      ],
+      "note": "Source statement restating the core obligation verbatim; nothing Bun-specific."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:prefer[4]",
+        "core:prefer[7]"
+      ],
+      "note": "The two source-called-out content examples are exactly templates already carried in the core's execute and resolve lists; no separate core text needed."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "No mechanical detector; compliance judged by review/LLM — a stack-neutral enforcement fact, carried in core.verification."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Templates are defined per taxonomy step name (generic part goes to core.verification); the concrete sibling-rule id planner.steps.jtbd-taxonomy stays with the realization."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roles.plan_artifact.kinds",
+        "bunOnly"
+      ],
+      "note": "Neutral task terms kept; hint-only semantics (keywords alone are not a sufficient trigger) preserved via core.verification. The Bun-local artifact names WMBT/wagon instantiate the plan-artifact role through the profile kinds."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:roles.plan_artifact.kinds",
+        "bunOnly"
+      ],
+      "note": "Core file kinds are 'plan artifact' and 'acceptance'; Bun's local kinds plan/wagon/wmbt resolve through roles.plan_artifact.kinds."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[2]"
+      ],
+      "note": "Operation fact is neutral; llm_judged because recognizing vs authoring is judged from the task and the planner's output — no tool observer exists."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[3]"
+      ],
+      "note": "Change fact is neutral; needs_new_observer (diff-level observer over planning artifacts), not required for recognizing unchanged statements — carried in core.verification."
+    },
+    {
+      "item": "activation.facts[4]",
+      "as": [
+        "core:activation.facts[4]",
+        "core:verification"
+      ],
+      "note": "Finding fact is neutral; template matching is llm_judged because no mechanical detector exists (mirrored in core.verification)."
+    }
+  ],
+  "neutralityNotes": "The convention is methodology-level, so nearly everything is stack-neutral and carries over verbatim: the nine JTBD steps, all 36 slotted templates (prefer), the avoids, evidence and the single obligation. Nothing in it names a stack, runtime, language or path, so no idiom or tooling profile key is needed; the only profile dependency is roles.plan_artifact.kinds, which resolves the core's 'plan artifact' triggers to Bun's local kinds (plan, wagon, wmbt). The residue kept as bunOnly: the Bun-local plan-artifact names inside the activation facts, the sidecar term id 'patterns_by_step', and the concrete sibling-rule reference planner.steps.jtbd-taxonomy (the core refers to the job-step taxonomy generically). fires/doesNotFire were neutralized by replacing 'plan/wagon/WMBT' with 'planning artifact'; bun.json itself remains the worked reference example with the exact Bun phrasing.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/planner-nodes/planner.steps.linguistic-patterns.json",
+      "sha256": "4c97bf82e1148982a5cb13e8d97876d45dab5004c0cd4008ce73924304d5ee7f"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 1,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

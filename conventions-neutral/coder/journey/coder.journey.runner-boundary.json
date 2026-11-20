@@ -1,0 +1,415 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.journey.runner-boundary",
+  "legacyId": "coder.bun.journey-runner-boundary",
+  "core": {
+    "title": "Journey runner composes interlockings without executing trains or wagons",
+    "given": "A repository with a composition root declares one or more journey topology plan artifacts (whether or not the trains runtime layer or a journey runner exists yet)",
+    "when": "the journey topology is present, which enables the obligation on the trains runtime layer",
+    "then": "You MUST ship a journey runner in the trains runtime layer that acts only as continuation control: it reads and parses the declared journey topology and delegates every routing decision to the interlocking runner using declaration-derived values, never executing trains, wagons or cargo itself.",
+    "prefer": [
+      "If no journey runner exists, add one in the trains runtime layer that reads the supplied journey declaration; its absence is a violation, not an option.",
+      "The intended call model is: composition root -> journey runner -> interlocking runner (routing entry methods) -> train runner executes the selected train -> inspect declared continuation/terminal -> next interlocking runner ... (the train runner's execution step is invoked by the interlocking runner, never by the journey runner).",
+      "The interlocking runner selects exactly one train and delegates it to the train runner; the journey runner only decides which interlocking is entered next per the declared topology."
+    ],
+    "avoid": [
+      "Constructing an interlocking runner from a hardcoded literal path.",
+      "Referencing the train runner, importing wagon modules, or invoking the train-execution entry point from the journey runner.",
+      "Looping over the declared train sequence as an executor in the journey runner.",
+      "Carrying or mutating cargo in the journey runner.",
+      "Putting cross-interlocking topology into the interlocking runner."
+    ],
+    "unless": [
+      "No journey topology plan artifacts: no journey runner obligation.",
+      "No composition root yet (planning stage): no journey runner obligation, as the sibling interlocking-runner existence rule owes no interlocking runner before one."
+    ],
+    "why": "Each layer owns only its responsibility (journey runner: continuation control, never the train step loop; interlocking runner: local route selection; train runner: sole wagon-step executor), so topology cannot bypass routing or duplicate train execution.",
+    "evidence": [
+      "A journey runner exists in the trains runtime layer whenever the activation prerequisites hold.",
+      "Journey runner source shows reading and parsing of a journey declaration and references the interlocking runner.",
+      "No literal-path interlocking-runner construction, train-runner reference, wagon import, train-execution entry-point call, declared-train-sequence executor loop or cargo handling in the journey runner."
+    ],
+    "verification": [
+      "The check enforces the runtime boundary introduced by planner journey topology: presence of the journey topology plan artifacts (located by the profile's plan-artifact path pattern) enables the obligation; there is no phase or edit-event gate. The check must run, and report a missing runner, even when the trains runtime layer is absent.",
+      "A structural check looks for the journey runner (the stack's runner construct named by the profile) in the trains runtime layer; it requires evidence that the runtime reads and parses a journey declaration, requires a reference to the interlocking runner, rejects literal interlocking-runner construction, and rejects direct train/wagon/cargo execution patterns (train-runner references, wagon imports, train-execution entry-point calls, declared-train-sequence executor loops, cargo carry/mutation), with the concrete runner names, entry-point call and sequence field supplied by the profile. The check's findings (missing runner, boundary violation) are outputs of the check, not activation prerequisites: once the prerequisites hold, the check runs over the trains runtime layer even when that layer or the journey runner does not exist yet.",
+      "Enforcement: severity 4, disposition strict (as stated in the source; no further enforcement semantics implied).",
+      "Definitions used by the check: journey runner = the runtime continuation-control layer that traverses declared journey topology between interlockings; the boundary = journey runner -> interlocking runner -> train runner, each layer owning only its declared responsibility.",
+      "Existence and boundary are one deliverable, carried operatively in then: a repository that declares journey topology plan artifacts must ship a journey runner in the trains runtime layer, with the same two exceptions as the rule's unless clauses. The check does not flag the interlocking runner delegating its selected train to the train runner, or the train runner executing wagon steps: those are their own responsibilities."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "journey_topology_plan_artifact"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "role",
+          "values": [
+            "composition_root"
+          ],
+          "observability": "observable_now"
+        }
+      ],
+      "fires": [
+        "A repository with a composition root and journey topology plan artifacts, where the journey runner (or the whole trains runtime layer) is missing.",
+        "A repository with a composition root and journey topology plan artifacts, whose journey runner imports a wagon module, invokes the train-execution entry point, references the train runner, or loops over the declared train sequence as an executor.",
+        "A repository with a composition root and journey topology plan artifacts, whose journey runner constructs an interlocking runner from a hardcoded literal path.",
+        "A repository with a composition root and journey topology plan artifacts, whose journey runner carries or mutates cargo.",
+        "A repository with a composition root and journey topology plan artifacts, whose journey runner never parses a journey declaration or never references the interlocking runner."
+      ],
+      "doesNotFire": [
+        "A repository with no journey topology plan artifacts.",
+        "A repository still in the planning stage with no composition root.",
+        "A consumer of a different stack, even with journey topology plan artifacts.",
+        "The interlocking runner delegating its selected train to the train runner, or the train runner iterating the declared train sequence to execute wagon steps (their own responsibilities)."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roles.composition_root.name",
+      "meaning": "The core speaks of the composition root role; the profile supplies the stack's local name for that role.",
+      "bunValue": "Station Master"
+    },
+    {
+      "key": "layout.plan_item",
+      "meaning": "Path pattern of one plan artifact under the plan root; instantiated here for journey topology documents, whose presence enables the journey runner obligation.",
+      "bunValue": "plan/_journeys/**/*.yaml"
+    },
+    {
+      "key": "roles.runtime_components#trains_location",
+      "meaning": "Where the runtime trains layer (journey runner, interlocking runner, train runner) lives, i.e. where the journey runner must be shipped and scanned.",
+      "bunValue": "src/trains/**"
+    },
+    {
+      "key": "roles.runtime_components#journey_runner",
+      "meaning": "The stack's construct and local name for the journey runner, the continuation-control layer the core requires to be shipped.",
+      "bunValue": "class JourneyRunner"
+    },
+    {
+      "key": "roles.runtime_components#interlocking_runner",
+      "meaning": "The stack's construct and local name for the interlocking runner, including its routing entry methods, which the journey runner must reference for every routing decision and must never construct from a literal path.",
+      "bunValue": "InterlockingRunner.resolve/execute(...)"
+    },
+    {
+      "key": "roles.runtime_components#train_runner",
+      "meaning": "The stack's construct and local name for the train runner (the sole wagon-step executor), including its execution method, which the journey runner must never reference or invoke.",
+      "bunValue": "TrainRunner.execute(selectedTrainId, ...)"
+    },
+    {
+      "key": "roles.runtime_components#train_execution_entry",
+      "meaning": "The stack's entry point for executing a declared train, which the journey runner must never invoke.",
+      "bunValue": "runTrain(...)"
+    },
+    {
+      "key": "idiom.plan_syntax#declared_train_sequence",
+      "meaning": "How the declared wagon-step sequence of a train is expressed in the runtime/plan schema, which the journey runner must not loop over as an executor.",
+      "bunValue": "train.sequence"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "activation.facts[0]",
+      "text": "language fact, values [bun]; note: 'Bun consumer repository (Bun runtime/lockfile/config). TypeScript alone does NOT qualify; a non-Bun TypeScript consumer is out of scope.'",
+      "reason": "The consumer-stack gate (Bun runtime, excluding non-Bun TypeScript) is a property of the ATDD-Bun realization; the neutral core applies to consumers of whatever stack instantiates it, so each realization is scoped to its own stack by construction."
+    },
+    {
+      "item": "activation.facts[3]",
+      "text": "finding values: journey-runner-missing, journey-runner-boundary-violation.",
+      "reason": "Finding ids of this rule's detector are realization details; the core's verification names the findings generically (missing runner, boundary violation)."
+    },
+    {
+      "item": "activation.doesNotFire",
+      "text": "A non-Bun consumer (including a TypeScript consumer on another runtime), even with plan/_journeys topology.",
+      "reason": "Enumerates other runtimes and languages to bound the ATDD-Bun consumer scope; the core states the carve-out stack-neutrally ('a consumer of a different stack')."
+    },
+    {
+      "item": "unless[1]",
+      "text": "as coder.bun.interlocking-runner-exists owes no InterlockingRunner before one",
+      "reason": "References a sibling rule id of the ATDD-Bun realization; the core refers to 'the sibling interlocking-runner existence rule'."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "'Station Master composition root' -> composition root role (local name from profile); 'plan/_journeys/' -> journey topology plan artifacts located by the existing plan-artifact path key; 'src/trains/**' -> trains runtime layer located by profile. The 'Bun consumer' qualifier is the realization scope carried by activation.facts[0] (bunOnly).",
+      "as": [
+        "core:given",
+        "profile:roles.composition_root.name",
+        "profile:layout.plan_item",
+        "profile:roles.runtime_components#trains_location"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "'the journey topology is present' -> plan artifacts located by layout.plan_item; 'the runtime under src/trains/**' -> the trains runtime layer, located by profile.",
+      "as": [
+        "core:when",
+        "profile:layout.plan_item",
+        "profile:roles.runtime_components#trains_location"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "One obligation kept whole (existence + continuation-only boundary); 'JourneyRunner' and 'InterlockingRunner' are the profile's values for the runner roles, 'under src/trains/**' comes from the profile's trains-layer location.",
+      "as": [
+        "core:then",
+        "profile:roles.runtime_components#journey_runner",
+        "profile:roles.runtime_components#interlocking_runner",
+        "profile:roles.runtime_components#trains_location"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "Already stack-neutral ATDD railway vocabulary; runner names lowercased to role level, with the stack's concrete names supplied by the idiom profile keys.",
+      "as": [
+        "core:why"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "'add one under src/trains/' -> add a journey runner (profile construct) in the trains runtime layer (profile location).",
+      "as": [
+        "core:prefer[0]",
+        "profile:roles.runtime_components#journey_runner",
+        "profile:roles.runtime_components#trains_location"
+      ]
+    },
+    {
+      "item": "prefer[1]",
+      "note": "Call model kept at role level in the core; the composition-root local name and the runners' constructs and entry-method signatures are profile values (r2 fix: idiom mappings instead of bunOnly), so another stack can map its own runner chain.",
+      "as": [
+        "core:prefer[1]",
+        "profile:roles.composition_root.name",
+        "profile:roles.runtime_components#journey_runner",
+        "profile:roles.runtime_components#interlocking_runner",
+        "profile:roles.runtime_components#train_runner"
+      ]
+    },
+    {
+      "item": "prefer[2]",
+      "note": "Stack-neutral division of responsibility; the three runner names are the profile's idiom values.",
+      "as": [
+        "core:prefer[2]",
+        "profile:roles.runtime_components#interlocking_runner",
+        "profile:roles.runtime_components#train_runner",
+        "profile:roles.runtime_components#journey_runner"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "Neutral as written; the interlocking-runner construct that must not be built from a literal path comes from the profile.",
+      "as": [
+        "core:avoid[0]",
+        "profile:roles.runtime_components#interlocking_runner"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "Neutral core forbids referencing the train runner, importing wagon modules, or invoking the train-execution entry point from the journey runner; the concrete symbols (TrainRunner, runTrain(...), JourneyRunner) are profile idiom values (r2 fix), not bunOnly.",
+      "as": [
+        "core:avoid[1]",
+        "profile:roles.runtime_components#train_runner",
+        "profile:roles.runtime_components#journey_runner",
+        "profile:roles.runtime_components#train_execution_entry"
+      ]
+    },
+    {
+      "item": "avoid[2]",
+      "note": "Neutral core forbids looping over the declared train sequence as an executor; the concrete field train.sequence is the profile's value for that idiom (r2 fix), not bunOnly.",
+      "as": [
+        "core:avoid[2]",
+        "profile:idiom.plan_syntax#declared_train_sequence",
+        "profile:roles.runtime_components#journey_runner"
+      ]
+    },
+    {
+      "item": "avoid[3]",
+      "note": "Cargo is ATDD domain vocabulary, lowercased to 'cargo'; the journey-runner construct comes from the profile.",
+      "as": [
+        "core:avoid[3]",
+        "profile:roles.runtime_components#journey_runner"
+      ]
+    },
+    {
+      "item": "avoid[4]",
+      "note": "Stack-neutral as written; the interlocking-runner name is a profile idiom value.",
+      "as": [
+        "core:avoid[4]",
+        "profile:roles.runtime_components#interlocking_runner"
+      ]
+    },
+    {
+      "item": "unless[0]",
+      "note": "'No plan/_journeys topology' -> no journey topology plan artifacts (located by layout.plan_item).",
+      "as": [
+        "core:unless[0]",
+        "profile:layout.plan_item"
+      ]
+    },
+    {
+      "item": "unless[1]",
+      "note": "Exception kept in full (no weaker); 'PLAN stage' -> planning stage, 'Station Master' -> composition root (profile), runner names from profile idioms; only the sibling rule id coder.bun.interlocking-runner-exists is bunOnly.",
+      "as": [
+        "core:unless[1]",
+        "profile:roles.composition_root.name",
+        "profile:roles.runtime_components#journey_runner",
+        "profile:roles.runtime_components#interlocking_runner",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "Existence evidence neutralized; the 'class JourneyRunner' construct and the src/trains/** location are profile values (r2 fix), not bunOnly.",
+      "as": [
+        "core:evidence[0]",
+        "profile:roles.runtime_components#journey_runner",
+        "profile:roles.runtime_components#trains_location"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "Stack-neutral at role level; runner names from the profile idioms.",
+      "as": [
+        "core:evidence[1]",
+        "profile:roles.runtime_components#journey_runner",
+        "profile:roles.runtime_components#interlocking_runner"
+      ]
+    },
+    {
+      "item": "evidence[2]",
+      "note": "All forbidden patterns kept (no weaker); the symbols runTrain(...) and train.sequence are now profile idiom values (r2 fix), the runner names likewise, so nothing here is bunOnly.",
+      "as": [
+        "core:evidence[2]",
+        "profile:roles.runtime_components#interlocking_runner",
+        "profile:roles.runtime_components#train_runner",
+        "profile:roles.runtime_components#train_execution_entry",
+        "profile:idiom.plan_syntax#declared_train_sequence",
+        "profile:roles.runtime_components#journey_runner"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "Generic scope (topology presence enables, no phase/edit-event gate, run even when the layer is absent) -> core:verification; the glob and path are profile values. The 'Bun runtime' scope qualifier is the consumer gate carried by activation.facts[0] (bunOnly), so no separate bunOnly entry is needed.",
+      "as": [
+        "core:verification",
+        "profile:layout.plan_item",
+        "profile:roles.runtime_components#trains_location"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "The check is described generically in core:verification; the runner construct, paths and symbol names are profile values (r2 fix: idiom mappings instead of bunOnly). Only the 'family detector' framing is realization flavor, genericized as 'a structural check'.",
+      "as": [
+        "core:verification",
+        "profile:roles.runtime_components#journey_runner",
+        "profile:roles.runtime_components#trains_location",
+        "profile:roles.runtime_components#interlocking_runner",
+        "profile:roles.runtime_components#train_runner",
+        "profile:roles.runtime_components#train_execution_entry",
+        "profile:idiom.plan_syntax#declared_train_sequence"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "Per-rule severity 4 and disposition strict belong to core verification, not to profile keys.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[3]",
+      "note": "Glossary terms are stack-neutral ATDD railway vocabulary, carried as definitions in core:verification; the three runner names in the boundary chain are profile idiom values.",
+      "as": [
+        "core:verification",
+        "profile:roles.runtime_components#journey_runner",
+        "profile:roles.runtime_components#interlocking_runner",
+        "profile:roles.runtime_components#train_runner"
+      ]
+    },
+    {
+      "item": "verifier_detail[4]",
+      "note": "The existence+boundary single-deliverable statement and its two exceptions -> core:verification; the plan-artifact path, runner construct and trains-layer location are profile values. The 'Bun consumer' scope qualifier is the consumer gate carried by activation.facts[0] (bunOnly).",
+      "as": [
+        "core:verification",
+        "profile:layout.plan_item",
+        "profile:roles.runtime_components#journey_runner",
+        "profile:roles.runtime_components#trains_location"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "The language=bun gate is the realization's consumer-stack scope; the neutral core is scoped by the instantiating stack itself.",
+      "as": [
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "Presence of journey topology plan artifacts enables the obligation; the concrete path pattern is a profile value.",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:layout.plan_item"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "'station-master composition root' -> role composition_root; local name from profile.",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:roles.composition_root.name"
+      ]
+    },
+    {
+      "item": "activation.facts[3]",
+      "note": "Findings are detector outputs, not prerequisites -> stated in core:verification; the concrete finding ids are bunOnly.",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.fires",
+      "note": "All five fire situations restated at role level; 'Bun consumer with a Station Master composition root and plan/_journeys/*.yaml' -> a repository with a composition root and journey topology plan artifacts.",
+      "as": [
+        "core:activation.fires"
+      ]
+    },
+    {
+      "item": "activation.doesNotFire",
+      "note": "All four non-fire situations kept; the non-Bun/TypeScript parenthetical of element 3 is bunOnly.",
+      "as": [
+        "core:activation.doesNotFire",
+        "bunOnly"
+      ]
+    }
+  ],
+  "neutralityNotes": "The railway vocabulary (journey runner, interlocking runner, train runner, cargo, wagon, interlocking, composition root, journey topology) is treated as stack-neutral ATDD domain language, consistent with vocabulary.yaml's train/wagon/journey artifact params. Every concrete value the core needs comes from the profile: the composition-root local name (roles.composition_root.name), the journey plan-artifact path (the existing layout.plan_item key, replacing the r1 proposal that duplicated it), the trains-layer location (proposed roles.runtime_components#trains_location), and — per the r2 feedback — the runner constructs/names with their entry-method signatures plus the train-execution entry point and the declared-sequence field (proposed roles.runtime_components#journey_runner, roles.runtime_components#interlocking_runner, roles.runtime_components#train_runner, roles.runtime_components#train_execution_entry, idiom.plan_syntax#declared_train_sequence), so other stacks can map their own runner chain, execution call and sequence field instead of those values being Bun-only. What remains bunOnly is genuinely realization-specific: the consumer-stack gate (language=bun, with the non-Bun / non-Bun-TypeScript carve-outs in doesNotFire), this rule's detector finding ids, and the sibling rule id coder.bun.interlocking-runner-exists. Per-rule severity and disposition stay in core verification, not the profile. The consumer-stack gate cannot be expressed in the neutral core: each realization is scoped to its own stack's consumers by construction.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.journey-runner-boundary.json",
+      "sha256": "29189ee2ddff9e877d94b2ceb81639a78c584c11ab7f62717c768a09f218eea0"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 1,
+    "usefulness": 5,
+    "deriver": "rekey-v3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

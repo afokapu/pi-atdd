@@ -1,0 +1,323 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "tester.test.imports-bun-test",
+  "legacyId": "tester.bun.test-imports-bun-test",
+  "core": {
+    "title": "Import the test harness from the declared runner",
+    "given": "A test file — any file matching the profile's test-file name patterns, whatever its language or its test category (unit, acceptance, e2e or otherwise) — in a stack whose profile declares the test runner and its harness",
+    "when": "the test file is written or changed",
+    "then": "Import the test harness from the declared runner's own harness module; never import a foreign harness (one that binds the test to a different runner).",
+    "prefer": [
+      "Import the harness — the test API the file uses — from the declared runner's own harness module.",
+      "Run the tests with the declared runner's own test command."
+    ],
+    "avoid": [
+      "Importing the harness from a foreign module — the test is not run by the declared runner.",
+      "Expecting a test kept on a foreign harness during a migration to be exempt: it stays reported until it moves; the finding is the migration's explicit, reviewable open item.",
+      "Toolchain sprawl: a foreign harness drags its own runner and transform pipeline back into the toolchain."
+    ],
+    "unless": [
+      "The file is not a test file (a harness import outside a test file is a different smell, not scanned)."
+    ],
+    "why": "The obligation is strict because the ATDD cost exceeds sprawl: acceptance tests are the evidence a phase gate consumes, reported in terms of its declared runner; a test bound to a foreign harness is coverage the gate believes ran but never did — a green gate with an unexercised acceptance. A test the gate cannot run is worse than no test.",
+    "evidence": [
+      "No test file imports or requires a foreign harness; harness imports come from the declared runner's harness module.",
+      "The declared runner executes the acceptance tests, and this rule's harness-discipline check reports zero findings."
+    ],
+    "verification": [
+      "Checks test files only: a file matching the profile's test-file name patterns is scanned whatever its language or its test category (unit, acceptance, e2e or otherwise); non-test files are never scanned (a harness import outside a test file is a different smell).",
+      "Masks line comments only (the profile's line-comment marker) so a migration note naming the old harness does not trip the check; no other comment form is required to be masked.",
+      "Masking never erases harness identifiers inside import expressions — the matched harness name must stay visible however the stack's import syntax represents it.",
+      "Flags any import or require of a foreign harness, per the profile's foreign-harness list: frameworks that drag their own runner and transform pipeline back in.",
+      "The declared runner is the one the stack's profile declares; it is what the binding plan resolves and what the phase gate reports as having executed.",
+      "No per-rule exemption: a test deliberately retained on a foreign harness during a migration stays reported until it moves.",
+      "Disposition strict, severity 2: every finding fails."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "test"
+          ],
+          "observability": "observable_now"
+        }
+      ],
+      "fires": [
+        "A test file matching the profile's test-file name patterns — whatever its language or its test category (unit, acceptance, e2e or otherwise) — in a stack that declares the runner is created or edited (the harness must come from the declared runner's harness module).",
+        "A test file imports its test API from a foreign harness module.",
+        "A test file imports or requires a foreign harness package — module usage inside the test file is the trigger, not a mere dependency declaration.",
+        "A test kept on a foreign harness during a migration is still in the tree."
+      ],
+      "doesNotFire": [
+        "A non-test source file imports a foreign harness (a different smell, not scanned).",
+        "A test file in a repository governed by a different stack profile (that stack's own realization of this core applies)."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "tooling.test_runner",
+      "meaning": "The runner the stack declares as the one that executes the tests — what the binding plan resolves, what the phase gate reports coverage in terms of, and whose own test command runs the acceptance tests.",
+      "bunValue": "the `runtime.runner` provided by capability `atdd.workspace.bun` — `bun`; tests run via `bun test`"
+    },
+    {
+      "key": "tooling.test_harness#test_harness",
+      "meaning": "The import specifier of the declared runner's own test harness — the module every test file must import its test API from.",
+      "bunValue": "`bun:test` (`import { describe, expect, it } from \"bun:test\"`)"
+    },
+    {
+      "key": "tooling.test_harness#foreign_test_harnesses",
+      "meaning": "Import specifiers / package names of foreign harnesses — test frameworks that bind a test to their own runner and transform pipeline instead of the declared runner.",
+      "bunValue": "`vitest`, `jest`, `@jest/globals`, `mocha`, `chai`"
+    },
+    {
+      "key": "suffix.test",
+      "meaning": "File-name patterns that classify a file as a test file by filename alone — the only files scanned, whatever their language or their test category (unit, acceptance, e2e or other).",
+      "bunValue": "`**/*.test.*`, `**/*.spec.*` — the detector scans exactly these globs, whatever the file's language; ATDD-Bun does not separate unit, acceptance or e2e test files by name"
+    },
+    {
+      "key": "idiom.comment_marker",
+      "meaning": "The line-comment syntax whose comments the check masks (line comments only) so a migration note naming the old harness does not trip it.",
+      "bunValue": "line comments (`//`) — bun.json verifier_detail[1]: \"Masks line comments\""
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "activation.facts[2]",
+      "text": "file_kind = `bun_workspace_member`: file belongs to a Bun stack — workspace provider capability `atdd.workspace.bun` with declared `runtime.runner` = `bun`; observability `needs_new_observer` (a workspace-capability observer).",
+      "reason": "How ATDD-Bun observes that a file belongs to a stack with a declared runner; the core needs only the declared runner itself (tooling.test_runner) — each stack detects stack membership its own way, so there is no stack-neutral fact of this shape."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "Zero-dependency Bun detector; scans TEST FILES ONLY (`*.test.*`, `*.spec.*`).",
+      "reason": "The detector implementation ('zero-dependency Bun detector') and its hardcoded globs are realization details; the neutral scope — every file matching the profile's test-file patterns, whatever its language or category — is in core verification, with the patterns from suffix.test."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "text": "Does NOT mask string literals: the harness name lives inside the import's own string literal, so masking literals would blank the very thing being matched.",
+      "reason": "This prohibition and its rationale are specific to this stack's import syntax, where the module specifier is a string literal; other languages carry module names in imports differently. The stack-neutral requirement is only that masking never erases harness identifiers inside import expressions (core verification); the string-literal rule is the Bun realization of that requirement."
+    },
+    {
+      "item": "evidence[1]",
+      "text": "`bun test` executes the acceptance tests and the `bun_tester_discipline_detector` reports zero findings.",
+      "reason": "The detector/validator id of this rule is a realization detail (it has no stack-neutral equivalent); core verification names the check generically, and the runner command comes from tooling.test_runner."
+    },
+    {
+      "item": "prefer[0]",
+      "text": "Jest-compatible assertions, so usually only the import line changes (with the concrete import `import { describe, expect, it } from \"bun:test\";`).",
+      "reason": "Assertion compatibility is a property of this stack's harness pair — bun:test versus the Jest-family harnesses it replaces — not a stack-neutral fact; the core only directs the import to the declared runner's harness, without the compatibility claim."
+    },
+    {
+      "item": "avoid[2]",
+      "text": "A toolchain premised on Bun running TypeScript directly.",
+      "reason": "The premise that the declared runner executes the stack's sources directly (no separate compile or transform step) is a Bun/TypeScript toolchain characteristic, not a property of declared runners in general; the core keeps only the general toolchain-sprawl warning."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "Test-file scope is every file matching the profile's test-file patterns (suffix.test), whatever its language or category — the Bun filename-only scope; the runner comes from tooling.test_runner.",
+      "as": [
+        "core:given",
+        "profile:tooling.test_runner",
+        "profile:suffix.test"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "Already stack-neutral.",
+      "as": [
+        "core:when"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "One obligation: harness from the declared runner's harness module, never a foreign harness. `bun:test` and the foreign list are profile values.",
+      "as": [
+        "core:then",
+        "profile:tooling.test_harness#test_harness",
+        "profile:tooling.test_harness#foreign_test_harnesses"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "Rationale already stack-neutral; 'strict' is echoed in core verification.",
+      "as": [
+        "core:why"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "Core keeps 'import the harness from the declared runner's own harness module'; the concrete import line and the Jest-compatibility claim stay in the Bun realization.",
+      "as": [
+        "core:prefer[0]",
+        "profile:tooling.test_harness#test_harness",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "prefer[1]",
+      "note": "'Run tests with `bun test`' generalized to the declared runner's own test command.",
+      "as": [
+        "core:prefer[1]",
+        "profile:tooling.test_runner"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "Neutral form: importing the harness from a foreign module. The concrete `vitest` example is not repeated (rule 4).",
+      "as": [
+        "core:avoid[0]",
+        "profile:tooling.test_harness#foreign_test_harnesses"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "Already neutral: no migration exemption; mirrored as the no-per-rule-exemption verification entry.",
+      "as": [
+        "core:avoid[1]",
+        "core:verification"
+      ]
+    },
+    {
+      "item": "avoid[2]",
+      "note": "General toolchain-sprawl warning is neutral; the 'Bun running TypeScript directly' premise is bunOnly.",
+      "as": [
+        "core:avoid[2]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "unless[0]",
+      "note": "The single exclusion is both the core's unless and the check's scan scope.",
+      "as": [
+        "core:unless[0]",
+        "core:verification"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "Neutral form; test-file patterns, foreign names and harness module come from the profile.",
+      "as": [
+        "core:evidence[0]",
+        "profile:tooling.test_harness#foreign_test_harnesses",
+        "profile:tooling.test_harness#test_harness",
+        "profile:suffix.test"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "`bun test` is the profile's runner command; the detector id is bunOnly (rule 7).",
+      "as": [
+        "core:evidence[1]",
+        "profile:tooling.test_runner",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "Scan scope is neutral verification; globs from suffix.test; detector implementation is bunOnly.",
+      "as": [
+        "core:verification",
+        "profile:suffix.test",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "Masking LINE comments only (not block comments or other forms) so a migration note does not trip the check; the line-comment syntax comes from idiom.comment_marker. Narrowed to line comments to match bun.json exactly.",
+      "as": [
+        "core:verification",
+        "profile:idiom.comment_marker"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "Neutral requirement — masking never erases harness identifiers inside import expressions — is core verification; the string-literal prohibition tied to this stack's import syntax is bunOnly.",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[3]",
+      "note": "Flagging any import or require of a foreign harness is neutral; the five names are the profile list.",
+      "as": [
+        "core:verification",
+        "profile:tooling.test_harness#foreign_test_harnesses"
+      ]
+    },
+    {
+      "item": "verifier_detail[4]",
+      "note": "Declared runner = what the binding plan resolves and the gate reports; the Bun declaration mechanism is the profile value.",
+      "as": [
+        "core:verification",
+        "profile:tooling.test_runner"
+      ]
+    },
+    {
+      "item": "verifier_detail[5]",
+      "note": "No per-rule exemption for migration tests.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[6]",
+      "note": "Strict disposition, severity 2 — per-rule, so core verification.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "Path globs are the profile's test-file patterns; neutrally file_kind = test.",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:suffix.test"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "Test-file classification by filename — same neutral fact as facts[0].",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:suffix.test"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "Core needs only 'the stack declares the runner'; the Bun membership fact and its observer are bunOnly.",
+      "as": [
+        "profile:tooling.test_runner",
+        "bunOnly"
+      ]
+    }
+  ],
+  "neutralityNotes": "The obligation — every test file imports its harness from the declared runner's own harness module, never a foreign one — is fully neutral; the harness module, foreign-harness list, declared runner, test-file patterns and line-comment syntax come from the profile. Verification masks line comments only (idiom.comment_marker), matching bun.json's 'Masks line comments' exactly — block comments are not required to be masked. Three keys proposed: suffix.test, tooling.test_harness#test_harness, tooling.test_harness#foreign_test_harnesses. Residual Bun-specifics in bunOnly: the bun_workspace_member membership fact and its observer; the zero-dependency Bun detector and the bun_tester_discipline_detector id; the Jest-compatibility claim of prefer[0]; the 'Bun running TypeScript directly' premise of avoid[2]; and the no-string-literal-masking rule of verifier_detail[2], whose neutral counterpart is that masking never erases harness identifiers in import expressions. Concrete import examples are not repeated in the core because bun.json ships as the worked reference example.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/tester.bun.test-imports-bun-test.json",
+      "sha256": "f1082284a0e03209f1750052cbe3d7b47f0ecec188a67565a087d676c1b691ce"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 1,
+    "usefulness": 5,
+    "deriver": "rekey-v3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

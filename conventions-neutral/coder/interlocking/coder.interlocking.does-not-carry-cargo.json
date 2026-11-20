@@ -1,0 +1,358 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.interlocking.does-not-carry-cargo",
+  "legacyId": "coder.bun.interlocking-does-not-carry-cargo",
+  "core": {
+    "title": "Keep Cargo out of the InterlockingRunner",
+    "given": "A source module in the stack's trains tree (profile: trains tree) that defines an InterlockingRunner (not the production TrainRunner module)",
+    "when": "the module is created or changed",
+    "then": "Keep Cargo inside TrainRunner execution: the InterlockingRunner must not reference, mutate, store (artifact_urn -> artifact_data), or route on Cargo.",
+    "prefer": [
+      "The InterlockingRunner reads only the initial action/inputs/state before execution and a completed TrainResult at a declared route boundary.",
+      "Leave Cargo to the TrainRunner, which passes it between wagons; wagons read and return artifact objects."
+    ],
+    "avoid": [
+      "Cargo references or mutations of a cargo mapping in an InterlockingRunner module.",
+      "Storing artifact_urn -> artifact_data runtime values in the interlocking.",
+      "Routing on mid-train Cargo state; letting Cargo select train variants."
+    ],
+    "unless": [
+      "The production TrainRunner module legitimately constructs and carries Cargo; it is not scanned for Cargo bleed."
+    ],
+    "why": "Cargo is the artifact data plane carried by the TrainRunner between wagons inside a selected train; the cargo_boundary keeps it inside that execution, so the interlocking never routes on mid-train Cargo state nor lets Cargo select train variants, routing only on initial inputs and declared-boundary TrainResults.",
+    "evidence": [
+      "The stack's cargo-boundary check reports no Cargo reference, cargo-mapping mutation, or artifact_urn literal in any InterlockingRunner-defining module in the trains tree.",
+      "The same check reports no wagon entry module (located via the profile's wagon directory and wagon-module pattern) importing interlocking code — the companion split convention's obligation, enforced by the same realization check.",
+      "A reviewer confirms the InterlockingRunner's routing inputs are only the initial action/inputs/state and declared-boundary TrainResults, and that Cargo does not select train variants."
+    ],
+    "verification": [
+      "Scan each InterlockingRunner-defining module in the trains tree and flag a Cargo reference, a cargo-mapping mutation, or an artifact_urn literal.",
+      "Scan each wagon entry module (located via the profile's wagon directory and wagon-module pattern) and flag an import of interlocking code; that is the companion split convention's obligation, and one realization check may enforce it alongside this one — this core's then covers only the InterlockingRunner Cargo boundary.",
+      "Comment text is masked before matching; a string artifact_urn literal is still detected.",
+      "The production TrainRunner module is excluded from the Cargo-bleed scan; only InterlockingRunner-defining modules are scanned for Cargo bleed.",
+      "Which modules are scanned and how Cargo touches are recognized is the per-stack realization's (detector's) concern.",
+      "Severity 4, disposition strict: a newly introduced Cargo touch (or, under the companion convention, a wagon importing interlocking) is not suppressible and fails CI."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "source module in the trains tree"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "operation",
+          "values": [
+            "create",
+            "modify"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "module defines an InterlockingRunner"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "Cargo reference",
+            "cargo mapping mutation",
+            "artifact_urn literal"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "routing decision depends on mid-train Cargo state",
+            "Cargo selects a train variant"
+          ],
+          "observability": "llm_judged"
+        }
+      ],
+      "fires": [
+        "An InterlockingRunner module in the trains tree references Cargo or assigns into a cargo mapping.",
+        "An InterlockingRunner caches artifact_urn -> artifact_data values or contains an artifact_urn string literal.",
+        "An InterlockingRunner chooses the next route from mid-train Cargo state.",
+        "Cargo contents are used to select a train variant."
+      ],
+      "doesNotFire": [
+        "The production TrainRunner module constructs Cargo and passes it between wagons.",
+        "An InterlockingRunner reads the initial action/inputs/state before execution.",
+        "An InterlockingRunner reads a completed TrainResult at a declared route boundary.",
+        "A comment inside an InterlockingRunner module mentions Cargo (comments are masked).",
+        "A wagon entry module (located via the profile's wagon directory and wagon-module pattern) changes its imports (governed by the companion convention that wagons must not import interlocking code)."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "tooling.languages",
+      "meaning": "The languages of production source; the rule's module scan applies to modules written in these languages.",
+      "bunValue": "typescript, javascript"
+    },
+    {
+      "key": "roles.runtime_components#trains_location",
+      "meaning": "Where the train runtime lives: the tree in which an InterlockingRunner may be defined (alongside the production TrainRunner) and which this rule scans for Cargo bleed.",
+      "bunValue": "src/trains/**"
+    },
+    {
+      "key": "layout.wagon_dir",
+      "meaning": "Directory of one wagon (a bounded slice of the product); the wagon entry modules covered by the companion wagon-import scan live in these directories.",
+      "bunValue": "src/<wagon>/"
+    },
+    {
+      "key": "layout.locations#wagon_module",
+      "meaning": "Path pattern of a wagon's entry module — the module that speaks for the wagon and that the companion wagon-import scan targets (in the Bun realization, via the same check as this rule).",
+      "bunValue": "src/<wagon>/wagon.ts"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "evidence[0]",
+      "text": "The bun_interlocking_infrastructure detector (checks/interlocking_no_cargo.mjs)",
+      "reason": "Detector family id and check file path are realization details of this one rule; the core names the check generically."
+    },
+    {
+      "item": "evidence[1]",
+      "text": "(enforced via the split convention coder.bun.wagon-does-not-import-interlocking)",
+      "reason": "Only the companion split-convention rule id is a realization detail; the wagon-module location src/<wagon>/wagon.ts is parameterized through the profile keys layout.wagon_dir and layout.locations#wagon_module, and the detector reference is already bunOnly under evidence[0]."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "text": "the obligation of the split convention coder.bun.wagon-does-not-import-interlocking, enforced by the same detector",
+      "reason": "The companion rule id and detector reference are realization details; the scanned wagon-module location src/<wagon>/wagon.ts is parameterized through the profile keys layout.wagon_dir and layout.locations#wagon_module."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "text": "this detector is a member of the bun_interlocking_infrastructure FAMILY (checks/interlocking_no_cargo.mjs)",
+      "reason": "Detector family membership and check file are realization details; the core keeps only the generic deference to the per-stack detector."
+    },
+    {
+      "item": "activation.facts[4]",
+      "text": "note: Produced by the bun_interlocking_infrastructure family detector (checks/interlocking_no_cargo.mjs)",
+      "reason": "The fact's note names the realization detector; the core fact keeps only the neutral finding kinds."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "'Bun module under src/trains/**' becomes 'source module in the stack's trains tree'; the path is supplied by the profile.",
+      "as": [
+        "core:given",
+        "profile:roles.runtime_components#trains_location"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "Already neutral; unchanged.",
+      "as": [
+        "core:when"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "Single obligation unchanged; stack scope lives in given.",
+      "as": [
+        "core:then"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "TrainRunner/Cargo/cargo_boundary are agnostic ATDD core-runtime vocabulary, not stack names; unchanged.",
+      "as": [
+        "core:why"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "Role-level behavior; no stack content.",
+      "as": [
+        "core:prefer[0]"
+      ]
+    },
+    {
+      "item": "prefer[1]",
+      "note": "Agnostic train-runtime vocabulary; unchanged.",
+      "as": [
+        "core:prefer[1]"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "The TS indexing token form `cargo[...] = ...` is generalized to 'mutations of a cargo mapping'; the concrete form remains in bun.json as the reference example.",
+      "as": [
+        "core:avoid[0]"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "Already neutral.",
+      "as": [
+        "core:avoid[1]"
+      ]
+    },
+    {
+      "item": "avoid[2]",
+      "note": "Already neutral.",
+      "as": [
+        "core:avoid[2]"
+      ]
+    },
+    {
+      "item": "unless[0]",
+      "note": "Exception kept verbatim; its scan-scoping half is also a verification entry.",
+      "as": [
+        "core:unless[0]",
+        "core:verification"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "Generic evidence in the core; the detector name and check file are bunOnly.",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "The generic wagon-entry-module evidence stays in the core, bound to the profile's wagon directory (layout.wagon_dir) and wagon-module pattern (layout.locations#wagon_module); only the companion split-convention rule id is bunOnly.",
+      "as": [
+        "core:evidence[1]",
+        "core:verification",
+        "profile:layout.wagon_dir",
+        "profile:layout.locations#wagon_module",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "evidence[2]",
+      "note": "Reviewer check; already neutral.",
+      "as": [
+        "core:evidence[2]"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "Generic scan description in verification; 'under src/trains/**' is the profile's trains tree; `cargo[...] = ...` generalized to 'cargo-mapping mutation'.",
+      "as": [
+        "core:verification",
+        "profile:roles.runtime_components#trains_location"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "The generic wagon-entry-module scan is verification, parameterized by the profile's wagon directory and wagon-module pattern; the companion rule id and detector reference are bunOnly.",
+      "as": [
+        "core:verification",
+        "profile:layout.wagon_dir",
+        "profile:layout.locations#wagon_module",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "Comment masking and string-literal detection are detector behaviors expressed generically; the concrete comment syntax stays the realization's concern.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[3]",
+      "note": "Check-scoping exclusion, already neutral.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[4]",
+      "note": "The per-stack deference is verification; the family id and check file are bunOnly.",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[5]",
+      "note": "Severity and disposition are per-rule, not profile keys; strict disposition stated generically in verification.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "Language scoping is a stack concern supplied by the profile; the core activation drops the language fact.",
+      "as": [
+        "profile:tooling.languages"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "path_glob src/trains/** becomes a file_kind fact over the profile's trains tree.",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roles.runtime_components#trains_location"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "Operation fact; already neutral.",
+      "as": [
+        "core:activation.facts[1]"
+      ]
+    },
+    {
+      "item": "activation.facts[3]",
+      "note": "Change fact kept; recognizing an InterlockingRunner-defining module (and excluding the production TrainRunner) remains needs_new_observer.",
+      "as": [
+        "core:activation.facts[2]"
+      ]
+    },
+    {
+      "item": "activation.facts[4]",
+      "note": "Finding kinds kept (with 'cargo[...] = ... mutation' generalized to 'cargo mapping mutation'); the detector reference in the note is bunOnly.",
+      "as": [
+        "core:activation.facts[3]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.facts[5]",
+      "note": "llm_judged semantic routing/variant-selection fact; already neutral.",
+      "as": [
+        "core:activation.facts[4]"
+      ]
+    }
+  ],
+  "neutralityNotes": "TrainRunner, InterlockingRunner, Cargo, artifact_urn/artifact_data, TrainResult and wagon are the agnostic ATDD core-runtime spec's own vocabulary (the rule is the realization of the core 'cargo boundary' obligation), so they are kept in the core. The Bun stack, the TypeScript/JavaScript languages (tooling.languages), the src/trains/** trains tree (proposed roles.runtime_components#trains_location), and the src/<wagon>/wagon.ts wagon-module location (layout.wagon_dir plus proposed layout.locations#wagon_module) all come from the profile; the `cargo[...] = ...` token form is generalized to 'cargo-mapping mutation' (the concrete form stays in bun.json as the reference example), and only the detector family/check-file ids and the companion split-convention rule id remain in bunOnly. The wagon-must-not-import-interlocking half is the companion split convention's obligation; the core keeps it only as a generic, profile-parameterized note in evidence/verification so no extra obligation is added.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.interlocking-does-not-carry-cargo.json",
+      "sha256": "1c4b2a97ac86859ca934ec9c43cc571444fae590b71b2d2279a2813f3f0245ef"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 1,
+    "usefulness": 5,
+    "deriver": "rekey-v3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

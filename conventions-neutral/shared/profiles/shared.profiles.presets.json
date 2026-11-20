@@ -1,0 +1,383 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "shared.profiles.presets",
+  "legacyId": "atdd-bun.profiles.presets",
+  "core": {
+    "title": "Propose the preset the current stage of work needs, one preset at a time",
+    "given": "The work reached a stage whose preset is not in the active profile list of the repository's convention configuration file (e.g. RED starts with only the planning profile active, or no profile list is set).",
+    "when": "You notice the gap, unasked.",
+    "then": "Ask the user what they want to do (planning, building, instrumenting or coordinating) and recommend the matching preset as an addition to the current list.",
+    "prefer": [
+      "After the user decides, write exactly the list they chose as the active profile list in the configuration file.",
+      "Say presets are adopted step by step, each the set most consistent with that work, so nothing needs activating all at once.",
+      "Planning: the planning preset, plus the documentation profile when the repository keeps documentation; the planning profile alone parses, validates and resolves the plan artifact with nothing else present.",
+      "Building, once RED starts: add the code, test, traceability and security profiles; add the web-UI profiles for a web UI; add the runtime-integration profile once the deployable units have a runtime.",
+      "Instrumenting: add the observability profile. Coordinating durable multi-agent work: add the durable-coordination profile (it governs durable seats, tasks and threads), only after its companion tool is installed locally.",
+      "The traceability profile joins with building: it judges plan-to-tests-and-source links, so before tests exist it only reports every acceptance untested; from then on it also catches a plan change that orphans a test.",
+      "The security profile joins with the first code, not at release: a secret committed during GREEN stays in history.",
+      "Migrate a legacy explicit profile for delivery or workflow by replacing it one-for-one with its successor profile in the same list; that is not a loosening.",
+      "Read the selected profile's registry instead of the complete graph."
+    ],
+    "avoid": [
+      "Writing anything to the active profile list other than the list the user chose.",
+      "Swapping or removing profiles at the next stage: presets accumulate; removing one loosens the gate.",
+      "A later preset for checks a profile of the active stage preset already bundles, as the profile's preset mapping specifies.",
+      "Adding the durable-coordination profile by default or to a default profile list; it is optional."
+    ],
+    "unless": [
+      "Any profile may be run by name to preview its report without touching the active profile list; only the active profile list decides what the repository is governed by."
+    ],
+    "why": "A goal is easier to name than a profile; presets map the user's work to the profiles that judge it, in the order the work creates what they check.",
+    "evidence": [
+      "Transcript shows the agent asked which work the user is doing and recommended the matching preset when the stage's preset was missing.",
+      "Diff of the configuration file's active profile list equals the list the user chose and is a superset of the previous list (except a one-for-one legacy-to-successor profile replacement).",
+      "The durable-coordination profile appears in the active profile list only when its companion tool is installed locally."
+    ],
+    "verification": [
+      "No automated detector for this policy: which work a user is doing cannot be validated from the repository; compliance is reviewed from the transcript and the configuration diff.",
+      "The stage-to-preset mapping (work kind to profile set, conditional additions, the checks a profile already bundles, companion-tool condition, legacy-to-successor pairing) is supplied by the profile; recommendations and written lists are checked against that mapping.",
+      "The optional durable-coordination profile is expected to govern only when its companion tool is installed locally; a legacy profile replaced one-for-one by its successor is not counted as a removal or loosening.",
+      "Writes to the active profile list must contain exactly the user-chosen list: the user decides, the agent writes only what they choose."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "phase",
+          "values": [
+            "RED"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "config"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "active profile list missing in the configuration file",
+            "preset for the current stage not in the active profile list"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "task_term",
+          "values": [
+            "plan",
+            "build",
+            "instrument",
+            "telemetry",
+            "coordinate",
+            "multi-agent",
+            "coordination"
+          ],
+          "observability": "llm_judged"
+        }
+      ],
+      "fires": [
+        "RED starts while only the planning profile is active.",
+        "No active profile list is set in the configuration file and work begins.",
+        "The user starts instrumenting and the observability profile is not yet active.",
+        "The user starts durable multi-agent coordination, the companion tool is installed locally, and the durable-coordination profile is not active."
+      ],
+      "doesNotFire": [
+        "The preset for the current stage is already contained in the active profile list.",
+        "The user only runs a profile by name to preview what it would report.",
+        "Coordination work in a repository without the locally installed companion tool (the durable-coordination profile is not proposed)."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roots.config",
+      "meaning": "The file in which the repository declares its roots and profile choices; the active profile list this rule proposes additions to, and to which the chosen list is written, lives there.",
+      "bunValue": "atdd-bun.yaml"
+    },
+    {
+      "key": "enforcement.runner",
+      "meaning": "The command that runs the stack's convention checks, by which a profile is run by name to preview its report (unless[0]).",
+      "bunValue": "atdd-bun"
+    },
+    {
+      "key": "enforcement.presets#presets",
+      "meaning": "For each kind of work (planning, building, instrumenting, coordinating), the preset of profiles to recommend: the stack's local profile names, the conditional additions (documentation, web UI, runtime integration), the checks a preset's profile already bundles so that no later preset is proposed for them, the optional durable-coordination profile's companion-tool condition, the legacy-to-successor one-for-one migration pairing, and where the active list is declared in the configuration file.",
+      "bunValue": "Presets (term 'presets'): planning=[planner]; building=[coder, tester, traceability, security]; instrumenting=[telemetry]; coordinating=[flow]. Conditional additions: docs (planning, when the repository keeps documentation under docs/), htmx and design (building, web UI), interlocking (building, once trains have a runtime). | A later preset for architecture, metrics, runtime, design or responsive detectors: coder already bundles them. | flow governs durable seats, tasks and threads only when the repository has the locally installed Flow companion; a legacy delivery or workflow profile replaced one-for-one by flow is not counted as a removal/loosening. | Writes go to the profiles: list in atdd-bun.yaml."
+    },
+    {
+      "key": "enforcement.presets#profile_registries",
+      "meaning": "For each profile, the location of its registry: a deterministic, profile-scoped projection of detector manifests, convention paths and direct relationship edges, read instead of the complete graph (prefer[8]).",
+      "bunValue": "Profile registries (term 'profile_registries') are deterministic, profile-scoped projections of detector manifests, convention paths and direct relationship edges: architecture=conventions/_profiles/architecture.yaml, coder=conventions/_profiles/coder.yaml, design=conventions/_profiles/design.yaml, docs=conventions/_profiles/docs.yaml, htmx=conventions/_profiles/htmx.yaml, interlocking=conventions/_profiles/interlocking.yaml, metrics=conventions/_profiles/metrics.yaml, planner=conventions/_profiles/planner.yaml, runtime=conventions/_profiles/runtime.yaml, security=conventions/_profiles/security.yaml, telemetry=conventions/_profiles/telemetry.yaml, tester=conventions/_profiles/tester.yaml, topology=conventions/_profiles/topology.yaml, traceability=conventions/_profiles/traceability.yaml, flow=conventions/_profiles/flow.yaml."
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "verifier_detail[0]",
+      "text": "implementation.type: none",
+      "reason": "The sidecar's implementation-type field is the ATDD-Bun realization's marker that this policy has no automated detector; the core states the absence of a detector generically in core:verification."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "'atdd-bun.yaml' is the profile's config file; 'profiles:' is re-expressed as the active profile list declared there; the stage's preset contents come from the preset mapping; 'planner' becomes 'the planning profile'.",
+      "as": [
+        "core:given",
+        "profile:roots.config",
+        "profile:enforcement.presets#presets"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "Verbatim; already neutral.",
+      "as": [
+        "core:when"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "Verbatim; the work kinds (planning, building, instrumenting, coordinating) are stack-neutral; which profiles constitute each preset is profile data.",
+      "as": [
+        "core:then",
+        "profile:enforcement.presets#presets"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "Verbatim; already neutral.",
+      "as": [
+        "core:why"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "'profiles: in atdd-bun.yaml' becomes the active profile list in the configuration file.",
+      "as": [
+        "core:prefer[0]",
+        "profile:roots.config"
+      ]
+    },
+    {
+      "item": "prefer[1]",
+      "note": "Verbatim; already neutral.",
+      "as": [
+        "core:prefer[1]"
+      ]
+    },
+    {
+      "item": "prefer[2]",
+      "note": "'planner' and 'docs' and the docs/ location condition are Bun preset data; the core uses 'the planning preset/profile' and 'the documentation profile'.",
+      "as": [
+        "core:prefer[2]",
+        "profile:enforcement.presets#presets"
+      ]
+    },
+    {
+      "item": "prefer[3]",
+      "note": "'coder, tester, traceability, security', 'htmx and design', 'interlocking' and 'trains' are Bun names; the core uses code/test/traceability/security profiles, web-UI profiles, runtime-integration profile and deployable units.",
+      "as": [
+        "core:prefer[3]",
+        "profile:enforcement.presets#presets"
+      ]
+    },
+    {
+      "item": "prefer[4]",
+      "note": "'telemetry' becomes the observability profile; 'flow' and 'the Flow companion' become the durable-coordination profile and its companion tool; the scope (durable seats, tasks, threads) is neutral.",
+      "as": [
+        "core:prefer[4]",
+        "profile:enforcement.presets#presets"
+      ]
+    },
+    {
+      "item": "prefer[5]",
+      "note": "'traceability' kept as a functional profile name; the timing and orphan-detection scope are neutral.",
+      "as": [
+        "core:prefer[5]",
+        "profile:enforcement.presets#presets"
+      ]
+    },
+    {
+      "item": "prefer[6]",
+      "note": "'security' kept as a functional profile name; GREEN is a stack-neutral ATDD phase.",
+      "as": [
+        "core:prefer[6]",
+        "profile:enforcement.presets#presets"
+      ]
+    },
+    {
+      "item": "prefer[7]",
+      "note": "The delivery/workflow -> flow pairing is Bun preset data; the core states the one-for-one legacy-to-successor migration.",
+      "as": [
+        "core:prefer[7]",
+        "profile:enforcement.presets#presets"
+      ]
+    },
+    {
+      "item": "prefer[8]",
+      "note": "The registry concept is core; the registry paths (conventions/_profiles/<profile>.yaml) are profile data.",
+      "as": [
+        "core:prefer[8]",
+        "profile:enforcement.presets#profile_registries"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "'profiles:' becomes the active profile list in the configuration file.",
+      "as": [
+        "core:avoid[0]",
+        "profile:roots.config"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "Verbatim; already neutral.",
+      "as": [
+        "core:avoid[1]"
+      ]
+    },
+    {
+      "item": "avoid[2]",
+      "note": "Which checks a profile of the active stage preset already bundles ('coder already bundles' architecture, metrics, runtime, design and responsive detectors) is Bun preset data carried in the enforcement.presets#presets bunValue; the core keeps only the role-level rule: propose no later preset for checks the active stage preset's profiles already bundle, as the profile specifies.",
+      "as": [
+        "core:avoid[2]",
+        "profile:enforcement.presets#presets"
+      ]
+    },
+    {
+      "item": "avoid[3]",
+      "note": "'flow' becomes the optional durable-coordination profile; its optionality and companion condition are preset data.",
+      "as": [
+        "core:avoid[3]",
+        "profile:enforcement.presets#presets"
+      ]
+    },
+    {
+      "item": "unless[0]",
+      "note": "The concrete preview invocation ('atdd-bun coder') is the profile's runner plus a profile name; only the active list governs.",
+      "as": [
+        "core:unless[0]",
+        "profile:enforcement.runner"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "Verbatim; already neutral.",
+      "as": [
+        "core:evidence[0]"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "Config file from the profile; the superset exception uses the legacy-to-successor pairing from the preset mapping.",
+      "as": [
+        "core:evidence[1]",
+        "profile:roots.config",
+        "profile:enforcement.presets#presets"
+      ]
+    },
+    {
+      "item": "evidence[2]",
+      "note": "'flow'/'Flow companion' become the durable-coordination profile and its companion tool.",
+      "as": [
+        "core:evidence[2]",
+        "profile:enforcement.presets#presets"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "The generic no-detector / reviewed-from-transcript-and-config-diff statement is core:verification; only the sidecar marker '(implementation.type: none)' is realization-specific.",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "The mapping itself is profile data; the check compares the recommended and written lists against it (core verification entry).",
+      "as": [
+        "profile:enforcement.presets#presets",
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "The registry definition and paths are profile data; the read-the-registry instruction is core:prefer[8].",
+      "as": [
+        "profile:enforcement.presets#profile_registries"
+      ]
+    },
+    {
+      "item": "verifier_detail[3]",
+      "note": "The companion condition and the not-counted-as-loosening semantics are core verification; the concrete names ('flow', 'Flow companion', delivery/workflow) are preset data.",
+      "as": [
+        "core:verification",
+        "profile:enforcement.presets#presets"
+      ]
+    },
+    {
+      "item": "verifier_detail[4]",
+      "note": "The exactly-the-chosen-list check, stated against the active profile list in the configuration file.",
+      "as": [
+        "core:verification",
+        "profile:roots.config"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "RED is a stack-neutral ATDD phase; kept as needs_new_observer (the observer must know work entered RED while only the planning profile is active).",
+      "as": [
+        "core:activation.facts[0]"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "Bun's path_glob fact 'atdd-bun.yaml' is re-expressed as file_kind 'config'; the file is located through roots.config.",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:roots.config"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "Values neutralized ('profiles:' -> the active profile list); still needs a config-vs-stage observer.",
+      "as": [
+        "core:activation.facts[2]"
+      ]
+    },
+    {
+      "item": "activation.facts[3]",
+      "note": "'flow' is replaced by the work-kind term 'coordination'; the profile name is preset data; still llm_judged.",
+      "as": [
+        "core:activation.facts[3]",
+        "profile:enforcement.presets#presets"
+      ]
+    }
+  ],
+  "neutralityNotes": "All stack-specific content was carried as profile data rather than dropped: the configuration file (roots.config), the preview runner (enforcement.runner), the stage-to-preset mapping with all its conditions — including which checks a stage preset's profile already bundles, so that no later preset is proposed for them (proposed enforcement.presets#presets) — and the per-profile registries (proposed enforcement.presets#profile_registries). The core renames Bun profiles functionally: planner -> planning profile, coder -> code profile, tester -> test profile, telemetry -> observability profile, flow -> durable-coordination profile with its companion tool, htmx/design -> web-UI profiles, interlocking -> runtime-integration profile, trains -> deployable units; 'traceability' and 'security' are kept as functional names. RED/GREEN are stack-neutral ATDD phases and stay. The exact configuration key name for the profile list ('profiles:') is realization data recorded in the presets key value, not a core term. The only residue with no neutral equivalent at all is the sidecar marker '(implementation.type: none)', kept as bunOnly.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/atdd-bun.profiles.presets.json",
+      "sha256": "a7d046c43f923803d19dcbae8e7a43bf66baf84c1f11a843f495333409e04952"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 1,
+    "usefulness": 5,
+    "deriver": "rekey-v3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

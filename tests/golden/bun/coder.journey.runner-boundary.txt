@@ -1,0 +1,18 @@
+Title: JourneyRunner composes interlockings without executing trains or wagons (Bun)
+Given: A Bun consumer with a Station Master composition root declares one or more journey topology documents under plan/_journeys/ (whether or not src/trains/** or a JourneyRunner exists yet)
+When: the journey topology is present, which enables the obligation on the runtime under src/trains/**
+Then: You MUST ship a JourneyRunner under src/trains/** that acts only as continuation control: it reads and parses the declared journey topology and delegates every routing decision to InterlockingRunner using declaration-derived values, never executing trains, wagons or Cargo itself.
+Prefer:
+- If no JourneyRunner exists, add one under src/trains/ that reads the supplied journey declaration; its absence is a violation, not an option.
+- The intended call model is: Station Master -> JourneyRunner -> InterlockingRunner.resolve/execute(...) -> TrainRunner.execute(selectedTrainId, ...) -> inspect declared continuation/terminal -> next InterlockingRunner ... (TrainRunner.execute is called by InterlockingRunner, never by JourneyRunner).
+- InterlockingRunner selects exactly one train and delegates it to TrainRunner; JourneyRunner only decides which interlocking is entered next per the declared topology.
+Avoid:
+- Constructing an InterlockingRunner from a hardcoded literal path.
+- Referencing TrainRunner, importing wagon modules, or calling runTrain(...) from JourneyRunner.
+- Looping over train.sequence as an executor in JourneyRunner.
+- Carrying or mutating Cargo in JourneyRunner.
+- Putting cross-interlocking topology into InterlockingRunner.
+Unless:
+- No plan/_journeys topology: no JourneyRunner obligation.
+- No Station Master composition root yet (PLAN stage): no JourneyRunner obligation, as coder.bun.interlocking-runner-exists owes no InterlockingRunner before one.
+Why: Each layer owns only its responsibility (JourneyRunner: continuation control, never the train step loop; InterlockingRunner: local route selection; TrainRunner: sole wagon-step executor), so topology cannot bypass routing or duplicate train execution.

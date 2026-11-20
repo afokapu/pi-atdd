@@ -1,0 +1,352 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "tester.a11y.harness",
+  "legacyId": "tester.htmx.a11y-harness",
+  "core": {
+    "title": "Run the automated accessibility audit in every accessibility spec and assert on its violations",
+    "given": "A browser-level spec (e2e test) is identified as an accessibility spec: it binds an accessibility test URN, or its own file name carries an accessibility name token (both identification signals per the profile)",
+    "when": "The tester writes or changes that spec",
+    "then": "The spec must run the stack's automated accessibility audit and assert on the reported violations in a way that can fail.",
+    "prefer": [
+      "Assert that the audit reports no violations",
+      "Or use a bounded assertion: at most n violations"
+    ],
+    "avoid": [
+      "An accessibility spec that navigates the page but never runs the audit",
+      "Running the audit and then never asserting on the result",
+      "Tautological assertions that cannot fail, such as asserting the violation count is at least zero. These do not count as assertions"
+    ],
+    "unless": [],
+    "why": "An accessibility spec that navigates but never runs the audit, or never asserts on the result, passes no matter what state the page is actually in.",
+    "evidence": [
+      "The spec invokes the stack's automated accessibility audit (per the profile), under any local binding name",
+      "The audit's analysis runs, and its reported violations are asserted to be none, or at most a stated bound, in a way that can fail",
+      "The stack's accessibility-harness check reports no finding for the spec"
+    ],
+    "verification": [
+      "Identify accessibility specs only by the profile's accessibility test URN binding or accessibility name token (profile: urn.binding.test, suffix.a11y_test). The name token is matched against the file's own base name only: never a directory name, never inside a longer word, and task wording never counts.",
+      "Recognize browser-level specs per the profile (profile: roles.e2e_test.kinds), so a misnamed browser spec is still judged; a unit test that merely mentions a URN inside a string literal is not a browser spec. The browser-spec recognition is used together with the accessibility identification, never as a substitute for it.",
+      "Resolve the audit harness import under any local alias.",
+      "Accept assertions that can fail: asserting the reported violations are none, or at most a stated bound, using the stack's accepted assertion spellings (profile: idiom.test_constructs#a11y_assertions). Tautologies that cannot fail (for example asserting the count is at least zero) are not assertions and do not satisfy the rule.",
+      "Never scan the profile's excluded vendored and generated trees (profile: roots.excluded); this scopes the check only and is not a waiver.",
+      "Severity 3. Disposition: strict, as stated in the source; the source does not further define its enforcement semantics."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "accessibility spec by file name: an accessibility name token in the file's own base name, bounded on the left by start-of-name or a separator and on the right by a separator or end-of-name, never inside a longer word and never a directory name (token patterns per the profile)"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "accessibility spec by URN: the spec binds an accessibility test URN (binding syntax per the profile)"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "browser-level spec (e2e test) per the profile's browser-spec definition, including misnamed spec files that carry a journey/test URN binding in header comments"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "accessibility-harness finding: the audit invocation is missing, or there is no assertion on the reported violations that can fail"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "operation",
+          "values": [
+            "create",
+            "modify"
+          ],
+          "observability": "observable_now"
+        }
+      ],
+      "fires": [
+        "A newly written accessibility spec navigates to a page and asserts only on visible text, without running the accessibility audit",
+        "An accessibility spec binds the audit harness but never executes its analysis",
+        "An accessibility spec runs the audit but never asserts on the reported violations",
+        "An accessibility spec asserts the violation count with a tautology that cannot fail (for example, that it is at least zero)",
+        "A misnamed browser-level spec (recognized per the profile) that binds an accessibility test URN does not run the audit"
+      ],
+      "doesNotFire": [
+        "A browser-level spec that binds no accessibility test URN and has no accessibility name token in its own file name, even if the task mentions accessibility",
+        "A browser-level spec under a directory whose name alone carries the token, with no token in its own file name and no accessibility URN",
+        "A file whose base name contains the token only inside a longer word and has no accessibility URN",
+        "A unit test that only mentions an accessibility or journey URN inside a string literal",
+        "Files under the profile's excluded vendored and generated trees"
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "suffix.a11y_test",
+      "meaning": "The name patterns that identify an accessibility spec among the stack's test files: an accessibility name token in the file's own base name.",
+      "bunValue": "**/a11y.*, **/a11y-*, **/a11y_*, **/*.a11y.*, **/*.a11y-*, **/*.a11y_*, **/*-a11y.*, **/*-a11y-*, **/*-a11y_*, **/*_a11y.*, **/*_a11y-*, **/*_a11y_* — an `a11y` token in the basename preceded by the start of the basename or one of `.`, `-`, `_` and followed by one of `.`, `-`, `_` or end-of-name (equivalent basename regex `(^|[._-])a11y([._-]|$)`); match the basename only, not directory names, and not `a11y` embedded in a longer word."
+    },
+    {
+      "key": "urn.binding.test",
+      "meaning": "The syntax by which a test file binds an accessibility test URN, so a spec with no name token is still identified as an accessibility spec.",
+      "bunValue": "the spec carries an `A11Y` test URN (needs a parser for test URNs in the file); a URN mentioned only inside a string literal is not a binding."
+    },
+    {
+      "key": "roles.e2e_test.kinds",
+      "meaning": "The concrete artifact kinds that play the browser-spec (e2e test) role: the population within which accessibility specs are identified, including misnamed ones.",
+      "bunValue": "browser_spec = a `*.e2e.ts` file run by Playwright, or any test file whose header comments carry a journey marker (`// Train:`, `// Journey:`, `// URN: test:train:…`, `// URN: test:journey:…`), so a misnamed one is still judged. A unit test that merely mentions a journey URN in a string is not a browser spec."
+    },
+    {
+      "key": "idiom.test_constructs#a11y_audit",
+      "meaning": "The stack's automated accessibility audit harness: how a test invokes it and where the reported violations are exposed.",
+      "bunValue": "import `AxeBuilder` from `@axe-core/playwright` (under any local name) and call `new AxeBuilder(...).analyze()`; the audit result's `violations` carries the findings."
+    },
+    {
+      "key": "idiom.test_constructs#a11y_assertions",
+      "meaning": "The stack's accepted assertion spellings on the audit's reported violations (equal-to-none and bounded), and the tautological spelling that is rejected as not an assertion.",
+      "bunValue": "accepted equal-to-none: `toEqual([])`, `toHaveLength(0)`, `toBe(0)` (on the violations or its count); accepted bounded: `toBeLessThanOrEqual(n)`, `toBeLessThan(n)`; rejected tautology: `toBeGreaterThanOrEqual(0)`."
+    },
+    {
+      "key": "roots.excluded",
+      "meaning": "The one stack-wide list of vendored and generated trees that are never scanned.",
+      "bunValue": "node_modules, dist, build, _generated."
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "prefer[2]",
+      "text": "`const results = await new AxeBuilder({ page }).analyze(); expect(results.violations).toEqual([]);`",
+      "reason": "Concrete Bun/Playwright code example (the source's fix hint), combining the audit idiom and one accepted matcher; the core keeps prefer/avoid role-level, and bun.json is delivered as the reference example."
+    },
+    {
+      "item": "evidence[2]",
+      "text": "htmx_e2e_detector reports no a11y-harness finding",
+      "reason": "Detector and finding ids of this one rule are realization details (vocabulary notProfileKeys); the core names the check generically."
+    },
+    {
+      "item": "activation.facts[3]",
+      "text": "htmx_e2e_detector:a11y-harness",
+      "reason": "Detector finding id of this rule's Bun realization; the core fact describes the finding generically (audit invocation or fail-capable assertion missing)."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "Both identification signals are neutral (accessibility test URN binding, or accessibility name token in the file name); the concrete token patterns and URN syntax come from the profile.",
+      "as": [
+        "core:given",
+        "profile:suffix.a11y_test",
+        "profile:urn.binding.test"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "Already stack-neutral.",
+      "as": [
+        "core:when"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "One neutral obligation; the concrete harness requirement (AxeBuilder import and analyze call) is supplied by the profile key, restoring the exact Bun sentence on instantiation.",
+      "as": [
+        "core:then",
+        "profile:idiom.test_constructs#a11y_audit"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "Neutral once 'axe' is generalized to 'the audit'.",
+      "as": [
+        "core:why"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "Neutral shape kept in core (assert that there are no violations); the matcher spellings are the stack's assertion idiom, carried by the profile entry idiom.test_constructs#a11y_assertions.",
+      "as": [
+        "core:prefer[0]",
+        "profile:idiom.test_constructs#a11y_assertions"
+      ]
+    },
+    {
+      "item": "prefer[1]",
+      "note": "Neutral shape kept in core (bounded assertion, at most n); the matcher spellings are the stack's assertion idiom, carried by the profile entry idiom.test_constructs#a11y_assertions.",
+      "as": [
+        "core:prefer[1]",
+        "profile:idiom.test_constructs#a11y_assertions"
+      ]
+    },
+    {
+      "item": "prefer[2]",
+      "note": "Concrete code example only; the core does not repeat it because bun.json is the delivered reference example.",
+      "as": [
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "Neutral with 'axe' generalized to 'the audit'.",
+      "as": [
+        "core:avoid[0]"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "Already neutral.",
+      "as": [
+        "core:avoid[1]"
+      ]
+    },
+    {
+      "item": "avoid[2]",
+      "note": "The tautology rule is neutral and kept in core; the concrete tautological matcher spelling is part of the stack's assertion idiom (profile entry idiom.test_constructs#a11y_assertions).",
+      "as": [
+        "core:avoid[2]",
+        "profile:idiom.test_constructs#a11y_assertions"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "Neutral: the spec invokes the stack's audit harness; the import form is the profile value.",
+      "as": [
+        "core:evidence[0]",
+        "profile:idiom.test_constructs#a11y_audit"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "Neutral: the audit runs and the violations are asserted none-or-bounded in a way that can fail; the analyze() call is the audit idiom and the accepted matcher list is the assertion idiom, both carried by profile entries.",
+      "as": [
+        "core:evidence[1]",
+        "profile:idiom.test_constructs#a11y_audit",
+        "profile:idiom.test_constructs#a11y_assertions"
+      ]
+    },
+    {
+      "item": "evidence[2]",
+      "note": "Neutral: the accessibility-harness check reports no finding; the detector/finding id is realization-only.",
+      "as": [
+        "core:evidence[2]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "Neutral identification rule (base-name token with boundaries; directories, substrings inside words and task wording do not count); the globs and regex are the profile value.",
+      "as": [
+        "core:verification",
+        "profile:suffix.a11y_test",
+        "profile:urn.binding.test"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "Neutral: browser-level specs are recognized per the profile so misnamed ones are still judged and string-literal URN mentions do not qualify; the Playwright/journey-marker definition is the profile value.",
+      "as": [
+        "core:verification",
+        "profile:roles.e2e_test.kinds"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "Resolving the audit import under any local alias is a generic checker rule.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[3]",
+      "note": "Neutral acceptance policy in core verification (assert none or a bound; reject tautologies); the concrete matcher spellings, accepted and rejected, are the stack's assertion idiom carried by the profile entry idiom.test_constructs#a11y_assertions.",
+      "as": [
+        "core:verification",
+        "profile:idiom.test_constructs#a11y_assertions"
+      ]
+    },
+    {
+      "item": "verifier_detail[4]",
+      "note": "Scanning scope only, not a waiver; the excluded trees are the one stack-wide list (roots.excluded).",
+      "as": [
+        "core:verification",
+        "profile:roots.excluded"
+      ]
+    },
+    {
+      "item": "verifier_detail[5]",
+      "note": "Per-rule severity 3 and strict disposition belong to the rule, not the profile; the bare 'strict' label is kept with no added enforcement semantics.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "The Bun path_glob fact is expressed neutrally as file_kind (accessibility name token in the base name); the glob list and regex are the profile value.",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:suffix.a11y_test"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "Neutral: identification by accessibility test URN binding; the URN syntax is the profile value.",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:urn.binding.test"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "Neutral: the browser-spec population per profile, used together with the accessibility identification, never as a substitute for it.",
+      "as": [
+        "core:activation.facts[2]",
+        "profile:roles.e2e_test.kinds"
+      ]
+    },
+    {
+      "item": "activation.facts[3]",
+      "note": "Neutral finding description in core (audit invocation or fail-capable assertion missing); the detector/finding id is realization-only.",
+      "as": [
+        "core:activation.facts[3]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.facts[4]",
+      "note": "Already neutral: creating or modifying an accessibility spec.",
+      "as": [
+        "core:activation.facts[4]"
+      ]
+    }
+  ],
+  "neutralityNotes": "The obligation itself is stack-neutral: an accessibility-identified browser-level spec must run the stack's automated accessibility audit and assert fail-capably on the reported violations. Everything concrete is stack data carried by the profile: the audit harness and its invocation (idiom.test_constructs#a11y_audit), the accepted and rejected assertion spellings (idiom.test_constructs#a11y_assertions, a map entry of the existing idiom.test_constructs key), the accessibility name-token patterns (suffix.a11y_test), the accessibility test-URN binding (urn.binding.test, an existing parametric key; bun.json gives no syntax beyond 'an A11Y test URN', so the bunValue carries that verbatim), the browser-spec population (roles.e2e_test.kinds) and the excluded trees (roots.excluded). The acceptance policy (none or a stated bound; tautologies are not assertions) stays in core verification and references the profile entry for the spellings. Only the detector/finding ids of this realization and the complete fix-hint code example remain bunOnly, per the vocabulary's notProfileKeys. Strict disposition and severity 3 are per-rule and kept in core verification, with no enforcement semantics added beyond the source's bare 'strict'.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/tester.htmx.a11y-harness.json",
+      "sha256": "d94f58a0cae9f3a1ae4f6860a26e2c5687c74e12665c38b63aa0a0736ecb5852"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "rekey-v3 -> zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

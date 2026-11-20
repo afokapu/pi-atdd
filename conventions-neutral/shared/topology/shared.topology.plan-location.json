@@ -1,0 +1,303 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "shared.topology.plan-location",
+  "legacyId": "atdd-bun.topology.plan-location",
+  "core": {
+    "title": "Keep plan artifacts at their canonical paths under the plan root",
+    "given": "A declaration of a plan artifact (any kind the stack treats as a plan artifact) exists or is being written anywhere in the repository outside the vendored and generated trees this check excludes, with any filename suffix",
+    "when": "its location is checked or the document is written",
+    "then": "Every such declaration must sit at the canonical path for its kind under the configured plan root.",
+    "prefer": [
+      "On a finding, move the document to the canonical path the finding names.",
+      "Resolve the plan root from the repository's root configuration rather than hard-coding a directory."
+    ],
+    "avoid": [
+      "Keeping a second plan layout alongside the canonical one in the same repository.",
+      "Placing plan documents at ad-hoc paths and relying on identity lookup alone to find them."
+    ],
+    "unless": [
+      "Vendored and generated trees are never scanned."
+    ],
+    "why": "The plan is navigated by path as much as by identity. A document at a non-canonical path is found by nothing that walks the layout, and two layouts in one repository make every tool guess.",
+    "evidence": [
+      "The stack's plan-location check reports no finding for any plan declaration.",
+      "Every plan declaration resolves to the canonical path for its kind under the configured plan root."
+    ],
+    "verification": [
+      "Strict disposition, severity 3: every finding fails; there is no advisory mode and no ratchet baseline.",
+      "The check discovers plan declarations by content — a classifier recognising a document as a plan declaration whatever its path or filename suffix, including existing documents that were never moved — across the whole repository except the vendored and generated trees it itself excludes; a declaration with a noncanonical suffix or at a noncanonical path is a finding.",
+      "The check applies to every declaration, existing or new, wherever found; discovery is not narrowed by a path or suffix filter.",
+      "Findings must name the canonical target path; the fix is to move the document to the path the finding names.",
+      "The check does not scan vendored and generated trees; this check itself owns the exact exclusion list for them, kept in the realization. It neither restates that list as, nor inherits additional trees from, the stack-wide exclusion union.",
+      "The check does not cover production source or test files; the stack's source-location and test-location rules cover those roots."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "plan_artifact"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "plan-location finding naming the canonical target path"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "An existing plan declaration sits somewhere other than the canonical path for its kind.",
+        "A plan declaration is stored under a noncanonical filename suffix.",
+        "A new or relocated plan declaration is written somewhere other than the canonical path for its kind.",
+        "A declaration sits outside the plan root, outside its owning unit's directory under it, or nested deeper than its canonical path.",
+        "A plan item document is at a path other than the canonical pattern for its kind.",
+        "The plan-location check reports a finding."
+      ],
+      "doesNotFire": [
+        "Plan-shaped documents inside the vendored and generated trees this check excludes.",
+        "A plan declaration already at its canonical path with the canonical suffix.",
+        "Files whose content is not a plan declaration, whatever their path or suffix.",
+        "Production source and test files, which the stack's source-location and test-location rules cover."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roots.plan",
+      "meaning": "The root under which every plan declaration must live; the canonical paths are expressed relative to it and it is resolved from configuration, never hard-coded.",
+      "bunValue": "`plan` — the `topology:` key `plan_root` in atdd-bun.yaml, default `plan`"
+    },
+    {
+      "key": "roots.config",
+      "meaning": "The repository file that declares the plan root, so the rule can resolve the plan root from configuration.",
+      "bunValue": "atdd-bun.yaml (the `topology:` key `plan_root`)"
+    },
+    {
+      "key": "roots.scan",
+      "meaning": "Discovery scope of the repository-wide location check: the whole repository, every file whatever its suffix. (The exact vendored/generated trees skipped by this check are owned by the check's realization, not by this key.)",
+      "bunValue": "`**/*` — the whole repository, every file whatever its suffix"
+    },
+    {
+      "key": "roles.plan_artifact.kinds",
+      "meaning": "The plan-artifact kinds whose declarations the rule locates, recognised by content.",
+      "bunValue": "wagon, feature, wmbt"
+    },
+    {
+      "key": "suffix.plan_artifact",
+      "meaning": "The canonical suffix a plan declaration's path must carry; any other suffix is noncanonical and is a finding.",
+      "bunValue": ".yaml"
+    },
+    {
+      "key": "layout.plan_item",
+      "meaning": "The canonical path of a plan declaration under the plan root. The pattern is kind-dependent: one alternative per plan-artifact kind of roles.plan_artifact.kinds, each embedding the canonical suffix; a declaration of that kind at any other path is a finding.",
+      "bunValue": "wagon -> `<plan_root>/<wagon>/_<wagon>.yaml`; feature -> `<plan_root>/<wagon>/<feature>.yaml`; WMBT -> `<plan_root>/<wagon>/<WMBT>.yaml`"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "activation.facts[2]",
+      "text": "finding `atdd-bun.topology.plan-location`, emitted by the atdd_topology validator",
+      "reason": "Detector, validator and finding ids of this one rule are realization details; the core names the check generically in its verification and a neutral finding fact."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "The atdd_topology validator reports no atdd-bun.topology.plan-location finding.",
+      "reason": "The validator and finding ids are Bun realization details; the core states the same evidence generically."
+    },
+    {
+      "item": "unless[0]",
+      "text": "The exact never-scanned trees: `node_modules`, `dist`, `build`, `_generated`.",
+      "reason": "This checker owns its exact four-tree exclusion list. It is realization data, not the stack-wide exclusion union, so it stays out of the neutral core and out of the stack-wide profile key; the core keeps only the neutral exception plus the ownership statement in verification."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "text": "Skip vendored and generated trees: `node_modules`, `dist`, `build`, `_generated`.",
+      "reason": "Same checker-owned exact exclusion list; the core's verification states the skip and the check's ownership of the list generically, and the Bun realization supplies the four names."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "text": "this is a package rule (atdd-bun.*) realized by a package guard rather than a canonical planner node (source statement: 'Package rule, strict.')",
+      "reason": "How the rule is seated in ATDD-Bun's own gate and package structure has no stack-neutral equivalent; only the severity and strict disposition are neutral."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given"
+      ],
+      "note": "Neutralized: all plan kinds, 'anywhere outside the trees this check excludes' and 'any filename suffix' kept; the scan scope comes from roots.scan, the kind list from roles.plan_artifact.kinds, and the exact excluded trees from the realization."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Already stack-neutral; kept verbatim."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "profile:layout.plan_item",
+        "profile:roots.plan"
+      ],
+      "note": "One obligation; the per-kind canonical path patterns are expressed as kind-dependent alternatives of layout.plan_item, relative to roots.plan."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Already stack-neutral; kept verbatim."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]",
+        "core:verification"
+      ],
+      "note": "Fix guidance; verification restates that findings name the canonical target path (verifier_detail[3])."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]",
+        "profile:roots.plan",
+        "profile:roots.config"
+      ],
+      "note": "'the `topology:` settings in atdd-bun.yaml (default `plan`)' is the Bun value of roots.plan, declared in roots.config."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Already stack-neutral; kept verbatim."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Already stack-neutral; kept verbatim."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]",
+        "bunOnly"
+      ],
+      "note": "The exception is kept in neutral form ('vendored and generated trees are never scanned'), neither dropped nor widened; the exact four trees are this checker's own exclusion list, kept in the realization (bunOnly), not pushed into the stack-wide roots.excluded key, whose union differs."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ],
+      "note": "Neutralized to 'the plan-location check reports no finding'; the validator and finding ids are realization details (bunOnly)."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]",
+        "profile:roots.plan"
+      ],
+      "note": "'wagon, feature and WMBT' generalizes to every plan declaration (kinds from roles.plan_artifact.kinds); 'configured plan_root' is roots.plan."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "profile:layout.plan_item",
+        "profile:suffix.plan_artifact"
+      ],
+      "note": "The three canonical path patterns are kind-dependent alternatives of layout.plan_item (each embedding suffix.plan_artifact); 'applies to every declaration, existing or new' and 'discovery by content, not suffix' go to core verification."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "profile:roots.plan",
+        "profile:roots.config"
+      ],
+      "note": "Where plan_root is read from and its default are profile data; mirrors prefer[1]."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "The skip behaviour and this check's ownership of its exact exclusion list go to verification (which defers the list to the realization and excludes inheriting the stack-wide union); the four concrete tree names are Bun realization data (bunOnly)."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Generic: findings name the canonical target path; the fix hint is core:prefer[0]."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Severity 3 and strict disposition (every finding fails, no advisory mode, no ratchet baseline) go to core verification; the package-rule provenance is ATDD-Bun gate structure (bunOnly)."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "profile:roots.scan",
+        "core:verification"
+      ],
+      "note": "The positive glob (whole repository, every file whatever its suffix) is the scan scope; the four negated globs are this checker's own exclusion list, preserved in bunOnly (unless[0], verifier_detail[2]) rather than in a profile key. There is no neutral activation-fact type for scan scope, so the core's given and the content-based-discovery verification entry carry it."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roles.plan_artifact.kinds"
+      ],
+      "note": "Neutral fact: file_kind 'plan_artifact', needs a content classifier regardless of path or suffix, including never-moved documents; 'wagon, feature, wmbt' are the profile kind names."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "bunOnly",
+        "core:verification",
+        "core:activation.facts[1]"
+      ],
+      "note": "The finding id and validator name are realization details (bunOnly); generically, the location check emits findings naming the canonical path, which is the core's neutral finding fact."
+    }
+  ],
+  "neutralityNotes": "No keys are proposed: the per-kind canonical paths are expressed as kind-dependent alternatives of the existing layout.plan_item, relative to roots.plan. The exact vendored/generated exclusion list is owned by this check's realization (the four trees are kept in bunOnly); the core keeps the neutral exception plus an ownership statement in verification and deliberately references neither the stack-wide roots.excluded union (which is broader and would change this rule's discovery scope) nor a rule-specific redefinition of it. The Bun kind names (wagon, feature, WMBT) survive only as profile values (roles.plan_artifact.kinds, layout.plan_item), never in the core text. The discovery-scope glob activation fact has no neutral activation-fact type (role|operation|change|phase|finding|file_kind|task_term|task_has_acceptance); its content is carried by the core's given, the content-based-discovery verification entry, and roots.scan. Per-rule severity (3) and strict disposition stay in core verification, and the finding/validator ids stay bunOnly, per the notProfileKeys list.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/atdd-bun.topology.plan-location.json",
+      "sha256": "418ba9c1761ef3f97fea6ab5063bc3823113daae724608fdafe5fc65db72016d"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

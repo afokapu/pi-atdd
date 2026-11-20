@@ -1,0 +1,272 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.train.route-space-admission",
+  "legacyId": "planner.train.route-space-admission",
+  "core": {
+    "title": "Give every train exactly one route or a typed single-route assessment",
+    "given": "The plan's registered trains and the routes of all registered interlockings.",
+    "when": "The plan reaches CONFIRM (every registered train is checked, whatever changed).",
+    "then": "Make each registered train exactly one of: route-targeted (selected by exactly one route across all registered interlockings) or typed single-route (declares the single-route classification with a basis from the closed vocabulary) — never both, never neither.",
+    "prefer": [
+      "Route-targeted: exactly one route across all registered interlockings selects the train.",
+      "Typed single-route: the single-route classification plus a basis from the closed vocabulary."
+    ],
+    "avoid": [
+      "No route and no classification, assuming that implies direct dispatch — an omission.",
+      "Declaring single-route on a route-targeted train — a contradiction.",
+      "Free prose as the single-route basis.",
+      "Treating a train selected by zero or several routes as route-targeted; only a count of exactly one qualifies."
+    ],
+    "unless": [],
+    "why": "Route-space was optional metadata, so a train with no route analysis looked like one whose analysis concluded single-route; silence read as proof analysis happened. Explicit classification surfaces the omission at planning time.",
+    "evidence": [
+      "The admission check for this rule passes at the CONFIRM phase over all registered trains.",
+      "On failure, each offending train is reported with its identifier, plan location, selecting route ids, declared classification, basis and admission status (field names under core.verification)."
+    ],
+    "verification": [
+      "Scope: at the CONFIRM phase the check evaluates every registered train, not only those changed by the current diff; it is confirm-blocking — earlier phases are not gated, though the planner should already author compliant trains.",
+      "Severity 4; disposition strict: every finding fails the check; findings are not advisory.",
+      "route_targeted = the train is selected by exactly one route, counted across every registered interlocking; a count of 0 or of more than 1 is not route_targeted.",
+      "typed_single_route = the declared classification is single-route AND the basis is a member of the closed basis vocabulary; free prose does not qualify. Membership in the closed vocabulary is owned by the realization's plan schema and its checker, not by this core.",
+      "exactly_one: route_targeted XOR typed_single_route; both is a contradiction, neither is an omission.",
+      "On failure the report carries, for each offending train: train_id, train_path, route_ids, classification, basis, admission_status."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "train",
+            "interlocking"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "phase",
+          "values": [
+            "CONFIRM"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "At CONFIRM, a newly registered train is selected by no registered interlocking route and declares no typed single-route assessment.",
+        "At CONFIRM, a pre-existing registered train has neither route nor typed assessment, even though the current change touched no train or route.",
+        "A train is route-targeted (exactly one route) and also declares the single-route classification.",
+        "A train declares single-route with a free-prose basis instead of a closed-vocabulary basis.",
+        "An interlocking is unregistered or a route removed/retargeted, leaving a train with neither route nor typed assessment.",
+        "A train is selected by routes in two registered interlockings (count 2, so not route-targeted) and declares no typed single-route assessment."
+      ],
+      "doesNotFire": [
+        "A train selected by exactly one route across all registered interlockings and declaring no single-route classification.",
+        "A train that is not route-targeted and declares the single-route classification with a closed-vocabulary basis.",
+        "Phases other than CONFIRM (the check is confirm-blocking; earlier phases are not gated, though the planner should already author compliant trains)."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "idiom.plan_syntax#route_space_declaration",
+      "meaning": "The concrete plan-artifact construct by which a train entry declares its route-space classification and the basis for it — the fields the admission check reads for the typed single-route assessment.",
+      "bunValue": "route_space.classification == single-route AND basis is a member of the closed vocabulary"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "evidence[0]",
+      "text": "Validator test_route_space_admission::test_every_train_is_route_targeted_or_typed_single_route passes at CONFIRM.",
+      "reason": "Names this realization's validator test id; other stacks have their own check name for the same obligation."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "Validation family: coverage; template: source_has_required_target; variant: planner_train_route_space_admission; subject_kind: train.",
+      "reason": "Validation family, template and variant are detector/validator ids of this one rule — realization plumbing; the core's verification describes the check generically and its subject via the activation fact."
+    },
+    {
+      "item": "activation.facts[2]",
+      "text": "finding: planner_train_route_space_admission — coverage detector (source_has_required_target) finding per train.",
+      "reason": "The finding id and detector template are this realization's observer ids (needs_new_observer); per instructions finding ids stay with the stack realization."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "Plan-model scope (registered trains, registered interlockings' routes); already stack-neutral.",
+      "as": [
+        "core:given"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "CONFIRM is the method's lifecycle phase, not a stack name; the all-trains-regardless-of-diff scope is also stated as verifier scope.",
+      "as": [
+        "core:when",
+        "core:verification"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "The exactly-one obligation is neutral; the concrete declaration fields (route_space.classification / basis) come from the profile key.",
+      "as": [
+        "core:then",
+        "profile:idiom.plan_syntax#route_space_declaration"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "History of route-space as optional metadata; method-level, no stack content.",
+      "as": [
+        "core:why"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "Definition of route-targeted; neutral.",
+      "as": [
+        "core:prefer[0]"
+      ]
+    },
+    {
+      "item": "prefer[1]",
+      "note": "Neutral except the concrete classification field, supplied by the profile key.",
+      "as": [
+        "core:prefer[1]",
+        "profile:idiom.plan_syntax#route_space_declaration"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "Omission case; the '(issue #1554)' provenance reference is dropped from the core (it remains in bun.json's audit) — no change to the obligation.",
+      "as": [
+        "core:avoid[0]"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "Contradiction case; neutral.",
+      "as": [
+        "core:avoid[1]"
+      ]
+    },
+    {
+      "item": "avoid[2]",
+      "note": "Free-prose basis; neutral.",
+      "as": [
+        "core:avoid[2]"
+      ]
+    },
+    {
+      "item": "avoid[3]",
+      "note": "Exactly-one-count rule; neutral.",
+      "as": [
+        "core:avoid[3]"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "The generic statement (admission check passes at CONFIRM) is kept as core evidence/verification; the validator test id is Bun-only.",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "Failure-report field names are plan-model level data fields, not stack names; kept verbatim in core verification.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "Family/template/variant ids are this rule's detector plumbing (bunOnly); subject_kind 'train' is reflected in the core activation fact file_kind.",
+      "as": [
+        "bunOnly",
+        "core:activation.facts[0]"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "Phase, confirm-blocking enforcement, all-trains scope and per-rule severity are rule-level verification facts (severity/disposition belong to the core, not the profile).",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "Neutral definition of route_targeted counting; kept in core verification.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[3]",
+      "note": "Definition is neutral except the concrete route_space fields, which come from the profile key; the closed-vocabulary membership itself is deferred to the realization's plan schema.",
+      "as": [
+        "core:verification",
+        "profile:idiom.plan_syntax#route_space_declaration"
+      ]
+    },
+    {
+      "item": "verifier_detail[4]",
+      "note": "XOR definition (both => contradiction, neither => omission); neutral.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[5]",
+      "note": "Failure-evidence field list; neutral report fields.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "train and interlocking are plan-model entity kinds of the method, not stack file kinds; observable now.",
+      "as": [
+        "core:activation.facts[0]"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "CONFIRM phase fact (needs_new_observer, supplied by the harness); also drives the confirm-blocking verifier scope.",
+      "as": [
+        "core:activation.facts[1]",
+        "core:verification"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "Finding id of this rule's coverage detector; realization-specific observer.",
+      "as": [
+        "bunOnly"
+      ]
+    }
+  ],
+  "neutralityNotes": "Plan-model terms (train, interlocking, route, registration, route-space classification, closed basis vocabulary) and the CONFIRM lifecycle phase are treated as method-level vocabulary shared by every realization, so they stay in the core; only the concrete declaration fields were pushed to the profile via the proposed key idiom.plan_syntax#route_space_declaration. The members of the closed basis vocabulary are not enumerated in bun.json, so the core keeps the checker-owned deference in verification (like roots.excluded). Detector/validator/finding ids, and this realization's validator test ref, are bunOnly; per-rule severity (4) and strict disposition moved to core.verification as instructed. The '(issue #1554)' provenance reference was dropped from core avoid[0] (it survives in bun.json's audit) without changing the obligation.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/planner-nodes/planner.train.route-space-admission.json",
+      "sha256": "ef42f21fc8e09212320b3a79a5e2f6533cab354ef32621d20a42085b4218711e"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 1,
+    "usefulness": 5,
+    "deriver": "rekey-v3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

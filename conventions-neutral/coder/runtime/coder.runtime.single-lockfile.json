@@ -1,0 +1,415 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.runtime.single-lockfile",
+  "legacyId": "coder.bun.runtime-single-lockfile",
+  "core": {
+    "title": "Keep the package manager's native lockfile as the only lockfile",
+    "given": "A workspace that declares its package manager (the choice is declared, independent of which lockfiles currently exist), with scan roots outside the excluded trees",
+    "when": "the scanned tree holds a foreign lockfile (a lockfile written by a package manager other than the declared one), committed or not, or the current change adds or changes a dependency",
+    "then": "Keep the declared package manager's native lockfile as the single dependency-resolution source: remove every foreign lockfile; none may sit alongside the native lockfile.",
+    "prefer": [
+      "During GREEN: if the current change adds a dependency, install it with the declared package manager.",
+      "During GREEN: remove only foreign lockfiles; regenerate the native lockfile only when dependency state actually changed; keep package-manager behavior otherwise untouched."
+    ],
+    "avoid": [
+      "Keeping a second lockfile as a temporary convenience, including during a migration window.",
+      "Switching package managers.",
+      "Updating unrelated dependencies.",
+      "Suppressing the finding for a package deliberately not on the declared package manager; it stays reported until it moves to the declared package manager or out of the scanned tree."
+    ],
+    "unless": [
+      "A vendored or fixture lockfile inside an excluded tree is never scanned."
+    ],
+    "why": "Two lockfiles mean two resolvers disagree about the dependency graph; whichever command a developer or CI step runs wins. Two lockfiles can pin different versions of the same transitive dependency, so the installed tree depends on which tool ran last (resolution drift), and this is invisible in review because nobody reads a lockfile diff — the 'works on my machine, breaks in CI' failure. Risk peaks while migrating to the declared package manager: the old lockfile is still committed, someone runs the old package manager's install command out of habit, the trees fork, and a deploy fails much later. The rule matters more during a migration than after one.",
+    "evidence": [
+      "The current behavioral acceptance and the install/check path pass.",
+      "No foreign lockfile exists in the declared scan roots; only the native lockfile governs dependency resolution.",
+      "The stack's single-lockfile check reports zero foreign-lockfile findings."
+    ],
+    "verification": [
+      "Strict disposition: fails on every finding; no advisory mode, no ratchet baseline. Severity 3.",
+      "The check walks the declared scan roots and matches foreign lockfile basenames (resolution records written by a package manager that is not the stack's), regardless of version-control status (committed or not).",
+      "Each foreign lockfile is reported at line 1: the file itself is the fact, so there is no line to point at.",
+      "Excluded trees are never scanned.",
+      "No per-rule scope: a package deliberately not on the declared package manager stays reported while it sits inside the scanned tree; the finding is the stack decision's open item, not something to suppress.",
+      "Lockfile presence alone is not proof of the package-manager choice; activation relies on the workspace declaration. An agent's intent to run a particular install command is not observable; only the resulting diff is."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "foreign_lockfile"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "lockfile",
+            "package_manifest"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "dependency_added",
+            "dependency_changed",
+            "lockfile_added"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "foreign_lockfile"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "task_term",
+          "values": [
+            "install",
+            "dependency",
+            "lockfile",
+            "package-manager migration"
+          ],
+          "observability": "observable_now"
+        }
+      ],
+      "fires": [
+        "In a workspace that declares its package manager, a foreign lockfile exists in a non-excluded scan root (committed or uncommitted).",
+        "In a workspace that declares its package manager, the current change adds or changes a dependency in the dependency manifest.",
+        "A repository declared on a package manager while migrating to it still has its old lockfile present.",
+        "A package deliberately not on the declared package manager has its own foreign lockfile inside the scanned tree."
+      ],
+      "doesNotFire": [
+        "A vendored or fixture lockfile inside an excluded tree.",
+        "A workspace whose only lockfile is the native lockfile and whose current change adds or changes no dependency.",
+        "A repository that does not declare the package manager of this stack."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "tooling.workspace_declaration",
+      "meaning": "How the workspace declares its package manager; scopes the rule independently of which lockfiles exist.",
+      "bunValue": "atdd.workspace.bun"
+    },
+    {
+      "key": "tooling.package_manager",
+      "meaning": "The declared package manager that owns dependencies and installs added ones.",
+      "bunValue": "Bun"
+    },
+    {
+      "key": "tooling.lockfile.native",
+      "meaning": "The native lockfile(s) that must be the single dependency-resolution source and are regenerated when dependency state changes.",
+      "bunValue": "bun.lock, bun.lockb"
+    },
+    {
+      "key": "tooling.lockfile.foreign",
+      "meaning": "Foreign lockfile basenames that must not exist alongside the native lockfile.",
+      "bunValue": "package-lock.json (npm), yarn.lock (Yarn), pnpm-lock.yaml, pnpm-lock.yml (pnpm)"
+    },
+    {
+      "key": "tooling.manifest",
+      "meaning": "The dependency manifest whose dependency additions/changes trigger the rule.",
+      "bunValue": "package.json"
+    },
+    {
+      "key": "tooling.foreign_install_commands",
+      "meaning": "Install commands of other package managers, run out of habit during a migration (failure mechanism in why).",
+      "bunValue": "npm install"
+    },
+    {
+      "key": "roots.scan",
+      "meaning": "The declared scan roots the check walks.",
+      "bunValue": "the declared, non-excluded scan roots of the Bun workspace"
+    },
+    {
+      "key": "roots.excluded",
+      "meaning": "Trees never scanned; a vendored or fixture lockfile there is out of scope.",
+      "bunValue": "node_modules, dist, build, _generated"
+    },
+    {
+      "key": "enforcement.runner",
+      "meaning": "The stack's convention runner, which has no per-rule scope.",
+      "bunValue": "atdd-bun"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "activation.facts[4]",
+      "text": "bun_fullstack_detector:foreign_lockfile",
+      "reason": "Detector/finding id of this rule's Bun realization; the core names the finding generically."
+    },
+    {
+      "item": "activation.facts[5]",
+      "text": "Task terms \"npm install\", \"yarn\", \"pnpm\", \"migrate to bun\"",
+      "reason": "Concrete tool names and the Bun migration phrase; the core keeps neutral task terms."
+    },
+    {
+      "item": "evidence[2]",
+      "text": "bun_fullstack_detector reports zero foreign-lockfile findings.",
+      "reason": "Names the Bun detector; the core refers to the stack's single-lockfile check."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "text": "Detector is a zero-dependency Bun detector (bun_fullstack_detector).",
+      "reason": "Implementation identity of the Bun check; the core describes the check behavior generically."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:tooling.workspace_declaration",
+        "profile:tooling.package_manager",
+        "profile:roots.scan",
+        "profile:roots.excluded"
+      ],
+      "note": "Declared Bun workspace -> workspace that declares its package manager."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when",
+        "profile:tooling.lockfile.foreign"
+      ],
+      "note": "Concrete foreign lockfile names come from the profile."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "profile:tooling.lockfile.native",
+        "profile:tooling.lockfile.foreign"
+      ],
+      "note": "Bun's lockfile -> native lockfile; npm/Yarn/pnpm lockfiles -> foreign lockfiles."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why",
+        "profile:tooling.foreign_install_commands"
+      ],
+      "note": "`npm install` example becomes 'the old package manager's install command'."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]",
+        "profile:tooling.package_manager"
+      ],
+      "note": "Install with Bun -> install with the declared package manager."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]",
+        "profile:tooling.lockfile.native"
+      ],
+      "note": "`bun.lock` -> native lockfile."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "avoid[3]",
+      "as": [
+        "core:avoid[3]",
+        "profile:tooling.package_manager"
+      ],
+      "note": "Monorepo package not on Bun -> package not on the declared package manager."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]",
+        "profile:roots.excluded"
+      ],
+      "note": "Excluded tree list comes from roots.excluded."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]",
+        "profile:tooling.lockfile.foreign",
+        "profile:tooling.lockfile.native",
+        "profile:roots.scan"
+      ],
+      "note": "Bun's lockfile -> native lockfile."
+    },
+    {
+      "item": "evidence[2]",
+      "as": [
+        "core:evidence[2]",
+        "bunOnly"
+      ],
+      "note": "Detector id is bunOnly; core names the check generically."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "profile:tooling.lockfile.foreign"
+      ],
+      "note": "Definition of foreign lockfile kept neutral; basenames from profile."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "profile:roots.scan",
+        "bunOnly"
+      ],
+      "note": "Basename walk and line-1 reporting are generic check scope; the Bun detector identity is bunOnly."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification",
+        "core:unless[0]",
+        "profile:roots.excluded"
+      ],
+      "note": "Excluded trees never scanned."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification",
+        "core:avoid[3]",
+        "profile:enforcement.runner"
+      ],
+      "note": "atdd-bun has no per-rule scope -> the runner has no per-rule scope; package stays reported."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:why"
+      ],
+      "note": "Resolution-drift definition folded into why."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Severity 3; strict disposition (shared policy.strict-disposition)."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "as": [
+        "core:why",
+        "profile:tooling.foreign_install_commands"
+      ],
+      "note": "Migration rationale; `npm install` via profile."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:given",
+        "core:verification",
+        "profile:tooling.workspace_declaration"
+      ],
+      "note": "No 'layer'/workspace fact kind in the core fact vocabulary; the declaration scope is carried by given, doesNotFire and the profile key."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[0]",
+        "core:verification",
+        "profile:tooling.lockfile.foreign",
+        "profile:roots.scan",
+        "profile:roots.excluded"
+      ],
+      "note": "path_glob over foreign basenames -> file_kind foreign_lockfile; 'committed or not' kept in verification."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:tooling.lockfile.native",
+        "profile:tooling.manifest"
+      ],
+      "note": "Lockfile and manifest recognised by basename from the profile."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[2]",
+        "core:verification",
+        "profile:tooling.manifest"
+      ],
+      "note": "Diff-level observer; install intent unobservable kept in verification."
+    },
+    {
+      "item": "activation.facts[4]",
+      "as": [
+        "core:activation.facts[3]",
+        "bunOnly"
+      ],
+      "note": "Finding generic in core; detector-qualified id bunOnly."
+    },
+    {
+      "item": "activation.facts[5]",
+      "as": [
+        "core:activation.facts[4]",
+        "bunOnly"
+      ],
+      "note": "Neutral task terms in core; tool names and 'migrate to bun' bunOnly."
+    }
+  ],
+  "neutralityNotes": "The whole convention is stack-mechanical; its neutral core is 'the declared package manager's native lockfile is the single dependency-resolution source; no foreign lockfile coexists'. All concrete names (Bun, bun.lock/bun.lockb, package-lock.json, yarn.lock, pnpm-lock.yaml/.yml, package.json, npm install, excluded trees, atdd-bun) come from profile keys. The Bun workspace-declaration activation fact (`layer: atdd.workspace.bun`) has no fact kind in the core activation vocabulary, so the declaration scope is expressed in given/fires/doesNotFire plus tooling.workspace_declaration. Detector identity (bun_fullstack_detector) and Bun-specific task terms are bunOnly.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.runtime-single-lockfile.json",
+      "sha256": "500065c9651c55423b117f1433744b037c570451c745af207f81edfbb717b334"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 1,
+    "vocabularyVersion": 1,
+    "verdict": "PASS",
+    "rounds": 1,
+    "usefulness": 5,
+    "deriver": "pi-claude-cli/claude-opus-5-5",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

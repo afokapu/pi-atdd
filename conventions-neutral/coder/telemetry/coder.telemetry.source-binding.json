@@ -1,0 +1,444 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.telemetry.source-binding",
+  "legacyId": "coder.bun.telemetry-source-binding",
+  "core": {
+    "title": "Bind emitting source to its tracking-plan item with a resolving telemetry header",
+    "given": "In a telemetry-adopting repository, implementation (non-test) source emits telemetry or carries a telemetry binding header.",
+    "when": "The source is written, edited or checked, or the tracking plan renames or removes an item.",
+    "then": "Each telemetry item the file emits is declared by name in a telemetry binding header (the profile's binding syntax), and every binding header names a concrete telemetry URN (the profile's URN shape) matching the identity field of a tracking-plan item in the telemetry registry (the profile's registry root, entry location, entry serialization and entry identity field).",
+    "prefer": [
+      "A binding header placed directly above the emitting code, in the profile's binding syntax.",
+      "One binding header per emitted item.",
+      "Update binding headers in the same change when the tracking plan renames an item."
+    ],
+    "avoid": [
+      "Emitting telemetry with no binding header.",
+      "Non-concrete URNs (missing parts, wildcards, placeholders), measured against the profile's telemetry URN shape.",
+      "URNs naming no tracking-plan item, including stale ones after a rename.",
+      "Writing the binding in anything other than the profile's header syntax (other comment forms, markup attributes) or inside a string literal; such text is not a header.",
+      "Naming an item the file does not emit just to make it resolve."
+    ],
+    "unless": [
+      "Capability not adopted (no telemetry registry root and no telemetry declaration in any acceptance artifact anywhere): the rule emits nothing, whichever profiles run.",
+      "Test files (unit, acceptance and e2e test roles): they legitimately name telemetry items while asserting them."
+    ],
+    "why": "The binding header is the source-to-telemetry traceability edge; like Tested-By, a checkable promise: the URN is well-formed and the tracking-plan registry holds it.",
+    "evidence": [
+      "The telemetry check reports no grammar finding (a non-concrete URN) for any binding header in implementation source.",
+      "The telemetry check reports no resolution finding: every binding-header URN matches the identity field of a tracking-plan item in the registry.",
+      "Review confirms that every implementation (non-test) file that emits telemetry carries a binding header naming each item it emits, and only the items it emits."
+    ],
+    "verification": [
+      "The check parses only the profile's telemetry binding header syntax in implementation (non-test) source; an occurrence inside a string literal is not a header, and constructs outside the binding syntax (other comment forms, markup attributes) are not parsed.",
+      "Two distinct failures are reported: grammar (the value is not a concrete telemetry URN per the profile's shape) and resolution (grammatical but no tracking-plan item in the registry carries that id in its identity field).",
+      "The header binds the file to the concrete item it emits, and the check scans all existing headers, not only those changed in the current diff.",
+      "Test files are excluded from the scan (tests are implementation's mirror, not implementation: they legitimately name items while asserting them).",
+      "Inert until adopted: with no telemetry registry root and no acceptance telemetry declaration anywhere, the check emits nothing regardless of which profiles run.",
+      "The declaration half of the obligation (implementation source that emits telemetry names it in a header) has no mechanical detector in this rule's check; it is established by review/LLM judgment of emission.",
+      "Severity 2; disposition strict: the check fails on every finding, with no advisory mode and no ratchet baseline."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "implementation source (non-test)"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "telemetry registry root exists"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "acceptance artifact with a telemetry declaration"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "telemetry binding grammar finding",
+            "telemetry binding resolution finding"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "implementation (non-test) source emits telemetry without a binding header naming the emitted item"
+          ],
+          "observability": "llm_judged"
+        }
+      ],
+      "fires": [
+        "Implementation source in an adopting repository carries a telemetry binding header whose value is not a concrete telemetry URN in the profile's shape.",
+        "An existing, unchanged binding header names a grammatical URN that has no tracking-plan item in the registry.",
+        "A tracking-plan item is renamed or removed while source binding headers still reference the old URN.",
+        "Implementation source in an adopting repository emits a telemetry item but has no binding header naming it.",
+        "The repository has no telemetry registry root but has an acceptance telemetry declaration, and a source binding header is non-concrete, unresolved, or missing for emitted telemetry."
+      ],
+      "doesNotFire": [
+        "The repository has no telemetry registry root and no acceptance telemetry declaration anywhere (capability not adopted), whatever profiles run.",
+        "The binding-header text appears in, or telemetry is named by, a test file (telemetry tests legitimately name items while asserting them).",
+        "The binding-header text appears inside a string literal.",
+        "The reference is written in a form outside the profile's binding syntax (e.g. another comment form or a markup attribute), which the check does not parse.",
+        "Implementation source that emits no telemetry and carries no binding header."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roles.assignment",
+      "meaning": "How a file is assigned to a role, so the check can separate implementation (non-test) source from test files and exclude tests from the scan.",
+      "bunValue": "Test files are excluded; path/file-kind classification separates tests from implementation."
+    },
+    {
+      "key": "roots.telemetry",
+      "meaning": "Root tree of the telemetry tracking-plan registry; its existence is adoption signal 1 and the registry against which header URNs resolve.",
+      "bunValue": "telemetry/**"
+    },
+    {
+      "key": "layout.locations#telemetry_item",
+      "meaning": "Location pattern (path segment, glob or pattern only) of one tracking-plan registry entry under the telemetry root, where a header URN must resolve to an entry.",
+      "bunValue": "telemetry/<theme>/<artifact>/"
+    },
+    {
+      "key": "idiom.telemetry#registry_entry",
+      "meaning": "The stack's concrete construct for one tracking-plan registry entry: how the entry is serialized.",
+      "bunValue": "a JSON registry entry"
+    },
+    {
+      "key": "urn.grammar#telemetry_item_identity_field",
+      "meaning": "The identity field of a telemetry tracking-plan registry entry: the identifier field whose value is the telemetry URN a source header must match for resolution.",
+      "bunValue": "whose id is the referenced URN"
+    },
+    {
+      "key": "urn.telemetry",
+      "meaning": "URN shape of one telemetry tracking-plan item; concreteness of a header value is judged against this shape.",
+      "bunValue": "telemetry:{kind}:{plane}:{theme}:{artifact}[:{measure}]"
+    },
+    {
+      "key": "urn.binding.telemetry",
+      "meaning": "The syntax by which implementation source binds itself to a telemetry item (the binding header the check parses).",
+      "bunValue": "// Telemetry: <urn>"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "prefer[0]",
+      "text": "`//` header above the emitting code, e.g. `// Telemetry: telemetry:event:be:commons:response-invocation-accepted`.",
+      "reason": "Concrete binding syntax and example URN of the Bun realization; the core keeps the role-level placement guidance and takes the syntax from the profile, and bun.json itself is delivered as the reference example."
+    },
+    {
+      "item": "activation.facts[3]",
+      "text": "bun_telemetry_code grammar finding; bun_telemetry_code resolution finding.",
+      "reason": "Validator id of this rule's realization; the core names the finding kinds generically."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "The bun_telemetry_code validator reports no grammar finding.",
+      "reason": "Validator id is a realization detail; the core evidence refers to the telemetry check generically."
+    },
+    {
+      "item": "evidence[1]",
+      "text": "The bun_telemetry_code validator reports no resolution finding: every header URN matches a JSON registry entry id under telemetry/<theme>/<artifact>/.",
+      "reason": "Validator id is a realization detail; the registry entry's location, serialization and identity field are supplied by the profile keys (layout.locations#telemetry_item, idiom.telemetry#registry_entry, urn.grammar#telemetry_item_identity_field)."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "Parse only `//` line comments of the form `// Telemetry: <urn>`; block comments and markup attributes are not parsed in this realization.",
+      "reason": "Concrete comment syntax and the Bun parser's exact scope; the core states the parsing scope generically through the profile binding syntax."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "text": "tracking_plan_item: a JSON registry entry under telemetry/<theme>/<artifact>/ whose id is the referenced URN.",
+      "reason": "The rule term id is a realization detail; the registry entry's location, serialization and identity field come from the profile keys (layout.locations#telemetry_item, idiom.telemetry#registry_entry, urn.grammar#telemetry_item_identity_field), and the core refers to the tracking-plan registry generically."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "text": "telemetry_reference binds the file to the concrete item it emits.",
+      "reason": "Term id of this rule's realization; the core verification expresses the same binding semantics without the id."
+    },
+    {
+      "item": "verifier_detail[7]",
+      "text": "Declaration check ... has no mechanical detector in bun_telemetry_code; it is established by review/LLM judgment of emission.",
+      "reason": "Validator id is a realization detail; the core verification keeps the generic statement that the declaration half has no mechanical detector and is review-judged."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "The `// Telemetry:` line comment is the profile's binding header syntax; 'non-test source' is role-level.",
+      "as": [
+        "core:given",
+        "profile:urn.binding.telemetry"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "Already stack-neutral.",
+      "as": [
+        "core:when"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "Binding header syntax and URN shape come from the profile's urn keys; the registry resolution target is decomposed into its location, serialization and identity field, each from the profile key documented for that aspect.",
+      "as": [
+        "core:then",
+        "profile:urn.binding.telemetry",
+        "profile:urn.telemetry",
+        "profile:roots.telemetry",
+        "profile:layout.locations#telemetry_item",
+        "profile:idiom.telemetry#registry_entry",
+        "profile:urn.grammar#telemetry_item_identity_field"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "Neutral; 'Tested-By' is a cross-convention ATDD reference, not a stack artifact.",
+      "as": [
+        "core:why"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "Core keeps the role-level guidance (header above the emitting code); the concrete `//` example is Bun-only.",
+      "as": [
+        "core:prefer[0]",
+        "profile:urn.binding.telemetry",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "prefer[1]",
+      "note": "Neutral as-is.",
+      "as": [
+        "core:prefer[1]"
+      ]
+    },
+    {
+      "item": "prefer[2]",
+      "note": "Neutral as-is.",
+      "as": [
+        "core:prefer[2]"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "Neutral as-is.",
+      "as": [
+        "core:avoid[0]"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "Concreteness is measured against the profile's telemetry URN shape.",
+      "as": [
+        "core:avoid[1]",
+        "profile:urn.telemetry"
+      ]
+    },
+    {
+      "item": "avoid[2]",
+      "note": "Neutral as-is.",
+      "as": [
+        "core:avoid[2]"
+      ]
+    },
+    {
+      "item": "avoid[3]",
+      "note": "Neutralized: any form other than the profile's header syntax (other comment forms, markup attributes) or inside a string literal is not a header.",
+      "as": [
+        "core:avoid[3]",
+        "profile:urn.binding.telemetry"
+      ]
+    },
+    {
+      "item": "avoid[4]",
+      "note": "Neutral as-is.",
+      "as": [
+        "core:avoid[4]"
+      ]
+    },
+    {
+      "item": "unless[0]",
+      "note": "Adoption gate expressed via the telemetry registry root and the acceptance-declaration signal.",
+      "as": [
+        "core:unless[0]",
+        "profile:roots.telemetry"
+      ]
+    },
+    {
+      "item": "unless[1]",
+      "note": "Neutral; test roles legitimately name items while asserting them.",
+      "as": [
+        "core:unless[1]"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "Grammar-free evidence at role level; the validator id stays with the realization.",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "Resolution evidence at role level; validator id and the concrete registry location, serialization and identity field are realization/profile details.",
+      "as": [
+        "core:evidence[1]",
+        "profile:layout.locations#telemetry_item",
+        "profile:idiom.telemetry#registry_entry",
+        "profile:urn.grammar#telemetry_item_identity_field",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "evidence[2]",
+      "note": "Review path is neutral; the binding header is supplied by the profile.",
+      "as": [
+        "core:evidence[2]"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "Parsing scope stated generically in core verification; the concrete `//` syntax and the Bun parser's exact unparsed-form enumeration are realization details.",
+      "as": [
+        "core:verification",
+        "profile:urn.binding.telemetry",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "Two-failure distinction (grammar vs resolution) is neutral; the URN shape comes from the profile.",
+      "as": [
+        "core:verification",
+        "profile:urn.telemetry"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "Defines the resolution target; the entry's location, serialization and identity field each come from the profile key documented for that aspect (layout.locations#telemetry_item, idiom.telemetry#registry_entry, urn.grammar#telemetry_item_identity_field), and the term id via bunOnly.",
+      "as": [
+        "core:verification",
+        "profile:layout.locations#telemetry_item",
+        "profile:idiom.telemetry#registry_entry",
+        "profile:urn.grammar#telemetry_item_identity_field",
+        "profile:roots.telemetry",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[3]",
+      "note": "Inert-until-adopted behavior is neutral; adoption signal 1 uses the profile's telemetry root.",
+      "as": [
+        "core:verification",
+        "profile:roots.telemetry"
+      ]
+    },
+    {
+      "item": "verifier_detail[4]",
+      "note": "Test exclusion is check scope (core verification); which files count as tests comes from role assignment.",
+      "as": [
+        "core:verification",
+        "profile:roles.assignment"
+      ]
+    },
+    {
+      "item": "verifier_detail[5]",
+      "note": "Per-rule severity is not a profile key; it stays with the rule's verification.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[6]",
+      "note": "Binding semantics and whole-repository scan scope are neutral; the term id telemetry_reference is realization-only.",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[7]",
+      "note": "No mechanical detector for the declaration half, review/LLM-judged: neutral; the validator id is realization-only.",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "Implementation-source fact is role-level; test/implementation separation comes from role assignment.",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roles.assignment"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "Bun fact type path_glob normalized to the allowed file_kind fact; the value (registry root exists) is the profile's telemetry root, an observable adoption signal.",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:roots.telemetry"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "Acceptance-artifact telemetry declaration as adoption signal 2; needs a new observer in any realization; no concrete syntax is given, so it stays role-level.",
+      "as": [
+        "core:activation.facts[2]"
+      ]
+    },
+    {
+      "item": "activation.facts[3]",
+      "note": "Finding kinds (grammar, resolution) are neutral; the validator id in the values is realization-only.",
+      "as": [
+        "core:activation.facts[3]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.facts[4]",
+      "note": "Emitting-without-header change is llm_judged in any realization; neutral as-is.",
+      "as": [
+        "core:activation.facts[4]"
+      ]
+    }
+  ],
+  "neutralityNotes": "All profile references use existing vocabulary v3 keys: the telemetry URN shape and binding-header syntax come from the parametric urn keys (urn.telemetry, urn.binding.telemetry), the registry root from roots.telemetry, and the tracking-plan entry's location, serialization and identity field from layout.locations#telemetry_item (location pattern only), idiom.telemetry#registry_entry (JSON serialization) and urn.grammar#telemetry_item_identity_field (identity-field grammar), each key restricted to the aspect its doc covers. The Bun activation fact type path_glob is not in the neutral fact vocabulary and was normalized to file_kind (value: telemetry registry root exists). The acceptance-declaration adoption signal has no concrete syntax in bun.json, so it stays role-level (needs_new_observer in any realization). Validator and term ids (bun_telemetry_code, telemetry_reference, tracking_plan_item) remain bunOnly; the core describes the check generically. Severity 2 and the strict disposition (fail on every finding, no advisory mode, no ratchet baseline) are per-rule and live in core:verification, not in the profile. The declaration half of the obligation (emitting source names what it emits) has no mechanical emission observer, so it stays review/LLM-judged in every realization.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.telemetry-source-binding.json",
+      "sha256": "137b99d86f0278848749709cd42f120bd3e1fd8f6e49fa4f67036b8e09459589"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "rekey-v3 -> zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

@@ -1,0 +1,370 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.architecture.connected",
+  "legacyId": "coder.bun.design-connected",
+  "core": {
+    "title": "Connect every rendering app component to the design system",
+    "given": "A repository that has a design root (its shared design-system tree), and an app component file of the markup kind outside that design root which renders markup",
+    "when": "any such component is assessed (new, edited, or untouched)",
+    "then": "It MUST import at least one design-system element (token, primitive, component, or template) from the design root, so no UI surface is disconnected from the shared system.",
+    "prefer": [
+      "Compose UI from the existing design-system template, component, or primitive that owns the required role.",
+      "During GREEN: reuse the nearest existing design-system surface; add only the connection the current rendered behavior requires.",
+      "During GREEN: if no suitable surface exists, introduce the smallest design-system component that expresses the current need."
+    ],
+    "avoid": [
+      "A meaningless design import merely to satisfy connectivity.",
+      "A generic component library for hypothetical callers.",
+      "Redesigning the screen or migrating unrelated markup."
+    ],
+    "unless": [
+      "No design root in the repo (not judged).",
+      "Test files and vendored/build trees (never scanned).",
+      "Non-rendering modules: boundary (routes, handlers, endpoints) and data modules (not judged)."
+    ],
+    "why": "A screen built without the system is where the next one-off style lands. Requiring one design import makes the connection explicit and reviewable.",
+    "evidence": [
+      "The stack's design-system connectivity check reports no rendering component outside the design root lacking a design-root import.",
+      "The current behavioral or rendering acceptance passes.",
+      "Reviewer confirms the rendered app component is genuinely composed from the design system (the import is used for rendering, not decorative)."
+    ],
+    "verification": [
+      "Flag every markup-kind component file outside the design root that renders markup and imports nothing from the design root; all qualifying files are judged, not only changed ones.",
+      "Self-scoping: a repository with no design root is not judged (there is no system to connect to yet). Design-root existence is evaluated on the repository tree, separately from candidate-file matching.",
+      "A rendering component is recognized by the stack's markup-rendering construct (profile: idiom.design_system#rendering_component), examined with string literals and comments masked.",
+      "An import counts as a design-system import when it resolves under the design root (profile: roots.design_system); the element's kind (token, primitive, component, template) is identified by the design root's layer directories (profile: layout.locations#design_layers).",
+      "Never scan test files or vendored/build trees, and do not judge non-rendering modules such as boundary handlers and data modules. The exact exclusion list is the stack's single never-scanned list, owned by the checker (profile: roots.excluded); the rule does not restate it.",
+      "Severity 2; disposition strict."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "role",
+          "values": [
+            "repository contains a shared design system (design root)"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "markup"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "role",
+          "values": [
+            "app component outside the design system root"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "production markup source (not a test file, not under a vendored/build tree)"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "rendering component with no design-root import"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "A markup-kind app component outside the design root renders markup and imports nothing from the design root, while the repository has a design root",
+        "An existing, untouched app component that renders markup has no import of a design token, primitive, component or template, and the repository is assessed"
+      ],
+      "doesNotFire": [
+        "The repository has no design root (no shared design system)",
+        "The file is a test or lives in a vendored/build tree",
+        "The module renders no markup (boundary handler, data module)",
+        "The file is itself inside the design root"
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roots.design_system",
+      "meaning": "Where the repository's shared design system (design root) lives. Three uses: (a) repository-level precondition — absence self-scopes the rule for the whole repository; (b) candidate-file scope — files under it are not judged; (c) import resolution — an import resolving under it is a design-system import. In the Bun realization any directory with one of these names qualifies (globs **/design/, **/design_system/, **/design-system/).",
+      "bunValue": "a directory named `design`, `design_system`, or `design-system`"
+    },
+    {
+      "key": "layout.locations#design_layers",
+      "meaning": "The internal layer-directory layout of the design root: which first-level directories beneath it name which design-system layer (token, primitive, component, template), so the kind of an imported design-system element can be identified. Other stacks supply their corresponding design-system layer layout here.",
+      "bunValue": "The first directory beneath it names the layer: `tokens` or `foundations`, `primitives`, `components`, `templates`."
+    },
+    {
+      "key": "suffix.markup",
+      "meaning": "The file suffixes that mark a source file as a markup-kind (rendering) component; these are the candidate files.",
+      "bunValue": ".tsx/.jsx"
+    },
+    {
+      "key": "suffix.unit_test",
+      "meaning": "The stack's test-file name patterns, never scanned (the ATDD-Bun realization uses one pattern family for all test kinds).",
+      "bunValue": "*.test.*, *.spec.*"
+    },
+    {
+      "key": "roots.excluded",
+      "meaning": "The stack's single never-scanned list of vendored/build trees; the checker that owns the exact classification is authoritative.",
+      "bunValue": "**/node_modules/**, **/vendor/**, **/dist/**, **/build/**"
+    },
+    {
+      "key": "idiom.design_system#rendering_component",
+      "meaning": "How the stack recognizes that a component source file renders markup: which construct counts as rendering, and what is masked before looking for it.",
+      "bunValue": "a component source file whose code (literals and comments masked) contains a closing tag or a self-closing element"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "evidence[0]",
+      "text": "bun_design_system_detector reports no rendering component outside the design root lacking a design-root import.",
+      "reason": "Names this rule's Bun detector id, a realization detail; the core evidence states the check generically."
+    },
+    {
+      "item": "activation.facts[4]",
+      "text": "requires masking literals/comments, detecting closing or self-closing tags, and resolving imports to the design root (bun_design_system_detector)",
+      "reason": "The detection mechanics are per-stack (profile: idiom.design_system#rendering_component plus the stack's import resolution) and the detector id bun_design_system_detector names this rule's Bun realization."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "'design root' and the markup file kind are resolved from the profile; the markup suffixes and the design-root directory names are profile values, not core text.",
+      "as": [
+        "core:given",
+        "profile:roots.design_system",
+        "profile:suffix.markup"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "Neutral as-is: all qualifying components are assessed regardless of change state.",
+      "as": [
+        "core:when"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "One obligation; the design-system taxonomy (token, primitive, component, template) is design-system vocabulary, not stack vocabulary. The design root is resolved via the profile, and the taxonomy's concrete layer directory names come from the design root's layer layout (profile: layout.locations#design_layers).",
+      "as": [
+        "core:then",
+        "profile:roots.design_system",
+        "profile:layout.locations#design_layers"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "Neutral as-is.",
+      "as": [
+        "core:why"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "Neutral as-is.",
+      "as": [
+        "core:prefer[0]"
+      ]
+    },
+    {
+      "item": "prefer[1]",
+      "note": "'During GREEN' is the ATDD phase term, stack-neutral.",
+      "as": [
+        "core:prefer[1]"
+      ]
+    },
+    {
+      "item": "prefer[2]",
+      "note": "'During GREEN' is the ATDD phase term, stack-neutral.",
+      "as": [
+        "core:prefer[2]"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "Neutral as-is.",
+      "as": [
+        "core:avoid[0]"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "Neutral as-is.",
+      "as": [
+        "core:avoid[1]"
+      ]
+    },
+    {
+      "item": "avoid[2]",
+      "note": "Neutral as-is.",
+      "as": [
+        "core:avoid[2]"
+      ]
+    },
+    {
+      "item": "unless[0]",
+      "note": "Self-scoping exception; its repository-tree evaluation semantics are also in verification.",
+      "as": [
+        "core:unless[0]",
+        "core:verification"
+      ]
+    },
+    {
+      "item": "unless[1]",
+      "note": "Concrete test patterns and vendored/build globs are profile values; the checker's list is authoritative (kept in verification).",
+      "as": [
+        "core:unless[1]",
+        "profile:suffix.unit_test",
+        "profile:roots.excluded"
+      ]
+    },
+    {
+      "item": "unless[2]",
+      "note": "'routes, handlers, data' raised to roles: boundary (route/handler/endpoint) and data modules.",
+      "as": [
+        "core:unless[2]"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "Core states the check generically; the detector id is bunOnly.",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "Neutral as-is.",
+      "as": [
+        "core:evidence[1]"
+      ]
+    },
+    {
+      "item": "evidence[2]",
+      "note": "Neutral as-is.",
+      "as": [
+        "core:evidence[2]"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "Both halves are profile data, not Bun-only: the design-root directory names are the roots.design_system value, and the internal layer-directory mapping (which first-level directory names which layer) is the layout.locations#design_layers value, so other stacks can supply their own design-system layer layout. A generic restatement of import-kind resolution is in verification.",
+      "as": [
+        "core:verification",
+        "profile:roots.design_system",
+        "profile:layout.locations#design_layers"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "Self-scoping and repository-tree evaluation are generic verification semantics.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "Generic rendering-recognition statement in verification; the concrete construct (closing/self-closing tag, masking) is the proposed idiom key's value.",
+      "as": [
+        "core:verification",
+        "profile:idiom.design_system#rendering_component"
+      ]
+    },
+    {
+      "item": "verifier_detail[3]",
+      "note": "'all qualifying files are judged, not only changed ones' is generic; the markup suffixes are the profile's values.",
+      "as": [
+        "core:verification",
+        "profile:suffix.markup"
+      ]
+    },
+    {
+      "item": "verifier_detail[4]",
+      "note": "Generic exclusion semantics in verification; concrete patterns/globs are profile values owned by the stack-wide list and its checker.",
+      "as": [
+        "core:verification",
+        "profile:suffix.unit_test",
+        "profile:roots.excluded"
+      ]
+    },
+    {
+      "item": "verifier_detail[5]",
+      "note": "Per-rule severity and disposition are rule facts, not profile keys; carried in verification.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "Repository-level precondition, neutralized; the concrete design-root directories are the profile value.",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roots.design_system"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "Candidate file kind 'markup'; the concrete suffixes come from the profile.",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:suffix.markup"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "Candidate must lie outside the design root; the negated globs are the same profile value.",
+      "as": [
+        "core:activation.facts[2]",
+        "profile:roots.design_system"
+      ]
+    },
+    {
+      "item": "activation.facts[3]",
+      "note": "Test and never-scanned exclusions; the concrete globs were a declared addition whose authority stays with the checker (see verification).",
+      "as": [
+        "core:activation.facts[3]",
+        "profile:suffix.unit_test",
+        "profile:roots.excluded"
+      ]
+    },
+    {
+      "item": "activation.facts[4]",
+      "note": "The finding is neutral; how rendering and design-root imports are recognized is per-stack idiom; the detector id is bunOnly.",
+      "as": [
+        "core:activation.facts[4]",
+        "profile:idiom.design_system#rendering_component",
+        "bunOnly"
+      ]
+    }
+  ],
+  "neutralityNotes": "The core keeps the ATDD phase term 'During GREEN' and the design-system taxonomy (token, primitive, component, template), both stack-neutral. Three profile keys had to be proposed because the closed vocabulary has no home for them: roots.design_system (design-root location), layout.locations#design_layers (the design root's internal layer-directory mapping, moved out of bunOnly per audit because it is layout data other stacks must supply), and idiom.design_system#rendering_component (what counts as rendering markup). The concrete vendored/build globs and the authority of the detector's own exclusion list stay in core:verification, per the Bun text's declared-addition note; roots.excluded remains the single stack-wide list. Only the detector id bun_design_system_detector remains bunOnly (in evidence[0] and activation.facts[4]): it names this rule's Bun realization and has no stack-neutral equivalent. All bunValue strings are quoted verbatim from bun.json (the design-root directory names and layer mapping from verifier_detail[0], the markup suffixes from given/verifier_detail[3], the test patterns from unless[1], the vendored/build globs from the declared addition in additions[0]).",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.design-connected.json",
+      "sha256": "ccd19cefdba2b9b120f854d665a7617510b18f8f49e3f4b998e59dd15aa2858d"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 1,
+    "usefulness": 5,
+    "deriver": "rekey-v3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

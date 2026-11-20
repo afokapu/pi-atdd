@@ -1,0 +1,470 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.ui.token-color",
+  "legacyId": "coder.bun.design-token-color",
+  "core": {
+    "title": "Reference color tokens instead of raw color literals in UI files",
+    "given": "A repository that has a design-system root (profile: roots.design_system), and a UI artifact anywhere in that repository — inside or outside the root — outside the design-token layer (profile: layout.locations#design_token_layer), of a kind the profile counts as UI (profile: roles.presentation.kinds)",
+    "when": "A color is written in a styled value of that artifact (a style declaration, inline style, style block, style object, or color-setting presentation attribute — profile: idiom.design_system#color_value_contexts)",
+    "then": "Define the required color once in the design-token layer and reference that token from UI code by the stack's token-reference syntax (profile: idiom.design_system#token_reference); never write a raw color literal (profile: idiom.design_system#raw_color_literal) in the value.",
+    "prefer": [
+      "During GREEN: reuse an existing semantic color token when it already expresses the required role.",
+      "During GREEN: add the smallest new semantic token only when the current visual behavior needs a distinct value.",
+      "During GREEN: change only the affected UI reference."
+    ],
+    "avoid": [
+      "Do not broaden: retheming unrelated components.",
+      "Do not broaden: duplicating an existing token under a new name.",
+      "Do not broaden: using a raw literal as a temporary shortcut."
+    ],
+    "unless": [
+      "Token definitions (the stack's token-definition syntax, profile: idiom.design_system#token_definition) define tokens wherever they live and are not flagged.",
+      "Named colors and reserved color keywords (such as the transparent and current-color keywords) are not raw color literals and are not flagged."
+    ],
+    "why": "A raw color is a theme decision made in one place: it does not follow dark mode, drifts from the palette, and nobody can find it when the palette changes.",
+    "evidence": [
+      "The current visual or behavioral acceptance passes.",
+      "Affected UI artifacts contain no raw color literal outside the design-token layer (the stack's design-token check reports no finding)."
+    ],
+    "verification": [
+      "Disposition strict: a finding is not waivable in the task; severity 2.",
+      "The check reads styled values in the contexts the profile lists (profile: idiom.design_system#color_value_contexts) — style declarations, inline styles, style blocks, style objects, color-setting presentation attributes, and markup authored in string literals — and flags raw color literals (profile: idiom.design_system#raw_color_literal) in their values.",
+      "Selectors are not values: color-like text in a selector position is never read as a color.",
+      "Self-scoping: the rule applies only when the repository has a design-system root (profile: roots.design_system); with none, the repository is not judged — there is no system to connect to yet. When the root exists, UI artifacts anywhere in the repository are judged. Detecting the design root needs a repository-tree observer; it is not observable from the touched artifact alone.",
+      "The design-token layer (profile: layout.locations#design_token_layer) is where raw colors are defined and is not scanned.",
+      "Test artifacts (profile: suffix.unit_test) and the stack's never-scanned vendored/build trees (profile: roots.excluded) are never scanned; the exact classification of which trees count as vendored/build is owned by this rule's checker and is not part of the profile value.",
+      "Token definitions (profile: idiom.design_system#token_definition) are not flagged anywhere; named colors and reserved color keywords are not flagged.",
+      "In artifacts that author markup inside string literals, only literal text is judged: code, comments and regex literals are never read as declarations, and a value spanning an interpolation is judged on its literal chunks alone."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "a UI artifact kind (profile: roles.presentation.kinds): markup, stylesheet or component artifact — source artifacts count only for the markup they author in string literals"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "role",
+          "values": [
+            "the UI artifact sits outside the design-token layer (profile: layout.locations#design_token_layer) — in any other layer of the design system, or outside the design root entirely"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "a raw color literal (profile: idiom.design_system#raw_color_literal) written in a styled value (profile: idiom.design_system#color_value_contexts)"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "A component artifact outside the design root sets an inline style color to a raw literal while the repository has a design root.",
+        "A stylesheet in a non-token layer of the design root declares a translucent raw color in a declaration value.",
+        "A source artifact renders markup from a string literal whose inline style or style block contains a raw color literal.",
+        "A markup artifact sets a color-setting presentation attribute to a raw color literal."
+      ],
+      "doesNotFire": [
+        "The repository has no design-system root.",
+        "The raw color is in the design-token layer.",
+        "The raw color is itself a token definition (it defines the token wherever it lives).",
+        "The value is a named color or a reserved color keyword (transparent, the current-color keyword).",
+        "The artifact is a test artifact or lives in a never-scanned vendored/build tree.",
+        "Color-like text in a selector position, or inside code, comments or regex literals of a source artifact."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roots.design_system",
+      "meaning": "Whether and where the repository has a design-system root; its absence self-scopes the rule out entirely, and its presence extends the rule to UI artifacts outside the root.",
+      "bunValue": "repository contains a directory matching **/design/, **/design_system/, **/design-system/ — a directory named `design`, `design_system`, or `design-system`"
+    },
+    {
+      "key": "layout.locations#design_token_layer",
+      "meaning": "Which layer beneath the design root defines design tokens (raw colors) and is therefore exempt from the no-raw-color check, versus the other design layers that must reference tokens.",
+      "bunValue": "the first directory beneath the design root names the layer: `tokens` or `foundations`, `primitives`, `components`, `templates`; the tokens/foundations layer is where raw colors are defined and is not scanned"
+    },
+    {
+      "key": "roles.presentation.kinds",
+      "meaning": "Which concrete artifact kinds count as UI artifacts subject to the rule, including source artifacts that author markup in string literals.",
+      "bunValue": ".tsx, .jsx, .html, .htm, .css, .ts, .mts — .ts/.mts only count for HTML they author in string/template/tagged-template literals"
+    },
+    {
+      "key": "idiom.design_system#raw_color_literal",
+      "meaning": "What counts as a raw color literal in the stack's styling syntax (and, by complement, which named or reserved values are not raw).",
+      "bunValue": "a hex (`#rgb`/`#rrggbb`/`#rrggbbaa`), `rgb()`/`rgba()`, or `hsl()`/`hsla()` color written in a declaration value; named colors (`red`, `white`) and `currentColor`/`transparent` are not flagged"
+    },
+    {
+      "key": "idiom.design_system#color_value_contexts",
+      "meaning": "The concrete contexts in a UI artifact where a color value can be written and is read by the check.",
+      "bunValue": "CSS declarations, `style` attributes, `<style>` blocks, JSX `style={{…}}` objects, `fill`/`stroke`/`bgcolor` attributes in .tsx, .jsx, .html, .htm, .css; plus inline `style=\"…\"` attributes and `<style>` text in HTML a .ts/.mts file renders from string/template/tagged-template literals"
+    },
+    {
+      "key": "idiom.design_system#token_reference",
+      "meaning": "The syntax by which UI code references a design token instead of writing a raw value.",
+      "bunValue": "`var(--…)`"
+    },
+    {
+      "key": "idiom.design_system#token_definition",
+      "meaning": "The syntax by which a design token is defined (a color value bound to a token name); such definitions are exempt wherever they live.",
+      "bunValue": "custom property definitions (`--name: <color>`), e.g. `--danger: #b91c1c`, define tokens wherever they live and are not flagged"
+    },
+    {
+      "key": "suffix.unit_test",
+      "meaning": "Test-artifact name patterns that are never scanned by the check.",
+      "bunValue": "`*.test.*`, `*.spec.*`"
+    },
+    {
+      "key": "roots.excluded",
+      "meaning": "The single stack-wide list of vendored and generated trees that are never scanned by convention checks; this rule reads that list (which trees count as vendored/build is decided by the checker in its own verification, not stored in this profile value).",
+      "bunValue": "vendored/build directories are never scanned"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "evidence[1]",
+      "text": "(bun_design_system_detector reports no finding)",
+      "reason": "The detector/finding id of this one rule is a Bun realization detail; the core's verification names the check generically."
+    },
+    {
+      "item": "activation.facts[3]",
+      "text": "bun_design_system_detector finding a hex/rgb(a)/hsl(a) literal in a CSS declaration, style attribute, <style> block, JSX style object, fill/stroke/bgcolor attribute, or .ts/.mts literal HTML",
+      "reason": "The detector id plus this stack's concrete color syntaxes and scanned contexts have no stack-neutral equivalent; the core fact cites the profile keys (idiom.design_system#raw_color_literal, idiom.design_system#color_value_contexts) instead."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "Design-root existence, the token layer and the eligible UI suffixes all come from the profile; the core keeps the repository-wide scope (inside or outside the root).",
+      "as": [
+        "core:given",
+        "profile:roots.design_system",
+        "profile:layout.locations#design_token_layer",
+        "profile:roles.presentation.kinds"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "The concrete contexts (CSS declaration, style attribute, <style> block, JSX style object, fill/stroke/bgcolor, literal HTML) are the profile value; the core names generic styled-value categories.",
+      "as": [
+        "core:when",
+        "profile:idiom.design_system#color_value_contexts"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "One obligation: define once in the token layer, reference the token, never a raw literal; `var(--…)` and hex/rgb()/hsl() syntaxes come from the profile.",
+      "as": [
+        "core:then",
+        "profile:idiom.design_system#token_reference",
+        "profile:idiom.design_system#raw_color_literal",
+        "profile:layout.locations#design_token_layer"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "Already stack-neutral.",
+      "as": [
+        "core:why"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "Already role-level.",
+      "as": [
+        "core:prefer[0]"
+      ]
+    },
+    {
+      "item": "prefer[1]",
+      "note": "Already role-level.",
+      "as": [
+        "core:prefer[1]"
+      ]
+    },
+    {
+      "item": "prefer[2]",
+      "note": "Already role-level.",
+      "as": [
+        "core:prefer[2]"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "Already role-level.",
+      "as": [
+        "core:avoid[0]"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "Already role-level.",
+      "as": [
+        "core:avoid[1]"
+      ]
+    },
+    {
+      "item": "avoid[2]",
+      "note": "Already role-level.",
+      "as": [
+        "core:avoid[2]"
+      ]
+    },
+    {
+      "item": "unless[0]",
+      "note": "Custom-property definitions are this stack's token-definition syntax; the exemption (wherever they live) is core.",
+      "as": [
+        "core:unless[0]",
+        "profile:idiom.design_system#token_definition"
+      ]
+    },
+    {
+      "item": "unless[1]",
+      "note": "The exact non-raw list (named colors, currentColor, transparent) is the complement of the profile's raw-literal definition.",
+      "as": [
+        "core:unless[1]",
+        "profile:idiom.design_system#raw_color_literal"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "Already stack-neutral.",
+      "as": [
+        "core:evidence[0]"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "Neutralized to 'the stack's design-token check reports no finding'; the detector id stays Bun-only.",
+      "as": [
+        "core:evidence[1]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "Definition of raw color literal; concrete syntaxes live in the profile.",
+      "as": [
+        "core:verification",
+        "profile:idiom.design_system#raw_color_literal"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "Scanned contexts and eligible suffixes are profile data; the core states that the check reads the profile-listed contexts.",
+      "as": [
+        "core:verification",
+        "profile:idiom.design_system#color_value_contexts",
+        "profile:roles.presentation.kinds"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "Generic description of what the check does (reads styled values, flags raw literals in values); no stack named.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[3]",
+      "note": "Selector-vs-value distinction phrased generically; the concrete `#fade:hover` example stays in the Bun reference.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[4]",
+      "note": "Self-scoping on design-root existence and layer naming are core verification; directory names come from the profile.",
+      "as": [
+        "core:verification",
+        "profile:roots.design_system",
+        "profile:layout.locations#design_token_layer"
+      ]
+    },
+    {
+      "item": "verifier_detail[5]",
+      "note": "Token layer not scanned — core verification, layer identity from the profile.",
+      "as": [
+        "core:verification",
+        "profile:layout.locations#design_token_layer"
+      ]
+    },
+    {
+      "item": "verifier_detail[6]",
+      "note": "Test patterns and the stack-wide never-scanned trees are profile data; which trees count as vendored/build is owned by this rule's checker and is stated in core verification only, not in the roots.excluded profile value.",
+      "as": [
+        "core:verification",
+        "profile:suffix.unit_test",
+        "profile:roots.excluded"
+      ]
+    },
+    {
+      "item": "verifier_detail[7]",
+      "note": "Restates both unless exceptions at verifier level; core verification carries the same exclusions.",
+      "as": [
+        "core:verification",
+        "core:unless[0]",
+        "core:unless[1]",
+        "profile:idiom.design_system#token_definition",
+        "profile:idiom.design_system#raw_color_literal"
+      ]
+    },
+    {
+      "item": "verifier_detail[8]",
+      "note": "Literal-only judgment for artifacts that author markup in literals, phrased neutrally (code, comments, regex, interpolation chunks).",
+      "as": [
+        "core:verification",
+        "profile:roles.presentation.kinds"
+      ]
+    },
+    {
+      "item": "verifier_detail[9]",
+      "note": "Per-rule severity and disposition are not profile keys; they go to core verification.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "Repository-level existence precondition is not one of the neutral fact types (role/operation/change/phase/finding/file_kind/task_term/task_has_acceptance), so the core carries it in given, in the self-scoping verification entry (including its needs_new_observer character) and in doesNotFire[0], bound to the profile key.",
+      "as": [
+        "profile:roots.design_system",
+        "core:given",
+        "core:verification"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "Eligible UI kinds become the neutral file_kind fact; the exclusions in its note (tests, vendored trees, token layer) are the corresponding core verification entries.",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roles.presentation.kinds",
+        "core:verification"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "'Outside the tokens layer, including outside the design root' becomes the neutral role fact; layer identity from the profile.",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:layout.locations#design_token_layer",
+        "profile:roots.design_system"
+      ]
+    },
+    {
+      "item": "activation.facts[3]",
+      "note": "The change fact is neutral; the detector id and concrete syntaxes in its note are Bun-only.",
+      "as": [
+        "core:activation.facts[2]",
+        "profile:idiom.design_system#raw_color_literal",
+        "profile:idiom.design_system#color_value_contexts",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.fires[0]",
+      "note": "Neutralized: component artifact outside the design root, inline style, raw literal, design root present.",
+      "as": [
+        "core:fires[0]"
+      ]
+    },
+    {
+      "item": "activation.fires[1]",
+      "note": "Neutralized: stylesheet in a non-token design layer with a translucent raw color.",
+      "as": [
+        "core:fires[1]"
+      ]
+    },
+    {
+      "item": "activation.fires[2]",
+      "note": "Neutralized: markup authored in a string literal with an inline style or style block raw color.",
+      "as": [
+        "core:fires[2]"
+      ]
+    },
+    {
+      "item": "activation.fires[3]",
+      "note": "Neutralized: color-setting presentation attribute set to a raw literal.",
+      "as": [
+        "core:fires[3]"
+      ]
+    },
+    {
+      "item": "activation.doesNotFire[0]",
+      "note": "Self-scoping precondition.",
+      "as": [
+        "core:doesNotFire[0]",
+        "profile:roots.design_system"
+      ]
+    },
+    {
+      "item": "activation.doesNotFire[1]",
+      "note": "Token-layer exemption.",
+      "as": [
+        "core:doesNotFire[1]",
+        "profile:layout.locations#design_token_layer"
+      ]
+    },
+    {
+      "item": "activation.doesNotFire[2]",
+      "note": "Token-definition exemption; the `--danger: #b91c1c` example is the profile value.",
+      "as": [
+        "core:doesNotFire[2]",
+        "profile:idiom.design_system#token_definition"
+      ]
+    },
+    {
+      "item": "activation.doesNotFire[3]",
+      "note": "Named/reserved values are not raw literals.",
+      "as": [
+        "core:doesNotFire[3]",
+        "profile:idiom.design_system#raw_color_literal"
+      ]
+    },
+    {
+      "item": "activation.doesNotFire[4]",
+      "note": "Test-pattern and stack-wide vendored/build-tree exclusions; the checker's ownership of the exact classification stays in core verification.",
+      "as": [
+        "core:doesNotFire[4]",
+        "profile:suffix.unit_test",
+        "profile:roots.excluded"
+      ]
+    },
+    {
+      "item": "activation.doesNotFire[5]",
+      "note": "Selector-position and code/comment/regex exclusions; also covered by verification entries.",
+      "as": [
+        "core:doesNotFire[5]",
+        "core:verification"
+      ]
+    }
+  ],
+  "neutralityNotes": "The obligation itself (define colors once in the token layer, reference tokens, never raw color literals in UI styled values) is fully stack-neutral; every concrete styling construct is bound through six proposed idiom/layout keys, since the closed vocabulary has no styling or design-system keys. roots.excluded is used only as vocabulary v2 defines it — the single stack-wide list of never-scanned vendored/generated trees (Bun value: vendored/build directories) — and this rule's checker-owned exact classification of those trees stays in core:verification, not in the profile value. Two things could not be made neutral as-is: (1) the repository-level design-root-exists activation fact is not expressible in the neutral fact vocabulary (role/operation/change/phase/finding/file_kind/task_term/task_has_acceptance), so the core carries it in given, in the self-scoping verification entry — preserving its needs_new_observer character — and in doesNotFire[0], with the directory names supplied by profile:roots.design_system; (2) the detector id bun_design_system_detector (evidence[1], activation.facts[3] note) stays bunOnly per the notProfileKeys rule; per-rule severity 2 and disposition strict are core verification, not profile keys. Selector-vs-value and literal-chunks-only judgments are phrased generically (they are properties of style languages and string literals, not of one stack); the Bun sidecar remains the worked example with the concrete CSS/JSX constructs.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.design-token-color.json",
+      "sha256": "f620c137b34ae8fac00b8c86de15390038f65b77406250bc49c20a145ca81a04"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 1,
+    "usefulness": 5,
+    "deriver": "rekey-v3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

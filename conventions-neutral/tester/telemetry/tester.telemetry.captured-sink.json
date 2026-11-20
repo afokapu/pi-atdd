@@ -1,0 +1,321 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "tester.telemetry.captured-sink",
+  "legacyId": "tester.bun.telemetry-captured-sink",
+  "core": {
+    "title": "Assert telemetry tests on a captured sink, not on a return value",
+    "given": "A telemetry test: a test file identified as telemetry by the profile's markers — a telemetry-test identification header, a telemetry URN kind segment, or a telemetry-test file-name pattern (any one of them)",
+    "when": "the test is written or changed",
+    "then": "The test asserts on the emission itself via the captured sink, using the profile's emission-assertion constructs.",
+    "prefer": [
+      "Capture the emitter (spy, mock, or captured array the emitter writes to — the thing whose content is the emission), inject it into the unit under test, and assert on it.",
+      "Assert the exact event identity and payload on the sink, joining the captured-sink and exact-identity requirements."
+    ],
+    "avoid": [
+      "Asserting only on the unit under test's return value — a return value is not a sink; it proves the unit ran, not that the item fired.",
+      "Satisfying the check with an emission-vocabulary assertion that does not inspect what the sink actually received."
+    ],
+    "unless": [
+      "The test is not telemetry-identified; only telemetry-identified tests are scanned, and the profile's general test rule governs the rest.",
+      "The rule family has not been adopted in the repository (inert until adoption, like every rule in this family)."
+    ],
+    "why": "Dashboards, alerts and downstream analytics are built on the emission; a return-value check proves the unit ran, not that the event fired — only the sink saw it fire.",
+    "evidence": [
+      "The telemetry test contains an assertion from the profile's emission-assertion vocabulary on the captured sink.",
+      "The stack's telemetry-test check reports no finding for the file."
+    ],
+    "verification": [
+      "Scope: only telemetry-identified tests are scanned; identification is the OR of the profile's markers — the telemetry-test identification header, the telemetry URN kind segments, and the telemetry-test file-name pattern — and non-identified tests are out of scope (the profile's general test rule governs them).",
+      "Scan scope is the profile's test languages: the check applies only to test files written in those languages; files in other languages are out of scope.",
+      "The predicate is deliberately the emission-assertion vocabulary from the profile, not a data-flow analysis: it names what a test must contain, not what the runtime did.",
+      "Term captured_sink: the spy, mock or captured array the emitter writes to — the thing whose CONTENT is the emission. A return value is not a sink.",
+      "The rule is inert until the repository adopts the family.",
+      "Severity 3; disposition strict: every finding fails the check — no advisory mode, no ratchet baseline."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "unit_test",
+            "acceptance_test",
+            "e2e_test"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "telemetry_test_identified"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "no_emission_assertion"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "Writing or editing a telemetry-identified test whose assertions only check the unit under test's return value.",
+        "A telemetry-identified test file that never asserts on the captured sink (the emitter's spy, mock or captured array)."
+      ],
+      "doesNotFire": [
+        "A test file that is not telemetry-identified — the profile's general test rule governs it.",
+        "Repositories that have not adopted this rule family (inert until adoption).",
+        "A telemetry test that already asserts on the captured sink with one of the profile's emission-assertion constructs."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "suffix.telemetry_test",
+      "meaning": "The file-name patterns that identify a telemetry test by colocation (one alternative of telemetry-test identification).",
+      "bunValue": "**/*.telemetry.test.*"
+    },
+    {
+      "key": "urn.header#telemetry_test",
+      "meaning": "The header marker a test file carries that identifies it as a telemetry test (one alternative of telemetry-test identification).",
+      "bunValue": "`Telemetry:` header"
+    },
+    {
+      "key": "urn.test_kinds#telemetry",
+      "meaning": "The URN kind segments that identify a test as a telemetry test (one alternative of telemetry-test identification).",
+      "bunValue": "TELEMETRY/EVENT/METRIC URN kind segments"
+    },
+    {
+      "key": "idiom.test_constructs#emission_assertion",
+      "meaning": "The stack's test-assertion constructs that count as asserting on the emission via the captured sink.",
+      "bunValue": "`toHaveBeenCalled[With|Times]` or an expectation on `.emit` / `.emitted` / `.capture` / `.track` / `.record`"
+    },
+    {
+      "key": "tooling.language_scopes#test_languages",
+      "meaning": "The languages whose test files this stack's test checks scan; the emission-assertion vocabulary is language-specific.",
+      "bunValue": "typescript, javascript"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "activation.facts[2]",
+      "text": "Exact finding id `telemetry_test_identified_by_header_or_urn`, produced by a file-content observer for a `Telemetry:` header or a TELEMETRY/EVENT/METRIC URN kind segment (implemented by the bun_telemetry_test validator).",
+      "reason": "Rule-local finding and validator ids are realization details; the core uses the neutral finding `telemetry_test_identified`, and the concrete markers it observes come from the profile keys urn.header#telemetry_test, urn.test_kinds#telemetry and (as the colocation alternative) suffix.telemetry_test."
+    },
+    {
+      "item": "evidence[1]",
+      "text": "The `bun_telemetry_test` validator reports no finding for the file.",
+      "reason": "Names this rule's Bun validator; the core's evidence names the stack's telemetry-test check generically."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "text": "Source fix_hint ('Capture the emitter, assert on it:'):\n  const emit = mock(() => {});\n  acceptResponse({ id: \"r-1\" }, { emit });\n  expect(emit).toHaveBeenCalledWith(\"telemetry:event:be:commons:response-invocation-accepted\", { response_id: \"r-1\" });",
+      "reason": "Concrete test code in the stack's idiom with a project-specific event URN; bun.json itself is delivered as the reference example, so the core does not repeat the snippet."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "The neutral given states identification as an OR of three marker kinds; Bun's three concrete markers map to their documented keys: the `Telemetry:` header (urn.header#telemetry_test), the TELEMETRY/EVENT/METRIC URN kind segments (urn.test_kinds#telemetry), and the *.telemetry.test.* colocation (suffix.telemetry_test).",
+      "as": [
+        "core:given",
+        "profile:urn.header#telemetry_test",
+        "profile:urn.test_kinds#telemetry",
+        "profile:suffix.telemetry_test"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "Already stack-neutral; carried verbatim.",
+      "as": [
+        "core:when"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "One obligation, kept; the concrete matcher vocabulary is supplied by the profile key instead of being named in the core.",
+      "as": [
+        "core:then",
+        "profile:idiom.test_constructs#emission_assertion"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "Neutral as-is ('function' generalized to 'unit'); no stack content.",
+      "as": [
+        "core:why"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "Spy/mock/captured-array is generic test-double vocabulary, not stack-specific; carried essentially verbatim.",
+      "as": [
+        "core:prefer[0]"
+      ]
+    },
+    {
+      "item": "prefer[1]",
+      "note": "Kept role-level; the concrete matcher example (toHaveBeenCalledWith(<event URN>, <payload>)) is not repeated — bun.json is the reference example. Exact identity and payload stay a preference here, never an activation condition or a prerequisite for the existing-assertion exemption.",
+      "as": [
+        "core:prefer[1]"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "Neutral; 'the function's return value' restated as the unit under test's return value.",
+      "as": [
+        "core:avoid[0]"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "Neutral metric-gaming guard; 'the detector' generalized to 'the check'.",
+      "as": [
+        "core:avoid[1]"
+      ]
+    },
+    {
+      "item": "unless[0]",
+      "note": "Exception kept in full; the scan-scope half (only telemetry-identified tests are scanned) also appears in core verification, with the identification OR spelled out there.",
+      "as": [
+        "core:unless[0]",
+        "core:verification"
+      ]
+    },
+    {
+      "item": "unless[1]",
+      "note": "Inert-until-adoption exception kept; also mirrored in core verification.",
+      "as": [
+        "core:unless[1]",
+        "core:verification"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "Neutral evidence references the profile's emission-assertion vocabulary; Bun's concrete matcher list is the profile value.",
+      "as": [
+        "core:evidence[0]",
+        "profile:idiom.test_constructs#emission_assertion"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "Neutralized to 'the stack's telemetry-test check'; the bun_telemetry_test validator id is a realization detail (bunOnly).",
+      "as": [
+        "core:evidence[1]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "Identification markers come from their documented profile keys (urn.header#telemetry_test, urn.test_kinds#telemetry, suffix.telemetry_test) joined as an OR; 'non-identified tests are not scanned' is the neutral scope statement in core verification.",
+      "as": [
+        "core:verification",
+        "profile:urn.header#telemetry_test",
+        "profile:urn.test_kinds#telemetry",
+        "profile:suffix.telemetry_test"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "The vocabulary-not-data-flow method statement is neutral and in core verification; the concrete vocabulary list is the profile value.",
+      "as": [
+        "core:verification",
+        "profile:idiom.test_constructs#emission_assertion"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "The captured_sink term definition is stack-neutral; carried into core verification and echoed in prefer[0].",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[3]",
+      "note": "Concrete fix_hint code snippet with project-specific event URN; no stack-neutral equivalent.",
+      "as": [
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[4]",
+      "note": "Inert-until-adoption is neutral enforcement behavior; in core verification.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[5]",
+      "note": "Per-rule severity and disposition are not profile keys; both go to core verification.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "Bun's generic 'test' file kind is unrestricted: every test kind can be a telemetry test. Neutralized to ALL test roles in the vocabulary — unit_test, acceptance_test and e2e_test — so no telemetry-identified test kind (end-to-end included) falls out of activation.",
+      "as": [
+        "core:activation.facts[0]"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "The colocation glob **/*.telemetry.test.* is a file-name pattern identifying the telemetry_test file kind, so it is the suffix.telemetry_test profile value (one alternative of the identification OR); the neutral core has no path fact — the telemetry_test_identified finding fact covers identification.",
+      "as": [
+        "profile:suffix.telemetry_test"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "Neutralized to the finding 'telemetry_test_identified' (needs_new_observer); the exact Bun finding id and its validator detail are bunOnly. The content markers it observes map to the profile keys urn.header#telemetry_test and urn.test_kinds#telemetry (the colocation alternative is suffix.telemetry_test).",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:urn.header#telemetry_test",
+        "profile:urn.test_kinds#telemetry",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.facts[3]",
+      "note": "The finding name 'no_emission_assertion' is descriptive and carried by the core; the concrete predicate vocabulary in the detector note is the profile value.",
+      "as": [
+        "core:activation.facts[2]",
+        "profile:idiom.test_constructs#emission_assertion"
+      ]
+    },
+    {
+      "item": "activation.facts[4]",
+      "note": "The language fact scopes which languages' test files the check scans. tooling.languages is documented as languages of PRODUCTION source and must not carry this meaning, so the scope is carried by the map key tooling.language_scopes#test_languages (profile data) and stated as scan scope in core verification; the neutral fact vocabulary has no 'language' fact, so it is not a core activation fact.",
+      "as": [
+        "core:verification",
+        "profile:tooling.language_scopes#test_languages"
+      ]
+    }
+  ],
+  "neutralityNotes": "The obligation itself (assert on the emission via the captured sink, not the return value) is fully stack-neutral and is carried whole, with both exceptions intact. Telemetry-test identification stays an OR of three alternatives, each supplied by its documented vocabulary key: the identification header (urn.header#telemetry_test), the telemetry URN kind segments (urn.test_kinds#telemetry), and the colocation file-name pattern (suffix.telemetry_test). The emission-assertion matcher vocabulary has no dedicated key and fits idiom.test_constructs (assertions and matchers), so it is the map entry idiom.test_constructs#emission_assertion; no new keys are proposed. The check's language scope is the map entry tooling.language_scopes#test_languages, keeping tooling.languages reserved for production-source languages per its documented meaning. Bun's generic 'test' file kind maps to every test role in the vocabulary — unit_test, acceptance_test and e2e_test — so telemetry-identified tests of any kind stay in activation; the core's activation is neither narrower nor broader than Bun's. The exact-identity-and-payload assertion stays in prefer only: an existing sink assertion exempts the test (doesNotFire) without any identity/payload qualification. Remaining Bun-only content: the fix_hint code snippet with its project-specific event URN, the validator id bun_telemetry_test, and the exact finding id telemetry_test_identified_by_header_or_urn — none has a neutral equivalent, and the core's verification describes the check generically. The severity number 3 belongs to the source's severity scale and is kept in core verification only because severity/disposition are specified to live there; a foreign stack instantiating this core may use its own scale position for 'not advisory'. Note the predicate stays vocabulary-based by design (no data-flow analysis), so a superficially sink-shaped assertion can still game it — that residual weakness is exactly what avoid[1] guards, and it is inherited, not introduced.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/tester.bun.telemetry-captured-sink.json",
+      "sha256": "b4b6581733fefa51aad86021b47361aacf4a1eb83ba7aa2c8f36066ba3102927"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "rekey-v3 -> zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

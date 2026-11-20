@@ -1,0 +1,331 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.complexity.nesting",
+  "legacyId": "coder.bun.complexity-nesting",
+  "core": {
+    "title": "Keep function control-flow nesting depth at or below 4",
+    "given": "Any function of 3 or more code lines in any scanned file whose suffix is one of the stack's source-file suffixes (whatever its role: production, tooling, script or configuration code alike), excluding only test files and vendored/build trees",
+    "when": "it is present in scanned source",
+    "then": "Keep its maximum control-flow nesting depth (control_depth) at or below 4.",
+    "prefer": [
+      "Invert conditions into early-return guard clauses when that preserves cleanup, error, and ordering semantics.",
+      "Extract a cohesive inner operation into a named function with a small, meaningful input.",
+      "Prepare or filter a collection before iterating when that makes the algorithm clearer.",
+      "Flatten control flow by removing unnecessary conditional context: first find early-reject conditions (guards), a cohesive inner block, nested iteration expressible as preparation plus one clear pass."
+    ],
+    "avoid": [
+      "Clever boolean/conditional-expression rewrites, removal of block delimiters, or re-encoding the same nesting solely to evade the depth count.",
+      "Extracting a block that needs a long parameter list or still depends on the caller's hidden conditional context.",
+      "Duplicating cleanup, logging, or error handling across new guard clauses.",
+      "Changing evaluation order or exception behavior while flattening."
+    ],
+    "unless": [],
+    "why": "At depth five a reader must hold five simultaneous conditions to know whether a line runs, beyond reliable working memory; depth is a sensor for too much conditional context. A guard or extracted helper usually removes a level without changing behaviour, so the threshold is enforced, not advised.",
+    "evidence": [
+      "Existing behavior and tests remain green, including error and boundary paths.",
+      "The triggering nesting violation is gone in a run of the stack's nesting check.",
+      "The flattened flow reads with fewer simultaneous preconditions (reviewer judgement).",
+      "Extracted functions satisfy the applicable length and complexity conventions.",
+      "The refactor introduces no new violations of the stack's convention checks."
+    ],
+    "verification": [
+      "Threshold: violation when a function's control_depth > 4 (allowed max 4).",
+      "control_depth = the maximum nesting depth reached on lines carrying one of the stack's control keywords, measured as the stack defines nesting depth for its syntax, relative to the function's own base depth.",
+      "Functions with fewer than 3 code lines are not scored.",
+      "Comment lines are ignored when measuring nesting.",
+      "Scan scope: every file with one of the stack's source-file suffixes, regardless of role (production, tooling, scripts, configuration); the only exclusions are test files (all test files, of any test kind) and vendored/build directories. The exact classification of test files and vendored/build directories is owned by this rule's checker, not by the profile.",
+      "The check is a mechanical validator of this rule; severity 3; strict disposition: every finding fails, with no advisory mode and no ratchet baseline.",
+      "The goal is easier-to-understand execution conditions; a fix that only removes block delimiters or encodes the same nesting in expressions the metric counts differently is metric gaming, not compliance.",
+      "Readability of the flattened flow is not mechanically checked; it is reviewer judgement."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "source"
+          ],
+          "observability": "observable_now"
+        }
+      ],
+      "fires": [
+        "Any scanned non-test function of 3+ code lines in a file with one of the stack's source-file suffixes (any role, including tooling, scripts or configuration) reaches control-flow nesting depth 5 (e.g. a conditional inside a loop inside an error-handling block inside a branch selector inside a conditional), whether newly written, edited, or pre-existing.",
+        "An edit adds a nested conditional to a function already at depth 4.",
+        "Illustrative: the stack's nesting check reports a finding for a function (a finding is evidence of violation, not a prerequisite for the obligation)."
+      ],
+      "doesNotFire": [
+        "A function with fewer than 3 code lines.",
+        "Code in test files or in vendored/build directories (as classified by the rule's checker).",
+        "Nesting delimiters that occur only on lines without a control keyword (e.g. nested data literals) or only in comments.",
+        "Files without one of the stack's source-file suffixes."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "suffix.source",
+      "meaning": "Suffixes of the source files whose functions are scored; this suffix set alone defines the language scope of the scan, and it applies to files of every role (production, tooling, scripts, configuration), not only production source.",
+      "bunValue": ".ts, .tsx"
+    },
+    {
+      "key": "idiom.control_keywords",
+      "meaning": "Control-flow keywords whose lines count toward nesting depth.",
+      "bunValue": "if / else / for / while / do / switch / try / catch / finally"
+    },
+    {
+      "key": "idiom.nesting_measure",
+      "meaning": "How control_depth is measured in the stack's syntax, including comment handling.",
+      "bunValue": "maximum brace depth reached on lines carrying a control keyword (if / else / for / while / do / switch / try / catch / finally), measured relative to the function's own base depth; comment lines are ignored when measuring brace balance"
+    },
+    {
+      "key": "enforcement.runner",
+      "meaning": "The stack's convention checks that must report no new violations.",
+      "bunValue": "ATDD Bun"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "evidence[1]",
+      "text": "The triggering nesting violation (COMPLEXITY-NESTING-TS-001) is gone in a bun_ts_metrics_detector run.",
+      "reason": "Finding alias and detector id of this rule's Bun realization."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "text": "Detector: bun_ts_metrics_detector (validator); finding alias COMPLEXITY-NESTING-TS-001",
+      "reason": "Detector and finding ids are realization details of the Bun stack."
+    },
+    {
+      "item": "activation.facts[0]",
+      "text": "language = typescript",
+      "reason": "The language name is a Bun-stack fact; in the core the language scope is fully determined by suffix.source (.ts, .tsx), and 'language' is not a core fact kind."
+    },
+    {
+      "item": "activation.facts[1]",
+      "text": "Exact classification of test files and vendored/build directories is the detector's (bun_ts_metrics_detector).",
+      "reason": "The concrete classifier is the Bun detector; the core only defers to the rule's checker."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:suffix.source",
+        "core:verification"
+      ],
+      "note": "'TypeScript/TSX' becomes the profile's source-file suffixes with no production-role gate; test-file and vendored/build exclusions stay categorical with checker-owned classification in core verification."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then"
+      ],
+      "note": "Threshold 4 is the stack-neutral obligation."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "prefer[2]",
+      "as": [
+        "core:prefer[2]"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "prefer[3]",
+      "as": [
+        "core:prefer[3]"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "'ternary' and 'brace removal' generalized to conditional expressions and block delimiters."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "avoid[3]",
+      "as": [
+        "core:avoid[3]"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]",
+        "bunOnly"
+      ],
+      "note": "Detector and alias ids are bunOnly; core names the check generically."
+    },
+    {
+      "item": "evidence[2]",
+      "as": [
+        "core:evidence[2]",
+        "core:verification"
+      ],
+      "note": "Reviewer-judgement marker also recorded as a verification scope note."
+    },
+    {
+      "item": "evidence[3]",
+      "as": [
+        "core:evidence[3]"
+      ],
+      "note": "Already neutral."
+    },
+    {
+      "item": "evidence[4]",
+      "as": [
+        "core:evidence[4]",
+        "profile:enforcement.runner"
+      ],
+      "note": "'ATDD Bun' becomes the stack's convention checks."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Threshold is stack-neutral."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "profile:idiom.control_keywords",
+        "profile:idiom.nesting_measure"
+      ],
+      "note": "Keyword list and brace-depth measure come from the profile."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Scoring exception is stack-neutral."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification",
+        "profile:idiom.nesting_measure"
+      ],
+      "note": "Comment handling is part of the stack's nesting measure."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Categorical scan exclusion (all test files, vendored/build directories); classification owned by the rule's checker, kept in verification, not in profile keys."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "as": [
+        "bunOnly",
+        "core:verification"
+      ],
+      "note": "Detector/alias ids bunOnly; validator nature, severity 3 and strict disposition (sharedNodes policy.strict-disposition) go to core verification."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "'braces' generalized to block delimiters."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:suffix.source",
+        "bunOnly"
+      ],
+      "note": "'language' is not a core fact kind; TypeScript scope is expressed as file_kind=source scoped by suffix.source (.ts, .tsx). tooling.languages is NOT used because it means production-source languages, while this rule scans files of every role."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:suffix.source",
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": ".ts/.tsx become suffix.source; the exclusion classification is deferred to the rule's checker in core verification; the concrete detector is bunOnly."
+    }
+  ],
+  "neutralityNotes": "The threshold (4) and the 3-code-line scoring floor stay in the core, as the source declares the obligation stack-neutral. Scope covers every scanned function in files with the profile's source-file suffixes, with no production-role gate (tooling, scripts and configuration code included). The language scope is carried solely by suffix.source; tooling.languages is deliberately not used, since it denotes production-source languages and this rule's scope is not limited to production code. For Bun, .ts/.tsx exactly coincide with the 'typescript' language fact, so no separate scan-language key is needed. How depth is measured (brace balance on control-keyword lines, comment handling) is syntax-specific and delegated to idiom.nesting_measure and idiom.control_keywords. The test-file and vendored/build exclusions are categorical and their exact classification is owned by the rule's checker per bun.json, so they live only in core verification; bun.json supplies no concrete test patterns or stack-wide excluded-tree list, so suffix.*_test and roots.excluded are not used.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.complexity-nesting.json",
+      "sha256": "51252f659378949638d6a679abfa6fd21e1392ac803c79fd60e065fd42eadf98"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 1,
+    "vocabularyVersion": 1,
+    "verdict": "PASS",
+    "rounds": 3,
+    "usefulness": 5,
+    "deriver": "pi-claude-cli/claude-opus-5-5",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

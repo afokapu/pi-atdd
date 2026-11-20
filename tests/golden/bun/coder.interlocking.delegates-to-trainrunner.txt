@@ -1,0 +1,19 @@
+Title: Delegate train execution from InterlockingRunner to TrainRunner; never execute wagons in interlocking code
+Given: A Bun application module defines an InterlockingRunner
+When: you add or change anything in that module (imports, action handling, train execution)
+Then: Resolve one admissible train and delegate its execution to `TrainRunner.execute(selectedTrainId, ...)`; the InterlockingRunner must never execute wagons itself.
+Prefer:
+- Delegate instead of executing:
+  execute(action, inputs, state) {
+    const res = this.resolveTrain(action, inputs, state);
+    return new TrainRunner(res.trainPath).execute(res.trainId, inputs);  // delegate, do not loop
+  }
+Avoid:
+- Importing a `src/<wagon>/wagon.ts` module anywhere in the InterlockingRunner module
+- Calling `runTrain(...)` from interlocking code
+- Looping over `<expr>.sequence` (e.g. `train.sequence`) as a step executor
+- Otherwise invoking wagon steps, choosing the next step inside a train, or bypassing TrainRunner
+- Suppressing a new direct-execution finding: the rule is strict, not suppressible, and fails CI
+Unless:
+- The production `TrainRunner` module is the legitimate wagon-step executor; its own step loop is exempt
+Why: Interlocking is route control, not execution: TrainRunner is the single component that runs wagons and carries Cargo between them; a second executor would compete with it.

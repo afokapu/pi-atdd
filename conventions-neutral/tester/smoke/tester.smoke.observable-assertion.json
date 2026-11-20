@@ -1,0 +1,350 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "tester.smoke.observable-assertion",
+  "legacyId": "tester.bun.smoke-observable-assertion",
+  "core": {
+    "title": "Assert SMOKE cases on operator-observable output that proves the acceptance outcome",
+    "given": "A test file whose declared Phase is SMOKE contains a case that makes assertions",
+    "when": "the case's assertions are written or changed",
+    "then": "At least one assertion must check, on an operator-observable channel (a channel an operator can witness the system through, per the profile's observable-channel vocabulary), the externally visible outcome the case claims — the bound acceptance's Then where one is bound — specifically enough that the case turns red if that behavior disappears.",
+    "prefer": [
+      "Read the acceptance's Then first; identify the externally visible consequence that discharges it.",
+      "Exercise the real path through the boundary and assert on the operator-observable channels the profile recognizes; a transport-level success indication is only transport evidence — pair it with the acceptance-specific observable witness."
+    ],
+    "avoid": [
+      "Asserting only on objects the test built itself — internal, not operator-observable evidence; it proves the constructor works, which is a unit test's job under a SMOKE label.",
+      "Treating any observable assertion (e.g. a generic success indication) as sufficient when it does not prove the declared outcome.",
+      "Checking internal calls or mocks instead of the resulting system behavior."
+    ],
+    "unless": [
+      "The case makes no assertions at all — skipped here; other rules own that."
+    ],
+    "why": "The SMOKE label tells the gate real behaviour was exercised, so it must prove something an operator could witness; a self-built object or a bare success indication leaves the acceptance (e.g. the new order being visible) unproven.",
+    "evidence": [
+      "The stack's convention check reports no SMOKE case that makes assertions but touches none of the operator-observable channels.",
+      "Reviewer confirms the real path was exercised (a real request or process, not a self-built object or mock).",
+      "Reviewer confirms the witness would fail if the bound acceptance behavior regressed (matches the acceptance's Then, not merely 'the system answered')."
+    ],
+    "verification": [
+      "An automated validator reports a SMOKE case that makes assertions but touches none of the operator-observable channels recognized for the stack; only SMOKE-phase test files are scanned, in the languages the profile scopes for test files (tooling.language_scopes#test_files), and cases with no assertions are skipped (other rules own those).",
+      "The observable-channel vocabulary is stack-specific: the core takes it from the profile (idiom.telemetry#observable_channels), and the realization's check recognizes exactly that vocabulary, which also admits other observable channels.",
+      "self-constructed object: a value the test built itself; asserting on it proves the constructor works, which is a unit test's job under a SMOKE label.",
+      "Division of labour: the automated check recognizes the channel only; merely touching a channel is not semantically enough. Whether the evidence on that channel is acceptance-specific is judged by the agent/reviewer — a clean check result does not establish compliance.",
+      "Severity 3, strict disposition: the gate fails on every finding of this rule; there is no advisory mode and no ratchet baseline."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "phase",
+          "values": [
+            "SMOKE"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "test"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "SMOKE case with assertions but no observable channel"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "witness does not prove the claimed/bound acceptance outcome"
+          ],
+          "observability": "llm_judged"
+        },
+        {
+          "fact": "task_has_acceptance",
+          "values": [
+            "true",
+            "false"
+          ],
+          "observability": "observable_now"
+        }
+      ],
+      "fires": [
+        "A SMOKE-phase test case asserts only on fields of an object the test built itself.",
+        "A SMOKE-phase test case asserts only on internal calls or mocks.",
+        "A SMOKE-phase test case asserts only a generic success response while the bound acceptance promises specific visible content (even though the automated check recognizes the channel).",
+        "An asserted SMOKE-phase case with no acceptance binding that asserts only on self-built objects."
+      ],
+      "doesNotFire": [
+        "A test whose declared Phase is not SMOKE.",
+        "A SMOKE case with no assertions at all (owned by other rules).",
+        "A SMOKE case asserting acceptance-specific content on an operator-observable channel (per the profile's channel vocabulary)."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "idiom.telemetry#observable_channels",
+      "meaning": "The channels the stack counts as operator-observable for SMOKE assertions — the vocabulary the core's obligation and the realization's check recognize.",
+      "bunValue": "an HTTP response status or body, rendered markup, stdout/stderr, an exit code, or persisted state; the fix hint also admits other observable channels"
+    },
+    {
+      "key": "tooling.language_scopes#test_files",
+      "meaning": "The languages of the test files this rule's check scans — the realization's language applicability filter, so the instantiated core applies to exactly the stack's test files.",
+      "bunValue": "typescript, javascript"
+    },
+    {
+      "key": "tooling.test_runner",
+      "meaning": "The stack's test runner; the test files it collects are the test files in scope for this rule.",
+      "bunValue": "Test files under the Bun test runner."
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "prefer[1]",
+      "text": "Exercise the real path and assert on the real HTTP response and its markup (what htmx shows the user), stdout/stderr, exit code, persisted state, or other observable channel: `const res = await fetch(\"/orders\"); expect(res.status).toBe(200); expect(await res.text()).toContain(\"order-1\");` — status is transport evidence; the body check is the acceptance-specific witness.",
+      "reason": "Names the stack's canonical channel (the real HTTP response and the markup htmx puts in front of the user) and an in-language example; the core keeps the role-level guidance and takes the channel vocabulary from the profile."
+    },
+    {
+      "item": "avoid[0]",
+      "text": "`const order = buildOrder({ sku: \"x\" }); expect(order.sku).toBe(\"x\");`",
+      "reason": "In-language example of the self-built-object anti-pattern; the core states the pattern at role level."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "bun_tester_discipline_detector reports no SMOKE case that makes assertions but touches none of the observable channels.",
+      "reason": "Detector/validator ids are realization details, not profile keys; the core names the check generically."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "Detector: bun_tester_discipline_detector (validator). Reports a SMOKE case that makes assertions but touches none of the observable channels.",
+      "reason": "Names the stack's detector; the core's verification describes the check generically."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "text": "observable_channel vocabulary (Bun/htmx-specific): an HTTP response status or body, rendered markup, stdout/stderr, an exit code, or persisted state; the fix hint also admits other observable channels.",
+      "reason": "The channel enumeration is stack data (the HTTP response and its markup are this stack's canonical observation); each stack supplies it through the idiom.telemetry#observable_channels profile entry."
+    },
+    {
+      "item": "activation.facts[3]",
+      "text": "finding: \"bun_tester_discipline_detector: SMOKE case with assertions but no observable channel\" (needs_new_observer; NOT a prerequisite).",
+      "reason": "The finding string embeds the stack's detector id; the core keeps the generic finding trigger (needs_new_observer, explicitly not a prerequisite — cases that do touch a channel stay in scope)."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given"
+      ],
+      "note": "Already stack-neutral: the declared Phase is an ATDD test concept, not a stack mechanism."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Kept verbatim; stack-neutral."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "profile:idiom.telemetry#observable_channels"
+      ],
+      "note": "Obligation kept intact except the channel enumeration '(HTTP response status/body, rendered markup, stdout/stderr, exit code, persisted state, or other operator-observable channel)' is generalized to the profile-supplied operator-observable channel vocabulary; witness selection (the bound acceptance's Then where one is bound) and the 'turns red' specificity are unchanged."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Kept; only 'bare 200' is generalized to 'a bare success indication'."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]"
+      ],
+      "note": "Stack-neutral as written."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]",
+        "bunOnly"
+      ],
+      "note": "Role-level guidance (real path, transport evidence vs acceptance-specific witness) kept in the core; the HTTP/htmx channel enumeration and the fetch/expect snippet are Bun realization content."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]",
+        "bunOnly"
+      ],
+      "note": "The self-built-object anti-pattern is neutral and kept; the in-language snippet stays with the realization."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]"
+      ],
+      "note": "'a generic 200' generalized to 'a generic success indication'."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]"
+      ],
+      "note": "Stack-neutral as written."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]",
+        "core:verification"
+      ],
+      "note": "The no-assertions skip is both an exception in the core and part of the check's scope."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ],
+      "note": "Core states it generically ('the stack's convention check'); the detector id is realization-only."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]"
+      ],
+      "note": "'real HTTP request/process' generalized to 'a real request or process'."
+    },
+    {
+      "item": "evidence[2]",
+      "as": [
+        "core:evidence[2]"
+      ],
+      "note": "'server answered' generalized to 'the system answered'."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "The generic check description ('reports a SMOKE case that makes assertions but touches none of the observable channels') goes to core verification; the detector/validator id is Bun-only."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Check scope (SMOKE-phase files only; cases with no assertions skipped) is generic verification."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "profile:idiom.telemetry#observable_channels",
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "The channel enumeration is stack data (idiom.telemetry#observable_channels profile entry); the core's verification records that the vocabulary is profile-supplied and recognized by the stack's check."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification",
+        "core:avoid[0]"
+      ],
+      "note": "The self_constructed_object definition is stack-neutral and feeds both the check description and avoid[0]."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Division of labour (channel recognition vs acceptance-specificity judgement) is generic verification; also underpins evidence[0] not establishing compliance."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Severity and disposition are per-rule verification facts, not profile keys."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]"
+      ],
+      "note": "The Phase fact is the ATDD phase concept; core keeps values ['SMOKE'] and observability. Together with 'case makes assertions' it is the full applicability condition."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "profile:tooling.language_scopes#test_files",
+        "core:verification"
+      ],
+      "note": "The test-file language scope (typescript, javascript) is scan-applicability data, covered by the existing map key tooling.language_scopes (languages per check scope, including test files) via the entry #test_files. The core carries no language fact (naming languages would leak the stack, and the core fact vocabulary has no language fact); instead its verification states the check scans test files in the languages the profile scopes for test files, so the instantiated core scans exactly the same files. The note 'Bun test files.' is covered by the tooling.test_runner profile requirement."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:tooling.test_runner"
+      ],
+      "note": "file_kind 'test' is neutral; which files count as test files comes from the profile's test runner."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[2]",
+        "bunOnly"
+      ],
+      "note": "Core keeps the finding trigger generically (needs_new_observer, explicitly not a prerequisite — cases touching a channel remain in scope for the semantic obligation); the detector id embedded in the value is Bun-only."
+    },
+    {
+      "item": "activation.facts[4]",
+      "as": [
+        "core:activation.facts[3]"
+      ],
+      "note": "LLM-judged semantic trigger; stack-neutral as written."
+    },
+    {
+      "item": "activation.facts[5]",
+      "as": [
+        "core:activation.facts[4]"
+      ],
+      "note": "Stack-neutral; the note's meaning — the binding selects the witness and never exempts asserted unbound cases — is carried by then ('where one is bound') and fires[3]."
+    }
+  ],
+  "neutralityNotes": "The obligation itself is stack-neutral; only the operator-observable channel enumeration is stack data — for this stack the canonical observation is an HTTP response and the markup inside it (what htmx puts in front of the user) — so it moved to the idiom.telemetry#observable_channels profile entry (idiom.markup_kinds covers only markup kinds). The JavaScript/TypeScript test-language activation fact is carried by the profile's tooling.language_scopes#test_files entry (an existing map key covering languages per check scope, including test files): the core keeps no language fact, and its verification records that the check scans test files in the profile's test-file languages, so the instantiated core applies to exactly the same test files. The detector/validator id and finding string, and the in-language prefer/avoid snippets, are realization-only (bunOnly). Severity 3 and strict disposition stay in core verification per the not-profile-keys rule. Core fact values carry no notes (schema), so the facts[3] 'not a prerequisite' and facts[5] 'never exempts' caveats are preserved via fires[2]/fires[3] and then's 'where one is bound'.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/tester.bun.smoke-observable-assertion.json",
+      "sha256": "51c74cfbc33af03f1311223f905b2e524006cf4cd47dc57c4dcbb5cf2014ea76"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "rekey-v3 -> zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

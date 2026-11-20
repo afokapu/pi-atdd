@@ -1,0 +1,384 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.complexity.length",
+  "legacyId": "coder.bun.complexity-length",
+  "core": {
+    "title": "Keep each function at or below 50 code lines",
+    "given": "A function in a non-test production source file inside the scan scope",
+    "when": "its body is written, changed, or scanned",
+    "then": "The function has at most 50 code lines (blank and comment lines excluded).",
+    "prefer": [
+      "Diagnose first: the distinct responsibilities, stages, or invariants the function manages.",
+      "Find semantic seams (internal_seam): blocks nameable by one intention-revealing name, often introduced by a comment that becomes the helper's name.",
+      "Identify the data each candidate responsibility needs.",
+      "Extract one cohesive responsibility at a time.",
+      "Name helpers after their purpose, not their mechanics.",
+      "Keep related state and decisions together.",
+      "Leave the original as a readable top-level flow."
+    ],
+    "avoid": [
+      "Splitting at an arbitrary line boundary, or moving contiguous lines elsewhere, just to get under 50.",
+      "Mechanical helper names that expose extraction mechanics rather than the responsibility they serve.",
+      "Moving a long or complex block unchanged into another function.",
+      "A generalized abstraction unrelated to the extracted responsibility."
+    ],
+    "unless": [],
+    "why": "A function longer than a screen cannot be read as one unit, so its invariants are reconstructed from memory each time; length catches linear functions doing several unnamed things that complexity misses. The threshold is a sensor for weak cohesion or multiple responsibilities, not the objective — moving lines only removes the signal.",
+    "evidence": [
+      "The length check no longer reports the length finding for the triggering function.",
+      "Extracted functions satisfy the applicable complexity and nesting conventions.",
+      "Reviewer judges that resulting names and boundaries make the responsibilities easier to understand (a successful refactor identifies a responsibility or cohesive operation that deserves its own name and boundary).",
+      "The refactor introduces no new violations of the stack's convention checks.",
+      "The refactor keeps existing behavior and existing tests green."
+    ],
+    "verification": [
+      "Threshold: a function fails when its code-line count is greater than 50 (at most 50 allowed); the check applies to every production function in scope, newly written or pre-existing, not only changed ones.",
+      "code_line: a line inside the function body that is neither blank nor a comment; blank lines and comment lines are not counted.",
+      "The check counts non-blank, non-comment lines between the function's signature and the end of its body; body boundaries are found by a matcher that is aware of string and comment literals, so a body delimiter inside a string never closes a body early (a counting invariant only; it does not suppress real findings).",
+      "Scope: non-test production source files of the stack's source languages. Unit-test and acceptance-test files are excluded by the rule's own scope, and the stack's never-scanned vendored/generated trees (roots.excluded) are outside the scan. The exact classification of test files and excluded trees is owned by the stack's checker, not by this rule.",
+      "Length is the crudest of the per-function metrics and the hardest to argue with; it catches a different fault from the complexity check (a linear function of many sequential assignments may score minimal cyclomatic complexity yet do several things that wanted names).",
+      "Severity 2; disposition strict — every finding fails the check run; there is no advisory mode and no ratchet baseline. The rule shares the stack-wide refactor policy that a refactor must keep existing behavior and tests green."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "source"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "function_code_lines_over_threshold"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "Any non-test production function in the scan scope whose body has more than 50 non-blank, non-comment code lines, whether newly written or pre-existing.",
+        "The length check reports the per-function length finding for a function.",
+        "A perfectly linear function (cyclomatic complexity 1) of more than 50 sequential code lines."
+      ],
+      "doesNotFire": [
+        "A function whose body exceeds 50 physical lines only because of blank lines and comment lines, with at most 50 code lines.",
+        "A function with exactly 50 code lines.",
+        "Functions in unit-test or acceptance-test files.",
+        "Functions in the stack's excluded vendored or build-output trees."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "tooling.languages",
+      "meaning": "The languages whose production functions the length check scans; the core activation vocabulary has no language fact, so the language scope comes from the profile.",
+      "bunValue": "typescript"
+    },
+    {
+      "key": "suffix.source",
+      "meaning": "Which file kinds count as non-test production source, i.e. whose functions are measured.",
+      "bunValue": "ts, tsx"
+    },
+    {
+      "key": "roots.scan",
+      "meaning": "The repository-wide scan scope of the check: every function in the scanned source tree is checked, including pre-existing ones, not only changed ones.",
+      "bunValue": "**/*.ts, **/*.tsx over the whole scanned source tree (excluding test files and vendored/build directories)"
+    },
+    {
+      "key": "roots.excluded",
+      "meaning": "The stack's single never-scanned list of vendored/generated (build-output) trees; only these trees realize the rule's out-of-scan exclusion for vendored/build output. Test-file exclusion stays in the rule's own scope, and the exact classification of exclusions stays in the rule's verification, not in this key.",
+      "bunValue": "vendored/build directories"
+    },
+    {
+      "key": "enforcement.runner",
+      "meaning": "The stack's convention runner whose full run must show no new violations after the refactor (evidence[3]).",
+      "bunValue": "atdd-bun"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "avoid[1]",
+      "text": "Mechanical helper names like `part1`, `processRest`, `buildLinesAndTotal`.",
+      "reason": "Concrete illustrative identifiers are the Bun reference example; the core states the obligation role-level (mechanical names that expose extraction mechanics rather than responsibility)."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "bun_ts_metrics_detector no longer reports COMPLEXITY-LENGTH-TS-001 for the triggering function.",
+      "reason": "Names this rule's Bun detector and finding alias; realization details that the core describes generically as 'the length check no longer reports the length finding'."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "text": "Finding alias: COMPLEXITY-LENGTH-TS-001; detector ref: bun_ts_metrics_detector (type validator).",
+      "reason": "Detector, validator and finding ids of this one rule are stack-realization details; core verification names the check generically."
+    },
+    {
+      "item": "activation.facts[3]",
+      "text": "finding values [\"COMPLEXITY-LENGTH-TS-001\"], reported by bun_ts_metrics_detector.",
+      "reason": "The finding alias and detector id are realization details; the neutral need (a per-function code-line counter over the whole scan scope, including pre-existing functions) is kept in core:activation.facts[1] and core:verification."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:suffix.source",
+        "profile:roots.scan"
+      ],
+      "note": "'TypeScript/TSX' and 'the scanned source tree' are realized by the profile's source suffixes and scan scope; the core keeps role-level wording ('non-test production source file inside the scan scope')."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Already stack-neutral; carried verbatim."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then"
+      ],
+      "note": "Carried verbatim; the 50-code-line threshold and the blank/comment exclusion are the rule's own obligation, not stack data."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Carried verbatim; cyclomatic complexity is treated as a language-neutral metric."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]"
+      ],
+      "note": "Already stack-neutral."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]"
+      ],
+      "note": "Already stack-neutral; internal_seam is a language-neutral term."
+    },
+    {
+      "item": "prefer[2]",
+      "as": [
+        "core:prefer[2]"
+      ],
+      "note": "Already stack-neutral."
+    },
+    {
+      "item": "prefer[3]",
+      "as": [
+        "core:prefer[3]"
+      ],
+      "note": "Already stack-neutral."
+    },
+    {
+      "item": "prefer[4]",
+      "as": [
+        "core:prefer[4]"
+      ],
+      "note": "Already stack-neutral."
+    },
+    {
+      "item": "prefer[5]",
+      "as": [
+        "core:prefer[5]"
+      ],
+      "note": "Already stack-neutral."
+    },
+    {
+      "item": "prefer[6]",
+      "as": [
+        "core:prefer[6]"
+      ],
+      "note": "Already stack-neutral."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]"
+      ],
+      "note": "Already stack-neutral; the 50 threshold is the rule's own."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]",
+        "bunOnly"
+      ],
+      "note": "Core keeps the role-level obligation (mechanical names exposing extraction mechanics rather than responsibility); the concrete identifier examples stay in bunOnly as the Bun reference example."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]"
+      ],
+      "note": "Already stack-neutral."
+    },
+    {
+      "item": "avoid[3]",
+      "as": [
+        "core:avoid[3]"
+      ],
+      "note": "Already stack-neutral."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ],
+      "note": "Neutral evidence: the length check no longer reports the finding; the detector name and finding alias are bunOnly realization details."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]"
+      ],
+      "note": "Already stack-neutral (sibling complexity and nesting conventions)."
+    },
+    {
+      "item": "evidence[2]",
+      "as": [
+        "core:evidence[2]"
+      ],
+      "note": "Already stack-neutral."
+    },
+    {
+      "item": "evidence[3]",
+      "as": [
+        "core:evidence[3]",
+        "profile:enforcement.runner"
+      ],
+      "note": "'ATDD Bun' is realized by the profile's convention runner; the core says 'the stack's convention checks'."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Threshold and whole-scope application go to verification; the concrete file-kind scope is realized via suffix.source and roots.scan."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Definition of code_line, carried verbatim; stack-neutral."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Counting invariant stated generically (a matcher aware of string and comment literals); the brace/closing-brace wording is the Bun realization of body delimiters."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification",
+        "profile:roots.excluded"
+      ],
+      "note": "Exclusions only scope the check. roots.excluded realizes solely the never-scanned vendored/build-output trees; the test-file exclusion stays in the rule's own scope (file_kind source, doesNotFire), and the checker-owned exact classification is kept in core:verification, not in the profile."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification",
+        "core:why"
+      ],
+      "note": "Rationale overlaps core:why; the verification entry records that length complements the complexity check and what it catches that complexity misses."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Per-rule severity and disposition are core verification facts, not profile keys."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "Finding alias and detector ref are realization details of the Bun checker; core verification names the check generically."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "profile:tooling.languages"
+      ],
+      "note": "The core activation vocabulary has no language fact; the language scope (typescript) comes from the profile and is implied by the source file kinds."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:suffix.source"
+      ],
+      "note": "Core file_kind value 'source' (non-test production source); concrete suffixes ts/tsx from the profile; the test-file exclusion is kept in the rule's scope via doesNotFire and verification."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roots.scan",
+        "profile:roots.excluded"
+      ],
+      "note": "The path glob is the stack realization of scan scope plus source suffixes plus the never-scanned vendored/build trees; the core states the scope role-level and leaves the exact exclusion classification to verification."
+    },
+    {
+      "item": "activation.facts[3]",
+      "as": [
+        "core:activation.facts[1]",
+        "bunOnly"
+      ],
+      "note": "Neutral finding fact (needs a per-function code-line counter over the whole scan scope, pre-existing functions included); the alias and detector id are bunOnly."
+    },
+    {
+      "item": "sharedNodes[0]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "The shared strict-disposition policy (fails on every finding; no advisory mode; no ratchet baseline) is stack-neutral and carried in the core verification entry alongside severity 2; the runner name itself is realized by enforcement.runner."
+    },
+    {
+      "item": "sharedNodes[1]",
+      "as": [
+        "core:evidence[4]",
+        "core:verification"
+      ],
+      "note": "The shared phase-loop policy (a refactor must keep existing behavior and tests green) is stack-neutral; restored as core evidence[4] and recalled in the verification entry so the refactor obligation is retained, distinct from 'no new violations'."
+    }
+  ],
+  "neutralityNotes": "The 50-code-line threshold, the code-line definition (non-blank, non-comment), the counting invariant and the severity-2 strict disposition are the rule's own obligation and stay in the core, not the profile. The shared refactor policy (behavior preserved, tests green) is retained in core:evidence[4] and core:verification. The body-extent matcher is stated generically ('a matcher aware of string and comment literals'); the brace-specific wording is the Bun realization. Language (typescript), file kinds (ts/tsx) and the scan glob are realized through profile keys (tooling.languages, suffix.source, roots.scan). roots.excluded is used only as the stack-wide never-scanned vendored/generated tree list ('vendored/build directories'); the test-file exclusion is part of the rule's own scope, and bun.json's deference of the exact exclusion classification to its checker is kept in core:verification rather than the profile. The 'ATDD Bun' runner name is realized by enforcement.runner. Cyclomatic complexity is treated as a language-neutral metric. Detector/validator/finding ids of this rule are bunOnly. The core instantiated with the Bun profile plus the bunOnly items imposes exactly the bun.json obligation: no exception dropped (blank/comment lines uncounted; exactly 50 passes; test and vendored/build trees out of scope) and no obligation added (the shared behavior/test-preservation policy is carried, not strengthened).",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.complexity-length.json",
+      "sha256": "2d645e966461b3d018ff99f622c9b8b81ad3b681a188eab2a51a5bb2295d7934"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

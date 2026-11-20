@@ -1,0 +1,324 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.artifact-naming.validation-rules",
+  "legacyId": "planner.artifact-naming.validation-rules",
+  "core": {
+    "title": "Validate artifact names against format, semantic and technical rules",
+    "given": "A plan artifact or slice manifest, an acceptance artifact, a contract, or a consumer declares, references, uses or validates an artifact name",
+    "when": "that name, a reference to it, or its contract or its declared contract URN is added, used or changed",
+    "then": "The artifact name must pass all three validation rule categories — format, semantic and technical.",
+    "prefer": [
+      "Format: theme lowercase with no separators; category/aspect/variant kebab-case; ':' for descent (hierarchy levels); '.' for variants.",
+      "Semantic: theme from the approved taxonomy; each hierarchy level adds value; aspect a concrete noun; variant a state/type/facet.",
+      "Technical: a contract exists at the contract location derived from the name by splitting it on ':' and '.'; the URN it declares is the contract URN of the name.",
+      "The URN matches the name exactly, and all consumers reference that same name."
+    ],
+    "avoid": [
+      "Deep variant nesting.",
+      "A URN that differs in any way from the name.",
+      "Consumers referencing a different spelling or alias of the name.",
+      "Hierarchy levels that add no value."
+    ],
+    "unless": [],
+    "why": "The name is the join key between plans, contracts and consumers; deriving format, meaning and file path from one name lets contracts be located mechanically and catches drift.",
+    "evidence": [
+      "Each artifact name meets the format rule (lowercase theme without separators, kebab-case category/aspect/variant, ':' descent, '.' variants).",
+      "Theme is in the approved taxonomy; levels add value, aspect is a concrete noun, variant is a state/type/facet, no deep variant nesting; URN matches the name exactly.",
+      "The contract at the profile's contract location for the name exists, the URN it declares equals the contract URN of the name, and all consumer references use the identical name."
+    ],
+    "verification": [
+      "Check scope: an artifact name is validated against exactly three categories — format, semantic and technical — wherever it is declared, referenced, used or validated. Activation location examples are illustrative only, not scope gates: any file that declares or references an artifact name is in scope.",
+      "Format check: theme segment lowercase with no separators; category/aspect/variant segments kebab-case; ':' separates hierarchy levels (descent) and '.' separates variants. Do not add restrictions beyond lowercase/no separators (the source does not further restrict the theme alphabet, e.g. digits).",
+      "Semantic checks: theme membership is checked against the approved taxonomy, which is maintained outside this rule; 'each hierarchy level adds value', 'aspect is a concrete noun', 'variant is a state/type/facet' and 'no deep variant nesting' are llm_judged — no numeric nesting threshold is given; 'the URN matches the name exactly' is a deterministic string equality.",
+      "Technical check: split the name on ':' and '.' to obtain its segments; require the contract at the profile's contract location for those segments to exist; require the URN it declares, carried in the profile's contract identity field, to equal the contract URN of the name exactly; collect all consumer references and require the identical name. The rule does not fix how segments join into the contract location — use the repository's existing contract layout rather than inventing one.",
+      "The check also applies to existing, unchanged artifact names when they are newly referenced or their contract changes.",
+      "Observability: needs a diff-level observer that extracts artifact names and their references, plus contract URN and contract-location changes, whether or not the name itself changed; a name validator or review reporting a format, semantic or technical violation on any existing name is also a trigger."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "task_term",
+          "values": [
+            "artifact",
+            "artifact name",
+            "contract",
+            "artifact URN",
+            "produce",
+            "consume",
+            "contract identifier"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "plan artifact",
+            "artifact contract"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "artifact name declared, referenced or used",
+            "artifact name added or renamed",
+            "contract location or declared URN changed",
+            "consumer reference to an artifact added or changed"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "artifact name validation failure"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "A new artifact name is declared in a produce/consume list.",
+        "An existing artifact is renamed or gets a variant.",
+        "A consumer adopts an existing, unchanged artifact name whose contract is missing.",
+        "A contract's declared URN or file location is edited so it no longer matches the artifact name, without renaming the artifact.",
+        "A contract whose declared URN carries an artifact name is authored or referenced.",
+        "A validator or review reports a violation on any existing artifact name."
+      ],
+      "doesNotFire": [
+        "Edits to acceptance prose that neither declare, reference nor change any artifact name or its contract.",
+        "Changes to identifiers that are not artifact names (e.g. test function names, local variables)."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "layout.contract_paths#contract_file",
+      "meaning": "Path pattern of the contract for an artifact name, expressed over the name's segments (obtained by splitting the name on ':' and '.'); where the contract lives and how it is named.",
+      "bunValue": "contracts/{segments}.schema.json"
+    },
+    {
+      "key": "urn.contract",
+      "meaning": "URN shape of the contract for an artifact name.",
+      "bunValue": "urn:contract:{artifact_name}"
+    },
+    {
+      "key": "urn.grammar#contract_identity_field",
+      "meaning": "The identity field of the contract artifact: the field a contract carries that declares its own URN (a self-declaration of contract identity, not a source/test binding).",
+      "bunValue": "$id"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "activation.facts[1]",
+      "text": "path_glob values: contracts/**/*.schema.json, plan/**, **/wagon*.yaml (example locations: contract schemas, plan/wagon produce/consume declarations)",
+      "reason": "Concrete example paths in the stack's tree (plan root, wagon manifests, contract schema suffix) name stack locations; the core keeps only the role-level file kinds and records in verification that examples are not scope gates."
+    },
+    {
+      "item": "activation.facts[3]",
+      "text": "artifact-name-validation-failure",
+      "reason": "Finding id of this rule's validator in this stack; per the vocabulary, finding ids of a single rule are realization details, and the core describes the check generically."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "Bun enumerates the stack's declarers (plan, wagon, acceptance, contract, consumer); 'wagon' is the stack's plan-level slice manifest, rendered by the plan-artifact role / slice manifest, and the activation note makes scope any file declaring or referencing an artifact name, so the neutral enumeration is equivalent.",
+      "as": [
+        "core:given"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "'$id' rendered as the contract's declared URN; the field that carries it comes from the profile (urn.grammar#contract_identity_field, the contract's own identity field).",
+      "as": [
+        "core:when",
+        "profile:urn.grammar#contract_identity_field"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "Verbatim; names no stack, path or suffix.",
+      "as": [
+        "core:then"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "The name grammar (lowercase theme, kebab-case segments, ':' descent, '.' variants) is the convention's own subject matter and is stack-neutral.",
+      "as": [
+        "core:prefer[0]"
+      ]
+    },
+    {
+      "item": "prefer[1]",
+      "note": "Verbatim; the approved taxonomy is maintained outside the rule.",
+      "as": [
+        "core:prefer[1]"
+      ]
+    },
+    {
+      "item": "prefer[2]",
+      "note": "Concrete path contracts/{segments}.schema.json, URN spelling urn:contract:{artifact_name} and the $id identity field replaced by profile keys; the segment derivation (split on ':' and '.') is neutral and kept.",
+      "as": [
+        "core:prefer[2]",
+        "profile:layout.contract_paths#contract_file",
+        "profile:urn.contract",
+        "profile:urn.grammar#contract_identity_field"
+      ]
+    },
+    {
+      "item": "prefer[3]",
+      "note": "Verbatim; URN and consumers are neutral ATDD concepts.",
+      "as": [
+        "core:prefer[3]"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "Verbatim, neutral.",
+      "as": [
+        "core:avoid[0]"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "Verbatim, neutral.",
+      "as": [
+        "core:avoid[1]"
+      ]
+    },
+    {
+      "item": "avoid[2]",
+      "note": "Verbatim, neutral.",
+      "as": [
+        "core:avoid[2]"
+      ]
+    },
+    {
+      "item": "avoid[3]",
+      "note": "Verbatim, neutral.",
+      "as": [
+        "core:avoid[3]"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "Verbatim; 'file path' is generic, no concrete path named.",
+      "as": [
+        "core:why"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "Verbatim, neutral.",
+      "as": [
+        "core:evidence[0]"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "Verbatim, neutral.",
+      "as": [
+        "core:evidence[1]"
+      ]
+    },
+    {
+      "item": "evidence[2]",
+      "note": "Concrete path and URN spelling replaced by the profile's contract location and contract URN.",
+      "as": [
+        "core:evidence[2]",
+        "profile:layout.contract_paths#contract_file",
+        "profile:urn.contract"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "Term definition and the three categories; neutral, kept as the check-scope entry.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "Format check mechanics, including the caution not to add alphabet restrictions beyond lowercase/no separators.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "Technical check genericized; the contract's own declared URN is read from the profile's contract identity field; the segment-to-path join stays deferred to the repository's existing contract layout; application to unchanged names newly referenced or with contract changes is kept.",
+      "as": [
+        "core:verification",
+        "profile:layout.contract_paths#contract_file",
+        "profile:urn.contract",
+        "profile:urn.grammar#contract_identity_field"
+      ]
+    },
+    {
+      "item": "verifier_detail[3]",
+      "note": "Taxonomy outside the rule, llm_judged semantic judgments with no nesting threshold, deterministic string equality for the URN match.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "Task terms neutralized: 'urn:contract' -> artifact URN (urn.contract), '$id' -> contract identifier (the contract's identity field, urn.grammar#contract_identity_field); the note (task text mentions declaring/referencing/using/validating an artifact name or its contract) is captured by the core terms.",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:urn.contract",
+        "profile:urn.grammar#contract_identity_field"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "The path_glob fact type is not neutral; the core keeps a file_kind fact (plan artifact, artifact contract), the scope caveat (examples are not scope gates) goes to verification, and the concrete globs stay Bun-only.",
+      "as": [
+        "core:activation.facts[1]",
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "'$id' rendered as the declared URN; the field that carries it comes from the profile (urn.grammar#contract_identity_field); the diff-level observer requirement from the note is restated in verification; needs_new_observer kept.",
+      "as": [
+        "core:activation.facts[2]",
+        "profile:urn.grammar#contract_identity_field"
+      ]
+    },
+    {
+      "item": "activation.facts[3]",
+      "note": "The finding trigger is kept generically; the concrete finding id is a realization detail.",
+      "as": [
+        "core:activation.facts[3]",
+        "bunOnly"
+      ]
+    }
+  ],
+  "neutralityNotes": "The artifact-name grammar itself (theme:category:aspect.variant, ':' descent, '.' variants, kebab-case, approved taxonomy, URN-equals-name) is the subject of the convention and contains no stack reference, so it stays in the core verbatim. The only concrete anchors — the contract file pattern (contracts/{segments}.schema.json), the contract URN shape (urn:contract:{artifact_name}) and the identity field carrying it ($id) — are supplied by the profile via layout.contract_paths#contract_file, urn.contract and urn.grammar#contract_identity_field (the contract's self-declared identity is grammar of the contract artifact, not a source/test binding, so the urn.binding.* key is not used). The example activation globs and the finding id remain Bun-only. The approved taxonomy contents, any numeric nesting threshold and the segment-to-path join are unspecified by the source; that deference is preserved in core:verification rather than neutralized into new obligations. 'wagon' in the Bun given is the stack's plan-level slice manifest; the core uses the plan-artifact role, and the activation note ('any file that declares or references an artifact name is in scope') keeps the obligation identical. No per-rule severity or disposition exists in bun.json, so none was invented.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/planner-nodes/planner.artifact-naming.validation-rules.json",
+      "sha256": "1961e0f558056d66c3405b87a6d0f3180b6a7f04a19c428b0e455d3239c10187"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "rekey-v3 -> zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

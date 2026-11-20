@@ -1,0 +1,253 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.acceptance.route-construction",
+  "legacyId": "planner.acceptance.route-construction",
+  "core": {
+    "title": "Build route.sequence as ordered {layer}.{action} steps",
+    "given": "An acceptance with a route.sequence.",
+    "when": "The planner writes or changes route.sequence.",
+    "then": "Write route.sequence as ordered {layer}.{action} transitions from the route_step vocabulary, flowing through the layer roles in the profile's dependency order (profile: roles.layers) as needed (include only the layers the scenario uses; a route triggered from an external integration may start at integration, as in the event flow).",
+    "prefer": [
+      "Command: presentation.command -> application.use_case -> domain.validate -> integration.persist.",
+      "Query (skips domain): presentation.query -> application.query -> integration.read.",
+      "Event (starts at integration): integration.call_external -> application.aggregate -> domain.mutate -> integration.persist.",
+      "Steps: presentation.{command,query,display}; application.{use_case,query,aggregate}; domain.{create,validate,mutate,policy}; integration.{read,persist,call_external}."
+    ],
+    "avoid": [
+      "Free-form step names or layers outside the profile's layer roles (profile: roles.layers).",
+      "Listing steps unordered or in an order that does not reflect the actual sequence of transitions; do not reject or reorder an integration-initiated route like the event flow just because it begins at integration.",
+      "Padding the route with layers the scenario does not need."
+    ],
+    "unless": [],
+    "why": "A fixed {layer}.{action} vocabulary makes the layer flow behind each acceptance explicit and mechanically checkable.",
+    "evidence": [
+      "Every route.sequence entry matches {layer}.{action} and is in the allowed route_step vocabulary.",
+      "Steps are ordered as the scenario's transitions occur, consistent with the canonical shapes: command and query flows run presentation -> application -> (domain) -> integration; the event flow starts at integration.call_external and then proceeds application -> domain -> integration."
+    ],
+    "verification": [
+      "Check that each route.sequence entry is one route_step term (a single {layer}.{action} transition in a route sequence) drawn from the allowed route_step vocabulary: presentation.{command,query,display}, application.{use_case,query,aggregate}, domain.{create,validate,mutate,policy}, integration.{read,persist,call_external}, with the layer names taken from the profile's layer roles.",
+      "Check step order against the canonical examples, all of which must pass: presentation_flow [presentation.command, application.use_case, domain.validate, integration.persist]; query_flow [presentation.query, application.query, integration.read]; event_flow [integration.call_external, application.aggregate, domain.mutate, integration.persist].",
+      "Order is not a strict monotonic layer check: layers may be skipped (query_flow omits domain) and an integration step may both open and close a route (event_flow); the check must not reject or reorder an integration-initiated route just because it begins at integration. All three canonical examples must pass any order check."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "acceptance"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "operation",
+          "values": [
+            "author",
+            "edit"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "route.sequence added or modified"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "Planner authors a new acceptance that includes a route.sequence.",
+        "Planner edits the steps or order of an existing acceptance's route.sequence."
+      ],
+      "doesNotFire": [
+        "Editing only the acceptance's prose or Given/When/Then text without touching route.sequence.",
+        "Coder changes production code with no acceptance artifact change."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roles.layers",
+      "meaning": "The stack's layer roles in dependency order. The core draws the allowed layer names (avoid: no layers outside them) and the direction of the route flow in the then-clause from this ordered list.",
+      "bunValue": "presentation, application, domain, integration"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given"
+      ],
+      "note": "Names only method artifacts (acceptance, route.sequence); neutral as-is."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "Planner is the method task role, not a stack name; kept verbatim."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "profile:roles.layers"
+      ],
+      "note": "The explicit layer list and its order are parameterized by the profile's layer roles; both parentheticals (only needed layers; integration-initiated start) are preserved so the core is neither weaker nor stronger."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]"
+      ],
+      "note": "Canonical command flow expressed purely in role names; kept verbatim."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]"
+      ],
+      "note": "Canonical query flow, role-level; kept verbatim."
+    },
+    {
+      "item": "prefer[2]",
+      "as": [
+        "core:prefer[2]"
+      ],
+      "note": "Canonical event flow, role-level; kept verbatim."
+    },
+    {
+      "item": "prefer[3]",
+      "as": [
+        "core:prefer[3]"
+      ],
+      "note": "The route_step action vocabulary per layer role; method-level (rule) vocabulary, not stack data, so it stays in the core."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]",
+        "profile:roles.layers"
+      ],
+      "note": "The closed layer set referenced by the avoid is the profile's layer roles."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]",
+        "core:verification"
+      ],
+      "note": "First clause is the agent-facing avoid; the do-not-reject-or-reorder clause is verifier guidance mirrored in the core verification array."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]",
+        "profile:roles.layers"
+      ],
+      "note": "Padding means listing layer roles the scenario does not use; the role set comes from the profile."
+    },
+    {
+      "item": "unless",
+      "as": [],
+      "note": "Empty array in bun.json; the core keeps it as an empty array with no exception added or dropped."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Rationale is method-level and stack-neutral; kept verbatim."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]"
+      ],
+      "note": "Vocabulary-membership evidence; neutral as-is."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]",
+        "profile:roles.layers"
+      ],
+      "note": "Order evidence stated with the canonical shapes; the flow direction those shapes follow is the profile's layer order."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Definition of the route_step term checked; role-level, folded into the first verification entry."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "profile:roles.layers"
+      ],
+      "note": "Allowed values enumerated per layer role; layer names are sourced from the profile's layer roles."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "The three canonical examples become must-pass fixtures of the order check; neutral."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Scopes the order check (not a strict monotonic layer check; integration may open and close a route); preserved as the third verification entry so no exception is dropped."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]"
+      ],
+      "note": "file_kind 'acceptance' is already the neutral fact vocabulary."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[1]"
+      ],
+      "note": "operation values are method task operations; neutral."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[2]"
+      ],
+      "note": "Structural change fact kept with needs_new_observer; until that observer exists, facts[0]+[1] over-approximate activation, exactly as the Bun note records."
+    }
+  ],
+  "neutralityNotes": "This convention is method-level: every agent-facing item of bun.json names only method roles (planner), layer roles (presentation/application/domain/integration), and task-model fields (route.sequence), so no item is bunOnly and no stack, runtime, framework, language, package manager, suffix or path appears in the core. The only stack-parameterized data is the layer set and its flow order, sourced from roles.layers; with the Bun value (presentation, application, domain, integration) the core imposes exactly the Bun obligation. bun.json declares no exceptions, so core.unless is the empty array, matching the schema. The route_step action vocabulary per layer is treated as rule (method) data and stays in the core, since it comes from the method's term definition rather than from the stack; a stack wanting different step actions would need a proposed vocabulary key, which was not required here. The change fact (route.sequence added or modified) still needs a structural-diff observer (needs_new_observer); the over-approximation via file_kind+operation until then is preserved. The activation facts' explanatory notes were dropped because the neutral fact schema carries only fact/values/observability; their content is restated in the classification notes and is not part of the obligation.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/planner-nodes/planner.acceptance.route-construction.json",
+      "sha256": "1d39452824c46dcff170364cef8886cb9ca7907e924b2ad8a70d1abaab69f560"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

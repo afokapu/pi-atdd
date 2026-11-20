@@ -1,0 +1,276 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.docs.adr-registry-derived-regenerate-never-hand-type",
+  "legacyId": "planner.docs.adr-registry-derived.regenerate-never-hand-type",
+  "splitOf": "planner.docs.adr-registry-derived",
+  "core": {
+    "title": "Produce decision-registry entries by regenerating from the records' decided edges, never by hand",
+    "given": "A documentation corpus whose decision-record location holds decision records, and a decision registry (a derived projection of those records) that exists or must be created",
+    "when": "You plan or author a change that would alter the registry's entries, including decision-record adds, renames and removals, and edits to a record's declared identity or decided edge",
+    "then": "Produce the registry's entries by regenerating them from the decision records and their declared decided edges; never type them by hand.",
+    "prefer": [
+      "Regenerate rather than edit: run the stack's registry generator (from the profile), which rewrites the generated region.",
+      "Declare the generated region where the list belongs, using the stack's region markers (from the profile). The generator writes only between them, one entry per decision record keyed by the record's declared identity, from the same documents the check reads."
+    ],
+    "avoid": [
+      "Typing an entry into the registry. If you find yourself doing that, the entry belongs in a decision record with a declared decided edge instead.",
+      "Writing decision content into the registry. It holds references to the decisions, never the decisions themselves."
+    ],
+    "unless": [],
+    "why": "The registry's job is to make the set of decision records navigable. The moment a human types an entry into it, the set has two sources of truth. A hand-maintained list of decisions drifts from the decisions, which is precisely the failure class ATDD exists to kill, reproduced inside the documentation system itself. Deriving the registry makes drift impossible rather than detectable. The registry is a projection, never a typed list (spec 2 §5.2, §6).",
+    "evidence": [
+      "The plan or session shows the stack's registry generator (from the profile) run after the decision-record change, with no hand-typed registry entries.",
+      "The diff inside the generated region matches the generator's output. Edits outside the region are limited to surrounding prose and inserting the region markers."
+    ],
+    "verification": [
+      "Drift check, bidirectional: the registry's generated region is compared against the set of decision records and their declared decided edges — a record missing from the region, or an entry naming a record that is absent or renamed, is a finding. Only the generated region is compared; the registry's surrounding prose is out of scope.",
+      "The check covers drift only. Provenance — whether an entry was typed by hand rather than regenerated — is not mechanically observable; a reviewer or LLM judges it from the plan or session.",
+      "Severity 2."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "decision registry",
+            "decision record"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "operation",
+          "values": [
+            "create",
+            "edit",
+            "rename",
+            "delete"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "registry entry typed by hand instead of regenerated"
+          ],
+          "observability": "llm_judged"
+        }
+      ],
+      "fires": [
+        "A plan or plan artifact tells someone to type, add or delete a registry entry by hand.",
+        "A decision record is added, renamed or removed, or its declared identity or decided edge is edited, and the plan updates the registry without running the generator.",
+        "A decision's content (rationale, choice) is written into the registry instead of a decision record."
+      ],
+      "doesNotFire": [
+        "Hand-editing the registry's title or introductory prose outside the generated region.",
+        "Hand-inserting the generated-region markers where the list belongs; the generator then fills the region.",
+        "A plan that regenerates the registry with the stack's generator after the decision-record change."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "layout.locations#decision_records",
+      "meaning": "Where the corpus's decision records live (path or glob), so activation and the drift check can find the record set the registry is derived from.",
+      "bunValue": "docs/architecture/decisions/adr-*.adoc"
+    },
+    {
+      "key": "layout.registries#decisions",
+      "meaning": "The registry file that projects the decision records — the derived index this rule governs.",
+      "bunValue": "docs/architecture/decisions/index.adoc"
+    },
+    {
+      "key": "idiom.docs_syntax#decision_record_declaration",
+      "meaning": "How a decision record declares its identity and the node it decides — the edge the registry entries are keyed by and derived from.",
+      "bunValue": ":adr-id: and :decides: attributes in each ADR file (one registry line per ADR keyed by :adr-id:)"
+    },
+    {
+      "key": "idiom.docs_syntax#generated_region",
+      "meaning": "The marker pair a generator writes around its own output, delimiting the machine-maintained region that is regenerated and compared.",
+      "bunValue": "// BEGIN GENERATED: adr-register and // END GENERATED: adr-register"
+    },
+    {
+      "key": "tooling.commands#decision_registry_generator",
+      "meaning": "The helper command that regenerates the decision registry from the decision records, and its check-only mode that reports drift without writing.",
+      "bunValue": "atdd-bun docs adr-register (rewrites the adr-register region); atdd-bun docs adr-register --check reports drift without writing"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "activation.facts[0]",
+      "text": "Fact name `path_glob` with values `docs/architecture/decisions/index.adoc`, `docs/architecture/decisions/adr-*.adoc`.",
+      "reason": "The Bun sidecar's activation schema targets files by a path_glob fact type that has no neutral counterpart; the core re-expresses it as a file_kind fact whose values resolve through the profile's layout keys."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "text": "(see .listing-matches-adrs)",
+      "reason": "Cross-reference to a sibling rule's finding id — a realization detail of this stack's rule set; the core's verification names the drift check generically."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "Neutral: a docs corpus with decision records and a derived registry that exists or must be created. The concrete decisions directory and registry file come from the profile.",
+      "as": [
+        "core:given",
+        "profile:layout.locations#decision_records",
+        "profile:layout.registries#decisions"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "Neutral: changes that would alter registry entries, including record adds/renames/removals and identity or decided-edge edits. `:adr-id:`/`:decides:` are the profile idiom's concrete names.",
+      "as": [
+        "core:when",
+        "profile:idiom.docs_syntax#decision_record_declaration"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "Fully neutral: regenerate entries from the records and their decided edges; never hand-type. One obligation.",
+      "as": [
+        "core:then"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "Neutral rationale; ADRs generalized to decision records. Spec references (spec 2 §5.2, §6) are stack-neutral and kept.",
+      "as": [
+        "core:why"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "Neutral: run the stack's registry generator, which rewrites the generated region. The concrete command `atdd-bun docs adr-register` is the profile key's bunValue.",
+      "as": [
+        "core:prefer[0]",
+        "profile:tooling.commands#decision_registry_generator"
+      ]
+    },
+    {
+      "item": "prefer[1]",
+      "note": "Neutral: declare the generated region with the stack's markers; the generator writes only within it, one entry per record keyed by declared identity, from the same documents the check reads. Marker strings, registry path and `:adr-id:` keying are profile values.",
+      "as": [
+        "core:prefer[1]",
+        "profile:idiom.docs_syntax#generated_region",
+        "profile:layout.registries#decisions",
+        "profile:idiom.docs_syntax#decision_record_declaration"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "Neutral: never type an entry; it belongs in a decision record with a declared decided edge. `decisions/index.adoc` and `:decides:` are the profile values.",
+      "as": [
+        "core:avoid[0]",
+        "profile:layout.registries#decisions",
+        "profile:idiom.docs_syntax#decision_record_declaration"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "Already neutral — the registry holds references to decisions, never the decisions themselves.",
+      "as": [
+        "core:avoid[1]"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "Neutral: the plan or session shows the generator run after the record change, with no hand-typed entries. The concrete command is the profile value.",
+      "as": [
+        "core:evidence[0]",
+        "profile:tooling.commands#decision_registry_generator"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "Neutral: the diff inside the generated region matches the generator's output; edits outside are prose and marker insertion. `adr-register` region and marker strings are the profile value.",
+      "as": [
+        "core:evidence[1]",
+        "profile:idiom.docs_syntax#generated_region"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "Definitional and neutral: registry entries are computed from the record set and their decided targets; references never decisions. Goes to core verification; the concrete `index.adoc` path is a profile value.",
+      "as": [
+        "core:verification",
+        "profile:layout.locations#decision_records",
+        "profile:layout.registries#decisions"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "Neutral: the generator rewrites only the generated region, one entry per record keyed by declared identity, from the same documents the check reads; a check-only mode reports drift without writing. Command, markers and key attribute are profile values.",
+      "as": [
+        "core:verification",
+        "profile:tooling.commands#decision_registry_generator",
+        "profile:idiom.docs_syntax#generated_region",
+        "profile:idiom.docs_syntax#decision_record_declaration"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "Provenance judged by reviewer/LLM, mechanical check sees only drift — verification scope. The `.listing-matches-adrs` finding id is a realization detail (bunOnly).",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[3]",
+      "note": "Severity 2 stays with the rule as core verification, not a profile key. No failure disposition is stated in the frozen rewrite, so the core adds none.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "Neutralized to a file_kind fact (decision registry, decision record) resolved through the layout keys; the Bun `path_glob` fact type and literal paths are the realization.",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:layout.registries#decisions",
+        "profile:layout.locations#decision_records",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "operation create/edit/rename/delete — already neutral and observable.",
+      "as": [
+        "core:activation.facts[1]"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "change 'registry entry typed by hand instead of regenerated', llm_judged — already neutral; kept verbatim.",
+      "as": [
+        "core:activation.facts[2]"
+      ]
+    }
+  ],
+  "neutralityNotes": "Neutral terms: decision record (ADR as a concept) and decision registry. The concrete realizations — the AsciiDoc attribute idioms (:adr-id:, :decides:), the adr-register marker pair, the registry and record paths, and the generator command — have no existing vocabulary keys, so they are proposed as profile keys (layout.locations#decision_records, layout.registries#decisions, idiom.docs_syntax#decision_record_declaration, idiom.docs_syntax#generated_region, tooling.commands#decision_registry_generator) with the Bun values above; bun.json itself remains the worked example. The Bun sidecar's activation schema has a path_glob fact type with no neutral counterpart; the core re-expresses it as a file_kind fact resolved through the layout keys, and the literal Bun fact is bunOnly. The cross-reference to the sibling rule's finding id (.listing-matches-adrs) is a realization detail kept only in bunOnly; core verification names the drift check generically. WMBT is the plan_artifact role's Bun kind and is neutralized to 'plan artifact'. The rule presupposes the stack ships a registry generator; that is why the generator is profile data rather than core text — without one, the surviving neutral obligation is that the registry equal the projection of the decision records, which is still drift-checkable. The frozen rewrite states Severity 2 but no failure disposition; the core records exactly that and imports no disposition from the context-only source.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/splits/planner.docs.adr-registry-derived.json",
+      "sha256": "a1de592426203315dc51cab075a2ee7652d5c961aecb1b9f0089ac80539b956f",
+      "part": "planner.docs.adr-registry-derived.regenerate-never-hand-type"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 1,
+    "usefulness": 5,
+    "deriver": "rekey-v3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

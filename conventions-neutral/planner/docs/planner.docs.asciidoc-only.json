@@ -1,0 +1,371 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.docs.asciidoc-only",
+  "legacyId": "planner.docs.asciidoc-only",
+  "core": {
+    "title": "Author every file beneath the documentation root in the stack's documentation markup format, never in the rejected alternate format",
+    "given": "A plan artifact, product slice or documentation change places an authored file beneath the documentation root (any path not beneath the generated documentation-output tree).",
+    "when": "The planner chooses the file's format or path.",
+    "then": "An authored file beneath the documentation root (outside the generated documentation-output tree) MUST use the stack's documentation markup format; a file of the rejected alternate format there is a violation.",
+    "prefer": [
+      "Convert an existing file of the rejected format beneath the documentation root to the same path in the documentation markup format, keeping its content intact.",
+      "When converting a historical document, place it in the documentation tree's archive area and set its status marker accordingly; migration preserves history and never promotes it to current.",
+      "Decide by location only: beneath the documentation root, not beneath the generated documentation-output tree, in the rejected format - convert."
+    ],
+    "avoid": [
+      "Committing an authored file of the rejected format anywhere beneath the documentation root outside the generated documentation-output tree.",
+      "Arguing a file of the rejected format beneath the documentation root is exempt because it is 'not really prose documentation' - the test is location, not content.",
+      "Treating format conversion as making a historical document current.",
+      "Expanding the plan to reject or convert files of the rejected format outside the documentation tree (repository readme, contribution guide, repository-root corpus) under this rule; that migration belongs to the adoption step."
+    ],
+    "unless": [
+      "The file is beneath the generated documentation-output tree (generated build output, never scanned).",
+      "The file of the rejected format is outside the documentation tree (e.g. the repository readme or contribution guide); it is migrated by the adoption step, not rejected here."
+    ],
+    "why": "A corpus in two markup formats cannot serve as one documentation tree: the other documentation rules attach document identifiers and implements/supersedes-style relationship edges only under a single uniform format, so format uniformity is the precondition for every other documentation rule.",
+    "evidence": [
+      "A scan of the documentation tree (excluding the generated documentation-output tree by path) reports zero files of the rejected alternate format.",
+      "Converted files exist at the same path in the documentation markup format with preserved content; historical ones sit in the archive area with their status marker set."
+    ],
+    "verification": [
+      "Deterministic location test, not a content test: flag a file iff it is beneath the documentation root, not beneath the generated documentation-output tree, and carries the rejected alternate format's suffix. 'Is this really prose documentation?' is semantic and undecidable, so the decidable location form is chosen on purpose.",
+      "Authored means: anything beneath the documentation root that is not beneath the generated documentation-output tree is authored. The generated output tree is produced by the documentation build, normally ignored by version control, and never subject to the authored-format rule.",
+      "Exclude the generated documentation-output tree by path rather than by version-control ignore status, so the check is identical whether or not the tree has been built - deterministic in continuous integration.",
+      "Files of the rejected format outside the documentation tree are out of scope for this check; their migration belongs to the adoption step of the stack's documentation model.",
+      "Disposition strict: the checker fails on every finding, with no advisory mode and no ratchet baseline. Severity 2."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "rejected_markup_beneath_documentation_root"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "!generated_output_beneath_documentation_root"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "file_added",
+            "file_renamed",
+            "file_modified"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "task_term",
+          "values": [
+            "docs",
+            "documentation",
+            "ADR",
+            "architecture doc",
+            "migrate docs"
+          ],
+          "observability": "llm_judged"
+        }
+      ],
+      "fires": [
+        "A plan artifact or product slice creates a new file of the rejected alternate format beneath the documentation root.",
+        "An existing file of the rejected format is moved or copied into the documentation tree (outside the generated documentation-output tree).",
+        "A scan of the documentation tree finds any committed file of the rejected format not beneath the generated documentation-output tree."
+      ],
+      "doesNotFire": [
+        "A file of the rejected format beneath the generated documentation-output tree (generated build output, never scanned).",
+        "Files of the rejected format outside the documentation tree, including the repository readme, contribution guide and repository-root corpus.",
+        "A file in the stack's documentation markup format authored anywhere beneath the documentation root."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roots.docs",
+      "meaning": "Root of the authored documentation tree; the rule's location test and every scoping statement (given, unless, activation binding, check scope) are relative to this root.",
+      "bunValue": "docs"
+    },
+    {
+      "key": "roots.generated",
+      "meaning": "The stack's generated output trees (documentation, renders, views) that are outputs, never authored inputs; this rule takes the generated documentation-output tree beneath the documentation root as its never-scanned exception.",
+      "bunValue": "docs/dist/**"
+    },
+    {
+      "key": "suffix.markup",
+      "meaning": "Suffixes of the stack's documentation markup format - the one authored format permitted beneath the documentation root.",
+      "bunValue": ".adoc"
+    },
+    {
+      "key": "suffix.rejected_markup",
+      "meaning": "Suffixes of the alternate prose-markup format rejected beneath the documentation root; the check flags exactly this suffix (not every non-markup suffix), and the activation kind rejected_markup_beneath_documentation_root binds it to the documentation root.",
+      "bunValue": ".md"
+    },
+    {
+      "key": "layout.locations#docs_archive",
+      "meaning": "Directory beneath the documentation root where historical documents are placed when converted; conversion puts them there and never promotes them to current.",
+      "bunValue": "docs/archive/"
+    },
+    {
+      "key": "idiom.docs_syntax#doc_status_marker",
+      "meaning": "How a document declares its status (current vs historical/archived) in the stack's documentation markup format; a converted historical document sets it accordingly.",
+      "bunValue": ":status:"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "why",
+      "text": "doc-id and :implements:/:supersedes: edges are AsciiDoc attributes and markdown has nowhere to put them",
+      "reason": "The concrete representational mechanism (AsciiDoc attributes vs markdown's lack of them) is specific to the ATDD-Bun documentation model's format pair; the core states only the general uniform-format rationale - the relationship graph presupposes one format - and makes no claim about other stacks' format capacities."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "(spec 2 §4 chose the decidable form on purpose; same reasoning as planner.docs.undeclared-change being the enforceable inverse of 'should this have been declared?')",
+      "reason": "Cites the ATDD-Bun handoff spec and a sibling Bun rule id; lineage reasoning, not part of the neutral obligation. The decidable-location-test rationale itself is kept in core verification."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "text": "rendered by the build (spec 2 §7), normally excluded from git",
+      "reason": "Cites the ATDD-Bun handoff spec and git by name; the core says 'produced by the documentation build, normally ignored by version control'."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "text": "Fix-hint example: docs/architecture/shared-control-root.md (✗ authored markdown under docs/) → docs/architecture/shared-control-root.adoc (✓ authored AsciiDoc)",
+      "reason": "Rule-specific example paths and the concrete format pair; bun.json itself is delivered as the worked reference example, so the core does not repeat it."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "'wagon' generalized to product slice; the documentation root and the generated documentation-output tree beneath it are profile data (roots.docs, roots.generated).",
+      "as": [
+        "core:given",
+        "profile:roots.docs",
+        "profile:roots.generated"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "Already stack-neutral.",
+      "as": [
+        "core:when"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "The required format (.adoc) and the rejected format (.md) are profile data; the obligation shape (MUST plus the location-defined violation surface) is preserved.",
+      "as": [
+        "core:then",
+        "profile:suffix.markup",
+        "profile:suffix.rejected_markup"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "The core keeps only the general uniform-format rationale (identifiers and relationship edges presuppose a single format); the concrete AsciiDoc-attribute vs markdown-capacity mechanism stays in the realization.",
+      "as": [
+        "core:why",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "Same-path conversion with preserved content; formats come from suffix.markup / suffix.rejected_markup.",
+      "as": [
+        "core:prefer[0]"
+      ]
+    },
+    {
+      "item": "prefer[1]",
+      "note": "Neutral obligation: a historical document stays historical; the archive area and the status marker are profile data, so any stack can instantiate the instruction.",
+      "as": [
+        "core:prefer[1]",
+        "profile:layout.locations#docs_archive",
+        "profile:idiom.docs_syntax#doc_status_marker"
+      ]
+    },
+    {
+      "item": "prefer[2]",
+      "note": "Location-only decision rule, neutralized via the documentation root, the generated documentation-output tree, and the rejected-format suffix.",
+      "as": [
+        "core:prefer[2]",
+        "profile:roots.docs",
+        "profile:roots.generated",
+        "profile:suffix.rejected_markup"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "Neutral restatement of 'committing authored markdown under docs/ outside docs/dist/'.",
+      "as": [
+        "core:avoid[0]"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "Location-not-content argument guard; fully neutral.",
+      "as": [
+        "core:avoid[1]"
+      ]
+    },
+    {
+      "item": "avoid[2]",
+      "note": "'conversion to .adoc' generalized to format conversion.",
+      "as": [
+        "core:avoid[2]"
+      ]
+    },
+    {
+      "item": "avoid[3]",
+      "note": "README.md/CONTRIBUTING.md generalized to repository readme/contribution guide; adoption-step boundary kept.",
+      "as": [
+        "core:avoid[3]"
+      ]
+    },
+    {
+      "item": "unless[0]",
+      "note": "Generated-output exception: the generated documentation-output tree beneath the documentation root (roots.generated), excluded by path in core verification - no exclusion-registry architecture beyond bun.json's own path exclusion.",
+      "as": [
+        "core:unless[0]",
+        "profile:roots.generated"
+      ]
+    },
+    {
+      "item": "unless[1]",
+      "note": "Outside-the-documentation-tree exception, neutralized.",
+      "as": [
+        "core:unless[1]"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "Scan result as evidence; the scan's path-based exclusion mechanics are also stated in core verification.",
+      "as": [
+        "core:evidence[0]",
+        "core:verification"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "Neutral evidence kept; the archive area and the status marker are profile data, not bunOnly.",
+      "as": [
+        "core:evidence[1]",
+        "profile:layout.locations#docs_archive",
+        "profile:idiom.docs_syntax#doc_status_marker"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "Location-test-not-content-test rationale is generic verification; the spec/sibling-rule citation is realization lineage (bunOnly).",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "Term authored_file neutralized to 'anything beneath the documentation root outside the generated output tree is authored' (see the authored/generated-output verification entries).",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "Term generated_output neutralized; the tree's identity comes from the stack's generated output trees (roots.generated), selected beneath the documentation root; the spec 2 §7 / git wording is bunOnly.",
+      "as": [
+        "core:verification",
+        "profile:roots.generated",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[3]",
+      "note": "Exclusion of the generated documentation-output tree by path rather than by ignore status, so the check is identical whether or not the tree has been built; bun.json requires nothing more, and the core adds nothing more.",
+      "as": [
+        "core:verification",
+        "profile:roots.generated"
+      ]
+    },
+    {
+      "item": "verifier_detail[4]",
+      "note": "Out-of-scope statement for files outside the documentation tree.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[5]",
+      "note": "Concrete fix-hint example with Bun paths and suffixes; the reference example lives in bun.json.",
+      "as": [
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[6]",
+      "note": "Severity 2 and strict disposition (fail on every finding, no advisory mode, no ratchet baseline) go to core verification, not the profile; also carries the sharedNodes policy.strict-disposition node.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "path_glob 'docs/**/*.md' re-typed as a scoped file_kind fact: rejected_markup_beneath_documentation_root binds the rejected suffix (suffix.rejected_markup) to the documentation root (roots.docs), so the fact fires only beneath that root - exactly Bun's docs/**/*.md.",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roots.docs",
+        "profile:suffix.rejected_markup"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "path_glob '!docs/dist/**' re-typed as a negative file_kind fact: !generated_output_beneath_documentation_root excludes, by path, the generated documentation-output tree beneath the documentation root (roots.generated beneath roots.docs); the '!' preserves Bun's exclusion polarity, so files there never fire.",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:roots.docs",
+        "profile:roots.generated"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "Change kinds are already neutral; tree-scan semantics kept.",
+      "as": [
+        "core:activation.facts[2]"
+      ]
+    },
+    {
+      "item": "activation.facts[3]",
+      "note": "Task terms are stack-neutral planner vocabulary; kept verbatim.",
+      "as": [
+        "core:activation.facts[3]"
+      ]
+    }
+  ],
+  "neutralityNotes": "The required and rejected formats (.adoc / .md), the documentation root (docs), the generated documentation-output tree (docs/dist/**), the archive area (docs/archive/) and the status marker (:status:) are profile data, bound through existing vocabulary v3 keys: roots.docs, roots.generated, suffix.markup, suffix.rejected_markup, layout.locations#docs_archive and idiom.docs_syntax#doc_status_marker - no keys are proposed. The generated-output exception is the generated documentation-output tree beneath the documentation root, taken from the stack's generated output trees (roots.generated, which covers generated documentation output) rather than the stack-wide roots.excluded union; it is excluded by path rather than by version-control ignore status, so the check is identical whether or not the tree has been built - bun.json imposes no further exclusion architecture, and the core adds none. The Bun path_glob activation facts were re-typed as scoped file_kind facts - rejected_markup_beneath_documentation_root binds the rejected suffix to the documentation root, and !generated_output_beneath_documentation_root keeps the exclusion's negative polarity - so the fact mapping alone admits exactly the files Bun's facts admit (beneath the root, rejected suffix, outside the generated tree); prose exceptions add no further scope. The core's why states only the general uniform-format rationale; the claim that the rejected format has nowhere to carry relationship attributes is the ATDD-Bun format-pair mechanism and stays in bunOnly. Per-rule severity 2 and the strict disposition (including the sharedNodes policy.strict-disposition node) are carried in core verification, not the profile. The audit, trace, additions and sharedNodes blocks and the validator id (docs_capability) are realization bookkeeping outside the agent-facing item numbering. Instantiating the core with the Bun profile values (docs; docs/dist/**; .adoc; .md; docs/archive/; :status:) plus the bunOnly items reproduces bun.json's obligation exactly: flag iff beneath docs/, not beneath docs/dist/, ending .md; convert to the same path in .adoc with content preserved, historical ones into docs/archive/ with :status: set; no exception dropped, no new obligation added.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/planner.docs.asciidoc-only.json",
+      "sha256": "dddba2fa8c1a1792e6f71aafb104acf55f9d40b9e406bf6f0040cb7ea518ca66"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "rekey-v3 -> zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

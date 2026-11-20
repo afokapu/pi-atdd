@@ -1,0 +1,372 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.composition.root",
+  "legacyId": "coder.bun.composition-root",
+  "core": {
+    "title": "Construct collaborators only in a composition root",
+    "given": "A source file assigned to a layer role by the stack's role assignment, and not a composition root (roots are identified by the stack's role map)",
+    "when": "it constructs a collaborator (the construction construct and the collaborator name patterns come from the stack's profile)",
+    "then": "Construct the collaborator only in a composition root.",
+    "prefer": [
+      "Construct in a composition root; the stack's application assembly point counts as a root when it is where the application, its boundary and their dependencies are wired.",
+      "Pass the constructed collaborator from the root to the consumer that needs it.",
+      "During GREEN: add only the wiring the current behavior requires.",
+      "During GREEN: reuse existing factories, instances and composition patterns before creating new ones.",
+      "During GREEN: keep construction separate from application or presentation behavior."
+    ],
+    "avoid": [
+      "Instantiating the collaborator in the consumer as a shortcut.",
+      "Speculative factories or service locators.",
+      "Centralizing unrelated wiring merely because the root is being edited."
+    ],
+    "unless": [
+      "Test files and the stack's never-scanned (vendored/build) trees.",
+      "Files assigned to no layer role: outside these rules, not in violation."
+    ],
+    "why": "Scattered wiring is not a style problem: it is why a test cannot substitute anything, and why a second deployment shape becomes a rewrite.",
+    "evidence": [
+      "The current behavioral acceptance passes through the real wiring.",
+      "Collaborator construction remains confined to a composition root: the stack's convention check reports no collaborator construction outside a root."
+    ],
+    "verification": [
+      "Severity 3; disposition strict.",
+      "The check is a content-level scan of current source (not a diff) for collaborator construction (per the stack's construction idiom and collaborator naming) in any scanned file that is not a composition root; all such constructions present count, not only newly added ones.",
+      "Which files count as scanned source is owned by the stack's own source classification (its repository topology and source kinds), not by any extension or file-name restriction of this rule; the scan covers every file the stack classifies as source.",
+      "Scan lexically masked source so occurrences inside string literals or comments are not flagged.",
+      "Never scan test files: test-file classification is owned by the stack's repository topology, not by this rule. Never scan the stack's excluded trees; roots.excluded is one stack-wide list and the exact exclusion classification is owned by the stack's checker.",
+      "Files assigned to no layer role are out of scope, not in violation.",
+      "External-package imports (recognised per the stack's external-import idiom) resolve outside the project graph and are not layer-checked."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "role",
+          "values": [
+            "not composition_root"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "source"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "role",
+          "values": [
+            "assigned to a layer role"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "collaborator constructed outside a composition root (scan of current source, string- and comment-masked)"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "An application or boundary module constructs a collaborator to obtain its dependency, whether the construction is new or pre-existing.",
+        "A presentation module constructs an outbound collaborator (such as a client or gateway) inline instead of receiving it.",
+        "A module that is not a composition root constructs a factory or provider to build its own collaborators."
+      ],
+      "doesNotFire": [
+        "The construction is in a composition root (per the stack's role map).",
+        "The construction is in a test file or an excluded (vendored/build) tree.",
+        "The file is assigned to no layer role.",
+        "The construction appears only inside a string literal or comment.",
+        "The constructed name does not match the stack's collaborator designation."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roles.assignment",
+      "meaning": "How a file is assigned to a layer role, and that a file with no layer role is out of scope rather than in violation.",
+      "bunValue": "the path's layer segment: a directory segment naming a layer in the repository layer map (context.repo-topology.layers); a file with no layer segment is out of scope, not a violation"
+    },
+    {
+      "key": "roles.layers",
+      "meaning": "The layer roles among which a file may be assigned.",
+      "bunValue": "any layer named in the repository layer map (context.repo-topology.layers)"
+    },
+    {
+      "key": "roles.composition_root.path",
+      "meaning": "How composition roots are identified, so that construction inside them is exempt.",
+      "bunValue": "**/composition.ts, **/wagon.ts, **/server.ts, **/index.ts (roots are identified by basename)"
+    },
+    {
+      "key": "roles.composition_root.kinds",
+      "meaning": "The concrete artifact kinds that play the composition-root role, including the application assembly point.",
+      "bunValue": "composition.ts (module composition), wagon.ts (wagon assembly), server.ts (full-stack assembly point via Bun.serve), index.ts (package/index entry)"
+    },
+    {
+      "key": "roots.excluded",
+      "meaning": "The never-scanned vendored/generated trees (one stack-wide list); exact exclusion classification is owned by the stack's checker.",
+      "bunValue": "vendored/build directories (never scanned)"
+    },
+    {
+      "key": "idiom.external_import",
+      "meaning": "How an import of an external package (outside the project graph) is recognised, so that it is not layer-checked.",
+      "bunValue": "bare npm specifiers resolve outside the project graph"
+    },
+    {
+      "key": "idiom.module_boundaries#collaborator_construction",
+      "meaning": "The construct by which a collaborator instance is constructed, which the check flags outside a composition root.",
+      "bunValue": "`new <Name>()` in the file's current source (string- and comment-masked)"
+    },
+    {
+      "key": "idiom.module_boundaries#collaborator_naming",
+      "meaning": "Name patterns that designate a type as a collaborator whose construction must be confined to a composition root.",
+      "bunValue": "class names ending in Repository, Client, Service, Adapter, Gateway, Store, Provider or Factory"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "prefer[0]",
+      "text": "`server.ts` counts as a root because `Bun.serve` is the full-stack app's assembly point, where routes and their dependencies are wired.",
+      "reason": "The runtime's server entry and its assembly-point rationale are stack-specific; the core says only that the stack's designated assembly point counts, and the profile lists which artifact kinds are composition roots."
+    },
+    {
+      "item": "activation.facts[3]",
+      "text": "Finding id `BUN-COMPOSITION-ROOT-001`, emitted by bun_clean_architecture_detector over string- and comment-masked source.",
+      "reason": "Finding and detector ids of this one rule are realization details; the core keeps a generic finding fact."
+    },
+    {
+      "item": "evidence[1]",
+      "text": "bun_clean_architecture_detector reports no `new <Collaborator>()` outside a root.",
+      "reason": "Names this rule's Bun validator; the core refers to the stack's convention check generically."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "Detector bun_clean_architecture_detector; flag `new <Name>()` where Name ends in Repository, Client, Service, Adapter, Gateway, Store, Provider or Factory, in any file whose basename is not composition.ts, wagon.ts, server.ts or index.ts; applies to all such constructions present in scanned source, not only newly added ones.",
+      "reason": "Detector id is a realization detail, and the concrete construction construct, name suffixes and root basenames are stack-mechanical; the core verification describes the check generically and takes those specifics from the profile keys."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "Layer-segment definition is the role-assignment semantics; the concrete root file names are the composition-root path value.",
+      "as": [
+        "core:given",
+        "profile:roles.assignment",
+        "profile:roles.composition_root.path"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "`new X()` and the suffix list are the stack's construction idiom and collaborator naming.",
+      "as": [
+        "core:when",
+        "profile:idiom.module_boundaries#collaborator_construction",
+        "profile:idiom.module_boundaries#collaborator_naming"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "Already neutral.",
+      "as": [
+        "core:then"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "Already neutral.",
+      "as": [
+        "core:why"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "Neutral: construct in a root, assembly point counts; which files are roots and the Bun.serve rationale are profile/bunOnly.",
+      "as": [
+        "core:prefer[0]",
+        "profile:roles.composition_root.kinds",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "prefer[1]",
+      "note": "Already neutral.",
+      "as": [
+        "core:prefer[1]"
+      ]
+    },
+    {
+      "item": "prefer[2]",
+      "note": "GREEN-phase guidance, stack-neutral.",
+      "as": [
+        "core:prefer[2]"
+      ]
+    },
+    {
+      "item": "prefer[3]",
+      "note": "Already neutral.",
+      "as": [
+        "core:prefer[3]"
+      ]
+    },
+    {
+      "item": "prefer[4]",
+      "note": "Role-level (application/presentation behavior), already neutral.",
+      "as": [
+        "core:prefer[4]"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "Already neutral.",
+      "as": [
+        "core:avoid[0]"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "Already neutral.",
+      "as": [
+        "core:avoid[1]"
+      ]
+    },
+    {
+      "item": "avoid[2]",
+      "note": "Already neutral.",
+      "as": [
+        "core:avoid[2]"
+      ]
+    },
+    {
+      "item": "unless[0]",
+      "note": "The vendored/build never-scanned trees are the stack-wide exclusion list (profile); the test-file exclusion and checker-owned exact classification are check scope stated in core verification, not profile policy.",
+      "as": [
+        "core:unless[0]",
+        "profile:roots.excluded",
+        "core:verification"
+      ]
+    },
+    {
+      "item": "unless[1]",
+      "note": "'No layer segment' is the assignment rule for files with no role.",
+      "as": [
+        "core:unless[1]",
+        "profile:roles.assignment"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "Already neutral.",
+      "as": [
+        "core:evidence[0]"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "Obligation is neutral (check reports no construction outside a root); the detector id is bunOnly.",
+      "as": [
+        "core:evidence[1]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "Generic check scope goes to core verification; construct, suffixes and root basenames are profile values; detector id is bunOnly.",
+      "as": [
+        "core:verification",
+        "profile:idiom.module_boundaries#collaborator_construction",
+        "profile:idiom.module_boundaries#collaborator_naming",
+        "profile:roles.composition_root.path",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "String/comment masking generalizes to lexically masked source.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "Test-file exclusion and checker-owned exact classification stay in core verification; only the vendored/build never-scanned list is the stack-wide profile value.",
+      "as": [
+        "core:verification",
+        "profile:roots.excluded"
+      ]
+    },
+    {
+      "item": "verifier_detail[3]",
+      "note": "Bare npm specifiers are the Bun external-import idiom; the no-layer-check scoping is generic.",
+      "as": [
+        "core:verification",
+        "profile:idiom.external_import"
+      ]
+    },
+    {
+      "item": "verifier_detail[4]",
+      "note": "Per-rule severity and disposition are not profile keys; they live in core verification.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "Neutral fact: file is not a composition root; the globs and basename identification are the composition-root path value.",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roles.composition_root.path"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "Neutral fact: file kind source. Which files count as source carries no extension or name restriction of this rule's own; that classification is owned by the stack's repository topology and stated in core verification, so suffix.source (a filename-pattern list) does not apply.",
+      "as": [
+        "core:activation.facts[1]",
+        "core:verification"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "Neutral fact: assigned to a layer role; the layer map and assignment rule come from the profile.",
+      "as": [
+        "core:activation.facts[2]",
+        "profile:roles.layers",
+        "profile:roles.assignment"
+      ]
+    },
+    {
+      "item": "activation.facts[3]",
+      "note": "Neutral finding fact kept; the finding id and detector are realization details.",
+      "as": [
+        "core:activation.facts[3]",
+        "bunOnly"
+      ]
+    }
+  ],
+  "neutralityNotes": "The obligation itself (construct collaborators only in a composition root, pass them to consumers) is fully neutral. What could not be made neutral: (1) the Bun.serve assembly-point rationale for why the server entry is a root (bunOnly; the profile records the artifact kind), (2) the concrete construction construct `new <Name>()`, the collaborator name suffixes and the root basenames (profile values via two proposed idiom keys plus roles.composition_root.path), and (3) the detector and finding ids (bunOnly, per the notProfileKeys rule). The Bun rule imposes no file-extension restriction of its own: which files count as scanned source, which are test files, and the exact vendored/build exclusion are all owned by the stack's repository topology and its checker, so they are stated in core verification rather than as profile values (suffix.source is a filename-pattern list and roots.excluded holds only the stack-wide never-scanned tree list). String- and comment-masking was kept as generic lexical masking since string literals and comments are near-universal lexical categories; severity 3 / strict disposition is carried in core verification, not the profile.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.composition-root.json",
+      "sha256": "9e896dafc98710e726b104f6ca803744b64ececba114ab493eb146572104ded9"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 1,
+    "usefulness": 5,
+    "deriver": "rekey-v3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}
