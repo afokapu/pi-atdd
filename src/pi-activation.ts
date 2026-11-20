@@ -20,6 +20,7 @@ import type { ExecutionCheckpoint } from "./execution-lifecycle.ts";
 import { registerBusyState } from "./busy-state.ts";
 import { appendActivation, activationPathCategory, formatActivationSummary, type ActivationEvent, type ActivationPoint } from "./activation-telemetry.ts";
 import { performance } from "node:perf_hooks";
+import type { Proof } from "./inference.ts";
 import { Type } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { MODE_FILE, guardsAtdd, modeFromText, recordMode, repositoryRoot, resolveMode, type Mode, type Resolution } from "./mode.ts";
@@ -120,15 +121,15 @@ export default function atdd(pi:ExtensionAPI):void {
   /** Only closed, stable identifiers from proof nodes are logged: never prose, code, or paths. */
   function evidenceIds(result: ReturnType<ReasoningSession["observe"]>):string[]{
     const found = new Set<string>();
-    const visit = (proof: {fact:{predicate:string;args:string[]};derivations:ReadonlyArray<{premises:unknown[]}>}):void => {
+    const visit = (proof: Proof):void => {
       const name=proof.fact.predicate, args=proof.fact.args;
       if(name==="selector_hit" && args[1])found.add("selector:"+args[1]);
       if(name==="code_construct" && args[1])found.add("ast:"+args[1]);
       if(name==="file_layer" && args[1])found.add("layer:"+args[1]);
       if(name==="phase" && args[1])found.add("phase:"+args[1]);
-      for(const d of proof.derivations) for(const p of d.premises)visit(p as typeof proof);
+      for(const d of proof.derivations) for(const p of d.premises)visit(p);
     };
-    for(const activation of result.activations) visit(activation.proof as typeof visit extends never ? never : Parameters<typeof visit>[0]);
+    for(const activation of result.activations) visit(activation.proof);
     return [...found].sort();
   }
   function record(cwd:string, event:ActivationEvent):void{
