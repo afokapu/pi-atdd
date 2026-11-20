@@ -1,0 +1,46 @@
+schema_version: 1.1.0
+rule_id: shared.handoff.bounded-chain
+kind: policy
+status: active
+name: An automatic handoff fires once per crossing, survives compaction, and stops at a hop limit
+statement: >-
+  An automatic context handoff MUST fire at most once per threshold crossing, MUST be latched at the
+  crossing rather than cancelled by usage read later (Pi may compact first), MUST be dropped only when
+  the run was aborted, and MUST stop at a configured hop limit. A failed or cancelled session switch
+  MUST keep the record for a manual retry and MUST NOT retry on its own.
+terms:
+- term_id: hop
+  text: >-
+    One session-to-session handoff. A successor that receives a record is at the next hop; a chain is
+    bounded by the hop limit.
+content:
+  summary: >-
+    Without a bound, a successor that is still above the threshold hands off again and the chain never
+    ends. Without the latch, Pi's own compaction, which runs before the run settles, cancels the handoff
+    that was due.
+  normative_text: |
+    The threshold decision happens at turn end and is latched. The handoff is dropped only for an aborted
+    run. A session at the hop limit reports a limit notice and does not hand off again. The hop is read
+    back from the record in the session branch, never from chat text alone. A cancelled or failed switch
+    keeps the record and tells the user the path; the user retries.
+  fix_hint: |
+    When wiring an automatic handoff:
+      * latch the request at the threshold crossing with the usage that crossed it;
+      * drop it only when the run was aborted;
+      * carry the hop in the record and stop at the configured limit;
+      * keep the record on a failed switch and report its path.
+
+    Do not:
+      * re-read usage at settle to cancel a latched handoff;
+      * retry a cancelled session switch automatically;
+      * allow a successor to hand off without a hop bound.
+  exceptions:
+  - >-
+    A single turn that jumps past the handoff threshold and overflows the window is handled by Pi's own
+    overflow recovery; the handoff is not expected to fire in that case.
+metadata:
+  severity: 3
+  disposition: strict
+  introduced_in: 0.4.0
+implementation:
+  type: none
