@@ -33,6 +33,7 @@ const checkpoint = {
   sourceExecutionId: source.executionId, sourceSessionId: source.sessionId,
   revision: { vcs: "git" as const, head: "0123456789abcdef" },
   acceptance: "unknown" as const,
+  grant: { state: "unknown" as const, reference: "PLT-117" },
   attention: { state: "verified" as const, pendingIds: ["ati_000000000001"] },
 };
 const common = { source, next, observedOwner: owner,
@@ -53,7 +54,7 @@ test("PLT-117 A02/A04: replacement retains the task and coach, but changes execu
   const decision = decide();
   assert.deepEqual(decision, {
     status: "allow", fencePrevious: true, checkpointAcceptance: "unknown",
-    pendingAttentionIds: ["ati_000000000001"],
+    grantState: "unknown", pendingAttentionIds: ["ati_000000000001"],
   });
   assert.equal(checkpoint.taskId, next.taskId);
   assert.equal(checkpoint.coachAddress, next.coachAddress);
@@ -74,6 +75,7 @@ test("PLT-117 A04: a fresh session must prove the exact source revision and pend
   assert.equal(decide({ checkpoint: { ...checkpoint, sourceSessionId: "unrelated" } }).status, "hold");
   assert.equal(decide({ checkpoint: { ...checkpoint, taskId: "wrong" } }).status, "hold");
   assert.equal(decide({ checkpoint: null as unknown as typeof checkpoint }).status, "hold");
+  assert.equal(decide({ checkpoint: { ...checkpoint, grant: undefined as never } }).status, "hold");
 });
 
 test("PLT-117 A05: an interrupted source requires explicit recovery authorization", () => {
