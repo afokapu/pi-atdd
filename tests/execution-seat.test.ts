@@ -163,3 +163,28 @@ test("PLT-117 A03: Flow adapter reads the authoritative seat, task and owner tok
     assert.equal(ownsExecution(config, "session-a"), false);
   } finally { w.cleanup(); }
 });
+
+test("PLT-117 A02: project Coach seat is authorized across tasks without one task assignment", () => {
+  const w = world();
+  try {
+    const desk = join(w.root, "flow");
+    const config = executionConfigFromEnv({ ...w.env, PI_ATDD_EXECUTION_MODE: "external",
+      PI_ATDD_EXECUTION_TASK_ID: "*", PI_ATDD_EXECUTION_SEAT_ADDRESS: "main@pi-atdd",
+      ATDD_WORKFLOW_ROOT: desk })!;
+    mkdirSync(join(desk, ".atdd-flow", "pi-runtime"), { recursive: true });
+    mkdirSync(join(desk, "work", "pi-atdd", "seats", "main"), { recursive: true });
+    writeFileSync(config.leasePath, [
+      "schema: atdd-flow/pi-runtime-state/v1", "seat: main@pi-atdd",
+      "owner_token: owner-token-a", "pi_session: session-a", "",
+    ].join("\n"));
+    writeFileSync(join(desk, "work", "pi-atdd", "seats", "main", "seat.yaml"), [
+      "schema: atdd-workflow/seat/v1", "address: main@pi-atdd", "role: main",
+      "project: pi-atdd", "runtime:", "  pi_session: session-a", "",
+    ].join("\n"));
+    assert.equal(ownsExecution(config, "session-a"), true);
+    assert.equal(ownsExecution({ ...config, binding: { ...config.binding,
+      ownerToken: "obsolete" } }, "session-a"), false);
+    assert.equal(ownsExecution({ ...config, binding: { ...config.binding,
+      sessionId: "not-current" } }, "not-current"), false);
+  } finally { w.cleanup(); }
+});
