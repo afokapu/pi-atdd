@@ -6,12 +6,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { bootstrapSeat, claimSeatHolder, executionConfigFromEnv, ownsExecution, readSeatLease,
+import { bootstrapSeat, executionConfigFromEnv, ownsExecution, readSeatCheckpoint, readSeatLease,
   recordSeatCheckpoint, recordSeatModel, replaceSeat, resumeSeatFromCheckpoint, vcsHead } from "../src/execution-seat.ts";
+import { appendSpool, ensureKey, newItem, readLaunchConfig, signEvent } from "../src/attention.ts";
 import { registerSeatExecution } from "../src/execution-pi.ts";
 import { ExtensionRunner, ModelRegistry, ModelRuntime, SessionManager,
   createExtensionRuntime, discoverAndLoadExtensions } from "@earendil-works/pi-coding-agent";
@@ -195,7 +196,7 @@ test("PLT-117 A02: project Coach seat is authorized across tasks without one tas
 
 // PLT-117 review fixes: launcher-provisioned authority, restart recovery, real Pi events.
 const here = dirname(fileURLToPath(import.meta.url));
-const verifiedWork = { state: "verified" as const, pendingIds: ["ati_123456789abc"] };
+const PENDING = "ati_123456789abc";
 const ctxFor = (repo: string, id: string) => ({ cwd: repo, model: { provider: "provider", id: "model-a" },
   isProjectTrusted: () => true, sessionManager: { getSessionId: () => id }, ui: { notify: () => {} } });
 function piHooks(env: NodeJS.ProcessEnv) {
@@ -206,14 +207,35 @@ function piHooks(env: NodeJS.ProcessEnv) {
   const call = (hook: string, ctx: unknown): any[] => (handlers.get(hook) ?? []).map(f => f({}, ctx));
   return { controller, call };
 }
+/** World with the attention launch binding, so Pi's own snapshot reads this profile's spool. */
+function attentionWorld() {
+  const w = world();
+  Object.assign(w.env, { PI_ATDD_ATTENTION_ROLE: "coach", PI_ATDD_ATTENTION_IDENTITY: "main@pi-atdd",
+    PI_ATDD_ATTENTION_PROFILE: "forge" });
+  return w;
+}
+/** A signed, open decision in the spool, routed to this seat's task and coach. */
+function raisePending(w: ReturnType<typeof attentionWorld>, id = PENDING): void {
+  const cfg = readLaunchConfig(w.env)!;
+  const item = { ...newItem({ type: "decision", summary: "owner decision needed", issue: "PLT-117" }, cfg, new Date()),
+    id, route: { projectId: "pi-atdd", taskId: "PLT-117", coachAddress: "main@pi-atdd", seatAddress: "driver.one@pi-atdd" } };
+  appendSpool(cfg.spool, signEvent({ event: "raised", item }, ensureKey(cfg.keyPath)));
+}
+/** The owner answers the decision: a signed resolved record with a later revision. */
+function resolvePending(w: ReturnType<typeof attentionWorld>, id = PENDING): void {
+  const cfg = readLaunchConfig(w.env)!;
+  const rec = { id, from: "main@pi-atdd", revision: 2, state: "resolved" as const,
+    by: "main@pi-atdd", at: new Date().toISOString(), note: "answered" };
+  appendSpool(cfg.spool, signEvent({ event: "state", rec }, ensureKey(cfg.keyPath)));
+}
 /** A real process that dies by SIGKILL between checkpoint and lease CAS (or before any checkpoint). */
-function crashAt(w: ReturnType<typeof world>, stage: "before-checkpoint" | "after-checkpoint") {
-  const r = spawnSync(process.execPath, ["--experimental-strip-types",
-    join(here, "fixtures", "seat-crash-child.ts"), w.repo, stage], { env: w.env, encoding: "utf8" });
+function crashAt(w: ReturnType<typeof world>, stage: "before-checkpoint" | "after-checkpoint", pendingId?: string) {
+  const args = [join(here, "fixtures", "seat-crash-child.ts"), w.repo, stage, ...(pendingId ? [pendingId] : [])];
+  const r = spawnSync(process.execPath, ["--experimental-strip-types", ...args], { env: w.env, encoding: "utf8" });
   assert.equal(r.signal, "SIGKILL", r.stderr);
 }
 
-test("PLT-117 A03: Pi never mints a seat from launch environment; only a launcher-provisioned lease is adopted", () => {
+test("PLT-117 A03: Pi never mints a seat from launch environment; resume without a checkpoint mints nothing", () => {
   const w = world();
   try {
     const minting = piHooks({ ...w.env, PI_ATDD_EXECUTION_BOOTSTRAP: "1" });
@@ -233,19 +255,79 @@ test("PLT-117 A04/A05: a restart between checkpoint and lease CAS resumes from t
     bootstrapSeat(w.config);
     crashAt(w, "after-checkpoint");
     assert.equal(readSeatLease(w.config.leasePath)?.sessionId, "session-a", "the CAS never happened");
-    const next = resumeSeatFromCheckpoint(w.config, { nextSessionId: "session-b",
-      modelId: "provider/model-b", cwd: w.repo });
+    const { config: next, checkpoint, closedSinceCheckpoint } = resumeSeatFromCheckpoint(w.config, {
+      nextSessionId: "session-b", modelId: "provider/model-b", cwd: w.repo,
+      recheckAttention: () => ({ state: "verified", pendingIds: [] }),
+    });
     assert.equal(next.binding.generation, 2);
     assert.equal(next.binding.sessionId, "session-b");
     assert.notEqual(next.binding.executionId, "run-a");
     assert.equal(ownsExecution(next, "session-b"), true);
     assert.equal(ownsExecution(w.config, "session-a"), false);
+    assert.equal(checkpoint.acceptance, "unknown");
+    assert.deepEqual(closedSinceCheckpoint, []);
     assert.throws(() => resumeSeatFromCheckpoint(w.config, { nextSessionId: "session-c",
-      modelId: "provider/model-c", cwd: w.repo }), /does not match the current seat lease/);
+      modelId: "provider/model-c", cwd: w.repo, recheckAttention: () => ({ state: "verified", pendingIds: [] }) }),
+      /does not match the current seat lease/);
   } finally { w.cleanup(); }
 });
 
-test("PLT-117 A04: relaunched Pi resumes at session start only when the launcher asks, and tools stay blocked otherwise", () => {
+test("PLT-117 A04 P1: a relaunched successor gets its pending attention IDs and UNKNOWN grant/acceptance before any tool runs", () => {
+  const w = attentionWorld();
+  try {
+    bootstrapSeat(w.config);
+    raisePending(w);
+    crashAt(w, "after-checkpoint", PENDING);
+    const resumed = piHooks({ ...w.env, PI_ATDD_EXECUTION_RESUME: "1" });
+    resumed.call("session_start", ctxFor(w.repo, "session-b"));
+    assert.equal(resumed.call("tool_call", ctxFor(w.repo, "session-b"))[0]?.block, true,
+      "tools stay blocked until the recovery context is delivered");
+    const [started] = resumed.call("before_agent_start", ctxFor(w.repo, "session-b"));
+    const notice: string = started.message.content;
+    assert.match(notice, new RegExp("re-checked now\\): " + PENDING));
+    assert.match(notice, /Acceptance UNKNOWN; grant UNKNOWN/);
+    assert.equal(resumed.call("tool_call", ctxFor(w.repo, "session-b"))[0], undefined);
+    const lease = readSeatLease(w.config.leasePath)!;
+    const carried = readSeatCheckpoint(w.config.checkpointDir, lease.executionId);
+    assert.deepEqual(carried.attention.pendingIds, [PENDING]);
+    assert.equal(carried.acceptance, "unknown");
+    assert.equal(carried.grant.state, "unknown");
+  } finally { w.cleanup(); }
+});
+
+test("PLT-117 A04: a decision the owner answered before the restart is reported closed, not pending", () => {
+  const w = attentionWorld();
+  try {
+    bootstrapSeat(w.config);
+    raisePending(w);
+    crashAt(w, "after-checkpoint", PENDING);
+    resolvePending(w);
+    const resumed = piHooks({ ...w.env, PI_ATDD_EXECUTION_RESUME: "1" });
+    resumed.call("session_start", ctxFor(w.repo, "session-b"));
+    const [started] = resumed.call("before_agent_start", ctxFor(w.repo, "session-b"));
+    assert.match(started.message.content, /re-checked now\): none; closed since checkpoint: ati_123456789abc/);
+    const carried = readSeatCheckpoint(w.config.checkpointDir, readSeatLease(w.config.leasePath)!.executionId);
+    assert.deepEqual(carried.attention.pendingIds, []);
+  } finally { w.cleanup(); }
+});
+
+test("PLT-117 A04: unverifiable attention at relaunch refuses recovery and keeps tools blocked", () => {
+  const w = attentionWorld();
+  try {
+    bootstrapSeat(w.config);
+    raisePending(w);
+    crashAt(w, "after-checkpoint", PENDING);
+    appendFileSync(readLaunchConfig(w.env)!.spool, "{\"event\":\"raised\",\"item\":");
+    const resumed = piHooks({ ...w.env, PI_ATDD_EXECUTION_RESUME: "1" });
+    resumed.call("session_start", ctxFor(w.repo, "session-b"));
+    assert.equal(resumed.call("tool_call", ctxFor(w.repo, "session-b"))[0]?.block, true);
+    assert.equal(readSeatLease(w.config.leasePath)?.sessionId, "session-a", "no successor was recorded");
+    assert.equal(resumed.call("before_agent_start", ctxFor(w.repo, "session-b"))[0]?.message.customType,
+      "pi-atdd-execution-refused");
+  } finally { w.cleanup(); }
+});
+
+test("PLT-117 A04: relaunched Pi resumes at session start only when the launcher asks, and tools stay blocked until the recovery context is delivered", () => {
   const w = world();
   try {
     bootstrapSeat(w.config);
@@ -257,18 +339,21 @@ test("PLT-117 A04: relaunched Pi resumes at session start only when the launcher
     const resumed = piHooks({ ...w.env, PI_ATDD_EXECUTION_RESUME: "1" });
     resumed.call("session_start", ctxFor(w.repo, "session-b"));
     assert.equal(resumed.controller.owns(ctxFor(w.repo, "session-b")), true);
+    assert.equal(resumed.call("tool_call", ctxFor(w.repo, "session-b"))[0]?.block, true);
+    resumed.call("before_agent_start", ctxFor(w.repo, "session-b"));
     assert.equal(resumed.call("tool_call", ctxFor(w.repo, "session-b"))[0], undefined);
     assert.equal(readSeatLease(w.config.leasePath)?.generation, 2);
   } finally { w.cleanup(); }
 });
 
 test("PLT-117 A04/A05: recovery is refused while the recorded holder lives, without a checkpoint, or after the head moved", () => {
+  const recheck = () => ({ state: "verified" as const, pendingIds: [] });
   const live = world();
   try {
     bootstrapSeat(live.config); // the recorded holder is this test process, which is alive
-    recordSeatCheckpoint(live.config, "session-a", live.repo, verifiedWork);
+    recordSeatCheckpoint(live.config, "session-a", live.repo, verified);
     assert.throws(() => resumeSeatFromCheckpoint(live.config, { nextSessionId: "session-b",
-      modelId: "provider/model-b", cwd: live.repo }), /may still be running/);
+      modelId: "provider/model-b", cwd: live.repo, recheckAttention: recheck }), /may still be running/);
   } finally { live.cleanup(); }
 
   const none = world();
@@ -276,7 +361,7 @@ test("PLT-117 A04/A05: recovery is refused while the recorded holder lives, with
     bootstrapSeat(none.config);
     crashAt(none, "before-checkpoint");
     assert.throws(() => resumeSeatFromCheckpoint(none.config, { nextSessionId: "session-b",
-      modelId: "provider/model-b", cwd: none.repo }), /checkpoint/);
+      modelId: "provider/model-b", cwd: none.repo, recheckAttention: recheck }), /checkpoint/);
   } finally { none.cleanup(); }
 
   const moved = world();
@@ -288,7 +373,7 @@ test("PLT-117 A04/A05: recovery is refused while the recorded holder lives, with
     execFileSync("git", ["-C", moved.repo, "-c", "user.name=ATDD Test", "-c", "user.email=test@example.invalid",
       "commit", "-qm", "later"]);
     assert.throws(() => resumeSeatFromCheckpoint(moved.config, { nextSessionId: "session-b",
-      modelId: "provider/model-b", cwd: moved.repo }), /revision/);
+      modelId: "provider/model-b", cwd: moved.repo, recheckAttention: recheck }), /revision/);
     assert.equal(readSeatLease(moved.config.leasePath)?.sessionId, "session-a");
   } finally { moved.cleanup(); }
 });

@@ -244,7 +244,7 @@ export function readSeatCheckpoint(checkpointDir: string, executionId: string): 
 function transitionSeatLocked(config: SeatRuntimeConfig, input: {
   nextSessionId: string; modelId: string; checkpoint: ExecutionCheckpoint;
   observedHead: string; sourceSettled: boolean; recoveryAuthorized: boolean;
-}): SeatRuntimeConfig {
+}, beforeCommit: (next: ExecutionBinding) => void = () => {}): SeatRuntimeConfig {
   const current = readSeatLease(config.leasePath);
   if (!current || !ownsExecution(config, config.binding.sessionId))
     throw new Error("seat lease changed during handoff");
@@ -259,6 +259,7 @@ function transitionSeatLocked(config: SeatRuntimeConfig, input: {
     sourceSettled: input.sourceSettled, recoveryAuthorized: input.recoveryAuthorized,
   });
   if (decision.status === "hold") throw new Error("seat handoff refused: " + decision.reason);
+  beforeCommit(next); // durable successor records are written before the lease can point at them
   commitLease(config.leasePath, next);
   return { ...config, binding: next };
 }
@@ -273,15 +274,26 @@ export function replaceSeat(config: SeatRuntimeConfig, input: {
   return locked(config.leasePath, () => transitionSeatLocked(config, input));
 }
 
+/** What a relaunched successor inherits: the carried-forward checkpoint and what changed since. */
+export type RecoveredSeat = {
+  config: SeatRuntimeConfig;
+  /** Carried to the successor execution: pending IDs re-checked now; grant and acceptance unchanged. */
+  checkpoint: ExecutionCheckpoint;
+  /** Checkpoint attention IDs no longer open at relaunch (answered or closed since the checkpoint). */
+  closedSinceCheckpoint: string[];
+};
+
 /**
  * Crash recovery after a restart between checkpoint and lease CAS. Authority comes from
  * the lease's recorded holder being provably dead on this host, plus the verified
  * checkpoint on disk and the exact current repository head. The relaunch binding must
  * match the current lease exactly; a model's own claim is never recovery authority.
+ * `recheckAttention` re-reads the attention store under the seat lock; unknown refuses recovery.
  */
 export function resumeSeatFromCheckpoint(config: SeatRuntimeConfig, input: {
   nextSessionId: string; modelId: string; cwd: string;
-}): SeatRuntimeConfig {
+  recheckAttention: () => ExecutionCheckpoint["attention"];
+}): RecoveredSeat {
   if (config.mode !== "standalone") throw new Error("Flow-owned seat recovery requires Flow adapter");
   if (!text(input.nextSessionId) || !text(input.modelId)) throw new Error("resume runtime incomplete");
   return locked(config.leasePath, () => {
@@ -293,9 +305,21 @@ export function resumeSeatFromCheckpoint(config: SeatRuntimeConfig, input: {
     if (!holderIsDead(lease.holder.pid, lease.holder.host))
       throw new Error("recorded seat holder may still be running; recovery refused");
     const checkpoint = readSeatCheckpoint(config.checkpointDir, lease.binding.executionId);
-    return transitionSeatLocked({ ...config, binding: lease.binding }, {
+    const recheck = input.recheckAttention();
+    if (recheck.state !== "verified")
+      throw new Error("pending attention cannot be re-checked; recovery refused");
+    const pendingIds = [...recheck.pendingIds];
+    const closedSinceCheckpoint = checkpoint.attention.pendingIds.filter(id => !pendingIds.includes(id));
+    const next = transitionSeatLocked({ ...config, binding: lease.binding }, {
       nextSessionId: input.nextSessionId, modelId: input.modelId, checkpoint,
       observedHead: vcsHead(input.cwd).head, sourceSettled: false, recoveryAuthorized: true,
-    });
+    }, nextBinding => atomicJson(join(config.checkpointDir, nextBinding.executionId + ".json"), {
+      ...checkpoint, sourceExecutionId: nextBinding.executionId, sourceSessionId: nextBinding.sessionId,
+      attention: { state: "verified", pendingIds },
+    } satisfies ExecutionCheckpoint));
+    return { config: next, closedSinceCheckpoint, checkpoint: {
+      ...checkpoint, sourceExecutionId: next.binding.executionId, sourceSessionId: next.binding.sessionId,
+      attention: { state: "verified", pendingIds },
+    } };
   });
 }

@@ -44,6 +44,18 @@ export function registerSeatExecution(pi: ExtensionAPI, env: NodeJS.ProcessEnv =
   if (!configured) return undefined;
   const api = pi as unknown as Api;
   let current = configured;
+  // Set only by a launcher-requested recovery. Tools stay blocked until the next prompt delivers it.
+  let recovery: { pendingIds: string[]; closedSinceCheckpoint: string[]; acceptance: string;
+    grant: string; delivered: boolean } | undefined;
+  const recoveryNotice = (): string => {
+    if (!recovery || recovery.delivered) return "";
+    recovery.delivered = true;
+    const ids = (xs: string[]) => xs.length ? xs.join(", ") : "none";
+    return " Recovered after a crash from a verified checkpoint. Pending attention IDs (re-checked now): " +
+      ids(recovery.pendingIds) + "; closed since checkpoint: " + ids(recovery.closedSinceCheckpoint) +
+      ". Acceptance " + recovery.acceptance.toUpperCase() + "; grant " + recovery.grant.toUpperCase() +
+      " (a reference is not a grant; ask the owner before privileged actions). Re-check pending decisions before acting.";
+  };
   const snapshotAttention = (): ExecutionCheckpoint["attention"] => {
     const attention = readLaunchConfig(env);
     if (!attention) {
@@ -101,9 +113,14 @@ export function registerSeatExecution(pi: ExtensionAPI, env: NodeJS.ProcessEnv =
       // A relaunch after a crash resumes only when the launcher asks, from the verified checkpoint.
       if (current.mode === "standalone" && env.PI_ATDD_EXECUTION_RESUME === "1" && !owns(ctx)) {
         if (!ctx.model) throw new Error("a model is required to resume a seat");
-        current = resumeSeatFromCheckpoint(current, {
+        const recovered = resumeSeatFromCheckpoint(current, {
           nextSessionId: ctx.sessionManager.getSessionId(), modelId: modelName(ctx.model), cwd: ctx.cwd,
+          recheckAttention: snapshotAttention,
         });
+        current = recovered.config;
+        recovery = { pendingIds: recovered.checkpoint.attention.pendingIds,
+          closedSinceCheckpoint: recovered.closedSinceCheckpoint,
+          acceptance: recovered.checkpoint.acceptance, grant: recovered.checkpoint.grant.state, delivered: false };
       }
       if (owns(ctx)) claimSeatHolder(current, ctx.sessionManager.getSessionId());
       else ctx.ui.notify("ATDD execution seat is unowned or superseded; tool calls are blocked", "error");
@@ -120,12 +137,15 @@ export function registerSeatExecution(pi: ExtensionAPI, env: NodeJS.ProcessEnv =
       content: "ATDD verified execution scope: project " + b.projectId + "; task " + b.taskId +
         "; accountable coach " + b.coachAddress + "; seat " + b.seatAddress +
         "; execution " + b.executionId + "; lease generation " + b.generation +
-        ". Revalidate acceptance and repository evidence before completion. Model or session identity is not a waiver.",
+        ". Revalidate acceptance and repository evidence before completion. Model or session identity is not a waiver." +
+        recoveryNotice(),
     } };
   });
   api.on("tool_call", (_event, ctx) => {
     if (!owns(ctx)) return { block: true,
       reason: "ATDD execution seat is unowned, untrusted or superseded. The launcher must restore the current lease." };
+    if (recovery && !recovery.delivered) return { block: true,
+      reason: "ATDD recovered seat: start the next prompt so the recovery context (pending attention, unknown acceptance and grant) is delivered before tool use." };
     return undefined;
   });
   // Pi emits model_select from setModel and model cycling (source: set | cycle).
