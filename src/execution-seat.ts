@@ -14,6 +14,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { parse as parseYaml } from "yaml";
+import { withDurableLock } from "./durable-lock.ts";
 import { decideExecutionTransition, matchesSeatLease,
   type ExecutionBinding, type ExecutionCheckpoint, type SeatLeaseObservation } from "./execution-lifecycle.ts";
 
@@ -90,13 +91,7 @@ export function readSeatLease(path: string): ExecutionBinding | undefined {
 }
 
 /** No lock stealing: on a crashed writer the owner/controller must remove an abandoned lock. */
-function locked<T>(path: string, work: () => T): T {
-  mkdirSync(dirname(path), { recursive: true });
-  const lock = path + ".lock";
-  try { mkdirSync(lock); }
-  catch { throw new Error("seat lease locked; refuse competing transition"); }
-  try { return work(); } finally { rmSync(lock, { recursive: true }); }
-}
+const locked = withDurableLock;
 function atomicJson(path: string, value: unknown): void {
   mkdirSync(dirname(path), { recursive: true });
   const tmp = path + "." + randomUUID() + ".tmp";
