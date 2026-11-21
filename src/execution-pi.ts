@@ -66,7 +66,8 @@ export function registerSeatExecution(pi: ExtensionAPI, env: NodeJS.ProcessEnv =
         const route = (item as AttentionItem & { route?: {
           projectId: string; taskId: string; coachAddress: string } }).route;
         if (!route) return { state: "unknown", pendingIds: [] };
-        if (route.projectId === current.binding.projectId && route.taskId === current.binding.taskId &&
+        if (route.projectId === current.binding.projectId &&
+            (current.binding.taskId === "*" || route.taskId === current.binding.taskId) &&
             route.coachAddress === current.binding.coachAddress) pendingIds.push(item.id);
       }
       return { state: "verified", pendingIds };
