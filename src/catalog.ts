@@ -122,6 +122,14 @@ export function bundledAliases(): Map<string, string> {
   return new Map([...Object.entries(data.aliases ?? {}), ...Object.entries(data.splitParts ?? {}),
     ...Object.entries(data.renamedRuleIds ?? {})]);
 }
+/** PLT-119: split part id -> the loaded parent rule it was split from (conventions/aliases.json `splitPartParents`).
+ * The parts are sidecar and neutral records, not loaded rules, so a legacy part id resolves to the parent. */
+export function bundledSplitParents(): Map<string, string> {
+  const path = join(packageRoot, "conventions/aliases.json");
+  if (!existsSync(path)) return new Map();
+  const data = JSON.parse(readFileSync(path, "utf8")) as { splitPartParents?: Record<string, string> };
+  return new Map(Object.entries(data.splitPartParents ?? {}));
+}
 /** Resolves an old or current id to the id loaded in this catalog (unknown ids are returned unchanged). */
 export function canonicalRuleId(catalog: Pick<Catalog, "rules" | "aliases">, id: string): string {
   return catalog.rules.has(id) ? id : catalog.aliases.get(id) ?? id;
@@ -261,8 +269,11 @@ export function loadCatalog(sources: SourceSpec[], cwd: string, options: Catalog
     legacy.disposition = legacyTermsPhase({ release, today });
   }
   const aliases = new Map<string, string>();
-  for (const [old, current] of bundledAliases())
+  const parents = bundledSplitParents();
+  for (const [old, named] of bundledAliases()) {
+    const current = rules.has(named) ? named : parents.get(named) ?? named;
     if (old !== current && rules.has(current) && !rules.has(old)) aliases.set(old, current);
+  }
   // Extension graphs may still name pre-rename ids; they resolve to the current rule.
   for (const e of edges) {
     e.source = canonicalRuleId({ rules, aliases }, e.source);
