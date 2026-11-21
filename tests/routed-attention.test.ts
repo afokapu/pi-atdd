@@ -207,3 +207,19 @@ test("PLT-118 A05: a Coach handoff starts polling after successor lease becomes 
     assert.equal(replacement.intervals.length, 1);
   } finally { w.cleanup(); }
 });
+
+test("PLT-118 A01/A02: one project Coach owns attention from several independent tasks", async () => {
+  const w = world();
+  try {
+    const first = launch(w, "worker", "worker-task-one", "main@pi-atdd", "PLT-118", "run-one");
+    const second = launch(w, "worker", "worker-task-two", "main@pi-atdd", "PLT-119", "run-two");
+    const coach = launch(w, "coach", "Coach for project", "main@pi-atdd");
+    const one = (await first.tool("attention_raise", { type: "decision", summary: "task one" })).details.id;
+    const two = (await second.tool("attention_raise", { type: "review", summary: "task two" })).details.id;
+    await coach.emit("session_start");
+    const items = (await coach.tool("attention_list")).details.items;
+    assert.equal(items.length, 2);
+    assert.deepEqual(items.map((item: any) => item.id).sort(), [one, two].sort());
+    assert.deepEqual(items.map((item: any) => item.route.taskId).sort(), ["PLT-118", "PLT-119"]);
+  } finally { w.cleanup(); }
+});
