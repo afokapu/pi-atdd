@@ -1,0 +1,506 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.flow-router.bilateral-binding",
+  "legacyId": "coder.bun.interlocking-bilateral-binding",
+  "core": {
+    "title": "Keep flow router declaration, runtime, route table and trace bilaterally bound",
+    "given": "A consumer repository with a flow router declaration space (flow router route declarations among its plan artifacts) or a runtime route resolver",
+    "when": "you add, change or delete any binding surface (flow router declaration, user/system flow artifact, runtime route resolution or user/system flow delegation, composition-root route table, trace emission or e2e trace test), or the detector reports a binding violation",
+    "then": "Keep all five directions closed: every declared route resolves through the runtime route resolver to its declared userSystemFlowId (the user/system flow artifact exists); the route resolver resolves only declared routeIds/userSystemFlowIds before delegating user/system flow execution; every composition-root route-table mapping points at an existing declared flow router; every flow router with entrypoint.exposed=true is reachable through one of its entrypoint.actions wired into the route table; and every executed route emits trace metadata whose flowRouterId/routeId resolve to the declared route space.",
+    "prefer": [
+      "Close the direction named in the violation: add the missing user/system flow artifact; remove or declare a hidden routeId/userSystemFlowId literal; repoint the route-table mapping at the real flow router declaration; wire the exposed flow router's entrypoint.action into the route table; assert only declared trace flowRouterId/routeId values.",
+      "If a flow router is genuinely internal, set entrypoint.exposed:false with a reason instead of wiring it.",
+      "Read core `entrypoint.exposed`/`entrypoint.actions` as owned by the core flow router schema; follow core if its name or shape changes.",
+      "Follow the additive call chain (core runtime spec): flow router declaration -> entrypoint.actions[] -> route-table action in the composition root -> the route resolver's resolve call -> its named resolution result (routeId, userSystemFlowId, category, guardId, resolutionStrategy, ...) -> user/system flow execution with the selected userSystemFlowId -> trace(flowRouterId, routeId, selectedUserSystemFlowId, ...), so the validator can resolve the trace back to the declared route."
+    ],
+    "avoid": [
+      "Hidden routes: routeId/selectedUserSystemFlowId literals the route resolver resolves that are declared in no flow router declaration.",
+      "Parallel reachability fields (`entrypoints`, `runtime_exposure`, `station_actions`, `exposed_actions`, `reachability`) that fork core `entrypoint` — schema drift; replace them with core `entrypoint`.",
+      "Dangling route-table mappings, executed routes without trace emission, or trace assertions on undeclared values."
+    ],
+    "unless": [
+      "Flow routers with entrypoint.exposed:false (internal-transition-only / library-only / planned-not-exposed) carry no route-table-reachability (declaration_to_route_table) obligation.",
+      "A tree with no flow router declaration space and no runtime route resolver is not a flow router system; the rule does not bite."
+    ],
+    "why": "Bilateral binding is what makes flow router a route-control system rather than a description; any broken direction lets declaration, runtime, route table and trace drift apart silently, so it blocks CI.",
+    "evidence": [
+      "The flow router binding check reports no violation for any of the five directions or schema drift on the consumer tree.",
+      "Each violation names its failing `direction` in evidence; the fix closes that direction."
+    ],
+    "verification": [
+      "One repository-wide binding check walks the flow router declaration space, the user/system flow artifacts, the composition root's route table, the runtime route resolver and the e2e trace tests, reporting every violation under this single rule with the failing `direction` in evidence, plus a schema-drift signal when a parallel reachability field is used instead of the core `entrypoint`.",
+      "declaration_to_runtime: every declared route resolves through the route resolver to the declared userSystemFlowId — the route's user/system flow artifact must exist so the runtime can load it.",
+      "runtime_to_declaration: the route resolver never resolves a routeId/userSystemFlowId absent from the loaded declarations; a resolver returning a routeId/selectedUserSystemFlowId literal not declared in any flow router is a hidden route.",
+      "route_table_to_declaration: every composition-root flow router mapping ({flowRouterId, path}) points to an existing flow router declaration; a mapping whose path resolves to no file or names an undeclared flowRouterId is a dangling route.",
+      "declaration_to_route_table: every flow router with core entrypoint.exposed=true is reachable through one of its core entrypoint.actions wired into the route table to that flow router; the check consumes core entrypoint.exposed + entrypoint.actions and defines no parallel reachability field.",
+      "trace_to_declaration: every executed flow router route emits trace metadata resolving back to its declaration; a trace test asserting trace.routeId / trace.flowRouterId values absent from the declared route space does not bind the run to its declaration (core trace contract).",
+      "The enforced call model (core runtime spec, additive): flow router declaration -> entrypoint.actions[] -> route-table action in the composition root -> the route resolver's resolve call -> its named resolution result (routeId, userSystemFlowId, category, guardId, resolutionStrategy, ...) -> user/system flow execution with the selected userSystemFlowId -> trace(flowRouterId, routeId, selectedUserSystemFlowId, ...) -> the validator resolves the trace back to the declared route; each stack's resolver call, named resolution result and delegation call come from the profile's route-resolution idiom.",
+      "Ownership split: the core flow router schema owns the declaration schema and the shape/allowed values of `entrypoint`; this rule only READS those core fields to validate reachability against the route table and runtime traces in a consumer repo, and MUST NOT introduce `entrypoints`, `runtime_exposure`, `station_actions`, `exposed_actions`, `reachability` or any other parallel reachability field; if the core schema changes the field name or shape, the rule (and its checker and fixtures) follows core.",
+      "Term parallel_reachability_field: any non-core reachability field that forks the core `entrypoint` field; using one is schema drift.",
+      "Term hidden_route: a routeId/selectedUserSystemFlowId the route resolver resolves that is declared in no flow router declaration — a runtime-to-declaration binding break.",
+      "Term bilateral_binding: the property that flow router declaration, runtime resolution, route-table reachability and execution trace are bound in both directions so none can drift from the others undetected.",
+      "The check emits RAW facts only; the strict verdict is applied by a downstream gate.",
+      "Disposition strict, severity 1: a finding is not advisory — a broken binding direction blocks CI.",
+      "The check is proven by one fail fixture per direction (declaration_to_runtime, runtime_to_declaration, route_table_to_declaration, declaration_to_route_table, trace_to_declaration) and passes a clean tree."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "role",
+          "values": [
+            "plan_artifact",
+            "application",
+            "composition_root",
+            "e2e_test"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "flow router route/entrypoint declared, edited or removed",
+            "user/system flow artifact added, renamed or deleted",
+            "routeId/userSystemFlowId literal added in the runtime route resolver",
+            "route resolution or user/system flow delegation edited",
+            "trace emission added, edited or removed",
+            "route-table flow router mapping added, edited or removed",
+            "trace assertion added or edited",
+            "reachability field added to a flow router declaration"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "binding:declaration_to_runtime",
+            "binding:runtime_to_declaration",
+            "binding:route_table_to_declaration",
+            "binding:declaration_to_route_table",
+            "binding:trace_to_declaration",
+            "binding:schema_drift"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "A consumer repository has (or gains) a declared flow router route whose user/system flow artifact does not exist, e.g. a route added or a user/system flow artifact deleted/renamed.",
+        "The runtime route resolver returns a routeId/selectedUserSystemFlowId literal not declared in any flow router declaration.",
+        "A route-table flow router mapping points at a path with no declaration or an undeclared flowRouterId.",
+        "A flow router marked entrypoint.exposed=true has none of its entrypoint.actions wired in the route table.",
+        "An executed flow router route emits no trace metadata, or emits trace flowRouterId/routeId values that do not resolve to the declared route space.",
+        "An e2e trace test asserts a trace.routeId/flowRouterId absent from the declared route space.",
+        "A flow router declaration gains a field such as `reachability` or `station_actions` instead of core `entrypoint`.",
+        "The detector reports an existing binding violation in a tree the task did not otherwise touch on that surface.",
+        "A repo has a runtime route resolver but no flow router declaration space (or vice versa)."
+      ],
+      "doesNotFire": [
+        "A consumer tree with neither a flow router declaration space nor a runtime route resolver.",
+        "A flow router with entrypoint.exposed:false lacking a route-table action (only the declaration_to_route_table direction is exempt).",
+        "A flow router rendering owned by another stack's workspace package."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "layout.locations#interlocking_dir",
+      "meaning": "Directory (glob) of the flow router declaration route space under the plan tree — the declarations the binding check walks.",
+      "bunValue": "plan/_user_system_flows/_flow_routers/**"
+    },
+    {
+      "key": "layout.plan_item",
+      "meaning": "Path pattern of one user/system flow artifact (a plan item) that a declared route must resolve to so the runtime can load it.",
+      "bunValue": "plan/_user_system_flows/<user_system_flow_id>.yaml"
+    },
+    {
+      "key": "roles.application.path",
+      "meaning": "Where the runtime route resolver (user/system flow runtime) lives — the surface checked for hidden routes and delegation.",
+      "bunValue": "src/user-system-flows/**"
+    },
+    {
+      "key": "roles.composition_root.path",
+      "meaning": "The composition root that owns the route table (reachability map) wired from entrypoint.actions.",
+      "bunValue": "server.ts"
+    },
+    {
+      "key": "roles.e2e_test.path",
+      "meaning": "Where the e2e trace tests live — the surface checked for trace assertions on undeclared values.",
+      "bunValue": "e2e/**"
+    },
+    {
+      "key": "idiom.routing#route_table",
+      "meaning": "The composition-root construct that maps externally reachable flow router actions to flow routers (the reachability map the binding check walks).",
+      "bunValue": "JOURNEY_MAP"
+    },
+    {
+      "key": "roles.runtime_components#route_resolver",
+      "meaning": "The runtime route-resolution call: the resolver that resolves a declared routeId to its user/system flow, the named resolution result it returns (routeId, userSystemFlowId, category, guardId, resolutionStrategy, ...), and the user/system flow delegation that executes the selected userSystemFlowId; every routeId/userSystemFlowId literal in the chain must be declared.",
+      "bunValue": "FlowRouterRunner.resolveUserSystemFlow(...) -> FlowRouterResolution(routeId, userSystemFlowId, category, guardId, resolutionStrategy, ...) -> FlowRunner.execute(selectedUserSystemFlowId)"
+    },
+    {
+      "key": "tooling.languages",
+      "meaning": "Languages of production source — the production-language half of the activation's language fact. The stack-identity value (the runtime) is not a language and stays with the realization.",
+      "bunValue": "typescript"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "prefer[3]",
+      "text": "Follow the additive call chain (core runtime spec #1251): flow router YAML -> entrypoint.actions[] -> JOURNEY_MAP action -> FlowRouterRunner.resolveUserSystemFlow(...) -> FlowRouterResolution(routeId, userSystemFlowId, category, guardId, resolutionStrategy, ...) -> FlowRunner.execute(selectedUserSystemFlowId) -> trace(flowRouterId, routeId, selectedUserSystemFlowId, ...), so the validator can resolve the trace back to the YAML route.",
+      "reason": "Names the Bun-stack constructs — JOURNEY_MAP (idiom.routing#route_table) and FlowRouterRunner.resolveUserSystemFlow -> FlowRouterResolution -> FlowRunner.execute (roles.runtime_components#route_resolver, which binds the named resolution result) — and the YAML artifact kind; quoted verbatim from the Bun rewrite so the authoritative construct names survive instantiation. The core states the chain with roles and core-spec field names, and takes each stack's construct names from the profile."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "bun_flow_router_binding reports no violation for any of the five directions or schema drift on the consumer tree.",
+      "reason": "Detector id is a realization detail of this one rule; the core names the check generically."
+    },
+    {
+      "item": "evidence[2]",
+      "text": "Detector fails on fixtures/dirty (declaration_to_runtime), fixtures/dirty_runtime_hidden (runtime_to_declaration), fixtures/dirty_station_missing (station_to_declaration), fixtures/dirty_unreachable (declaration_to_station), fixtures/dirty_trace (trace_to_declaration) and passes the clean tree.",
+      "reason": "Concrete fixture paths are realization test assets; the core keeps only the generic one-fail-fixture-per-direction plus clean-tree expectation."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "One JS detector `bun_flow_router_binding` walks plan/_user_system_flows/_flow_routers/** (route space), server.ts (journey router JOURNEY_MAP), src/user-system-flows/** (FlowRouterRunner runtime) and e2e/** (trace tests), emitting RAW v1.1 violations under this single rule_id with the failing `direction` in evidence, plus a schema-drift signal when a parallel reachability field is used instead of core #1248 `entrypoint`.",
+      "reason": "Detector id, detector implementation language, findings-protocol version (RAW v1.1) and the exact walked paths are Bun realization details; the core states the check generically and takes surface locations from the profile."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "text": "Fail fixture: fixtures/dirty.",
+      "reason": "Fixture name is a realization test asset; the direction check itself is neutral."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "text": "Fail fixture: fixtures/dirty_runtime_hidden.",
+      "reason": "Fixture name is a realization test asset."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "text": "Fail fixture: fixtures/dirty_station_missing.",
+      "reason": "Fixture name is a realization test asset."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "text": "Fail fixture: fixtures/dirty_unreachable.",
+      "reason": "Fixture name is a realization test asset."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "text": "Fail fixture: fixtures/dirty_trace.",
+      "reason": "Fixture name is a realization test asset."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "text": "Call model whose closure is enforced (core runtime spec afokapu/atdd#1251, additive): plan/_user_system_flows/_flow_routers/<id>.yaml (declaration, core #1248) -> entrypoint.actions[] (core #1248 entrypoint field, CONSUMED here) -> journey router JOURNEY_MAP action (reachability, server.ts) -> FlowRouterRunner.resolveUserSystemFlow(...) (runtime, core #1251) -> FlowRouterResolution(routeId, userSystemFlowId, category, guardId, resolutionStrategy, ...) -> FlowRunner.execute(selectedUserSystemFlowId) (delegation) -> trace(flowRouterId, routeId, selectedUserSystemFlowId, ...) -> validator resolves the trace back to the YAML route.",
+      "reason": "The concrete Bun file paths, construct names — including the named resolution result FlowRouterResolution, bound for other stacks by roles.runtime_components#route_resolver — and core-design issue refs; quoted verbatim from the Bun rewrite. The core keeps the chain shape with roles plus the core-spec field names."
+    },
+    {
+      "item": "verifier_detail[12]",
+      "text": "Scope: Bun stack only; per-stack renderings other than Bun are owned by their own workspace packages.",
+      "reason": "Stack scoping of this rendering; the neutral core is the cross-stack obligation, instantiated once per stack via the profile."
+    },
+    {
+      "item": "activation.facts[1]",
+      "text": "language: [typescript, bun] — Bun-stack rendering only; other stacks own their own packages.",
+      "reason": "Stack identity of this rendering: 'typescript' is the production-source language and is profiled under tooling.languages, but 'bun' is runtime/package-manager stack identity, not a production-source language, so it has no neutral equivalent; the core activates on roles, changes and findings, and the rendering's stack scope stays with the realization."
+    },
+    {
+      "item": "activation.facts[3]",
+      "text": "finding values: bun_flow_router_binding:declaration_to_runtime, bun_flow_router_binding:runtime_to_declaration, bun_flow_router_binding:station_to_declaration, bun_flow_router_binding:declaration_to_station, bun_flow_router_binding:trace_to_declaration, bun_flow_router_binding:schema_drift.",
+      "reason": "Finding ids of this rule's detector are realization details; the core activation carries neutral direction values with the same failing-direction semantics."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "Flow router route space -> flow router declaration space (profile glob); FlowRouterRunner -> runtime route resolver (profile idiom).",
+      "as": [
+        "core:given",
+        "profile:layout.locations#flow_router_dir",
+        "profile:roles.runtime_components#route_resolver"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "Binding surfaces renamed to roles: flow router YAML -> flow router declaration, JOURNEY_MAP -> composition-root route table, e2e trace test kept as e2e_test role.",
+      "as": [
+        "core:when"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "One closure obligation over the five directions; station directions renamed route_table_to_declaration / declaration_to_route_table; schema drift stays outside then exactly as in Bun.",
+      "as": [
+        "core:then"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "Journey router -> route table; 'blocks CI' retained as the neutral strict consequence.",
+      "as": [
+        "core:why"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "JOURNEY_MAP repointed to route table; fix menu otherwise neutral.",
+      "as": [
+        "core:prefer[0]"
+      ]
+    },
+    {
+      "item": "prefer[1]",
+      "note": "Already neutral: entrypoint.exposed is a core-schema field.",
+      "as": [
+        "core:prefer[1]"
+      ]
+    },
+    {
+      "item": "prefer[2]",
+      "note": "Ownership of entrypoint fields is core-schema level, stack-neutral.",
+      "as": [
+        "core:prefer[2]"
+      ]
+    },
+    {
+      "item": "prefer[3]",
+      "note": "Core keeps the neutral chain including the named resolution result (whose concrete name, FlowRouterResolution, comes from the extended roles.runtime_components#route_resolver); the Bun construct names and concrete chain are bunOnly, quoted verbatim so no construct is renamed or weakened.",
+      "as": [
+        "core:prefer[3]",
+        "profile:layout.locations#flow_router_dir",
+        "profile:idiom.routing#route_table",
+        "profile:roles.runtime_components#route_resolver",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "Runtime literals -> route-resolver literals; neutral.",
+      "as": [
+        "core:avoid[0]"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "The parallel field names are core-schema-level forbidden fields, kept verbatim.",
+      "as": [
+        "core:avoid[1]"
+      ]
+    },
+    {
+      "item": "avoid[2]",
+      "note": "JOURNEY_MAP -> route table.",
+      "as": [
+        "core:avoid[2]"
+      ]
+    },
+    {
+      "item": "unless[0]",
+      "note": "Exception kept verbatim in strength; Station-Master-reachability renamed route-table reachability, direction renamed declaration_to_route_table.",
+      "as": [
+        "core:unless[0]"
+      ]
+    },
+    {
+      "item": "unless[1]",
+      "note": "FlowRouterRunner -> runtime route resolver.",
+      "as": [
+        "core:unless[1]"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "Clean-tree evidence neutral; the detector id is realization-only.",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "Failing-direction-in-evidence contract is neutral.",
+      "as": [
+        "core:evidence[1]"
+      ]
+    },
+    {
+      "item": "evidence[2]",
+      "note": "Generic one-fail-fixture-per-direction plus clean-tree expectation goes to verification; concrete fixture paths stay Bun.",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "One repository-wide check over the surfaces is neutral; walked locations come from the profile; detector id, JS and RAW v1.1 are bunOnly.",
+      "as": [
+        "core:verification",
+        "profile:layout.locations#flow_router_dir",
+        "profile:roles.composition_root.path",
+        "profile:roles.application.path",
+        "profile:roles.e2e_test.path",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "declaration_to_runtime check neutral; user/system flow artifact path from the profile; fixture bunOnly.",
+      "as": [
+        "core:verification",
+        "profile:layout.plan_item",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "runtime_to_declaration check neutral; resolver construct (including its named resolution result) from the profile; fixture bunOnly.",
+      "as": [
+        "core:verification",
+        "profile:roles.runtime_components#route_resolver",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[3]",
+      "note": "station_to_declaration -> route_table_to_declaration; mapping shape {flowRouterId, path} kept; fixture bunOnly.",
+      "as": [
+        "core:verification",
+        "profile:idiom.routing#route_table",
+        "profile:roles.composition_root.path",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[4]",
+      "note": "declaration_to_station -> declaration_to_route_table; consumes core entrypoint fields; fixture bunOnly.",
+      "as": [
+        "core:verification",
+        "profile:idiom.routing#route_table",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[5]",
+      "note": "trace_to_declaration check neutral (core trace contract); e2e location from the profile; fixture bunOnly.",
+      "as": [
+        "core:verification",
+        "profile:roles.e2e_test.path",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[6]",
+      "note": "Chain shape and core-spec field names neutral, including the named resolution result (bound per stack by the extended roles.runtime_components#route_resolver); Bun paths, construct names (FlowRouterResolution preserved verbatim) and issue refs bunOnly.",
+      "as": [
+        "core:verification",
+        "profile:layout.locations#flow_router_dir",
+        "profile:idiom.routing#route_table",
+        "profile:roles.runtime_components#route_resolver",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[7]",
+      "note": "Ownership split and the no-parallel-field MUST are stack-neutral; 'detector/fixtures' genericized to 'checker and fixtures'.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[8]",
+      "note": "Term definition neutral; the listed field names are core-schema-level.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[9]",
+      "note": "Term neutral with resolver construct from the profile.",
+      "as": [
+        "core:verification",
+        "profile:roles.runtime_components#route_resolver"
+      ]
+    },
+    {
+      "item": "verifier_detail[10]",
+      "note": "Term neutral; journey router reachability -> route-table reachability.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[11]",
+      "note": "RAW-facts-only with a downstream strict gate is a neutral enforcement structure.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[12]",
+      "note": "Bun-stack scoping; the core is instantiated per stack, so this sentence has no neutral equivalent.",
+      "as": [
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "path_glob fact becomes a role fact over the four surfaces; the concrete globs are profile values. The note (either route space or resolver makes a flow router system) is carried by given/fires/doesNotFire, since core facts carry no notes.",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:layout.locations#flow_router_dir",
+        "profile:layout.plan_item",
+        "profile:roles.application.path",
+        "profile:roles.composition_root.path",
+        "profile:roles.e2e_test.path"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "Only the production-source language (typescript) is profiled under tooling.languages, whose vocabulary meaning is languages of production source; 'bun' is stack identity of this rendering, not a language, so it is realization-only and the core carries no language fact.",
+      "as": [
+        "profile:tooling.languages",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "Diff-level change values neutralized (route resolver, route table, flow router declaration); needs_new_observer kept.",
+      "as": [
+        "core:activation.facts[1]"
+      ]
+    },
+    {
+      "item": "activation.facts[3]",
+      "note": "Finding fact kept (whole-tree findings surfaced with the failing direction, including pre-existing violations) with neutral direction values; the detector finding ids are bunOnly.",
+      "as": [
+        "core:activation.facts[2]",
+        "bunOnly"
+      ]
+    }
+  ],
+  "neutralityNotes": "Renames: journey router / JOURNEY_MAP -> the composition root's route table (roles.composition_root.path + idiom.routing#route_table); FlowRouterRunner / FlowRunner -> the runtime route resolver and user/system flow delegation (roles.application.path + roles.runtime_components#route_resolver, extended this round to also bind the named resolution result FlowRouterResolution(routeId, userSystemFlowId, category, guardId, resolutionStrategy, ...)); flow router YAML -> flow router declaration; e2e/** -> the e2e_test role. Direction labels station_to_declaration / declaration_to_station became route_table_to_declaration / declaration_to_route_table; the Bun labels are preserved verbatim in bun.json (delivered as the reference example) and in the bunOnly finding-id entry. The bunOnly call chains (prefer[3], verifier_detail[6]) now quote the Bun rewrite verbatim, so the authoritative construct FlowRouterResolution is preserved exactly — no renamed or weakened variant. Core-design refs (afokapu/atdd#1246/#1248/#1249/#1251) are referenced narratively in the core ('core flow router schema', 'core runtime spec / trace contract') since the field names (entrypoint.exposed, entrypoint.actions, routeId, userSystemFlowId, flowRouterId, resolution fields, trace payload) are core-schema-owned and therefore stack-neutral; the numbered refs stay in the realization. Schema drift remains outside then (in prefer/avoid/verification) exactly as in Bun, and the strict disposition / severity 1 / RAW-facts-with-downstream-gate structure moved to core:verification per the notProfileKeys rule. activation.facts[1] (language) is only partly neutralizable: tooling.languages carries just the production-source language (typescript) per its vocabulary meaning; 'bun' is runtime/package-manager stack identity, not a language, so it stays bunOnly with the realization's scope sentence. Core activation facts carry no notes, so the facts[0] note ('presence of either the route space or a resolver makes the tree a flow router system') is carried by given, fires and doesNotFire. Three vocabulary keys are missing and proposed: layout.locations#flow_router_dir, idiom.routing#route_table, roles.runtime_components#route_resolver (documented scope and value extended this round to cover the named resolution result).",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.interlocking-bilateral-binding.json",
+      "sha256": "e76804049255c4abba46f1c33cec3243dd955246fa8e84d31b64ed65e37182f2"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 1,
+    "usefulness": 5,
+    "deriver": "rekey-v3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

@@ -1,0 +1,358 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.flow-router.does-not-carry-flow-variables",
+  "legacyId": "coder.bun.interlocking-does-not-carry-cargo",
+  "core": {
+    "title": "Keep flow variables out of the FlowRouterRunner",
+    "given": "A source module in the stack's user/system flows tree (profile: user/system flows tree) that defines a FlowRouterRunner (not the production FlowRunner module)",
+    "when": "the module is created or changed",
+    "then": "Keep flow variables inside FlowRunner execution: the FlowRouterRunner must not reference, mutate, store (artifact_urn -> artifact_data), or route on flow variables.",
+    "prefer": [
+      "The FlowRouterRunner reads only the initial action/inputs/state before execution and a completed UserSystemFlowResult at a declared route boundary.",
+      "Leave flow variables to the FlowRunner, which passes it between product capabilities; product capabilities read and return artifact objects."
+    ],
+    "avoid": [
+      "Flow-variable references or mutations of a flow-variable mapping in a FlowRouterRunner module.",
+      "Storing artifact_urn -> artifact_data runtime values in the flow router.",
+      "Routing on mid-train flow-variable state; letting flow variables select user/system flow variants."
+    ],
+    "unless": [
+      "The production FlowRunner module legitimately constructs and carries flow variables; it is not scanned for flow-variable bleed."
+    ],
+    "why": "Flow variables is the artifact data plane carried by the FlowRunner between product capabilities inside a selected user/system flow; the flow_variables_boundary keeps it inside that execution, so the flow router never routes on mid-train flow-variable state nor lets flow variables select user/system flow variants, routing only on initial inputs and declared-boundary UserSystemFlowResults.",
+    "evidence": [
+      "The stack's flow-variable-boundary check reports no flow-variable reference, flow-variable-mapping mutation, or artifact_urn literal in any FlowRouterRunner-defining module in the user/system flows tree.",
+      "The same check reports no product capability entry module (located via the profile's product capability directory and capability-module pattern) importing flow router code — the companion split convention's obligation, enforced by the same realization check.",
+      "A reviewer confirms the FlowRouterRunner's routing inputs are only the initial action/inputs/state and declared-boundary UserSystemFlowResults, and that flow variables does not select user/system flow variants."
+    ],
+    "verification": [
+      "Scan each FlowRouterRunner-defining module in the user/system flows tree and flag a flow-variable reference, a flow-variable-mapping mutation, or an artifact_urn literal.",
+      "Scan each product capability entry module (located via the profile's product capability directory and capability-module pattern) and flag an import of flow router code; that is the companion split convention's obligation, and one realization check may enforce it alongside this one — this core's then covers only the FlowRouterRunner flow-variable boundary.",
+      "Comment text is masked before matching; a string artifact_urn literal is still detected.",
+      "The production FlowRunner module is excluded from the flow-variable-bleed scan; only FlowRouterRunner-defining modules are scanned for flow-variable bleed.",
+      "Which modules are scanned and how flow-variable touches are recognized is the per-stack realization's (detector's) concern.",
+      "Severity 4, disposition strict: a newly introduced flow-variable touch (or, under the companion convention, a product capability importing flow router) is not suppressible and fails CI."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "source module in the user/system flows tree"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "operation",
+          "values": [
+            "create",
+            "modify"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "module defines a FlowRouterRunner"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "Flow-variable reference",
+            "flow-variable mapping mutation",
+            "artifact_urn literal"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "routing decision depends on mid-train flow-variable state",
+            "Flow variables selects a user/system flow variant"
+          ],
+          "observability": "llm_judged"
+        }
+      ],
+      "fires": [
+        "A FlowRouterRunner module in the user/system flows tree references flow variables or assigns into a flow-variable mapping.",
+        "A FlowRouterRunner caches artifact_urn -> artifact_data values or contains an artifact_urn string literal.",
+        "A FlowRouterRunner chooses the next route from mid-train flow-variable state.",
+        "Flow-variable contents are used to select a user/system flow variant."
+      ],
+      "doesNotFire": [
+        "The production FlowRunner module constructs flow variables and passes it between product capabilities.",
+        "A FlowRouterRunner reads the initial action/inputs/state before execution.",
+        "A FlowRouterRunner reads a completed UserSystemFlowResult at a declared route boundary.",
+        "A comment inside a FlowRouterRunner module mentions flow variables (comments are masked).",
+        "A product capability entry module (located via the profile's product capability directory and capability-module pattern) changes its imports (governed by the companion convention that product capabilities must not import flow router code)."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "tooling.languages",
+      "meaning": "The languages of production source; the rule's module scan applies to modules written in these languages.",
+      "bunValue": "typescript, javascript"
+    },
+    {
+      "key": "roles.runtime_components#trains_location",
+      "meaning": "Where the user/system flow runtime lives: the tree in which a FlowRouterRunner may be defined (alongside the production FlowRunner) and which this rule scans for flow-variable bleed.",
+      "bunValue": "src/user-system-flows/**"
+    },
+    {
+      "key": "layout.wagon_dir",
+      "meaning": "Directory of one product capability (a bounded slice of the product); the product capability entry modules covered by the companion capability-import scan live in these directories.",
+      "bunValue": "src/<capability>/"
+    },
+    {
+      "key": "layout.locations#wagon_module",
+      "meaning": "Path pattern of a product capability's entry module — the module that speaks for the product capability and that the companion capability-import scan targets (in the Bun realization, via the same check as this rule).",
+      "bunValue": "src/<capability>/capability.ts"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "evidence[0]",
+      "text": "The bun_flow_router_infrastructure detector (checks/flow_router_no_flow_variables.mjs)",
+      "reason": "Detector family id and check file path are realization details of this one rule; the core names the check generically."
+    },
+    {
+      "item": "evidence[1]",
+      "text": "(enforced via the split convention coder.bun.capability-does-not-import-flow-router)",
+      "reason": "Only the companion split-convention rule id is a realization detail; the capability-module location src/<capability>/capability.ts is parameterized through the profile keys layout.capability_dir and layout.locations#capability_module, and the detector reference is already bunOnly under evidence[0]."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "text": "the obligation of the split convention coder.bun.capability-does-not-import-flow-router, enforced by the same detector",
+      "reason": "The companion rule id and detector reference are realization details; the scanned capability-module location src/<capability>/capability.ts is parameterized through the profile keys layout.capability_dir and layout.locations#capability_module."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "text": "this detector is a member of the bun_flow_router_infrastructure FAMILY (checks/flow_router_no_flow_variables.mjs)",
+      "reason": "Detector family membership and check file are realization details; the core keeps only the generic deference to the per-stack detector."
+    },
+    {
+      "item": "activation.facts[4]",
+      "text": "note: Produced by the bun_flow_router_infrastructure family detector (checks/flow_router_no_flow_variables.mjs)",
+      "reason": "The fact's note names the realization detector; the core fact keeps only the neutral finding kinds."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "'Bun module under src/user-system-flows/**' becomes 'source module in the stack's user/system flows tree'; the path is supplied by the profile.",
+      "as": [
+        "core:given",
+        "profile:roles.runtime_components#user_system_flows_location"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "Already neutral; unchanged.",
+      "as": [
+        "core:when"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "Single obligation unchanged; stack scope lives in given.",
+      "as": [
+        "core:then"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "FlowRunner/FlowVariables/flow_variables_boundary are agnostic ATDD core-runtime vocabulary, not stack names; unchanged.",
+      "as": [
+        "core:why"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "Role-level behavior; no stack content.",
+      "as": [
+        "core:prefer[0]"
+      ]
+    },
+    {
+      "item": "prefer[1]",
+      "note": "Agnostic user/system-flow-runtime vocabulary; unchanged.",
+      "as": [
+        "core:prefer[1]"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "The TS indexing token form `flowVariables[...] = ...` is generalized to 'mutations of a flow variables mapping'; the concrete form remains in bun.json as the reference example.",
+      "as": [
+        "core:avoid[0]"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "Already neutral.",
+      "as": [
+        "core:avoid[1]"
+      ]
+    },
+    {
+      "item": "avoid[2]",
+      "note": "Already neutral.",
+      "as": [
+        "core:avoid[2]"
+      ]
+    },
+    {
+      "item": "unless[0]",
+      "note": "Exception kept verbatim; its scan-scoping half is also a verification entry.",
+      "as": [
+        "core:unless[0]",
+        "core:verification"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "Generic evidence in the core; the detector name and check file are bunOnly.",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "The generic capability-entry-module evidence stays in the core, bound to the profile's product capability directory (layout.capability_dir) and capability-module pattern (layout.locations#capability_module); only the companion split-convention rule id is bunOnly.",
+      "as": [
+        "core:evidence[1]",
+        "core:verification",
+        "profile:layout.capability_dir",
+        "profile:layout.locations#capability_module",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "evidence[2]",
+      "note": "Reviewer check; already neutral.",
+      "as": [
+        "core:evidence[2]"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "Generic scan description in verification; 'under src/user-system-flows/**' is the profile's user/system flows tree; `flowVariables[...] = ...` generalized to 'flow-variable-mapping mutation'.",
+      "as": [
+        "core:verification",
+        "profile:roles.runtime_components#user_system_flows_location"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "The generic capability-entry-module scan is verification, parameterized by the profile's product capability directory and capability-module pattern; the companion rule id and detector reference are bunOnly.",
+      "as": [
+        "core:verification",
+        "profile:layout.capability_dir",
+        "profile:layout.locations#capability_module",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "Comment masking and string-literal detection are detector behaviors expressed generically; the concrete comment syntax stays the realization's concern.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[3]",
+      "note": "Check-scoping exclusion, already neutral.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[4]",
+      "note": "The per-stack deference is verification; the family id and check file are bunOnly.",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[5]",
+      "note": "Severity and disposition are per-rule, not profile keys; strict disposition stated generically in verification.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "Language scoping is a stack concern supplied by the profile; the core activation drops the language fact.",
+      "as": [
+        "profile:tooling.languages"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "path_glob src/user-system-flows/** becomes a file_kind fact over the profile's user/system flows tree.",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roles.runtime_components#user_system_flows_location"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "Operation fact; already neutral.",
+      "as": [
+        "core:activation.facts[1]"
+      ]
+    },
+    {
+      "item": "activation.facts[3]",
+      "note": "Change fact kept; recognizing a FlowRouterRunner-defining module (and excluding the production FlowRunner) remains needs_new_observer.",
+      "as": [
+        "core:activation.facts[2]"
+      ]
+    },
+    {
+      "item": "activation.facts[4]",
+      "note": "Finding kinds kept (with 'flow variables[...] = ... mutation' generalized to 'flow-variable mapping mutation'); the detector reference in the note is bunOnly.",
+      "as": [
+        "core:activation.facts[3]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.facts[5]",
+      "note": "llm_judged semantic routing/variant-selection fact; already neutral.",
+      "as": [
+        "core:activation.facts[4]"
+      ]
+    }
+  ],
+  "neutralityNotes": "FlowRunner, FlowRouterRunner, flow variables, artifact_urn/artifact_data, UserSystemFlowResult and product capability are the agnostic ATDD core-runtime spec's own vocabulary (the rule is the realization of the core 'flow variables boundary' obligation), so they are kept in the core. The Bun stack, the TypeScript/JavaScript languages (tooling.languages), the src/user-system-flows/** user/system flows tree (proposed roles.runtime_components#user_system_flows_location), and the src/<capability>/capability.ts capability-module location (layout.capability_dir plus proposed layout.locations#capability_module) all come from the profile; the `flowVariables[...] = ...` token form is generalized to 'flow-variable-mapping mutation' (the concrete form stays in bun.json as the reference example), and only the detector family/check-file ids and the companion split-convention rule id remain in bunOnly. The capability-must-not-import-flow-router half is the companion split convention's obligation; the core keeps it only as a generic, profile-parameterized note in evidence/verification so no extra obligation is added.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/atdd-bun/coder.bun.interlocking-does-not-carry-cargo.json",
+      "sha256": "1c4b2a97ac86859ca934ec9c43cc571444fae590b71b2d2279a2813f3f0245ef"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 1,
+    "usefulness": 5,
+    "deriver": "rekey-v3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

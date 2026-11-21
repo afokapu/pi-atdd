@@ -1,0 +1,343 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.capability.logical-vs-filesystem-naming",
+  "legacyId": "planner.wagon.logical-vs-filesystem-naming",
+  "core": {
+    "title": "Use kebab-case for logical identifiers and snake_case for plan filesystem names",
+    "given": "A planner writes a logical identifier (any URN, slug field or reference in the profile's reference syntax, in any file) or a plan filesystem artifact (a product capability's plan directory, its manifest file, or a feature file)",
+    "when": "The planner writes or edits the identifier, or creates or renames the path",
+    "then": "Write logical identifiers (URNs, slug fields, references in the profile's reference syntax) in kebab-case, and name plan filesystem artifacts in snake_case at the locations and with the name patterns the profile gives for plan artifacts: the product capability directory under the plan root, the product capability manifest named after that directory (not after the logical slug), and feature files under the product capability directory.",
+    "prefer": [
+      "Keep the logical-to-physical mapping consistent: name each product capability directory, manifest and feature file after its entity's logical identifier, case-converted per this rule and the profile's plan layout",
+      "Name the product capability manifest after its directory, not after the logical slug"
+    ],
+    "avoid": [
+      "Hyphenated plan directory or feature file names copied from the hyphenated logical identifier",
+      "Underscored values in any URN, slug field or reference in the profile's reference syntax",
+      "Naming the product capability manifest after the logical slug instead of its directory"
+    ],
+    "unless": [],
+    "why": "Consistent filesystem naming reduces conversion complexity and keeps logical (kebab) and physical (snake) identifiers clearly separate.",
+    "evidence": [
+      "Every product capability directory directly under the plan root is snake_case and contains a manifest named after that directory per the profile's plan-artifact name pattern",
+      "Every feature file under a product capability's plan directory has a snake_case name",
+      "Every URN, slug field and reference in the profile's reference syntax, in any file and for any entity type, is kebab-case"
+    ],
+    "verification": [
+      "Check naming by surface: logical-identifier surfaces (URNs, slug fields, references in the profile's reference syntax) must be kebab-case in any file; plan filesystem surfaces (product capability directories, manifest files, feature files) must be snake_case at the profile's plan locations and name patterns; either surface alone is a finding.",
+      "Normalization: the expected product capability directory name is the logical slug with hyphens replaced by underscores (kebab-to-snake), and the manifest filename must equal the profile's manifest name pattern applied to that directory name (the manifest matches the directory, not the slug). The full slug-to-directory-name conversion is owned by the separate naming-conversion rule and is not asserted here.",
+      "Enforcement needs a diff-level observer (needs_new_observer) that detects any URN, slug or reference value in the profile's reference syntax added or changed in any file regardless of the entity it names, and any plan directory or file created or renamed; either change activates the check.",
+      "Scope: the filesystem branch applies recursively under the plan root (directories, manifests and feature files anywhere under it); the logical-identifier branch is not gated by the plan tree and is not limited to any entity type, so files outside the plan tree are checked only for URNs, slug fields and references in the profile's reference syntax.",
+      "The task terms (urn, slug, ref, product capability, feature, manifest) are supporting activation signals only, not gates."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "operation",
+          "values": [
+            "create",
+            "rename",
+            "edit"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "role",
+          "values": [
+            "plan_artifact"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "file_kind",
+          "values": [
+            "capability_manifest",
+            "feature_file",
+            "any_file_with_urn_slug_or_ref"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "urn_or_slug_or_ref_added_or_changed",
+            "plan_directory_or_file_added_or_renamed"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "task_term",
+          "values": [
+            "urn",
+            "slug",
+            "ref",
+            "product capability",
+            "feature",
+            "manifest"
+          ],
+          "observability": "observable_now"
+        }
+      ],
+      "fires": [
+        "The planner creates a new product capability directory under the plan root together with its manifest",
+        "The planner adds a feature file under a product capability's plan directory",
+        "The planner writes or edits any URN, slug field or reference in the profile's reference syntax, in any file, inside or outside the plan tree, whatever entity it names",
+        "The planner renames an entity, so both its slug and its plan path change"
+      ],
+      "doesNotFire": [
+        "Edits to the body of an existing plan artifact that change no URNs, slugs, references, filenames or directory names",
+        "Changes to files outside the plan tree that add or change no URNs, slug fields or references in the profile's reference syntax"
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roots.plan",
+      "meaning": "Root tree of plan artifacts. The filesystem branch of this rule applies recursively under this root; the logical-identifier branch may reach files outside it.",
+      "bunValue": "plan"
+    },
+    {
+      "key": "layout.wagon_dir",
+      "meaning": "Where one product capability's plan directory sits; these directory names must be snake_case and hold the product capability manifest.",
+      "bunValue": "plan/{capability_dirname}/"
+    },
+    {
+      "key": "suffix.plan_artifact",
+      "meaning": "Name pattern of plan-artifact files; here the product capability manifest, whose name must be derived from its directory name (not from the logical slug).",
+      "bunValue": "_{dirname}.yaml"
+    },
+    {
+      "key": "layout.plan_item",
+      "meaning": "Path of a feature's plan file under the plan root; defines the feature file's location and snake_case name pattern.",
+      "bunValue": "plan/{capability_dirname}/features/{feature_name}.yaml"
+    },
+    {
+      "key": "roles.plan_artifact.kinds",
+      "meaning": "The stack's concrete plan-artifact kinds (product capability manifest, feature file, plan markup) for the file_kind activation fact.",
+      "bunValue": "capability_manifest, feature_file, yaml"
+    },
+    {
+      "key": "idiom.plan_syntax#reference_syntax",
+      "meaning": "The reference surface: the syntax by which any file holds a reference value. It is the third logical-identifier surface this rule checks for kebab-case, in any file and for any entity type; for Bun it instantiates to YAML references.",
+      "bunValue": "YAML ref (references are YAML reference values, in any file)"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "prefer[0]",
+      "text": "Follow the source example: feature:authenticate-identity:verify-session -> plan/authenticate_identity/ + _authenticate_identity.yaml + features/verify_session.yaml",
+      "reason": "Concrete worked example of this stack's identifier-to-path mapping; bun.json is delivered as the reference example, so the concrete example is not repeated in the core."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "Term id naming_surface, label 'Naming by surface' (surface -> format + pattern).",
+      "reason": "Term ids and labels of this rule's realization; the core's verification states the same per-surface check generically without the realization's term vocabulary."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "text": "Canonical example: feature:authenticate-identity:verify-session -> plan/authenticate_identity/ + _authenticate_identity.yaml + features/verify_session.yaml",
+      "reason": "Concrete canonical example of this stack's checker; the core's verification describes the check generically."
+    },
+    {
+      "item": "activation.facts[1]",
+      "text": "path_glob: plan/**, ** (either branch alone activates; plan/** does not gate the logical-identifier branch, which is not limited to any entity type)",
+      "reason": "The neutral activation vocabulary has no path_glob fact; the filesystem branch is re-expressed as the plan_artifact role fact plus the plan-root profile key, with recursive scope stated in verification, and the any-file branch plus the branch semantics live in the change/file_kind facts, fires/doesNotFire and verification."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "Neutral core names the third identifier surface as 'reference in the profile's reference syntax'; Bun's YAML-ref surface instantiates it from the proposed idiom.plan_syntax#reference_syntax key, so the surface is profile data rather than generalized wording.",
+      "as": [
+        "core:given",
+        "profile:idiom.plan_syntax#reference_syntax"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "No stack content; kept as-is.",
+      "as": [
+        "core:when"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "The dual-case obligation is neutral; the concrete path shapes plan/{capability_dirname}/, plan/{dirname}/_{dirname}.yaml and plan/{capability_dirname}/features/{feature_name}.yaml come from the profile keys, and the reference surface from idiom.plan_syntax#reference_syntax.",
+      "as": [
+        "core:then",
+        "profile:roots.plan",
+        "profile:layout.capability_dir",
+        "profile:suffix.plan_artifact",
+        "profile:layout.plan_item",
+        "profile:idiom.plan_syntax#reference_syntax"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "Verbatim; fully neutral.",
+      "as": [
+        "core:why"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "Neutral preference (consistent logical-to-physical mapping); the concrete worked example stays in the realization.",
+      "as": [
+        "core:prefer[0]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "prefer[1]",
+      "note": "The principle 'manifest named after its directory, not the slug' is neutral; the pattern _{dirname}.yaml is the profile name pattern.",
+      "as": [
+        "core:prefer[1]",
+        "profile:suffix.plan_artifact"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "'under plan/' neutralized to plan filesystem names under the plan root (scope applied recursively per verification); hyphenated-name warning is neutral.",
+      "as": [
+        "core:avoid[0]",
+        "profile:roots.plan"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "Neutral core forbids underscored values in URNs, slug fields and references in the profile's reference syntax; Bun's 'YAML ref' surface is the idiom.plan_syntax#reference_syntax value.",
+      "as": [
+        "core:avoid[1]",
+        "profile:idiom.plan_syntax#reference_syntax"
+      ]
+    },
+    {
+      "item": "avoid[2]",
+      "note": "Manifest-after-slug warning is neutral; the (_{slug}.yaml) pattern instance comes from the profile name pattern.",
+      "as": [
+        "core:avoid[2]",
+        "profile:suffix.plan_artifact"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "Directory-under-plan-root and manifest-named-after-directory checks; concretes from the profile.",
+      "as": [
+        "core:evidence[0]",
+        "profile:roots.plan",
+        "profile:layout.capability_dir",
+        "profile:suffix.plan_artifact"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "Feature-file snake_case check; the feature-file location comes from the profile.",
+      "as": [
+        "core:evidence[1]",
+        "profile:layout.plan_item"
+      ]
+    },
+    {
+      "item": "evidence[2]",
+      "note": "In-any-file, any-entity-type kebab check is neutral; the reference surface instantiates to Bun's YAML references via idiom.plan_syntax#reference_syntax.",
+      "as": [
+        "core:evidence[2]",
+        "profile:idiom.plan_syntax#reference_syntax"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "The per-surface check is described generically in core:verification; the surface patterns come from the profile and the reference surface from idiom.plan_syntax#reference_syntax; the term id naming_surface is a realization detail kept in bunOnly.",
+      "as": [
+        "core:verification",
+        "profile:roots.plan",
+        "profile:layout.capability_dir",
+        "profile:suffix.plan_artifact",
+        "profile:layout.plan_item",
+        "profile:idiom.plan_syntax#reference_syntax",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "The generic kebab-to-snake normalization (slug hyphens replaced by underscores) and the ownership qualification (full slug-to-directory conversion owned by the separate naming-conversion rule) are stack-neutral and live in core:verification; only the concrete manifest filename formula '_' + dirname + '.yaml' is profile data (suffix.plan_artifact), so nothing here is bunOnly.",
+      "as": [
+        "core:verification",
+        "profile:suffix.plan_artifact"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "Purely the concrete canonical example; the generic check description lives in core:verification.",
+      "as": [
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "operation values create/rename/edit are neutral; the note's semantics (edits count when they touch an identifier) are preserved in given/when.",
+      "as": [
+        "core:activation.facts[0]"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "Re-expressed as a plan_artifact role fact; the plan root is the profile value 'plan' with recursive scope stated in core:verification rather than encoded as a scan glob; the raw path_glob fact form and its branch note have no neutral equivalent.",
+      "as": [
+        "core:activation.facts[1]",
+        "profile:roots.plan",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "The concrete kind list (including the markup kind 'yaml') comes from the profile; the catch-all any_file_with_urn_slug_or_ref kind is neutral and kept.",
+      "as": [
+        "core:activation.facts[2]",
+        "profile:roles.plan_artifact.kinds"
+      ]
+    },
+    {
+      "item": "activation.facts[3]",
+      "note": "Change values are neutral (the 'ref' value means a reference in the profile's reference syntax); the needs_new_observer requirement is mirrored in verification.",
+      "as": [
+        "core:activation.facts[3]",
+        "core:verification",
+        "profile:idiom.plan_syntax#reference_syntax"
+      ]
+    },
+    {
+      "item": "activation.facts[4]",
+      "note": "Task terms are plan-vocabulary terms and neutral; 'supporting signal only, not a gate' is recorded in verification.",
+      "as": [
+        "core:activation.facts[4]",
+        "core:verification"
+      ]
+    }
+  ],
+  "neutralityNotes": "Fixes from the round-2 feedback: (1) the third logical-identifier surface is no longer generalized to all references; the core says 'reference in the profile's reference syntax' and the surface is profile data via the proposed idiom.plan_syntax#reference_syntax key (Bun: YAML refs), used consistently in given, then, avoid[1], evidence[2], verification and the fires/change/doesNotFire activation text, so a non-YAML reference that is neither a URN nor a slug field is out of scope exactly as in bun.json. (2) The generic kebab-to-snake normalization (hyphens replaced by underscores) now lives in core:verification with the original qualification that the full slug-to-directory conversion is owned by the separate naming-conversion rule; only the concrete manifest name pattern remains profile data (suffix.plan_artifact), so verifier_detail[1] is no longer bunOnly. (3) roots.plan bunValue is the root path 'plan'; the recursive filesystem scope is expressed in core:verification instead of a scan glob. Residuals: the concrete plan path and name patterns are profile data (roots.plan, layout.capability_dir, suffix.plan_artifact, layout.plan_item), not core text; the path_glob activation fact has no counterpart in the closed neutral fact vocabulary and is re-expressed as a plan_artifact role fact plus the plan-root key with branch semantics in fires/doesNotFire and verification (raw form kept bunOnly); kebab-case and snake_case are treated as stack-neutral naming conventions; 'product capability' is used only as the profile-vocabulary concept behind layout.capability_dir. bun.json declares no per-rule severity or disposition, so verification carries only the generic check description, normalization, scope and observer needs; detector/validator/finding ids are not present in this rule's sidecar.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/planner-nodes/planner.wagon.logical-vs-filesystem-naming.json",
+      "sha256": "99eb9d4665a6aba183094b894441410de2396254825f212df0cd0d0f15d1948a"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 1,
+    "usefulness": 5,
+    "deriver": "rekey-v3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

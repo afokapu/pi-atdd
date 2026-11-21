@@ -1,0 +1,53 @@
+schema_version: 1.1.0
+rule_id: coder.flow-router.does-not-carry-flow-variables
+kind: rule
+status: active
+name: Flow variables stay inside FlowRunner execution; flow router does not carry them and product capabilities stay clean (Bun)
+statement: >-
+  Flow variables are the artifact data plane carried by FlowRunner between product capabilities inside a selected user/system flow. An
+  `FlowRouterRunner` MUST NOT reference or mutate flow variables, MUST NOT store `artifact_urn -> artifact_data`
+  runtime values, and MUST NOT route on mid-user/system-flow flow-variable state; and Bun product capabilities (`src/<capability>/capability.ts`)
+  MUST NOT import flow router code. This is the Bun-stack realization of the agnostic core obligation
+  `coder.user-system-flow.flow-router-does-not-carry-flow-variables` (core afokapu/atdd#1251); the JS detector that enforces
+  it is the atdd.workspace.bun implementation referenced below.
+implementation:
+  type: validator
+  ref: coder.bun.flow-router-does-not-carry-flow-variables
+content:
+  summary: >-
+    An agnostic "flow-variable boundary" obligation, rendered for the Bun application. The JS realization scans
+    each FlowRouterRunner-defining module under `src/user-system-flows/**` and flags a `FlowVariables` reference, a
+    `flowVariables[...] = ...` mutation, or an `artifact_urn` literal; and scans each `src/<capability>/capability.ts`
+    and flags an import of flow router code. Member of the `bun_flow_router_infrastructure` FAMILY
+    detector (checks/flow_router_no_flow_variables.mjs).
+  normative_text: |
+    Core runtime spec afokapu/atdd#1251 — flow-variable boundary. Allowed: the flow router reads the initial
+    action/inputs/state before execution and a completed UserSystemFlowResult only at a declared route boundary;
+    FlowRunner passes flow variables between product capabilities; product capabilities read and return artifact objects. Forbidden: the
+    flow router reads or mutates flow variables during user/system flow execution, stores artifact_urn -> artifact_data
+    values, or routes on mid-user/system-flow flow-variable state; flow variables selecting user/system flow variants; product capabilities importing
+    flow router code. WHICH modules are scanned and HOW the flow-variable touches are recognized is the
+    per-stack detector's concern (comments are masked; a string `artifact_urn` literal is still detected).
+  fix_hint: |
+    Keep flow variables inside FlowRunner. The FlowRouterRunner reads only initial action/inputs/state and a
+    declared-boundary UserSystemFlowResult; it never references flow variables, mutates a flow-variable mapping, or stores
+    artifact_urn values. Product capabilities import their own dependencies, never FlowRouterRunner. This rule is
+    `strict`: a newly introduced flow-variable touch (or a product capability importing flow router) is not suppressible and
+    fails CI.
+  exceptions:
+    - The production `FlowRunner` module legitimately constructs and carries flow variables; only
+      FlowRouterRunner-defining modules are scanned for flow-variable bleed.
+metadata:
+  aliases:
+    - BUN-FLOW_ROUTER-NO-FLOW_VARIABLES-001
+  severity: 4
+  disposition: strict
+  introduced_in: 0.1.0
+  core_design_refs:
+    - afokapu/atdd#1246
+    - afokapu/atdd#1251
+terms:
+  - term_id: flow_variables_boundary
+    text: >-
+      the rule that flow variables (artifact data plane) stays inside FlowRunner execution; the FlowRouterRunner
+      must not reference/mutate flow variables or store artifact_urn values, and product capabilities must not import it.

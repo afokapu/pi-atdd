@@ -1,0 +1,384 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "coder.journey-router.flow-router-routing-runner-delegation",
+  "legacyId": "coder.bun.station-master-interlocking-routing.runner-delegation",
+  "splitOf": "coder.bun.journey-router-flow-router-routing",
+  "core": {
+    "title": "Flow router routes go through the flow router runner, and every route ends in the user/system flow runner",
+    "given": "The composition root (the journey router) has a journey map that declares at least one flow router route object (a route of the form {flowRouterId, path})",
+    "when": "you write or change the composition root",
+    "then": "The composition root MUST resolve each flow router route through the flow router runner, and the user/system flow runner MUST perform the final user/system flow execution for every route: both the user/system flow the flow router runner selects and each directly named user/system flow id.",
+    "prefer": [
+      "Delegation chain: the composition root asks the flow router runner to resolve the action to a selected user/system flow (with the action's inputs and the current state) and hands the selected user/system flow id to the user/system flow runner for execution",
+      "Use the runner API that actually exists in this stack rather than copying a call model or a fix hint verbatim"
+    ],
+    "avoid": [
+      "Declaring a flow router route without routing it through the flow router runner",
+      "Never reaching the user/system flow runner for the flow-router-selected user/system flow",
+      "Executing directly named train-id routes through any executor other than the user/system flow runner"
+    ],
+    "unless": [
+      "The journey map declares no flow router route object: a purely direct-train composition root carries no flow router obligation"
+    ],
+    "why": "In both cases, direct and flow router, the user/system flow runner performs the final user/system flow execution. A composition root that declares a flow router route but never routes through the flow router runner, or never reaches the user/system flow runner, breaks the contract.",
+    "evidence": [
+      "The stack's check for this obligation reports no finding for the composition root: neither an unlinked flow router route nor missing delegation to the user/system flow runner",
+      "The composition root references the flow router runner and the user/system flow runner whenever the journey map holds a flow router route object",
+      "Both directly named train-id entries and flow-router-selected user/system flows reach the user/system flow runner for final execution"
+    ],
+    "verification": [
+      "The check scans the composition root and triggers only when the journey map declares at least one flow router route object; activation depends only on that presence, not on other detector findings, and the check does not fire for a purely direct-train composition root or for files outside the composition root",
+      "When triggered, a missing reference to the flow router runner is reported as an unlinked flow router route, and a missing reference to the user/system flow runner as missing delegation; the concrete finding identifiers are the realization's",
+      "Which entrypoint is inspected, and how the journey map, its route forms and the runner references are recognized, is up to the per-stack detector",
+      "Disposition strict, severity 4: an unlinked or non-delegating composition root cannot be suppressed and fails CI — a failing check run must fail the continuous-integration build, not merely report the finding",
+      "The automated check verifies only that the user/system-flow-runner reference is present; that directly named train-id entries are actually executed by the user/system flow runner must be confirmed by reviewing the dispatch"
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "role",
+          "values": [
+            "composition_root"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "the journey map of the composition root contains at least one flow router route object {flowRouterId, path}"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "A task adds a flow router route object to the composition root's journey map",
+        "An agent edits a composition root whose journey map already holds flow router route objects, including its direct-route dispatch",
+        "The composition root declares a flow router route but does not reference the flow router runner or the user/system flow runner"
+      ],
+      "doesNotFire": [
+        "The journey map holds only directly named train-id entries",
+        "Files other than the composition root"
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roles.composition_root.path",
+      "meaning": "Where the stack's composition root (the journey router) lives; the rule and its check scope themselves to this file.",
+      "bunValue": "**/server.ts"
+    },
+    {
+      "key": "roles.composition_root.name",
+      "meaning": "The stack's local name for the composition-root role, used wherever the core says 'composition root (the journey router)'.",
+      "bunValue": "Journey router (server.ts)"
+    },
+    {
+      "key": "tooling.languages",
+      "meaning": "The stack's production source languages, which scope the stack realization of this core.",
+      "bunValue": "typescript, javascript"
+    },
+    {
+      "key": "urn.train",
+      "meaning": "The shape of a directly named user/system flow id in a direct journey-map entry.",
+      "bunValue": "user-system-flow:<domain>:<user-system-flow-name>"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "then",
+      "text": "server.ts MUST resolve each flow router route through FlowRouterRunner, and FlowRunner MUST perform the final user/system flow execution for every route.",
+      "reason": "server.ts, FlowRouterRunner and FlowRunner are the ATDD-Bun runtime's concrete names for the composition root, the flow router runner and the user/system flow runner."
+    },
+    {
+      "item": "activation.facts[0]",
+      "text": "Bun stack only. Bun applicability is established by a workspace that uses the atdd.workspace.bun detector family.",
+      "reason": "Stack scoping via a detector family is a realization concern; the neutral core scopes activation to the composition-root role and takes the languages from the profile."
+    },
+    {
+      "item": "activation.facts[2]",
+      "text": "Needs JOURNEY_MAP parsing, as checks/flow_router_station_routing.mjs does.",
+      "reason": "The concrete map identifier and detector file are realization details; the core keeps only the neutral change fact and its needs_new_observer observability."
+    },
+    {
+      "item": "prefer[0]",
+      "text": "Journey router -> FlowRouterRunner.resolveUserSystemFlow(action, inputs, state) -> FlowRunner.execute(selectedUserSystemFlowId, ...)",
+      "reason": "Concrete method signatures of the ATDD-Bun runtime API; the core states the delegation chain by role."
+    },
+    {
+      "item": "prefer[1]",
+      "text": "new FlowRouterRunner(path).execute(...) -> FlowRunner.execute(...)",
+      "reason": "The fix-hint branch uses the Bun runtime's actual constructor and method names; only the neutral guidance 'use the runner API that actually exists' is core."
+    },
+    {
+      "item": "prefer[2]",
+      "text": "import { FlowRouterRunner } from \"./user-system-flows/flow-router\"; import { FlowRunner } from \"./user-system-flows/runner\";",
+      "reason": "Concrete import syntax and module paths; each stack references its runners in its own way."
+    },
+    {
+      "item": "avoid[0]",
+      "text": "finding: unlinked",
+      "reason": "A detector finding id of this one rule; per the closed vocabulary, finding ids are realization details."
+    },
+    {
+      "item": "avoid[1]",
+      "text": "finding: no delegation",
+      "reason": "A detector finding id of this one rule; per the closed vocabulary, finding ids are realization details."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "checks/flow_router_station_routing.mjs reports no 'unlinked' or 'no delegation' finding for server.ts",
+      "reason": "Detector file, finding ids and the concrete entry file are realization details; the neutral evidence is core:evidence[0]."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "Scan server.ts. Trigger only when JOURNEY_MAP declares at least one flow router route object {flowRouterId, path}.",
+      "reason": "The concrete entry file and map identifier are Bun; the neutral trigger condition is in core:verification."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "text": "a missing `FlowRouterRunner` reference produces the finding 'unlinked'; a missing `FlowRunner` reference produces the finding 'no delegation'.",
+      "reason": "Concrete runner class names and finding ids; the generic check semantics are in core:verification."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "text": "Detector: checks/flow_router_station_routing.mjs, a member of the `bun_flow_router_infrastructure` FAMILY detector (atdd.workspace.bun implementation).",
+      "reason": "Detector, validator and family ids of this one rule are realization details, not profile keys; the core's verification names the check generically."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "text": "fails CI (see shared:policy.strict-disposition)",
+      "reason": "The CI-failure requirement itself is stack-neutral and stays in core:verification; only the shared:policy.strict-disposition cross-reference pointer is a realization-level detail."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "text": "Reference fix ('Route through the runner and delegate:'): `import { FlowRouterRunner } from \"./user-system-flows/flow-router\"; import { FlowRunner } from \"./user-system-flows/runner\"; export const JOURNEY_MAP = { <direct_action>: \"user-system-flow:<domain>:<user-system-flow-name>\", /* direct */ <interlocked_action>: { flowRouterId: \"...\", path: \"...yaml\" }, /* flowRouter */ }; // flowRouter branch: new FlowRouterRunner(path).execute(...) -> FlowRunner.execute(...)`",
+      "reason": "A concrete fix snippet in the stack's syntax; its neutral content (the delegation chain and the two route forms) is carried by core:prefer and core.given."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "text": "Term journey_router: the composition root (`server.ts`) whose JOURNEY_MAP routes both direct userSystemFlowId strings and flow router route objects, references FlowRouterRunner, and ultimately calls FlowRunner.",
+      "reason": "The term is defined in Bun identifiers; its neutral content is the core's own vocabulary (composition root, journey map, flow router runner, user/system flow runner) used in given/then."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "as": [
+        "core:given",
+        "profile:roles.composition_root.path"
+      ],
+      "note": "Neutral: the composition root's journey map holds at least one flow router route object. The concrete entry file is the profile value (Bun: **/server.ts)."
+    },
+    {
+      "item": "when",
+      "as": [
+        "core:when"
+      ],
+      "note": "'you write or change server.ts' becomes 'you write or change the composition root'; the file itself is roles.composition_root.path."
+    },
+    {
+      "item": "then",
+      "as": [
+        "core:then",
+        "profile:urn.user-system-flow",
+        "bunOnly"
+      ],
+      "note": "One obligation, neutralized: composition root for server.ts, flow router runner for FlowRouterRunner, user/system flow runner for FlowRunner; the direct train-id shape is urn.user-system-flow. The concrete ATDD-Bun identifiers are bunOnly."
+    },
+    {
+      "item": "why",
+      "as": [
+        "core:why"
+      ],
+      "note": "Already role-level once journey router and FlowRunner are neutralized; both halves (final execution in all cases; broken contract) are kept."
+    },
+    {
+      "item": "prefer[0]",
+      "as": [
+        "core:prefer[0]",
+        "bunOnly"
+      ],
+      "note": "The delegation chain is core; the concrete signatures resolveUserSystemFlow/execute are the Bun runtime API (bunOnly)."
+    },
+    {
+      "item": "prefer[1]",
+      "as": [
+        "core:prefer[1]",
+        "bunOnly"
+      ],
+      "note": "'Use the runner API that actually exists' is neutral guidance; the fix-hint branch with constructor/method names is Bun."
+    },
+    {
+      "item": "prefer[2]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "Import statement with concrete module paths; no stack-neutral equivalent."
+    },
+    {
+      "item": "avoid[0]",
+      "as": [
+        "core:avoid[0]",
+        "bunOnly"
+      ],
+      "note": "Neutral: declaring a flow router route without routing through the flow router runner; '(finding: unlinked)' is a detector finding id (bunOnly)."
+    },
+    {
+      "item": "avoid[1]",
+      "as": [
+        "core:avoid[1]",
+        "bunOnly"
+      ],
+      "note": "Neutral: never reaching the user/system flow runner for the selected user/system flow; '(finding: no delegation)' is a detector finding id (bunOnly)."
+    },
+    {
+      "item": "avoid[2]",
+      "as": [
+        "core:avoid[2]"
+      ],
+      "note": "Neutral once FlowRunner and userSystemFlowId become the user/system flow runner and directly named user/system flow ids."
+    },
+    {
+      "item": "unless[0]",
+      "as": [
+        "core:unless[0]"
+      ],
+      "note": "The exception is kept in role terms; dropping it would weaken the core."
+    },
+    {
+      "item": "evidence[0]",
+      "as": [
+        "core:evidence[0]",
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Neutral: the stack's check reports neither an unlinked route nor missing delegation for the composition root; the detector file and finding ids are bunOnly."
+    },
+    {
+      "item": "evidence[1]",
+      "as": [
+        "core:evidence[1]"
+      ],
+      "note": "Neutral: references to the flow router runner and user/system flow runner whenever a flow router route object is present."
+    },
+    {
+      "item": "evidence[2]",
+      "as": [
+        "core:evidence[2]"
+      ],
+      "note": "Neutral: both directly named user/system flow ids and flow-router-selected user/system flows reach the user/system flow runner for final execution."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "The trigger-only-when-an-flow-router-route-object-is-declared condition is core; the server.ts/JOURNEY_MAP names are Bun."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Generic semantics (missing interlocking-runner reference means an unlinked route; missing user/system-flow-runner reference means missing delegation) are core:verification; class names and finding ids are bunOnly."
+    },
+    {
+      "item": "verifier_detail[2]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "Detector id, family and workspace implementation are realization details and not profile keys."
+    },
+    {
+      "item": "verifier_detail[3]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "Already stack-neutral: the per-stack detector owns entrypoint selection and routing recognition."
+    },
+    {
+      "item": "verifier_detail[4]",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ],
+      "note": "Severity 4, strict disposition and the unsuppressible CI-failure outcome belong to the rule's core verification: a failing check run must fail the continuous-integration build, not merely report. Only the shared:policy.strict-disposition cross-reference pointer is bunOnly."
+    },
+    {
+      "item": "verifier_detail[5]",
+      "as": [
+        "bunOnly"
+      ],
+      "note": "Concrete fix snippet in stack syntax; its neutral content (delegation chain, two route forms) is already in core:prefer and core.given."
+    },
+    {
+      "item": "verifier_detail[6]",
+      "as": [
+        "core:given",
+        "core:then",
+        "bunOnly"
+      ],
+      "note": "The journey_router term's neutral content is the core's vocabulary (a composition root routing both forms and delegating), restated by given/then; the concrete identifiers are bunOnly."
+    },
+    {
+      "item": "verifier_detail[7]",
+      "as": [
+        "core:verification"
+      ],
+      "note": "The check-scope limitation (reference presence only; direct-route execution confirmed by reviewing the dispatch) is neutral verification content."
+    },
+    {
+      "item": "activation.facts[0]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:tooling.languages",
+        "bunOnly"
+      ],
+      "note": "The language scoping becomes the profile's languages plus the neutral role fact (core:activation.facts[0]); the Bun-only detector-family note is bunOnly."
+    },
+    {
+      "item": "activation.facts[1]",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roles.composition_root.path"
+      ],
+      "note": "The path glob is the profile value for the composition-root role; the neutral fact is the role itself."
+    },
+    {
+      "item": "activation.facts[2]",
+      "as": [
+        "core:activation.facts[1]",
+        "bunOnly"
+      ],
+      "note": "Neutral change fact: the journey map holds at least one flow router route object (needs_new_observer); the JOURNEY_MAP identifier and detector-file mention are bunOnly."
+    }
+  ],
+  "neutralityNotes": "Journey router, journey map, flow router route object {flowRouterId, path}, flow router runner, user/system flow runner and user/system flow id are the ATDD runtime's shared domain vocabulary (the agnostic core obligation coder.user-system-flow.journey-router-flow-router-routing, core runtime spec afokapu/atdd#1251), so they remain in the core; only their concrete identifiers (server.ts, the JOURNEY_MAP export, the FlowRouterRunner/FlowRunner classes and their resolveUserSystemFlow/execute signatures, the ./user-system-flows/* import paths, checks/flow_router_station_routing.mjs, and the finding ids 'unlinked'/'no delegation') are Bun and live in bunOnly. CI failure is treated as stack-neutral enforcement (every stack's convention checks gate its continuous-integration build) and is kept in core:verification; only the shared:policy.strict-disposition cross-reference pointer stays with the realization. Stack scoping (the doesNotFire entry 'Non-Bun stacks' and the atdd.workspace.bun detector-family applicability note) stays with each realization, since a stack-neutral core carries no stack identity. The {flowRouterId, path} route-object shape is kept verbatim as the runtime-level route form shared across stacks; a stack that realizes the route object differently owns its concrete syntax while the core keeps the two-form distinction (directly named user/system flow id vs flow router route object). How the journey map, route forms and runner references are recognized is deliberately deferred to the per-stack detector (core:verification), as the Bun text itself does, so no profile key was proposed for recognition.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/splits/coder.bun.station-master-interlocking-routing.json",
+      "sha256": "0e00d94886175aae61ba3e557cb2b1242449f435ea24ef194faec52b54b441ca",
+      "part": "coder.bun.station-master-interlocking-routing.runner-delegation"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 2,
+    "vocabularyVersion": 2,
+    "verdict": "PASS",
+    "rounds": 2,
+    "usefulness": 5,
+    "deriver": "zai/glm-5.3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}

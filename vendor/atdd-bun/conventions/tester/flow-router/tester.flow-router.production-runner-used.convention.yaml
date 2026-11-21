@@ -1,0 +1,98 @@
+schema_version: 1.1.0
+rule_id: tester.flow-router.production-runner-used
+kind: rule
+status: active
+name: Flow router tests exercise the production runners, not mocks (Bun)
+statement: >-
+  A test that exercises a flow router MUST drive the production runtime objects — `FlowRouterRunner`
+  (route resolution) and `FlowRunner` (linear user/system flow execution), the core afokapu/atdd#1251 call model —
+  and MUST NOT substitute a mock, a substituted runner, or a
+  hand-built route resolver for them. This is the Bun-stack realization of the agnostic core
+  obligation `tester.flow-router.production-runner-used`; its JS detector (a member of the
+  `bun_flow_router_coverage` FAMILY) scans the consumer's `e2e/**/*.ts` flow router tests and flags
+  any that fail to reference both production runner symbols or that carry a forbidden substitution
+  pattern. A flow router test that mocks the route-control path is a DESCRIPTIVE green.
+implementation:
+  type: validator
+  ref: tester.bun.flow-router-production-runner-used
+content:
+  summary: >-
+    A "flow router tests use the production runners, not mocks" obligation, rendered for the Bun
+    backend. The JS realization scans each flow-router-related `e2e/**/*.ts` test and enforces two
+    checks: it references both `FlowRouterRunner` and `FlowRunner`, and it carries none of the
+    forbidden substitution patterns (comments masked).
+  normative_text: |
+    The core runtime call model (afokapu/atdd#1251) is `JourneyRouter -> FlowRouterRunner.resolveUserSystemFlow
+    -> FlowRunner.execute`. A test that claims to exercise a flowRouter route but replaces either
+    runner with a test double exercises the double, not production route control.
+    Referencing both production symbols is the detector's structural proxy; it is not sufficient semantic
+    proof by itself. The case must drive the production objects with guard-relevant inputs and observe the
+    route/user-system-flow behavior it claims. Importing or instantiating the real runners while obtaining the asserted
+    result from a parallel fake path would be another descriptive green.
+
+    REQUIRED production symbols a flow router test must reference:
+      - FlowRouterRunner
+      - FlowRunner
+
+    FORBIDDEN substitution patterns (any one is a violation):
+      - MockFlowRouterRunner / MockFlowRunner
+      - mock.module(...) replacing a runner module — bun:test's own idiom, and the one that
+        matters most here: it swaps the ENTIRE route-control module
+      - spyOn(...) / mock(...) / mock.restore(...) aimed at a runner (bun:test)
+      - vi.mock(...) / jest.mock(...) around a runner module, for a suite migrating in
+      - vi.spyOn(...) / jest.spyOn(...) replacing runner behavior (resolveUserSystemFlow / execute)
+      - a hand-built route resolver replacing FlowRouterRunner (a locally defined `resolveUserSystemFlow`
+        function or a `*Resolver` class standing in for the production runner)
+
+    WHICH per-stack discovery applies (here: Bun `e2e/**/*.ts` scanned for the production symbols and
+    the forbidden patterns) is delegated to this realization.
+  fix_hint: |
+    Rewrite the flagged case so the production runner path is the path that produces the asserted evidence.
+
+    Boundary:
+      * import and call `new FlowRouterRunner(flowRouterYamlPath).resolveUserSystemFlow(action, inputs)`,
+      * pass its selected `userSystemFlowId` into the production `FlowRunner`,
+      * execute the selected user/system flow through the real runtime path.
+
+    Witness:
+      * assert the selected user/system flow and the route- or acceptance-specific result produced by its execution.
+
+    Remove:
+      * `MockFlowRouterRunner` / `MockFlowRunner`,
+      * `mock.module` / `spyOn` / `mock` / `mock.restore` aimed at the runners,
+      * `vi.mock` / `vi.spyOn` / Jest equivalents around runner behavior,
+      * any locally hand-built route resolver standing in for FlowRouterRunner.
+
+    Avoid:
+      * importing the production symbols only to satisfy this detector while assertions still depend on a fake path,
+      * asserting a plan literal without driving production resolution and execution.
+
+    Verify:
+      * breaking production `resolveUserSystemFlow` or `execute` behavior would make the test red,
+      * the evidence comes from the real runner chain.
+
+    This rule is `strict`: a flow router test that mocks the route-control path is a descriptive green proving nothing about production and blocks.
+  exceptions:
+    - Non-flow-router e2e tests (no reference to any flow router route/user-system-flow/flow-router token and no
+      runner symbol) are out of scope — they are not flow router tests.
+    - Per-stack renderings other than Bun are owned by their own workspace packages.
+metadata:
+  aliases:
+    - BUN-TESTER-FLOW_ROUTER-PRODUCTION-RUNNER-USED-001
+  severity: 1
+  disposition: strict
+  introduced_in: 0.1.0
+  core_design_refs:
+    - afokapu/atdd#1246
+    - afokapu/atdd#1251
+terms:
+  - term_id: production_runner
+    text: >-
+      one of the two runtime objects in the core afokapu/atdd#1251 call model — `FlowRouterRunner`
+      (resolves a guarded route to exactly one userSystemFlowId) and `FlowRunner` (executes the selected user/system flow).
+  - term_id: forbidden_substitution
+    text: >-
+      a test double that replaces a production runner: `MockFlowRouterRunner`/`MockFlowRunner`, a
+      `mock.module`/`spyOn`/`mock` (bun:test) or `vi.mock`/`vi.spyOn` (or jest) aimed at a runner
+      or its `resolveUserSystemFlow`/`execute`, or a hand-built
+      route resolver standing in for FlowRouterRunner.

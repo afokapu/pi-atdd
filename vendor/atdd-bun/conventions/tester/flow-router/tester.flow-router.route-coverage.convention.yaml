@@ -1,0 +1,91 @@
+schema_version: 1.1.0
+rule_id: tester.flow-router.route-coverage
+kind: rule
+status: active
+name: Every admissible flow router route has an e2e test that exercises it (Bun)
+statement: >-
+  Every admissible route declared in a flow router's guarded route space (the `routes:` list of
+  `plan/_user_system_flows/_flow_routers/**/*.yaml`, the authoritative route space locked by core
+  afokapu/atdd#1248) MUST have at least one end-to-end test that exercises it — an `e2e/**/*.ts` test
+  that names the route by its `routeId` or its resolved `userSystemFlowId` so its resolution is proven through
+  the production FlowRouterRunner -> FlowRunner path (core afokapu/atdd#1251), not asserted
+  descriptively. This is the Bun-stack realization of the agnostic core obligation
+  `tester.flow-router.route-coverage`; its JS detector (a member of the `bun_flow_router_coverage`
+  FAMILY) scans the flow router route space against the consumer's `e2e/**/*.ts` tests and flags any
+  declared route with no covering test. An admissible route with no e2e test is a SILENT-GREEN GAP.
+implementation:
+  type: validator
+  ref: tester.bun.flow-router-route-coverage
+content:
+  summary: >-
+    A "every declared flow router route is exercised by an e2e test" obligation, rendered for the
+    Bun application. The JS realization parses each flow router artifact, extracts its declared routes
+    (routeId/userSystemFlowId/category), then scans `e2e/**/*.ts` for tests that reference the route
+    by its `routeId` or its resolved `userSystemFlowId` (comments masked so a name only in a comment does not
+    count). Any declared route with no covering e2e test is a RAW violation anchored at the route's
+    declaration line in the source flow router YAML.
+  normative_text: |
+    The flow router YAML is authoritative for the guarded route space (afokapu/atdd#1248): every entry
+    under `routes:` is an admissible route the FlowRouterRunner can resolve to exactly one `userSystemFlowId`
+    (afokapu/atdd#1251). Coverage of that route space is a tester obligation — an unexercised route is a
+    branch of production route control that no test ever drives. A route is COVERED to the detector when at
+    least one `e2e/**/*.ts` test references it by its `routeId` or by the `userSystemFlowId` it resolves to.
+    That token is a discovery proxy, not the testing objective. A meaningful route proof must construct the
+    route's guard-relevant inputs, drive production resolution, and assert that the declared route selects
+    the expected user/system flow before that user/system flow is executed. Merely mentioning the route or user/system flow in executable
+    test text can satisfy lexical discovery while proving no route behavior.
+    WHICH per-stack discovery applies (here: Bun `e2e/**/*.ts` scanned for the route/user-system-flow tokens) is
+    delegated to this realization; other stacks render the same obligation in their own e2e layout.
+  fix_hint: |
+    Add an end-to-end proof of the flagged route rather than merely adding a discoverable token.
+
+    Claim:
+      * read the declared route, its guard, and its resolved `userSystemFlowId`,
+      * identify the guard-true inputs that distinguish this route from its alternatives.
+
+    Stimulus:
+      * place the test under `e2e/flow-routers/<flow_router_slug>/<slug>.routes.test.ts`,
+      * drive `new FlowRouterRunner(...).resolveUserSystemFlow(action, inputs)` with those inputs,
+      * pass the selected user/system flow into `FlowRunner` and execute it.
+
+    Witness:
+      * assert that production resolution selected the route's declared `userSystemFlowId`,
+      * assert the route- or acceptance-specific execution outcome when one is declared.
+
+    Avoid:
+      * inserting a `routeId` / `userSystemFlowId` literal solely so lexical coverage sees it,
+      * a mock resolver or hand-built substitute for production route control,
+      * a descriptive assertion that restates the plan without exercising resolution,
+      * bypassing FlowRunner after proving only selection.
+
+    Verify:
+      * the case would fail if the route guard or route-to-user/system-flow mapping regressed,
+      * the production runners actually execute the selected path,
+      * the discoverable route/user-system-flow token corresponds to behavior the case genuinely proves.
+
+    This rule is `strict`: an admissible route with no covering e2e test blocks.
+  exceptions:
+    - YAML under the flow router scope that declares no `routes:` (the `_flow_routers.yaml` registry
+      index and generated projections) carries no admissible route space and is out of scope.
+    - A route already referenced by its `routeId` or resolved `userSystemFlowId` in any `e2e/**/*.ts` test is
+      covered and is not flagged.
+    - Per-stack e2e renderings other than Bun are owned by their own workspace packages.
+metadata:
+  aliases:
+    - BUN-TESTER-FLOW_ROUTER-ROUTE-COVERAGE-001
+  severity: 1
+  disposition: strict
+  introduced_in: 0.1.0
+  core_design_refs:
+    - afokapu/atdd#1246
+    - afokapu/atdd#1248
+    - afokapu/atdd#1251
+terms:
+  - term_id: admissible_route
+    text: >-
+      a single entry under the `routes:` list of a flow router artifact (afokapu/atdd#1248); it carries
+      a `routeId`, the `userSystemFlowId` it resolves to, a `category`, and a `guard_ref`.
+  - term_id: silent_green_route_gap
+    text: >-
+      an admissible route with no covering e2e test; the flow router branch it represents is never
+      executed, so CI passes while a guarded route-control path is entirely unproven.

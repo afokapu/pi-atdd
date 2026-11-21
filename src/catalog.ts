@@ -4,6 +4,10 @@ import { isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseDocument } from "yaml";
 import { DEFAULT_PROFILE, expandRoleSelectors, loadProfile, profileByName, type StructureProfile } from "./profile.ts";
+import {
+  isCurrentFieldKey, isCurrentMovedPath, isCurrentUrnScheme, legacySunsetRelease, legacyTermsPhase, resolveDetectorRef,
+  resolveFieldKey, resolveMovedPath, resolveUrnScheme, upstreamDetectorRef,
+} from "./vocabulary.ts";
 
 export class GraphError extends Error {}
 export type SourceKind = "bun" | "flow" | "extension";
@@ -11,7 +15,19 @@ export type SourceSpec = { id: string; path: string; kind: SourceKind; sha256: s
 export type Convention = {
   id: string; file: string; source: string; statement: string; kind: string;
   disposition: string | null; exceptions: string[]; summary: string; guidance: string;
+  /** The detector name as the pinned upstream (ATDD-Bun) names it; the name this repository ships is `detectorRef`. */
   implementationRef: string | null;
+  detectorRef: string | null;
+};
+/** PLT-103: the advisory legacy-vocabulary convention; its disposition follows the sunset (see loadCatalog). */
+export const LEGACY_TERMS_RULE = "shared.vocabulary.legacy-terms";
+/** Evaluation date of the sunset. Defaults: today (UTC), and the release date in conventions/legacy-terms.yaml. */
+export type CatalogOptions = {
+  today?: string;
+  /** Release date override (tests and embedding). Default: the `sunset.date` read from `legacyTerms`. */
+  legacyRelease?: string | null;
+  /** The mapping table to read the sunset date from. Default: conventions/legacy-terms.yaml in the package. */
+  legacyTerms?: string;
 };
 export type Relation = {
   source: string; target: string; type: string; constraint: string; control: string;
@@ -94,17 +110,81 @@ const textList = (x: unknown): string[] => Array.isArray(x) && x.every(v => type
 export const PROFILES = ["planner", "tester", "coder", "reviewer", "coach", "shared"] as const;
 export type Profile = typeof PROFILES[number];
 export const CONVENTION_ID = /^(planner|tester|coder|reviewer|coach|shared)\.[a-z0-9-]+\.[a-z0-9-]+$/;
-/** Old (v0.2.0) id -> profile-first id, shipped with the package (conventions/aliases.json). */
+/** Old (v0.2.0) id -> profile-first id, shipped with the package (conventions/aliases.json).
+ * Includes the legacy split-part ids (`splitParts`, PLT-87) and the ids renamed by the PLT-103 vocabulary change
+ * (`renamedRuleIds`): they resolve like any other legacy id. */
 export function bundledAliases(): Map<string, string> {
   const path = join(packageRoot, "conventions/aliases.json");
   if (!existsSync(path)) return new Map();
-  const data = JSON.parse(readFileSync(path, "utf8")) as { aliases?: Record<string, string> };
-  return new Map(Object.entries(data.aliases ?? {}));
+  const data = JSON.parse(readFileSync(path, "utf8")) as {
+    aliases?: Record<string, string>; splitParts?: Record<string, string>; renamedRuleIds?: Record<string, string>;
+  };
+  return new Map([...Object.entries(data.aliases ?? {}), ...Object.entries(data.splitParts ?? {}),
+    ...Object.entries(data.renamedRuleIds ?? {})]);
 }
 /** Resolves an old or current id to the id loaded in this catalog (unknown ids are returned unchanged). */
 export function canonicalRuleId(catalog: Pick<Catalog, "rules" | "aliases">, id: string): string {
   return catalog.rules.has(id) ? id : catalog.aliases.get(id) ?? id;
 }
+/** PLT-103: a declared detector is reported under its pinned upstream name, with the shipped name kept beside it. */
+function detectorNames(shipped: string): { implementationRef: string | null; detectorRef: string | null } {
+  if (!shipped) return { implementationRef: null, detectorRef: null };
+  return { implementationRef: upstreamDetectorRef(shipped), detectorRef: shipped };
+}
+
+/** PLT-103: the loaded convention whose file is the given repository-relative path (old or current location). */
+function conventionAtPath(catalog: Pick<Catalog, "rules" | "provenance">, rel: string): Convention | undefined {
+  for (const src of catalog.provenance) {
+    const base = relative(packageRoot, src.path).replaceAll("\\", "/");
+    if (!rel.startsWith(base + "/")) continue;
+    const file = src.id + "/" + rel.slice(base.length + 1);
+    return [...catalog.rules.values()].find(rule => rule.file === file);
+  }
+  return undefined;
+}
+
+export type LegacyResolution = {
+  ref: string;
+  kind: "rule" | "path" | "urn" | "field" | "detector" | "unknown";
+  /** The current name (rule id, path, URN, field key or detector ref); null when the reference is unknown. */
+  current: string | null;
+  /** The pinned upstream detector name, when the reference is or names a detector. */
+  upstream: string | null;
+  /** The detector mapping of the reference, reported even when the reference is also a rule id (the names can coincide). */
+  detector?: { current: string; upstream: string };
+  convention?: Convention;
+};
+const URN_SCHEME = /^((?:acc|test):)?([a-z][a-z-]*):/;
+/** PLT-103: resolves any legacy or current name to its current form, through the loaded catalog and the mapping data. */
+export function resolveLegacyReference(catalog: Catalog, ref: string): LegacyResolution {
+  const shipped = resolveDetectorRef(ref), upstream = upstreamDetectorRef(shipped);
+  const detector = shipped !== ref || upstream !== shipped ? { current: shipped, upstream } : undefined;
+  if (catalog.rules.has(ref) || catalog.aliases.has(ref)) {
+    const id = canonicalRuleId(catalog, ref);
+    return { ref, kind: "rule", current: id, upstream: detector?.upstream ?? null, detector, convention: catalog.rules.get(id) };
+  }
+  // A known moved file resolves whatever its suffix (neutral JSON and golden TXT included). Any other convention path
+  // resolves only when a loaded rule is declared at it: a path the catalog cannot load is not resolved.
+  const mapped = resolveMovedPath(ref);
+  if (mapped !== ref || isCurrentMovedPath(ref))
+    return { ref, kind: "path", current: mapped, upstream: null, convention: conventionAtPath(catalog, mapped) };
+  if (ref.endsWith(".convention.yaml")) {
+    const convention = conventionAtPath(catalog, ref);
+    if (convention) return { ref, kind: "path", current: ref, upstream: null, convention };
+  }
+  // An old or a current URN scheme: the current form is the same name with the table's scheme.
+  const urn = URN_SCHEME.exec(ref);
+  if (urn) {
+    const scheme = urn[2]!, current = resolveUrnScheme(scheme);
+    if (current !== scheme || isCurrentUrnScheme(scheme))
+      return { ref, kind: "urn", current: (urn[1] ?? "") + current + ":" + ref.slice(urn[0].length), upstream: null };
+  }
+  const field = resolveFieldKey(ref);
+  if (field !== ref || isCurrentFieldKey(ref)) return { ref, kind: "field", current: field, upstream: null };
+  if (detector) return { ref, kind: "detector", current: detector.current, upstream: detector.upstream, detector };
+  return { ref, kind: "unknown", current: null, upstream: null };
+}
+
 /** Conventions delivered to a profile: its own family plus `shared.*`. */
 export function rulesForProfile(catalog: Pick<Catalog, "rules">, profile: Profile): string[] {
   if (!PROFILES.includes(profile)) throw new GraphError("unknown profile " + profile);
@@ -123,7 +203,7 @@ export function namingViolations(catalog: Pick<Catalog, "rules">): string[] {
   return out.sort();
 }
 
-export function loadCatalog(sources: SourceSpec[], cwd: string): Catalog {
+export function loadCatalog(sources: SourceSpec[], cwd: string, options: CatalogOptions = {}): Catalog {
   if (!sources.length) throw new GraphError("at least one locked source is required");
   const rules = new Map<string, Convention>();
   const edges: Relation[] = [];
@@ -151,7 +231,7 @@ export function loadCatalog(sources: SourceSpec[], cwd: string): Catalog {
         id, file: src.id + "/" + rel, source: src.id, statement: str(yaml.statement),
         kind: str(yaml.kind) || "rule", disposition: disposition === null ? null : String(disposition),
         exceptions, summary: str(content.summary), guidance: str(content.fix_hint) || str(content.canonical_policy) || str(content.normative_text),
-        implementationRef: str(implementation.ref) || null,
+        ...detectorNames(str(implementation.ref)),
       });
       localIds.add(id);
     }
@@ -171,6 +251,14 @@ export function loadCatalog(sources: SourceSpec[], cwd: string): Catalog {
         throw new GraphError(path + ": invalid relationship");
       edges.push({ source, target, type, constraint, control, reason: str(e.reason), sourceFile: src.id + "/relationships.yaml" });
     }
+  }
+  // PLT-103 sunset: the advisory becomes strict 60 days after the release date in the mapping table. Only an
+  // advisory convention can change; every other disposition is taken as authored.
+  const legacy = rules.get(LEGACY_TERMS_RULE);
+  if (legacy?.disposition === "advisory") {
+    const release = options.legacyRelease !== undefined ? options.legacyRelease : legacySunsetRelease(options.legacyTerms);
+    const today = options.today ?? new Date().toISOString().slice(0, 10);
+    legacy.disposition = legacyTermsPhase({ release, today });
   }
   const aliases = new Map<string, string>();
   for (const [old, current] of bundledAliases())
@@ -314,14 +402,14 @@ export function bundledSources(): SourceSpec[] {
   return [
     { id: "ATDD-Bun", path: join(packageRoot, "vendor/atdd-bun"), kind: "bun",
       revision: "5945d97e18310e7c862c08e73985400935d21346",
-      sha256: "f0e56c3f03ce5bcc7d15286c3eee2d5a61996b217dc89416c43b32f777bc244a" },
+      sha256: "fb6173026d0a5caef9de4ad7daa6433cfe36e6aca5bccdc826b1e5a92903a28a" },
     { id: "ATDD-Flow", path: join(packageRoot, "vendor/atdd-flow"), kind: "flow",
       revision: "2a66019a5ecf2b7a9f999ebfa04d04c9f548f19a",
       sha256: "61665ba225ffc6c0bed6952aa8f8c9d9c0e2f0d7df3982662a2cdf50eb327438" },
     // Package-authored conventions (PLT-87): rules owned by pi-atdd itself, not mirrored upstream.
     // PLT-96 added the shared/coder/planner tracker rules and catalog/pi-atdd/relationships.yaml; pin re-reviewed.
     { id: "pi-atdd", path: join(packageRoot, "catalog/pi-atdd"), kind: "extension",
-      sha256: "e2a44b5588a3cb7933f2b8150192d1b5aa68609dfe744874413d20ed4fc42174" },
+      sha256: "4aa287ad464b5b97df8a6800a5767d452daeaf34996679866a8800405d2ea9c2" },
   ];
 }
 function selectorFile(file: string): Selector[] {

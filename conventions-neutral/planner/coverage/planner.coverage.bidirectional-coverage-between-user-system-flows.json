@@ -1,0 +1,324 @@
+{
+  "schema": "pi-atdd/neutral-convention/v0",
+  "rule_id": "planner.coverage.bidirectional-coverage-between-user-system-flows",
+  "legacyId": "planner.coverage.bidirectional-coverage-between-trains",
+  "core": {
+    "title": "Keep user/system flow and product capability references bidirectional (user/system flow - product capability Coverage)",
+    "given": "A plan containing user/system flows and/or product capability manifests (either side may be empty), plus the plan's allow-list of product capabilities exempt from user/system flow membership",
+    "when": "the planner adds, removes, renames, or changes the status of a product capability manifest; adds, removes, or edits a user/system flow's participants; or changes the exemption allow-list",
+    "then": "Keep user/system-flow-capability coverage bidirectional with no orphan: every product capability appears in at least one user/system flow's participants (product capability -> user/system flow), and every product capability reference in a user/system flow's participants resolves to a product capability manifest (user/system flow -> product capability).",
+    "prefer": [
+      "When creating a product capability manifest, add it as a participant of at least one user/system flow in the same change.",
+      "When adding a product capability reference to a user/system flow's participants, create or point to an existing product capability manifest in the same change.",
+      "When renaming or removing a product capability, update every user/system flow participant that references it.",
+      "When removing a product capability from the exemption allow-list or promoting it out of draft status, add it to a user/system flow in the same change."
+    ],
+    "avoid": [
+      "Leaving an orphan on either side: a product capability in no user/system flow, or a user/system flow participant with no product capability manifest.",
+      "Adding a product capability to the exemption allow-list or marking it draft just to silence the coverage check."
+    ],
+    "unless": [
+      "product capability -> user/system flow direction only: the product capability is listed in the exemption allow-list or has draft status."
+    ],
+    "why": "Bidirectional coverage means each side references the other with no orphan: every non-exempt product capability is reachable from a user/system flow, and every product capability reference in a user/system flow resolves to a product capability manifest.",
+    "evidence": [
+      "The product capability -> user/system flow coverage check passes: every product capability appears in at least one user/system flow's participants, excepting allow-listed or draft product capabilities.",
+      "The user/system flow -> product capability coverage check passes: every product capability reference in a user/system flow's participants has a product capability manifest."
+    ],
+    "verification": [
+      "Two independent direction checks: product capability -> user/system flow requires every product capability manifest to appear in at least one user/system flow's participants; user/system flow -> product capability requires every product capability participant reference to resolve to a product capability manifest. Each check fires even when the other side (user/system flows or product capabilities) is empty.",
+      "Exceptions apply to the product capability -> user/system flow direction only (the exemption allow-list and draft status); the user/system flow -> product capability direction has no exceptions.",
+      "Disposition: documentation-only.",
+      "Scope: the checks cover capability/user-system-flow reference structure only; edits to product capability content that do not change product capability identity, status, allow-list membership, or user/system flow participants are not covered."
+    ],
+    "activation": {
+      "facts": [
+        {
+          "fact": "file_kind",
+          "values": [
+            "user/system flow",
+            "capability_manifest",
+            "capability_exemption_allow_list"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "operation",
+          "values": [
+            "create",
+            "edit",
+            "delete",
+            "rename"
+          ],
+          "observability": "observable_now"
+        },
+        {
+          "fact": "change",
+          "values": [
+            "user/system flow participant added/removed",
+            "user/system flow added/removed",
+            "product capability manifest added/removed/renamed",
+            "product capability status changed from draft",
+            "product capability removed from the exemption allow-list"
+          ],
+          "observability": "needs_new_observer"
+        },
+        {
+          "fact": "finding",
+          "values": [
+            "product capability -> user/system flow coverage check failure",
+            "user/system flow -> product capability coverage check failure"
+          ],
+          "observability": "needs_new_observer"
+        }
+      ],
+      "fires": [
+        "Planner adds a new non-draft product capability manifest, not listed in the exemption allow-list, that no user/system flow lists in its participants.",
+        "Planner adds a product capability manifest while the plan has no user/system flows at all, and the product capability is neither draft nor in the exemption allow-list.",
+        "Planner adds a product capability reference to a user/system flow for which no product capability manifest exists (including when the plan has no product capability manifests).",
+        "Planner renames or deletes a product capability manifest still referenced by a user/system flow participant.",
+        "Planner removes or edits a user/system flow so that a non-draft, non-allow-listed product capability is no longer in any user/system flow.",
+        "Planner promotes a product capability out of draft status without adding it to any user/system flow, and it is not in the exemption allow-list.",
+        "Planner removes from the exemption allow-list a non-draft product capability that is not in any user/system flow."
+      ],
+      "doesNotFire": [
+        "A product capability with draft status is not yet in any user/system flow.",
+        "A product capability listed in the exemption allow-list is not in any user/system flow.",
+        "Edits to product capability content (features, DESIRED OUTCOMES, acceptances) that do not change product capability identity, status, allow-list membership, or user/system flow participants."
+      ]
+    }
+  },
+  "profileRequirements": [
+    {
+      "key": "roles.plan_artifact.kinds",
+      "meaning": "The concrete plan-artifact kinds this rule reads: the user/system flow artifacts, the product capability manifests, and the product capability exemption allow-list (the artifact whose entries exempt a product capability from user/system flow membership).",
+      "bunValue": "user/system flow, capability_manifest, capabilities_not_in_user_system_flow_allow_list"
+    },
+    {
+      "key": "urn.wagon",
+      "meaning": "How a user/system flow's participant entry refers to a product capability — the reference whose resolution the user/system flow -> product capability direction checks.",
+      "bunValue": "a user/system flow participant entry beginning with `capability:` (the `capability:` participant)"
+    },
+    {
+      "key": "idiom.plan_syntax#wagon_draft_status",
+      "meaning": "How the plan marks a product capability manifest as draft, i.e. not yet required to be in a user/system flow.",
+      "bunValue": "status:draft on the product capability manifest"
+    }
+  ],
+  "proposedKeys": [],
+  "bunOnly": [
+    {
+      "item": "activation.facts[3]",
+      "text": "finding values: test_all_capabilities_in_at_least_one_user_system_flow, test_all_user_system_flow_capability_refs_exist",
+      "reason": "Validator/finding ids of this single rule are realization details (vocabulary notProfileKeys); the core names the two coverage checks generically by direction."
+    },
+    {
+      "item": "evidence[0]",
+      "text": "validator test_all_capabilities_in_at_least_one_user_system_flow passes",
+      "reason": "Validator id is a Bun realization detail; the core evidence names the product capability -> user/system flow coverage check generically."
+    },
+    {
+      "item": "evidence[1]",
+      "text": "validator test_all_user_system_flow_capability_refs_exist passes",
+      "reason": "Validator id is a Bun realization detail; the core evidence names the user/system flow -> product capability coverage check generically."
+    },
+    {
+      "item": "verifier_detail[0]",
+      "text": "validator test_all_capabilities_in_at_least_one_user_system_flow",
+      "reason": "Validator id is a Bun realization detail; the direction requirement and its two exceptions are kept generically in core.verification."
+    },
+    {
+      "item": "verifier_detail[1]",
+      "text": "validator test_all_user_system_flow_capability_refs_exist",
+      "reason": "Validator id is a Bun realization detail; the direction requirement and its no-exceptions rule are kept generically in core.verification."
+    }
+  ],
+  "classification": [
+    {
+      "item": "given",
+      "note": "Neutralized 'capabilities_not_in_user_system_flow allow-list' to 'the plan's allow-list of product capabilities exempt from user/system flow membership'; the concrete artifact kind binds via profile roles.plan_artifact.kinds.",
+      "as": [
+        "core:given"
+      ]
+    },
+    {
+      "item": "when",
+      "note": "Fully neutral as written; 'product capability' generalized to 'product capability manifest' where the artifact is meant.",
+      "as": [
+        "core:when"
+      ]
+    },
+    {
+      "item": "then",
+      "note": "Same two-direction obligation; '`capability:` participant' neutralized to 'product capability reference in a user/system flow's participants', bound to the profile's urn.capability.",
+      "as": [
+        "core:then"
+      ]
+    },
+    {
+      "item": "prefer[0]",
+      "note": "Already role-level; 'product capability' read as the product capability manifest artifact.",
+      "as": [
+        "core:prefer[0]"
+      ]
+    },
+    {
+      "item": "prefer[1]",
+      "note": "Neutralized to 'product capability reference'; the concrete `capability:` participant syntax comes from urn.capability.",
+      "as": [
+        "core:prefer[1]",
+        "profile:urn.capability"
+      ]
+    },
+    {
+      "item": "prefer[2]",
+      "note": "Already neutral.",
+      "as": [
+        "core:prefer[2]"
+      ]
+    },
+    {
+      "item": "prefer[3]",
+      "note": "Allow-list named via kinds; 'promoting it from draft' spelled by the profile's draft-status construct.",
+      "as": [
+        "core:prefer[3]",
+        "profile:roles.plan_artifact.kinds",
+        "profile:idiom.plan_syntax#capability_draft_status"
+      ]
+    },
+    {
+      "item": "avoid[0]",
+      "note": "Already neutral; restates the two orphan directions.",
+      "as": [
+        "core:avoid[0]"
+      ]
+    },
+    {
+      "item": "avoid[1]",
+      "note": "Gaming guard kept; concrete allow-list name and status:draft spelling come from the profile.",
+      "as": [
+        "core:avoid[1]",
+        "profile:roles.plan_artifact.kinds",
+        "profile:idiom.plan_syntax#capability_draft_status"
+      ]
+    },
+    {
+      "item": "unless[0]",
+      "note": "Both exceptions preserved exactly and only for the product capability -> user/system flow direction; concrete spellings from the profile.",
+      "as": [
+        "core:unless[0]",
+        "profile:roles.plan_artifact.kinds",
+        "profile:idiom.plan_syntax#capability_draft_status"
+      ]
+    },
+    {
+      "item": "why",
+      "note": "Neutralized '`capability:` participant' to 'product capability reference'; 'non-exempt' keeps the same exception scope.",
+      "as": [
+        "core:why"
+      ]
+    },
+    {
+      "item": "evidence[0]",
+      "note": "Direction result kept generically; the validator id is Bun-only.",
+      "as": [
+        "core:evidence[0]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "evidence[1]",
+      "note": "Direction result kept generically; the validator id is Bun-only.",
+      "as": [
+        "core:evidence[1]",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[0]",
+      "note": "Direction requirement and its two exceptions go to core.verification; the validator id is Bun-only.",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[1]",
+      "note": "Direction requirement and no-exceptions rule go to core.verification; the validator id is Bun-only.",
+      "as": [
+        "core:verification",
+        "bunOnly"
+      ]
+    },
+    {
+      "item": "verifier_detail[2]",
+      "note": "Per-rule disposition (documentation-only) belongs to core verification, not to the profile.",
+      "as": [
+        "core:verification"
+      ]
+    },
+    {
+      "item": "verifier_detail[3]",
+      "note": "Term gloss 'each side references the other, no orphan' is already carried by core.why.",
+      "as": [
+        "core:why"
+      ]
+    },
+    {
+      "item": "activation.facts[0]",
+      "note": "Neutral kind names (user/system flow, capability_manifest, capability_exemption_allow_list); the concrete kind names bind via the profile.",
+      "as": [
+        "core:activation.facts[0]",
+        "profile:roles.plan_artifact.kinds"
+      ]
+    },
+    {
+      "item": "activation.facts[1]",
+      "note": "Operations are already neutral.",
+      "as": [
+        "core:activation.facts[1]"
+      ]
+    },
+    {
+      "item": "activation.facts[2]",
+      "note": "Change kinds kept; 'product capability removed from capabilities_not_in_user_system_flow allow-list' neutralized to the exemption allow-list; draft promotion spelled by the profile.",
+      "as": [
+        "core:activation.facts[2]",
+        "profile:roles.plan_artifact.kinds",
+        "profile:idiom.plan_syntax#capability_draft_status"
+      ]
+    },
+    {
+      "item": "activation.facts[3]",
+      "note": "Neutral finding values name the two direction checks generically; the concrete validator ids are Bun-only.",
+      "as": [
+        "core:activation.facts[3]",
+        "bunOnly"
+      ]
+    }
+  ],
+  "neutralityNotes": "The convention is a plan-model rule, so it is almost fully neutral already. 'user/system flow', 'product capability', 'DESIRED OUTCOME', 'feature' and 'acceptance' are plan-artifact concepts present in the closed vocabulary (urn artifacts), not stack terms, and are kept. Three concrete bindings come from the profile: the plan-artifact kind names incl. the exemption allow-list (roles.plan_artifact.kinds: capabilities_not_in_user_system_flow_allow_list), the product capability reference syntax in a user/system flow's participants (urn.capability: the `capability:` prefix), and the draft status spelling (proposed idiom.plan_syntax#capability_draft_status: status:draft). The two validator ids (test_all_capabilities_in_at_least_one_user_system_flow, test_all_user_system_flow_capability_refs_exist) and the finding ids are Bun realization details kept in bunOnly; core.verification describes the two direction checks generically, including that each fires even when the opposite side is empty, that exceptions apply only to the product capability -> user/system flow direction, and the documentation-only disposition.",
+  "realizations": {
+    "bun": {
+      "sidecar": "conventions-sidecar/conventions/planner-nodes/planner.coverage.bidirectional-coverage-between-trains.json",
+      "sha256": "7c8c536b801159f4b36058ca5ced321fe3ee4015588785f247005a87f6f4db93"
+    }
+  },
+  "audit": {
+    "issue": "PLT-84",
+    "stage": 3,
+    "vocabularyVersion": 3,
+    "verdict": "PASS",
+    "rounds": 1,
+    "usefulness": 5,
+    "deriver": "rekey-v3",
+    "auditor": "openai-codex/gpt-6.1-sol",
+    "reviewer": "kimi-coding/k3.1-pro",
+    "review": {
+      "faithful": true,
+      "leaks": [],
+      "pythonTransferScore": 5,
+      "agreeWithAuditor": true
+    }
+  }
+}
