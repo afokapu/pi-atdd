@@ -50,6 +50,21 @@ export function resolveMovedPath(path: string): string {
   return lookup(aliasDoc().movedPaths, path);
 }
 
+/** True when the path is a current (new) location of a moved file, so it is the form a caller may already hold. */
+export function isCurrentMovedPath(path: string): boolean {
+  return Object.values(aliasDoc().movedPaths).includes(path);
+}
+
+/** True when the scheme is a current URN scheme (a value of the mapping table). */
+export function isCurrentUrnScheme(scheme: string): boolean {
+  return Object.values(aliasDoc().vocabulary.urnSchemes).includes(scheme);
+}
+
+/** True when the key is a current field key (a value of the mapping table). */
+export function isCurrentFieldKey(key: string): boolean {
+  return Object.values(aliasDoc().vocabulary.fieldKeys).includes(key);
+}
+
 /** Sunset of the advisory legacy-vocabulary convention: advisory (warning) until 60 days after the release date,
  * strict from then on. No release date yet (null) means advisory. */
 export const LEGACY_TERMS_SUNSET_DAYS = 60;

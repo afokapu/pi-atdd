@@ -5,7 +5,7 @@
 // Acceptance: acc:pi-atdd:PLT-103-A2-003
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadCatalog, loadConfig, resolveContext, resolveLegacyReference, type Catalog, type CatalogOptions } from "../src/catalog.ts";
@@ -178,4 +178,81 @@ test("activation limit: the convention states the limit, so the rule text and th
   assert.match(text, /Activation limit/);
   assert.match(text, /README\.md/);
   assert.match(text, /never the file content/);
+});
+
+// ---- review RETURN 2 (PR #26, bd13b65): path resolution is gated by the mapping and the loaded catalog, not by suffix;
+// current names resolve; the sunset reads a non-null release date from the table file ----
+
+test("P2-a: an unmapped convention path that no loaded rule declares is unresolved (exit 3), not resolved", () => {
+  const out = run(["resolve", "--ref", "vendor/atdd-bun/conventions/coder/example/no-such-rule.convention.yaml"]);
+  assert.equal(out.output.status, "unresolved");
+  assert.equal(out.output.rule, null);
+  assert.equal(out.status, 3);
+});
+
+test("P2-a: a moved neutral JSON path (not a convention YAML) resolves to its current path, exit 0", () => {
+  const out = run(["resolve", "--ref", "conventions-neutral/coder/interlocking/coder.interlocking.bilateral-binding.json"]);
+  assert.equal(out.output.status, "resolved");
+  assert.equal(out.output.kind, "path");
+  assert.equal(out.output.current, "conventions-neutral/coder/flow-router/coder.flow-router.bilateral-binding.json");
+  assert.equal(out.status, 0);
+});
+
+test("P2-a: a moved golden TXT path resolves to its current path, exit 0", () => {
+  const out = run(["resolve", "--ref", "tests/golden/bun/coder.architecture.wagons-import.txt"]);
+  assert.equal(out.output.status, "resolved");
+  assert.equal(out.output.current, "tests/golden/bun/coder.architecture.capabilities-import.txt");
+  assert.equal(out.status, 0);
+});
+
+test("P2-b: current names resolve to themselves: a URN, a field key and a rule id", () => {
+  for (const [ref, kind] of [["acc:user-system-flow:billing:pay:success", "urn"], ["flowRouterId", "field"], ["capability:billing:pay", "urn"], ["coder.flow-router.bilateral-binding", "rule"]] as const) {
+    const out = run(["resolve", "--ref", ref]);
+    assert.equal(out.output.status, "resolved", ref);
+    assert.equal(out.output.kind, kind, ref);
+    assert.equal(out.output.current, ref, ref);
+    assert.equal(out.status, 0, ref);
+  }
+});
+
+test("P2-b: round trip: the current name of every old reference resolves to the same current name", () => {
+  const oldRefs = [
+    "acc:train:billing:pay:success", "train:billing:x", "interlockingId", "wagon",
+    "coder.interlocking.bilateral-binding",
+    "coder.bun.interlocking-bilateral-binding", "coder.bun.interlocking-resolution-model-exists",
+    "vendor/atdd-bun/conventions/coder/interlocking/coder.interlocking.bilateral-binding.convention.yaml",
+    "conventions-neutral/coder/interlocking/coder.interlocking.bilateral-binding.json",
+    "tests/golden/bun/coder.architecture.wagons-import.txt",
+  ];
+  for (const old of oldRefs) {
+    const first = run(["resolve", "--ref", old]);
+    assert.equal(first.output.status, "resolved", old);
+    const again = run(["resolve", "--ref", first.output.current]);
+    assert.equal(again.output.status, "resolved", "current of " + old + " = " + first.output.current);
+    assert.equal(again.output.current, first.output.current, old);
+    assert.equal(again.status, 0, old);
+  }
+});
+
+test("sunset: a non-null release date read from the mapping table (no legacyRelease override) gives strict on day 60", () => {
+  const dir = mkdtempSync(join(tmpdir(), "pi-atdd-sunset-table-"));
+  try {
+    // Written as the owner would write it: an unquoted date, which the YAML parser reads as a string.
+    const table = join(dir, "legacy-terms.yaml");
+    writeFileSync(table, "schema: pi-atdd/legacy-terms/v1\nsunset:\n  date: 2026-01-01\n  until_date: advisory\n  after_date: strict\n");
+    const cwd = emptyRepo();
+    try {
+      const config = loadConfig(cwd);
+      const day59 = loadCatalog(config.sources, cwd, { legacyTerms: table, today: "2026-03-01" });
+      const day60 = loadCatalog(config.sources, cwd, { legacyTerms: table, today: "2026-03-02" });
+      assert.equal(day59.rules.get(LEGACY_RULE)!.disposition, "advisory", "day 59");
+      assert.equal(day60.rules.get(LEGACY_RULE)!.disposition, "strict", "day 60");
+    } finally { rmSync(cwd, { recursive: true, force: true }); }
+    const repo = emptyRepo();
+    try {
+      const out = execute(["context", "--task", "Rename the wagon capability", "--repo", repo],
+        { legacyTerms: table, today: "2026-03-02" }).output as { rules: Array<{ id: string; disposition: string }> };
+      assert.equal(out.rules.find(r => r.id === LEGACY_RULE)?.disposition, "strict", "CLI context reads the table date");
+    } finally { rmSync(repo, { recursive: true, force: true }); }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

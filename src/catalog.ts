@@ -5,8 +5,8 @@ import { fileURLToPath } from "node:url";
 import { parseDocument } from "yaml";
 import { DEFAULT_PROFILE, expandRoleSelectors, loadProfile, profileByName, type StructureProfile } from "./profile.ts";
 import {
-  legacySunsetRelease, legacyTermsPhase, resolveDetectorRef, resolveFieldKey, resolveMovedPath, resolveUrnScheme,
-  upstreamDetectorRef,
+  isCurrentFieldKey, isCurrentMovedPath, isCurrentUrnScheme, legacySunsetRelease, legacyTermsPhase, resolveDetectorRef,
+  resolveFieldKey, resolveMovedPath, resolveUrnScheme, upstreamDetectorRef,
 } from "./vocabulary.ts";
 
 export class GraphError extends Error {}
@@ -22,7 +22,13 @@ export type Convention = {
 /** PLT-103: the advisory legacy-vocabulary convention; its disposition follows the sunset (see loadCatalog). */
 export const LEGACY_TERMS_RULE = "shared.vocabulary.legacy-terms";
 /** Evaluation date of the sunset. Defaults: today (UTC), and the release date in conventions/legacy-terms.yaml. */
-export type CatalogOptions = { today?: string; legacyRelease?: string | null };
+export type CatalogOptions = {
+  today?: string;
+  /** Release date override (tests and embedding). Default: the `sunset.date` read from `legacyTerms`. */
+  legacyRelease?: string | null;
+  /** The mapping table to read the sunset date from. Default: conventions/legacy-terms.yaml in the package. */
+  legacyTerms?: string;
+};
 export type Relation = {
   source: string; target: string; type: string; constraint: string; control: string;
   reason: string; sourceFile: string;
@@ -157,15 +163,24 @@ export function resolveLegacyReference(catalog: Catalog, ref: string): LegacyRes
     const id = canonicalRuleId(catalog, ref);
     return { ref, kind: "rule", current: id, upstream: detector?.upstream ?? null, detector, convention: catalog.rules.get(id) };
   }
-  if (ref.includes("/") && ref.endsWith(".convention.yaml")) {
-    const current = resolveMovedPath(ref);
-    return { ref, kind: "path", current, upstream: null, convention: conventionAtPath(catalog, current) };
+  // A known moved file resolves whatever its suffix (neutral JSON and golden TXT included). Any other convention path
+  // resolves only when a loaded rule is declared at it: a path the catalog cannot load is not resolved.
+  const mapped = resolveMovedPath(ref);
+  if (mapped !== ref || isCurrentMovedPath(ref))
+    return { ref, kind: "path", current: mapped, upstream: null, convention: conventionAtPath(catalog, mapped) };
+  if (ref.endsWith(".convention.yaml")) {
+    const convention = conventionAtPath(catalog, ref);
+    if (convention) return { ref, kind: "path", current: ref, upstream: null, convention };
   }
+  // An old or a current URN scheme: the current form is the same name with the table's scheme.
   const urn = URN_SCHEME.exec(ref);
-  if (urn && resolveUrnScheme(urn[2]!) !== urn[2])
-    return { ref, kind: "urn", current: (urn[1] ?? "") + resolveUrnScheme(urn[2]!) + ":" + ref.slice(urn[0].length), upstream: null };
+  if (urn) {
+    const scheme = urn[2]!, current = resolveUrnScheme(scheme);
+    if (current !== scheme || isCurrentUrnScheme(scheme))
+      return { ref, kind: "urn", current: (urn[1] ?? "") + current + ":" + ref.slice(urn[0].length), upstream: null };
+  }
   const field = resolveFieldKey(ref);
-  if (field !== ref) return { ref, kind: "field", current: field, upstream: null };
+  if (field !== ref || isCurrentFieldKey(ref)) return { ref, kind: "field", current: field, upstream: null };
   if (detector) return { ref, kind: "detector", current: detector.current, upstream: detector.upstream, detector };
   return { ref, kind: "unknown", current: null, upstream: null };
 }
@@ -241,7 +256,7 @@ export function loadCatalog(sources: SourceSpec[], cwd: string, options: Catalog
   // advisory convention can change; every other disposition is taken as authored.
   const legacy = rules.get(LEGACY_TERMS_RULE);
   if (legacy?.disposition === "advisory") {
-    const release = options.legacyRelease !== undefined ? options.legacyRelease : legacySunsetRelease();
+    const release = options.legacyRelease !== undefined ? options.legacyRelease : legacySunsetRelease(options.legacyTerms);
     const today = options.today ?? new Date().toISOString().slice(0, 10);
     legacy.disposition = legacyTermsPhase({ release, today });
   }
