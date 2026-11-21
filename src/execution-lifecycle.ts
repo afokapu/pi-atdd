@@ -32,6 +32,8 @@ export type ExecutionCheckpoint = Readonly<{
   revision: { vcs: "git" | "jj"; head: string };
   /** Unknown acceptance must remain unknown in the successor, never become done. */
   acceptance: "verified" | "unknown";
+  /** A reference is not a grant: unknown remains ask-owner for privileged actions. */
+  grant: { state: "verified" | "unknown"; reference: string | null };
   attention: { state: "verified" | "unknown"; pendingIds: string[] };
 }>;
 
@@ -46,7 +48,7 @@ export type TransitionDecision =
   | { status: "hold"; reason: string }
   | { status: "allow"; fencePrevious: false }
   | { status: "allow"; fencePrevious: true; checkpointAcceptance: "verified" | "unknown";
-      pendingAttentionIds: string[] };
+      grantState: "verified" | "unknown"; pendingAttentionIds: string[] };
 
 const valid = (value: string) => typeof value === "string" && value.trim().length > 0;
 const validBinding = (b: ExecutionBinding) =>
@@ -102,10 +104,14 @@ export function decideExecutionTransition(input: TransitionInput): TransitionDec
     return hold("exact source revision is unverified");
   if (cp.acceptance !== "verified" && cp.acceptance !== "unknown")
     return hold("checkpoint acceptance is invalid");
+  if (!cp.grant || typeof cp.grant !== "object" ||
+      (cp.grant.state !== "verified" && cp.grant.state !== "unknown") ||
+      (cp.grant.reference !== null && !valid(cp.grant.reference)))
+    return hold("checkpoint grant state is unverified or malformed");
   if (!cp.attention || typeof cp.attention !== "object" || cp.attention.state !== "verified" || !Array.isArray(cp.attention.pendingIds) ||
       !cp.attention.pendingIds.every(valid))
     return hold("pending attention cannot be reconstructed");
 
   return { status: "allow", fencePrevious: true, checkpointAcceptance: cp.acceptance,
-    pendingAttentionIds: [...cp.attention.pendingIds] };
+    grantState: cp.grant.state, pendingAttentionIds: [...cp.attention.pendingIds] };
 }
