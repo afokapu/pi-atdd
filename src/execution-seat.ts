@@ -24,6 +24,7 @@ export type SeatRuntimeConfig = {
   checkpointDir: string;
   /** Read-only Flow authority; the Flow controller owns changes to these records. */
   flowRoot?: string;
+  grantRef?: string;
 };
 type LeaseFile = { schema: "pi-atdd/seat-lease/v1"; binding: ExecutionBinding; at: string };
 const text = (v: unknown): v is string => typeof v === "string" && v.trim().length > 0 && v.length <= 240;
@@ -67,8 +68,10 @@ export function executionConfigFromEnv(env: NodeJS.ProcessEnv): SeatRuntimeConfi
   if (!leasePath || !leasePath.startsWith("/")) throw new Error("execution lease file must be absolute");
   if (mode === "external" && (!flowRoot || !flowRoot.startsWith("/")))
     throw new Error("Flow-owned seat requires absolute ATDD_WORKFLOW_ROOT");
+  const grantRef = env.PI_ATDD_EXECUTION_GRANT_REF?.trim();
+  if (grantRef && !text(grantRef)) throw new Error("invalid execution grant reference");
   return { mode, binding, leasePath, checkpointDir: join(agentDir, "execution", "checkpoints", key),
-    ...(flowRoot ? { flowRoot } : {}) };
+    ...(flowRoot ? { flowRoot } : {}), ...(grantRef ? { grantRef } : {}) };
 }
 
 function parseLease(raw: string): LeaseFile {
@@ -189,14 +192,15 @@ export function vcsHead(cwd: string): { vcs: "git" | "jj"; head: string } {
 
 /** Checkpoint records a measured revision and verified attention IDs, never an agent completion claim. */
 export function recordSeatCheckpoint(config: SeatRuntimeConfig, sessionId: string, cwd: string,
-  attention: ExecutionCheckpoint["attention"]): ExecutionCheckpoint {
+  attention: ExecutionCheckpoint["attention"],
+  grant: ExecutionCheckpoint["grant"] = { state: "unknown", reference: config.grantRef ?? null }): ExecutionCheckpoint {
   if (!ownsExecution(config, sessionId)) throw new Error("cannot checkpoint a stale seat");
   const b = config.binding;
   const checkpoint: ExecutionCheckpoint = {
     schema: "pi-atdd/execution-checkpoint/v1",
     projectId: b.projectId, taskId: b.taskId, coachAddress: b.coachAddress, seatAddress: b.seatAddress,
     sourceExecutionId: b.executionId, sourceSessionId: b.sessionId,
-    revision: vcsHead(cwd), acceptance: "unknown", attention,
+    revision: vcsHead(cwd), acceptance: "unknown", grant, attention,
   };
   atomicJson(join(config.checkpointDir, b.executionId + ".json"), checkpoint);
   return checkpoint;
