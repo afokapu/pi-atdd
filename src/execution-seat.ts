@@ -136,16 +136,17 @@ export function ownsFlowExecution(config: SeatRuntimeConfig, sessionId: string):
   if (config.mode !== "external" || !config.flowRoot || !text(sessionId)) return false;
   const b = config.binding;
   const m = /^([a-zA-Z0-9_.-]+)@([a-zA-Z0-9_.-]+)$/.exec(b.seatAddress);
-  if (!m || m[2] !== b.projectId || !/^[a-zA-Z0-9_.-]+$/.test(b.taskId)) return false;
+  const projectCoach = b.taskId === "*"; // project-scoped main/coordinator may supervise multiple tasks
+  if (!m || m[2] !== b.projectId || (!projectCoach && !/^[a-zA-Z0-9_.-]+$/.test(b.taskId))) return false;
   try {
     const runtime = parseYaml(readFileSync(config.leasePath, "utf8")) as {
       schema?: string; seat?: string; owner_token?: string; pi_session?: string;
     };
     const seat = parseYaml(readFileSync(join(config.flowRoot, "work", b.projectId,
       "seats", m[1]!, "seat.yaml"), "utf8")) as {
-        address?: string; project?: string; runtime?: { pi_session?: string };
+        address?: string; project?: string; role?: string; runtime?: { pi_session?: string };
       };
-    const task = parseYaml(readFileSync(join(config.flowRoot, "work", b.projectId,
+    const task = projectCoach ? undefined : parseYaml(readFileSync(join(config.flowRoot, "work", b.projectId,
       "tasks", b.taskId + ".yaml"), "utf8")) as {
         schema?: string; coordinator?: string; assignee?: string; status?: string;
       };
@@ -154,9 +155,11 @@ export function ownsFlowExecution(config: SeatRuntimeConfig, sessionId: string):
       runtime.pi_session === sessionId && b.sessionId === sessionId &&
       seat?.address === b.seatAddress && seat.project === b.projectId &&
       seat.runtime?.pi_session === sessionId &&
-      task?.schema === "atdd-workflow/task/v1" &&
-      (task.coordinator === b.seatAddress || task.assignee === b.seatAddress) &&
-      !["done", "superseded", "rejected"].includes(task.status ?? "");
+      (projectCoach
+        ? (seat.role === "main" || seat.role === "coordinator")
+        : task?.schema === "atdd-workflow/task/v1" &&
+          (task.coordinator === b.seatAddress || task.assignee === b.seatAddress) &&
+          !["done", "superseded", "rejected"].includes(task.status ?? ""));
   } catch { return false; }
 }
 
