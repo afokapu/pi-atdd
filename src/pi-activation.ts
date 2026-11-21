@@ -353,7 +353,9 @@ export default function atdd(pi:ExtensionAPI):void {
         seatCheckpoint.taskId+"; source session "+seatCheckpoint.sourceSessionId+
         "; exact "+seatCheckpoint.revision.vcs+" revision "+seatCheckpoint.revision.head+
         "; attention IDs "+seatCheckpoint.attention.pendingIds.join(", ")+
-        "; acceptance remains "+seatCheckpoint.acceptance+"." : record;
+        "; acceptance remains "+seatCheckpoint.acceptance+
+        "; grant "+seatCheckpoint.grant.state+
+        (seatCheckpoint.grant.reference ? " (reference "+seatCheckpoint.grant.reference+")" : "")+"." : record;
       mkdirSync(dirname(path),{recursive:true});
       writeFileSync(path,text,{flag:"wx"});
       readyHandoff={text,path,kickoff:kickoffText(extractIssueId(request.task)),
