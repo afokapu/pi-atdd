@@ -43,7 +43,7 @@ or claim that untested behaviors have been proven.
 ## Stable identities and transitions
 
 - `projectId`: local governed project key; an optional Linear reference is not authority.
-- `taskId`: durable work ID, independent of execution attempts.
+- `taskId`: durable work ID for a worker/reviewer execution. A project-scoped main/coordinator Coach seat may use the explicit `*` binding to supervise multiple tasks without pretending to own any one task; individual attention items always retain their real `taskId`.
 - `coachAddress`: durable accountable recipient; never a Pi session ID or free-text label.
 - `seatAddress`: logical execution seat, not the running process.
 - `executionId`, `sessionId`, `modelId`: replaceable runtime observations.
