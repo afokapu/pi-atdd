@@ -50,13 +50,14 @@ export type TransitionDecision =
 
 const valid = (value: string) => typeof value === "string" && value.trim().length > 0;
 const validBinding = (b: ExecutionBinding) =>
-  [b.projectId, b.taskId, b.coachAddress, b.seatAddress,
+  b !== null && typeof b === "object" && [b.projectId, b.taskId, b.coachAddress, b.seatAddress,
     b.executionId, b.sessionId, b.modelId, b.ownerToken].every(valid) &&
   Number.isSafeInteger(b.generation) && b.generation >= 1;
 
 /** An advisory local comparison; the runtime adapter must recheck under its ownership lock. */
 export function matchesSeatLease(binding: ExecutionBinding, observed: SeatLeaseObservation): boolean {
-  return validBinding(binding) && binding.seatAddress === observed.seatAddress &&
+  return validBinding(binding) && observed !== null && typeof observed === "object" &&
+    binding.seatAddress === observed.seatAddress &&
     binding.sessionId === observed.sessionId && binding.generation === observed.generation &&
     binding.ownerToken === observed.ownerToken;
 }
@@ -91,17 +92,17 @@ export function decideExecutionTransition(input: TransitionInput): TransitionDec
     return hold("source is not settled and recovery is not authorized");
 
   const cp = input.checkpoint;
-  if (cp.schema !== "pi-atdd/execution-checkpoint/v1" ||
+  if (!cp || typeof cp !== "object" || cp.schema !== "pi-atdd/execution-checkpoint/v1" ||
       cp.projectId !== source.projectId || cp.taskId !== source.taskId ||
       cp.coachAddress !== source.coachAddress || cp.seatAddress !== source.seatAddress ||
       cp.sourceExecutionId !== source.executionId || cp.sourceSessionId !== source.sessionId)
     return hold("checkpoint does not describe the source work and execution");
-  if (!valid(cp.revision.head) || !valid(input.observedHead) || cp.revision.head !== input.observedHead ||
+  if (!cp.revision || typeof cp.revision !== "object" || !valid(cp.revision.head) || !valid(input.observedHead) || cp.revision.head !== input.observedHead ||
       (cp.revision.vcs !== "git" && cp.revision.vcs !== "jj"))
     return hold("exact source revision is unverified");
   if (cp.acceptance !== "verified" && cp.acceptance !== "unknown")
     return hold("checkpoint acceptance is invalid");
-  if (cp.attention.state !== "verified" || !Array.isArray(cp.attention.pendingIds) ||
+  if (!cp.attention || typeof cp.attention !== "object" || cp.attention.state !== "verified" || !Array.isArray(cp.attention.pendingIds) ||
       !cp.attention.pendingIds.every(valid))
     return hold("pending attention cannot be reconstructed");
 
