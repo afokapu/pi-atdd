@@ -5,13 +5,16 @@
 // Acceptance: acc:pi-atdd:PLT-117-A05
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { bootstrapSeat, executionConfigFromEnv, ownsExecution, readSeatLease,
-  recordSeatCheckpoint, recordSeatModel, replaceSeat, vcsHead } from "../src/execution-seat.ts";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { bootstrapSeat, claimSeatHolder, executionConfigFromEnv, ownsExecution, readSeatLease,
+  recordSeatCheckpoint, recordSeatModel, replaceSeat, resumeSeatFromCheckpoint, vcsHead } from "../src/execution-seat.ts";
 import { registerSeatExecution } from "../src/execution-pi.ts";
+import { ExtensionRunner, ModelRegistry, ModelRuntime, SessionManager,
+  createExtensionRuntime, discoverAndLoadExtensions } from "@earendil-works/pi-coding-agent";
 
 function world() {
   const root = mkdtempSync(join(tmpdir(), "pi-atdd-seat-"));
@@ -112,7 +115,8 @@ test("PLT-117 A03/A04: Pi hook blocks stale sessions and authorizes verified suc
     const handlers = new Map<string, Array<(e: any, c: any) => unknown>>();
     const pi = { on: (k: string, f: any) => handlers.set(k, [...(handlers.get(k) || []), f]),
       registerCommand: () => {} };
-    const controller = registerSeatExecution(pi as any, { ...w.env, PI_ATDD_EXECUTION_BOOTSTRAP: "1" })!;
+    bootstrapSeat(w.config); // the launcher provisions the receipt before Pi starts
+    const controller = registerSeatExecution(pi as any, w.env)!;
     const context = (id: string) => ({ cwd: w.repo, model: { provider: "provider", id: "model-a" },
       isProjectTrusted: () => true, sessionManager: { getSessionId: () => id },
       ui: { notify: () => {} } });
@@ -187,4 +191,134 @@ test("PLT-117 A02: project Coach seat is authorized across tasks without one tas
     assert.equal(ownsExecution({ ...config, binding: { ...config.binding,
       sessionId: "not-current" } }, "not-current"), false);
   } finally { w.cleanup(); }
+});
+
+// PLT-117 review fixes: launcher-provisioned authority, restart recovery, real Pi events.
+const here = dirname(fileURLToPath(import.meta.url));
+const verifiedWork = { state: "verified" as const, pendingIds: ["ati_123456789abc"] };
+const ctxFor = (repo: string, id: string) => ({ cwd: repo, model: { provider: "provider", id: "model-a" },
+  isProjectTrusted: () => true, sessionManager: { getSessionId: () => id }, ui: { notify: () => {} } });
+function piHooks(env: NodeJS.ProcessEnv) {
+  const handlers = new Map<string, Array<(e: any, c: any) => unknown>>();
+  const pi = { on: (k: string, f: any) => handlers.set(k, [...(handlers.get(k) || []), f]),
+    registerCommand: () => {} };
+  const controller = registerSeatExecution(pi as any, env)!;
+  const call = (hook: string, ctx: unknown): any[] => (handlers.get(hook) ?? []).map(f => f({}, ctx));
+  return { controller, call };
+}
+/** A real process that dies by SIGKILL between checkpoint and lease CAS (or before any checkpoint). */
+function crashAt(w: ReturnType<typeof world>, stage: "before-checkpoint" | "after-checkpoint") {
+  const r = spawnSync(process.execPath, ["--experimental-strip-types",
+    join(here, "fixtures", "seat-crash-child.ts"), w.repo, stage], { env: w.env, encoding: "utf8" });
+  assert.equal(r.signal, "SIGKILL", r.stderr);
+}
+
+test("PLT-117 A03: Pi never mints a seat from launch environment; only a launcher-provisioned lease is adopted", () => {
+  const w = world();
+  try {
+    const minting = piHooks({ ...w.env, PI_ATDD_EXECUTION_BOOTSTRAP: "1" });
+    minting.call("session_start", ctxFor(w.repo, "session-a"));
+    assert.equal(existsSync(w.config.leasePath), false, "env alone must not create a lease");
+    assert.equal(minting.controller.owns(ctxFor(w.repo, "session-a")), false);
+    assert.equal(minting.call("tool_call", ctxFor(w.repo, "session-a"))[0]?.block, true);
+    const resuming = piHooks({ ...w.env, PI_ATDD_EXECUTION_RESUME: "1" });
+    resuming.call("session_start", ctxFor(w.repo, "session-a"));
+    assert.equal(existsSync(w.config.leasePath), false, "resume without a checkpoint must not mint either");
+  } finally { w.cleanup(); }
+});
+
+test("PLT-117 A04/A05: a restart between checkpoint and lease CAS resumes from the verified checkpoint", () => {
+  const w = world();
+  try {
+    bootstrapSeat(w.config);
+    crashAt(w, "after-checkpoint");
+    assert.equal(readSeatLease(w.config.leasePath)?.sessionId, "session-a", "the CAS never happened");
+    const next = resumeSeatFromCheckpoint(w.config, { nextSessionId: "session-b",
+      modelId: "provider/model-b", cwd: w.repo });
+    assert.equal(next.binding.generation, 2);
+    assert.equal(next.binding.sessionId, "session-b");
+    assert.notEqual(next.binding.executionId, "run-a");
+    assert.equal(ownsExecution(next, "session-b"), true);
+    assert.equal(ownsExecution(w.config, "session-a"), false);
+    assert.throws(() => resumeSeatFromCheckpoint(w.config, { nextSessionId: "session-c",
+      modelId: "provider/model-c", cwd: w.repo }), /does not match the current seat lease/);
+  } finally { w.cleanup(); }
+});
+
+test("PLT-117 A04: relaunched Pi resumes at session start only when the launcher asks, and tools stay blocked otherwise", () => {
+  const w = world();
+  try {
+    bootstrapSeat(w.config);
+    crashAt(w, "after-checkpoint");
+    const plain = piHooks(w.env);
+    plain.call("session_start", ctxFor(w.repo, "session-b"));
+    assert.equal(plain.call("tool_call", ctxFor(w.repo, "session-b"))[0]?.block, true);
+    assert.equal(readSeatLease(w.config.leasePath)?.sessionId, "session-a");
+    const resumed = piHooks({ ...w.env, PI_ATDD_EXECUTION_RESUME: "1" });
+    resumed.call("session_start", ctxFor(w.repo, "session-b"));
+    assert.equal(resumed.controller.owns(ctxFor(w.repo, "session-b")), true);
+    assert.equal(resumed.call("tool_call", ctxFor(w.repo, "session-b"))[0], undefined);
+    assert.equal(readSeatLease(w.config.leasePath)?.generation, 2);
+  } finally { w.cleanup(); }
+});
+
+test("PLT-117 A04/A05: recovery is refused while the recorded holder lives, without a checkpoint, or after the head moved", () => {
+  const live = world();
+  try {
+    bootstrapSeat(live.config); // the recorded holder is this test process, which is alive
+    recordSeatCheckpoint(live.config, "session-a", live.repo, verifiedWork);
+    assert.throws(() => resumeSeatFromCheckpoint(live.config, { nextSessionId: "session-b",
+      modelId: "provider/model-b", cwd: live.repo }), /may still be running/);
+  } finally { live.cleanup(); }
+
+  const none = world();
+  try {
+    bootstrapSeat(none.config);
+    crashAt(none, "before-checkpoint");
+    assert.throws(() => resumeSeatFromCheckpoint(none.config, { nextSessionId: "session-b",
+      modelId: "provider/model-b", cwd: none.repo }), /checkpoint/);
+  } finally { none.cleanup(); }
+
+  const moved = world();
+  try {
+    bootstrapSeat(moved.config);
+    crashAt(moved, "after-checkpoint");
+    writeFileSync(join(moved.repo, "later.txt"), "a later revision\n");
+    execFileSync("git", ["-C", moved.repo, "add", "later.txt"]);
+    execFileSync("git", ["-C", moved.repo, "-c", "user.name=ATDD Test", "-c", "user.email=test@example.invalid",
+      "commit", "-qm", "later"]);
+    assert.throws(() => resumeSeatFromCheckpoint(moved.config, { nextSessionId: "session-b",
+      modelId: "provider/model-b", cwd: moved.repo }), /revision/);
+    assert.equal(readSeatLease(moved.config.leasePath)?.sessionId, "session-a");
+  } finally { moved.cleanup(); }
+});
+
+test("PLT-117 A02: the real Pi model_select event persists an in-place model switch", async () => {
+  const w = world();
+  const saved = { ...process.env };
+  try {
+    // The session id comes from Pi's own SessionManager, so the binding is the real runtime's.
+    const sessionManager = SessionManager.inMemory(w.repo);
+    const sessionId = sessionManager.getSessionId();
+    const env = { ...w.env, PI_ATDD_EXECUTION_SESSION_ID: sessionId };
+    const config = executionConfigFromEnv(env)!;
+    bootstrapSeat(config);
+    // Load the seat hooks through Pi's real extension loader and dispatch through its real runner.
+    Object.assign(process.env, env);
+    const loaded = await discoverAndLoadExtensions([join(here, "fixtures", "seat-extension.ts")], w.repo, w.root);
+    assert.deepEqual(loaded.errors, []);
+    const runner = new ExtensionRunner(loaded.extensions, loaded.runtime ?? createExtensionRuntime(), w.repo,
+      sessionManager, new ModelRegistry(await ModelRuntime.create()));
+    // Pi emits this exact event from AgentSession.setModel and model cycling.
+    await runner.emit({ type: "model_select", model: { provider: "provider", id: "model-b" } as never,
+      previousModel: undefined, source: "set" });
+    const lease = readSeatLease(config.leasePath);
+    assert.equal(lease?.modelId, "provider/model-b");
+    assert.equal(lease?.sessionId, sessionId);
+    assert.equal(lease?.generation, 1);
+  } finally {
+    for (const key of Object.keys(process.env)) if (!(key in saved)) delete process.env[key];
+    Object.assign(process.env, saved);
+    w.cleanup();
+  }
 });

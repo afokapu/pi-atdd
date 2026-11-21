@@ -7,11 +7,11 @@
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
-  bootstrapSeat, executionConfigFromEnv, ownsExecution, readSeatLease, recordSeatCheckpoint,
-  recordSeatModel, replaceSeat, vcsHead, type SeatRuntimeConfig,
+  claimSeatHolder, executionConfigFromEnv, ownsExecution, recordSeatCheckpoint,
+  recordSeatModel, replaceSeat, resumeSeatFromCheckpoint, vcsHead, type SeatRuntimeConfig,
 } from "./execution-seat.ts";
 import type { ExecutionCheckpoint } from "./execution-lifecycle.ts";
-import { ensureKey, foldAll, operational, readLaunchConfig, readSpool, type AttentionItem } from "./attention.ts";
+import { ensureKey, foldAll, operational, readLaunchConfig, verifyAuthentic, type AttentionItem, type SignedEvent } from "./attention.ts";
 import { existsSync, readFileSync } from "node:fs";
 
 type Ctx = {
@@ -55,11 +55,14 @@ export function registerSeatExecution(pi: ExtensionAPI, env: NodeJS.ProcessEnv =
     }
     try {
       const raw = existsSync(attention.spool) ? readFileSync(attention.spool, "utf8") : "";
-      const events = readSpool(attention.spool, attention, ensureKey(attention.keyPath)).events;
-      // A rejected or partial event means we cannot prove absence of an outstanding request.
-      if (raw.split("\n").filter(line => line.trim()).length !== events.length ||
-          (raw.length > 0 && !raw.endsWith("\n")))
+      const key = ensureKey(attention.keyPath);
+      // A row that fails shape or MAC, or a partial last line, means we cannot prove absence of an outstanding request.
+      const authentic = raw.split("\n").filter(line => line.trim()).map(line => {
+        try { return verifyAuthentic(JSON.parse(line), attention, key); } catch { return undefined; }
+      });
+      if (authentic.some(ev => ev === undefined) || (raw.length > 0 && !raw.endsWith("\n")))
         return { state: "unknown", pendingIds: [] };
+      const events = authentic as SignedEvent[];
       const live = [...operational(foldAll(events), new Date()).values()];
       const pendingIds: string[] = [];
       for (const item of live) {
@@ -94,9 +97,16 @@ export function registerSeatExecution(pi: ExtensionAPI, env: NodeJS.ProcessEnv =
   api.on("session_start", (_event, ctx) => {
     if (!isContext(ctx) || !ctx.isProjectTrusted()) return;
     try {
-      if (current.mode === "standalone" && env.PI_ATDD_EXECUTION_BOOTSTRAP === "1" &&
-        !readSeatLease(current.leasePath)) bootstrapSeat(current);
-      if (!owns(ctx)) ctx.ui.notify("ATDD execution seat is unowned or superseded; tool calls are blocked", "error");
+      // Pi never mints authority from its environment: the launcher provisions the lease before Pi starts.
+      // A relaunch after a crash resumes only when the launcher asks, from the verified checkpoint.
+      if (current.mode === "standalone" && env.PI_ATDD_EXECUTION_RESUME === "1" && !owns(ctx)) {
+        if (!ctx.model) throw new Error("a model is required to resume a seat");
+        current = resumeSeatFromCheckpoint(current, {
+          nextSessionId: ctx.sessionManager.getSessionId(), modelId: modelName(ctx.model), cwd: ctx.cwd,
+        });
+      }
+      if (owns(ctx)) claimSeatHolder(current, ctx.sessionManager.getSessionId());
+      else ctx.ui.notify("ATDD execution seat is unowned or superseded; tool calls are blocked", "error");
     } catch (e) { ctx.ui.notify("ATDD execution seat unavailable: " + String(e), "error"); }
   });
   api.on("before_agent_start", (_event, ctx) => {
@@ -118,9 +128,10 @@ export function registerSeatExecution(pi: ExtensionAPI, env: NodeJS.ProcessEnv =
       reason: "ATDD execution seat is unowned, untrusted or superseded. The launcher must restore the current lease." };
     return undefined;
   });
-  api.on("model_changed", (_event, ctx) => {
-    if (!owns(ctx) || !ctx.model) return;
-    try { current = recordSeatModel(current, ctx.sessionManager.getSessionId(), modelName(ctx.model)); }
+  // Pi emits model_select from setModel and model cycling (source: set | cycle).
+  api.on("model_select", (event, ctx) => {
+    if (!owns(ctx) || !event?.model) return;
+    try { current = recordSeatModel(current, ctx.sessionManager.getSessionId(), modelName(event.model)); }
     catch (e) { ctx.ui.notify("ATDD model binding update refused: " + String(e), "error"); }
   });
   api.registerCommand("atdd-seat", {

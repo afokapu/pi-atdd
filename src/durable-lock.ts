@@ -31,6 +31,14 @@ function reclaimDeadLock(lock: string): boolean {
   } finally { rmSync(recovery, { recursive: true }); }
 }
 
+/**
+ * True only when a recorded process is provably gone on this machine. A live PID, another
+ * host, or a malformed record is not dead, so recovery built on it stays refused.
+ */
+export function holderIsDead(pid: number, host: string): boolean {
+  return Number.isInteger(pid) && pid > 0 && host === hostname() && !alive(pid);
+}
+
 /** Fails closed on lock contention; call inside the worker action, never across awaits. */
 export function withDurableLock<T>(file: string, work: () => T): T {
   mkdirSync(dirname(file), { recursive: true });

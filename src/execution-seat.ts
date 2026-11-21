@@ -11,10 +11,10 @@
 import { createHash, randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, hostname } from "node:os";
 import { dirname, join } from "node:path";
 import { parse as parseYaml } from "yaml";
-import { withDurableLock } from "./durable-lock.ts";
+import { holderIsDead, withDurableLock } from "./durable-lock.ts";
 import { decideExecutionTransition, matchesSeatLease,
   type ExecutionBinding, type ExecutionCheckpoint, type SeatLeaseObservation } from "./execution-lifecycle.ts";
 
@@ -27,7 +27,9 @@ export type SeatRuntimeConfig = {
   flowRoot?: string;
   grantRef?: string;
 };
-type LeaseFile = { schema: "pi-atdd/seat-lease/v1"; binding: ExecutionBinding; at: string };
+/** The holder is the process that last wrote the lease. Recovery needs it provably dead. */
+type Holder = { pid: number; host: string };
+type LeaseFile = { schema: "pi-atdd/seat-lease/v1"; binding: ExecutionBinding; holder: Holder; at: string };
 const text = (v: unknown): v is string => typeof v === "string" && v.trim().length > 0 && v.length <= 240;
 const number = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 1;
 const noFile = (err: unknown) => (err as NodeJS.ErrnoException)?.code === "ENOENT";
@@ -83,11 +85,16 @@ function parseLease(raw: string): LeaseFile {
   if (![b.projectId, b.taskId, b.coachAddress, b.seatAddress, b.executionId,
     b.sessionId, b.modelId, b.ownerToken].every(text) || !number(b.generation))
     throw new Error("malformed ATDD seat binding");
+  const h = (v as LeaseFile).holder;
+  if (!h || !Number.isInteger(h.pid) || h.pid <= 0 || !text(h.host)) throw new Error("malformed ATDD seat holder");
   return v as LeaseFile;
 }
-export function readSeatLease(path: string): ExecutionBinding | undefined {
-  try { return parseLease(readFileSync(path, "utf8")).binding; }
+export function readSeatLeaseFile(path: string): LeaseFile | undefined {
+  try { return parseLease(readFileSync(path, "utf8")); }
   catch (e) { if (noFile(e)) return undefined; throw e; }
+}
+export function readSeatLease(path: string): ExecutionBinding | undefined {
+  return readSeatLeaseFile(path)?.binding;
 }
 
 /** No lock stealing: on a crashed writer the owner/controller must remove an abandoned lock. */
@@ -98,11 +105,15 @@ function atomicJson(path: string, value: unknown): void {
   try { writeFileSync(tmp, serialize(value), { flag: "wx", mode: 0o600 }); renameSync(tmp, path); }
   finally { rmSync(tmp, { force: true }); }
 }
-function commitLease(path: string, binding: ExecutionBinding): void {
-  atomicJson(path, { schema: "pi-atdd/seat-lease/v1", binding, at: new Date().toISOString() } satisfies LeaseFile);
+const thisHolder = (): Holder => ({ pid: process.pid, host: hostname() });
+function commitLease(path: string, binding: ExecutionBinding, holder: Holder = thisHolder()): void {
+  atomicJson(path, { schema: "pi-atdd/seat-lease/v1", binding, holder, at: new Date().toISOString() } satisfies LeaseFile);
 }
 
-/** Standalone bootstrap is explicit and create-only; the launcher owns initial assignment. */
+/**
+ * Launcher-only provisioning, run outside Pi before tools are enabled. Pi never calls it:
+ * the launch environment alone cannot create authority.
+ */
 export function bootstrapSeat(config: SeatRuntimeConfig): ExecutionBinding {
   if (config.mode !== "standalone") throw new Error("external seat authority cannot be bootstrapped here");
   if (config.binding.generation !== 1) throw new Error("initial seat generation must be 1");
@@ -204,6 +215,54 @@ export function recordSeatCheckpoint(config: SeatRuntimeConfig, sessionId: strin
   return checkpoint;
 }
 
+/**
+ * Pi records itself as the live holder once it has verified ownership. Recovery later
+ * checks this process, so a live session can never be mistaken for a crashed one.
+ */
+export function claimSeatHolder(config: SeatRuntimeConfig, sessionId: string): void {
+  if (config.mode !== "standalone") return;
+  locked(config.leasePath, () => {
+    if (!ownsExecution(config, sessionId)) throw new Error("cannot claim a stale seat");
+    const lease = readSeatLeaseFile(config.leasePath);
+    if (!lease) throw new Error("seat lease changed during claim");
+    commitLease(config.leasePath, lease.binding, thisHolder());
+  });
+}
+
+/** The verified checkpoint for an execution, read from disk; the transition decision re-validates it. */
+export function readSeatCheckpoint(checkpointDir: string, executionId: string): ExecutionCheckpoint {
+  let raw: string;
+  try { raw = readFileSync(join(checkpointDir, executionId + ".json"), "utf8"); }
+  catch (e) { if (noFile(e)) throw new Error("no verified checkpoint for the recorded execution"); throw e; }
+  const v = JSON.parse(raw) as ExecutionCheckpoint;
+  if (!v || typeof v !== "object" || v.schema !== "pi-atdd/execution-checkpoint/v1")
+    throw new Error("malformed execution checkpoint");
+  return v;
+}
+
+/** Lock-held transition; the caller holds the seat lock and has validated the source binding. */
+function transitionSeatLocked(config: SeatRuntimeConfig, input: {
+  nextSessionId: string; modelId: string; checkpoint: ExecutionCheckpoint;
+  observedHead: string; sourceSettled: boolean; recoveryAuthorized: boolean;
+}): SeatRuntimeConfig {
+  const current = readSeatLease(config.leasePath);
+  if (!current || !ownsExecution(config, config.binding.sessionId))
+    throw new Error("seat lease changed during handoff");
+  const next: ExecutionBinding = {
+    ...config.binding, generation: config.binding.generation + 1,
+    executionId: randomUUID(), ownerToken: randomUUID(),
+    sessionId: input.nextSessionId, modelId: input.modelId,
+  };
+  const decision = decideExecutionTransition({
+    kind: "replace_session", source: config.binding, observedOwner: source(current), next,
+    checkpoint: input.checkpoint, observedHead: input.observedHead,
+    sourceSettled: input.sourceSettled, recoveryAuthorized: input.recoveryAuthorized,
+  });
+  if (decision.status === "hold") throw new Error("seat handoff refused: " + decision.reason);
+  commitLease(config.leasePath, next);
+  return { ...config, binding: next };
+}
+
 /** Safe CAS and generation fencing. External Flow ownership must be changed by Flow. */
 export function replaceSeat(config: SeatRuntimeConfig, input: {
   nextSessionId: string; modelId: string; checkpoint: ExecutionCheckpoint;
@@ -211,22 +270,32 @@ export function replaceSeat(config: SeatRuntimeConfig, input: {
 }): SeatRuntimeConfig {
   if (config.mode !== "standalone") throw new Error("Flow-owned seat replacement requires Flow adapter");
   if (!text(input.nextSessionId) || !text(input.modelId)) throw new Error("replacement runtime incomplete");
+  return locked(config.leasePath, () => transitionSeatLocked(config, input));
+}
+
+/**
+ * Crash recovery after a restart between checkpoint and lease CAS. Authority comes from
+ * the lease's recorded holder being provably dead on this host, plus the verified
+ * checkpoint on disk and the exact current repository head. The relaunch binding must
+ * match the current lease exactly; a model's own claim is never recovery authority.
+ */
+export function resumeSeatFromCheckpoint(config: SeatRuntimeConfig, input: {
+  nextSessionId: string; modelId: string; cwd: string;
+}): SeatRuntimeConfig {
+  if (config.mode !== "standalone") throw new Error("Flow-owned seat recovery requires Flow adapter");
+  if (!text(input.nextSessionId) || !text(input.modelId)) throw new Error("resume runtime incomplete");
   return locked(config.leasePath, () => {
-    const current = readSeatLease(config.leasePath);
-    if (!current || !ownsExecution(config, config.binding.sessionId))
-      throw new Error("seat lease changed during handoff");
-    const next: ExecutionBinding = {
-      ...config.binding, generation: config.binding.generation + 1,
-      executionId: randomUUID(), ownerToken: randomUUID(),
-      sessionId: input.nextSessionId, modelId: input.modelId,
-    };
-    const decision = decideExecutionTransition({
-      kind: "replace_session", source: config.binding, observedOwner: source(current), next,
-      checkpoint: input.checkpoint, observedHead: input.observedHead,
-      sourceSettled: input.sourceSettled, recoveryAuthorized: input.recoveryAuthorized,
+    const lease = readSeatLeaseFile(config.leasePath);
+    if (!lease) throw new Error("no seat lease to resume");
+    if (!same(config.binding, lease.binding) || config.binding.executionId !== lease.binding.executionId ||
+      !matchesSeatLease(config.binding, source(lease.binding)))
+      throw new Error("relaunch binding does not match the current seat lease");
+    if (!holderIsDead(lease.holder.pid, lease.holder.host))
+      throw new Error("recorded seat holder may still be running; recovery refused");
+    const checkpoint = readSeatCheckpoint(config.checkpointDir, lease.binding.executionId);
+    return transitionSeatLocked({ ...config, binding: lease.binding }, {
+      nextSessionId: input.nextSessionId, modelId: input.modelId, checkpoint,
+      observedHead: vcsHead(input.cwd).head, sourceSettled: false, recoveryAuthorized: true,
     });
-    if (decision.status === "hold") throw new Error("seat handoff refused: " + decision.reason);
-    commitLease(config.leasePath, next);
-    return { ...config, binding: next };
   });
 }
