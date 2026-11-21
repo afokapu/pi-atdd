@@ -11,6 +11,8 @@ import {
   recordSeatModel, replaceSeat, vcsHead, type SeatRuntimeConfig,
 } from "./execution-seat.ts";
 import type { ExecutionCheckpoint } from "./execution-lifecycle.ts";
+import { ensureKey, foldAll, operational, readLaunchConfig, readSpool, type AttentionItem } from "./attention.ts";
+import { existsSync, readFileSync } from "node:fs";
 
 type Ctx = {
   cwd: string;
@@ -30,6 +32,7 @@ export type SeatController = {
   /** Fences the old seat before delivering a kickoff to the new Pi session. */
   activateSuccessor: (ctx: unknown, checkpoint: ExecutionCheckpoint) => void;
   current: () => SeatRuntimeConfig;
+  snapshotAttention: () => ExecutionCheckpoint["attention"];
 };
 const isContext = (x: unknown): x is Ctx => Boolean(x) && typeof x === "object" &&
   typeof (x as Ctx).isProjectTrusted === "function" &&
@@ -41,6 +44,34 @@ export function registerSeatExecution(pi: ExtensionAPI, env: NodeJS.ProcessEnv =
   if (!configured) return undefined;
   const api = pi as unknown as Api;
   let current = configured;
+  const snapshotAttention = (): ExecutionCheckpoint["attention"] => {
+    const attention = readLaunchConfig(env);
+    if (!attention) {
+      // A separate agent may have raised items without attention hooks here.
+      const dir = env.PI_CODING_AGENT_DIR;
+      const spool = dir ? dir + "/attention/spool.jsonl" : undefined;
+      return spool && existsSync(spool) ? { state: "unknown", pendingIds: [] }
+        : { state: "verified", pendingIds: [] };
+    }
+    try {
+      const raw = existsSync(attention.spool) ? readFileSync(attention.spool, "utf8") : "";
+      const events = readSpool(attention.spool, attention, ensureKey(attention.keyPath)).events;
+      // A rejected or partial event means we cannot prove absence of an outstanding request.
+      if (raw.split("\n").filter(line => line.trim()).length !== events.length ||
+          (raw.length > 0 && !raw.endsWith("\n")))
+        return { state: "unknown", pendingIds: [] };
+      const live = [...operational(foldAll(events), new Date()).values()];
+      const pendingIds: string[] = [];
+      for (const item of live) {
+        const route = (item as AttentionItem & { route?: {
+          projectId: string; taskId: string; coachAddress: string } }).route;
+        if (!route) return { state: "unknown", pendingIds: [] };
+        if (route.projectId === current.binding.projectId && route.taskId === current.binding.taskId &&
+            route.coachAddress === current.binding.coachAddress) pendingIds.push(item.id);
+      }
+      return { state: "verified", pendingIds };
+    } catch { return { state: "unknown", pendingIds: [] }; }
+  };
   const owns = (x: unknown): boolean => isContext(x) && x.isProjectTrusted() &&
     ownsExecution(current, x.sessionManager.getSessionId());
   const checkpoint = (x: unknown, attention: ExecutionCheckpoint["attention"]): ExecutionCheckpoint => {
@@ -100,5 +131,5 @@ export function registerSeatExecution(pi: ExtensionAPI, env: NodeJS.ProcessEnv =
         ", generation " + b.generation + (owns(ctx) ? " (owned)" : " (NOT owned)"), owns(ctx) ? "info" : "warning");
     },
   });
-  return { owns, checkpoint, activateSuccessor, current: () => current };
+  return { owns, checkpoint, activateSuccessor, snapshotAttention, current: () => current };
 }
