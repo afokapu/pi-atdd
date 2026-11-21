@@ -46,6 +46,7 @@ test("PLT-117 A03: only the exact current lease owns a seat", () => {
   assert.equal(matchesSeatLease(source, { ...owner, generation: 3 }), false);
   assert.equal(matchesSeatLease(source, { ...owner, sessionId: "different" }), false);
   assert.equal(matchesSeatLease(source, { ...owner, seatAddress: "another@pi-atdd" }), false);
+  assert.equal(matchesSeatLease(source, null as unknown as typeof owner), false);
 });
 
 test("PLT-117 A02/A04: replacement retains the task and coach, but changes execution ownership", () => {
@@ -72,6 +73,7 @@ test("PLT-117 A04: a fresh session must prove the exact source revision and pend
   assert.equal(decide({ checkpoint: { ...checkpoint, attention: { state: "unknown", pendingIds: [] } } }).status, "hold");
   assert.equal(decide({ checkpoint: { ...checkpoint, sourceSessionId: "unrelated" } }).status, "hold");
   assert.equal(decide({ checkpoint: { ...checkpoint, taskId: "wrong" } }).status, "hold");
+  assert.equal(decide({ checkpoint: null as unknown as typeof checkpoint }).status, "hold");
 });
 
 test("PLT-117 A05: an interrupted source requires explicit recovery authorization", () => {
