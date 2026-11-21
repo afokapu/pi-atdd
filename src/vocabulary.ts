@@ -3,7 +3,12 @@
 // The maps are the data in conventions/aliases.json; every function returns the input unchanged when it is not a legacy name.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { packageRoot } from "./catalog.ts";
+import { fileURLToPath } from "node:url";
+import { parse } from "yaml";
+
+// Local, not imported from catalog.ts: catalog.ts imports these helpers, so importing back would be a cycle.
+const packageRoot = fileURLToPath(new URL("../", import.meta.url));
+const LEGACY_TERMS_TABLE = join(packageRoot, "conventions/legacy-terms.yaml");
 
 type AliasDoc = {
   movedPaths: Record<string, string>;
@@ -48,6 +53,16 @@ export function resolveMovedPath(path: string): string {
 /** Sunset of the advisory legacy-vocabulary convention: advisory (warning) until 60 days after the release date,
  * strict from then on. No release date yet (null) means advisory. */
 export const LEGACY_TERMS_SUNSET_DAYS = 60;
+/** The release date that starts the sunset, from conventions/legacy-terms.yaml (`sunset.date`, null until the owner sets it). */
+export function legacySunsetRelease(path = LEGACY_TERMS_TABLE): string | null {
+  const table = parse(readFileSync(path, "utf8")) as { sunset?: { date?: unknown } };
+  const date = table.sunset?.date;
+  if (date === null || date === undefined) return null;
+  if (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date))
+    throw new Error("legacy-terms.yaml sunset.date must be YYYY-MM-DD or null");
+  return date;
+}
+
 export function legacyTermsPhase(input: { release: string | null; today: string }): "advisory" | "strict" {
   if (input.release === null) return "advisory";
   const days = (Date.parse(input.today) - Date.parse(input.release)) / 86_400_000;
