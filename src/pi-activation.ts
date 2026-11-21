@@ -81,7 +81,7 @@ const MODE_CHOICES=["ATDD — remember for this repo","Plain — remember for th
   "ATDD — this session only","Plain — this session only"];
 export default function atdd(pi:ExtensionAPI):void {
   const executionSeat = registerSeatExecution(pi); // PLT-117: inert unless launch-bound
-  registerAttentionStrip(pi); // PLT-101: inert unless PI_ATDD_ATTENTION_ROLE is set
+  registerAttentionStrip(pi, executionSeat ? { authorize: executionSeat.owns } : {}); // PLT-118: scoped coach must hold seat lease
   let cwdKey="", task="", serial=0;
   let catalog:Catalog|undefined,selectors:Selector[]=[],profile:StructureProfile|undefined;
   let reasoning:ReasoningSession|undefined;
