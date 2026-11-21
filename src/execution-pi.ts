@@ -93,8 +93,8 @@ export function registerSeatExecution(pi: ExtensionAPI, env: NodeJS.ProcessEnv =
   api.on("session_start", (_event, ctx) => {
     if (!isContext(ctx) || !ctx.isProjectTrusted()) return;
     try {
-      if (env.PI_ATDD_EXECUTION_BOOTSTRAP === "1" &&
-        !readSeatLease(current.leasePath) && current.mode === "standalone") bootstrapSeat(current);
+      if (current.mode === "standalone" && env.PI_ATDD_EXECUTION_BOOTSTRAP === "1" &&
+        !readSeatLease(current.leasePath)) bootstrapSeat(current);
       if (!owns(ctx)) ctx.ui.notify("ATDD execution seat is unowned or superseded; tool calls are blocked", "error");
     } catch (e) { ctx.ui.notify("ATDD execution seat unavailable: " + String(e), "error"); }
   });
