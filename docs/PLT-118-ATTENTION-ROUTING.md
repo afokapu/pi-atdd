@@ -31,6 +31,7 @@ sequenceDiagram
 ## Identity and boundary
 
 - `profile` is the existing profile isolation boundary.
+- One project Coach can receive separate items for multiple tasks. Its logical seat may be project-scoped (`taskId=*` in the PLT-117 execution binding), while every individual attention item retains a concrete task ID.
 - `projectId`, `taskId` and `coachAddress` are stamped by the
   **trusted launcher**, never by the model's `attention_raise` parameters.
 - `sourceExecutionId` identifies the originating worker/reviewer attempt.
