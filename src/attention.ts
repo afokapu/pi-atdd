@@ -171,21 +171,45 @@ function validRec(x: unknown): x is StateRecord {
 
 /** A record counts only if it is well-formed, belongs to this profile and carries a valid MAC. */
 export function verifyEvent(raw: unknown, cfg: LaunchConfig, key: Buffer): SignedEvent | undefined {
+  return verify(raw, cfg, key, true);
+}
+
+/**
+ * Authentic for this profile (shape, profile, MAC) whatever its recipient. A reader that must tell
+ * "another coach's record" from a corrupt line uses this; it never shows or copies the record.
+ */
+export function verifyAuthentic(raw: unknown, cfg: LaunchConfig, key: Buffer): SignedEvent | undefined {
+  return verify(raw, cfg, key, false);
+}
+
+/** PLT-118 review P1 A01: a state record reaches a reader only on the item route it belongs to. */
+function stateVisible(rec: StateRecord, cfg: LaunchConfig): boolean {
+  const route = cfg.route;
+  if (!route) return rec.route === undefined;
+  if (!rec.route) return false;
+  return route.role === "coach"
+    ? coachOwnsAttention({ route: rec.route }, route) : taskOwnsAttention({ route: rec.route }, route);
+}
+
+function verify(raw: unknown, cfg: LaunchConfig, key: Buffer, recipient: boolean): SignedEvent | undefined {
   if (typeof raw !== "object" || raw === null) return undefined;
   const o = raw as Record<string, unknown>;
   if (o.event === "raised") {
     const item = o.item;
     if (!validItem(item) || item.profile !== cfg.profile) return undefined;
-    if (cfg.route) {
-      const matches = cfg.route.role === "coach"
-        ? coachOwnsAttention(item, cfg.route) : taskOwnsAttention(item, cfg.route);
-      if (!matches) return undefined;
-    } else if (item.route) return undefined; // Never broadcast routed records to a legacy coach.
+    if (recipient) {
+      if (cfg.route) {
+        const matches = cfg.route.role === "coach"
+          ? coachOwnsAttention(item, cfg.route) : taskOwnsAttention(item, cfg.route);
+        if (!matches) return undefined;
+      } else if (item.route) return undefined; // Never broadcast routed records to a legacy coach.
+    }
     return macOk({ event: "raised", item }, o.mac, key) ? { event: "raised", item, mac: o.mac as string } : undefined;
   }
   if (o.event === "state") {
     const rec = o.rec;
     if (!validRec(rec) || (rec.route && rec.route.profile !== cfg.profile)) return undefined;
+    if (recipient && !stateVisible(rec, cfg)) return undefined;
     return macOk({ event: "state", rec }, o.mac, key) ? { event: "state", rec, mac: o.mac as string } : undefined;
   }
   return undefined;
@@ -393,10 +417,16 @@ export function readTaskReceipts(cfg: LaunchConfig): Map<string, number> {
   }
   return receipts;
 }
-export function commitTaskReceipts(cfg: LaunchConfig, delivered: ReadonlyMap<string, number>): void {
+/**
+ * Advances receipts only while `mayCommit` holds, checked inside the receipt lock (PLT-118 review
+ * P1 A05/A06). Returns false, writing nothing, when the seat no longer owns the route.
+ */
+export function commitTaskReceipts(cfg: LaunchConfig, delivered: ReadonlyMap<string, number>,
+  mayCommit: () => boolean = () => true): boolean {
   const path = receiptPath(cfg);
-  if (!path || delivered.size === 0) return;
-  withAttentionLock(path, () => {
+  if (!path || delivered.size === 0) return true;
+  return withAttentionLock(path, () => {
+    if (!mayCommit()) return false;
     const merged = readTaskReceipts(cfg);
     for (const [id, revision] of delivered) {
       if (!isId(id) || !isRev(revision)) throw new Error("invalid attention receipt");
@@ -407,5 +437,6 @@ export function commitTaskReceipts(cfg: LaunchConfig, delivered: ReadonlyMap<str
       writeFileSync(tmp, JSON.stringify(Object.fromEntries(merged)) + "\n", { flag: "wx", mode: 0o600 });
       renameSync(tmp, path);
     } finally { rmSync(tmp, { force: true }); }
+    return true;
   });
 }

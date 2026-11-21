@@ -52,3 +52,22 @@ test("PLT-118 A02: all routing fields are mandatory if routing is enabled", () =
   assert.throws(() => readAttentionRouteBinding({ PI_ATDD_ATTENTION_PROJECT_ID: "pi-atdd" }, "worker"), /incomplete/);
   assert.throws(() => readAttentionRouteBinding({ ...env, PI_ATDD_ATTENTION_TASK_ID: "" }, "worker"), /incomplete/);
 });
+
+// PLT-118 review P1 A01/A02: a seat authorizes only the route it was assigned.
+import { seatOwnsRoute } from "../src/attention-routing.ts";
+test("PLT-118 review P1 A01/A02: seat-to-route matching is exact on project, coach, task and execution", () => {
+  const coachRoute = { role: "coach" as const, profile: "forge", projectId: "pi-atdd", coachAddress: "main@pi-atdd" };
+  const workerRoute = { role: "worker" as const, profile: "forge", projectId: "pi-atdd", coachAddress: "main@pi-atdd",
+    taskId: "PLT-118", executionId: "run-42" };
+  const projectSeat = { projectId: "pi-atdd", taskId: "*", coachAddress: "main@pi-atdd", executionId: "run-c" };
+  const taskSeat = { projectId: "pi-atdd", taskId: "PLT-118", coachAddress: "main@pi-atdd", executionId: "run-42" };
+  assert.equal(seatOwnsRoute(projectSeat, coachRoute), true);
+  assert.equal(seatOwnsRoute(taskSeat, coachRoute), false);
+  assert.equal(seatOwnsRoute(taskSeat, workerRoute), true);
+  assert.equal(seatOwnsRoute(projectSeat, workerRoute), false);
+  assert.equal(seatOwnsRoute({ ...taskSeat, taskId: "PLT-119" }, workerRoute), false);
+  assert.equal(seatOwnsRoute({ ...taskSeat, executionId: "run-43" }, workerRoute), false);
+  assert.equal(seatOwnsRoute({ ...taskSeat, coachAddress: "other@pi-atdd" }, workerRoute), false);
+  assert.equal(seatOwnsRoute({ ...taskSeat, projectId: "other" }, workerRoute), false);
+  assert.equal(seatOwnsRoute({ ...taskSeat, taskId: "*" }, workerRoute), false);
+});

@@ -83,3 +83,17 @@ export function taskOwnsAttention(item: RoutedAttention, task: TaskRecipient): b
     route.profile === task.profile && route.projectId === task.projectId &&
     route.taskId === task.taskId && route.coachAddress === task.coachAddress;
 }
+
+/**
+ * PLT-118 review P1 A01/A02: a seat may act for a route only when the seat's current assignment
+ * is that route: same project and coach, and the same task and execution for a worker. A project
+ * coach seat is the one with task "*". The caller supplies the seat from its trusted assignment.
+ */
+export function seatOwnsRoute(
+  seat: Readonly<{ projectId: string; taskId: string; coachAddress: string; executionId: string }>,
+  route: AttentionRouteBinding,
+): boolean {
+  if (seat.projectId !== route.projectId || seat.coachAddress !== route.coachAddress) return false;
+  if (route.role === "coach") return seat.taskId === "*";
+  return seat.taskId !== "*" && seat.taskId === route.taskId && seat.executionId === route.executionId;
+}

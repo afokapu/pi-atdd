@@ -14,6 +14,7 @@ import { renderReasonedPage, type RenderedPage } from "./render-reasoning.ts";
 import { observeRepository, type RepositorySnapshot } from "./repository-observer.ts";
 import { shellWriteTargetModes } from "./shell-targets.ts";
 import { registerAttentionStrip } from "./attention-strip.ts";
+import { seatOwnsRoute } from "./attention-routing.ts";
 import { registerSeatExecution } from "./execution-pi.ts";
 import type { ExecutionCheckpoint } from "./execution-lifecycle.ts";
 import { Type } from "typebox";
@@ -81,7 +82,9 @@ const MODE_CHOICES=["ATDD — remember for this repo","Plain — remember for th
   "ATDD — this session only","Plain — this session only"];
 export default function atdd(pi:ExtensionAPI):void {
   const executionSeat = registerSeatExecution(pi); // PLT-117: inert unless launch-bound
-  registerAttentionStrip(pi, executionSeat ? { authorize: executionSeat.owns } : {}); // PLT-118: scoped coach must hold seat lease
+  // PLT-118: a scoped attention route needs the live seat lease AND a seat assigned to that exact route (review P1 A01/A02).
+  registerAttentionStrip(pi, executionSeat ? { authorize: (ctx, route) =>
+    executionSeat.owns(ctx) && seatOwnsRoute(executionSeat.current().binding, route) } : {});
   let cwdKey="", task="", serial=0;
   let catalog:Catalog|undefined,selectors:Selector[]=[],profile:StructureProfile|undefined;
   let reasoning:ReasoningSession|undefined;

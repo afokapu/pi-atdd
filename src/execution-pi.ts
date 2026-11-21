@@ -11,7 +11,7 @@ import {
   recordSeatModel, replaceSeat, vcsHead, type SeatRuntimeConfig,
 } from "./execution-seat.ts";
 import type { ExecutionCheckpoint } from "./execution-lifecycle.ts";
-import { ensureKey, foldAll, operational, readLaunchConfig, readSpool, type AttentionItem } from "./attention.ts";
+import { ensureKey, foldAll, operational, readLaunchConfig, verifyAuthentic, type AttentionItem, type SignedEvent } from "./attention.ts";
 import { existsSync, readFileSync } from "node:fs";
 
 type Ctx = {
@@ -55,11 +55,15 @@ export function registerSeatExecution(pi: ExtensionAPI, env: NodeJS.ProcessEnv =
     }
     try {
       const raw = existsSync(attention.spool) ? readFileSync(attention.spool, "utf8") : "";
-      const events = readSpool(attention.spool, attention, ensureKey(attention.keyPath)).events;
-      // A rejected or partial event means we cannot prove absence of an outstanding request.
-      if (raw.split("\n").filter(line => line.trim()).length !== events.length ||
-          (raw.length > 0 && !raw.endsWith("\n")))
+      const key = ensureKey(attention.keyPath);
+      // Rows for other coaches are authentic and are filtered below, not counted as unknown (review integration).
+      // A row that fails shape or MAC, or a partial last line, means we cannot prove absence of an outstanding request.
+      const authentic = raw.split("\n").filter(line => line.trim()).map(line => {
+        try { return verifyAuthentic(JSON.parse(line), attention, key); } catch { return undefined; }
+      });
+      if (authentic.some(ev => ev === undefined) || (raw.length > 0 && !raw.endsWith("\n")))
         return { state: "unknown", pendingIds: [] };
+      const events = authentic as SignedEvent[];
       const live = [...operational(foldAll(events), new Date()).values()];
       const pendingIds: string[] = [];
       for (const item of live) {

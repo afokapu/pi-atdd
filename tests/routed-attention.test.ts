@@ -8,10 +8,15 @@
 // Acceptance: acc:pi-atdd:PLT-118-A07
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { registerAttentionStrip } from "../src/attention-strip.ts";
+import { seatOwnsRoute, type AttentionRouteBinding } from "../src/attention-routing.ts";
+import { bootstrapSeat, executionConfigFromEnv } from "../src/execution-seat.ts";
+import { registerSeatExecution } from "../src/execution-pi.ts";
+
+type SeatBinding = Parameters<typeof seatOwnsRoute>[0];
 
 type Entry = { type: string; customType?: string; data?: unknown };
 type Kind = "worker" | "reviewer" | "coach";
@@ -33,7 +38,9 @@ const roleEnv = (w: World, role: Kind, identity: string, coach: string,
     PI_ATDD_ATTENTION_EXECUTION_ID: run } : {}),
 });
 function launch(w: World, role: Kind, identity: string, coach: string,
-  task = "PLT-118", run = "run-a", options: { authorized?: boolean; entries?: Entry[] } = {}) {
+  task = "PLT-118", run = "run-a",
+  options: { authorized?: boolean; entries?: Entry[]; seat?: SeatBinding;
+    authorize?: (ctx: unknown, route?: AttentionRouteBinding) => boolean } = {}) {
   const handlers = new Map<string, Function[]>();
   const tools = new Map<string, any>();
   const widgets = new Map<string, string[] | undefined>();
@@ -54,7 +61,10 @@ function launch(w: World, role: Kind, identity: string, coach: string,
     ui: { setWidget: (k: string, v: string[] | undefined) => widgets.set(k, v),
       notify: () => {} } };
   registerAttentionStrip(pi as any, { env: roleEnv(w, role, identity, coach, task, run),
-    now: () => new Date(w.at), pollMs: 5000, authorize: () => options.authorized !== false,
+    now: () => new Date(w.at), pollMs: 5000,
+    // Mirrors pi-activation: the seat must own the route it is asked to act for.
+    authorize: options.authorize ?? ((_ctx: unknown, route?: AttentionRouteBinding) =>
+      options.authorized !== false && (!options.seat || !route || seatOwnsRoute(options.seat, route))),
     setInterval: (fn, ms) => { intervals.push({ fn, ms }); return fn; },
     clearInterval: () => {} });
   return {
@@ -200,7 +210,10 @@ test("PLT-118 A05: a Coach handoff starts polling after successor lease becomes 
     const replacement = launch(w, "coach", "Coach successor", "main@pi-atdd",
       "PLT-118", "run-next", lease);
     await replacement.emit("session_start");
-    assert.equal(replacement.intervals.length, 0);
+    // P2 A04: polling is armed at session start and does nothing until the lease is current.
+    assert.equal(replacement.intervals.length, 1);
+    replacement.intervals[0]!.fn();
+    assert.equal(replacement.messages.length, 0);
     lease.authorized = true;
     const [delivered] = await replacement.emit("before_agent_start");
     assert.match(delivered.message.content, /pending through handoff/);
@@ -221,5 +234,146 @@ test("PLT-118 A01/A02: one project Coach owns attention from several independent
     assert.equal(items.length, 2);
     assert.deepEqual(items.map((item: any) => item.id).sort(), [one, two].sort());
     assert.deepEqual(items.map((item: any) => item.route.taskId).sort(), ["PLT-118", "PLT-119"]);
+  } finally { w.cleanup(); }
+});
+
+// PLT-118 independent review (569501c1): P1 A01/A02, P1 A01, P1 A05/A06, P2 A04, P2 A05, PLT-117 integration.
+test("PLT-118 review P1 A01/A02: a seat authorizes only the route it was assigned", async () => {
+  const w = world();
+  try {
+    const seatOnOtherTask = { projectId: "pi-atdd", taskId: "PLT-119", coachAddress: "main@pi-atdd", executionId: "run-b" };
+    const rebound = launch(w, "worker", "worker-x", "main@pi-atdd", "PLT-118", "run-a", { seat: seatOnOtherTask });
+    await assert.rejects(rebound.tool("attention_raise", { type: "decision", summary: "spoof" }), /not authorized/);
+    const coachSeatOnTask = { projectId: "pi-atdd", taskId: "PLT-118", coachAddress: "main@pi-atdd", executionId: "run-c" };
+    const taskSeatAsCoach = launch(w, "coach", "Coach X", "main@pi-atdd", "", "", { seat: coachSeatOnTask });
+    await assert.rejects(taskSeatAsCoach.tool("attention_list"), /not authorized/);
+    const sameRunWorker = { projectId: "pi-atdd", taskId: "PLT-118", coachAddress: "main@pi-atdd", executionId: "run-a" };
+    const owner = launch(w, "worker", "worker-a", "main@pi-atdd", "PLT-118", "run-a", { seat: sameRunWorker });
+    assert.equal((await owner.tool("attention_raise", { type: "decision", summary: "own seat" })).details.item.route.taskId, "PLT-118");
+  } finally { w.cleanup(); }
+});
+
+test("PLT-118 review P1 A01: a coach does not copy another coach's state records into its Pi history", async () => {
+  const w = world();
+  try {
+    const otherWorker = launch(w, "worker", "worker-2", "other@pi-atdd", "PLT-119", "run-2");
+    const id = (await otherWorker.tool("attention_raise", { type: "decision", summary: "other task" })).details.id;
+    const otherCoach = launch(w, "coach", "Coach B", "other@pi-atdd");
+    await otherCoach.tool("attention_resolve", { id, scope: "within_grant", note: "private coach note" });
+    const coach = launch(w, "coach", "Coach A", "main@pi-atdd");
+    await coach.emit("session_start");
+    assert.equal(coach.entries.some(e => (e.data as any)?.rec?.id === id), false);
+    assert.equal(JSON.stringify(coach.entries).includes("private coach note"), false);
+    assert.equal((await coach.tool("attention_list")).details.items.length, 0);
+  } finally { w.cleanup(); }
+});
+
+test("PLT-118 review P1 A05/A06: ownership is checked inside the spool commit lock", async () => {
+  const w = world();
+  try {
+    const worker = launch(w, "worker", "worker-a", "main@pi-atdd");
+    const id = (await worker.tool("attention_raise", { type: "grant", summary: "lock check" })).details.id;
+    const spool = join(w.root, "attention", "spool.jsonl");
+    const heldDuringCheck: boolean[] = [];
+    const coach = launch(w, "coach", "Coach A", "main@pi-atdd", "PLT-118", "run-a", {
+      authorize: () => { heldDuringCheck.push(existsSync(spool + ".lock")); return true; },
+    });
+    heldDuringCheck.length = 0;
+    await coach.tool("attention_ack", { id });
+    assert.ok(heldDuringCheck.length > 0);
+    assert.equal(heldDuringCheck.every(Boolean), true);
+  } finally { w.cleanup(); }
+});
+
+test("PLT-118 review P1 A05/A06: an errored run does not advance the worker receipt, and the next turn retries", async () => {
+  const w = world();
+  try {
+    const worker = launch(w, "worker", "worker-a", "main@pi-atdd", "PLT-118", "run-a");
+    const coach = launch(w, "coach", "Coach A", "main@pi-atdd");
+    const id = (await worker.tool("attention_raise", { type: "decision", summary: "errored run" })).details.id;
+    await coach.emit("session_start");
+    await coach.tool("attention_ack", { id });
+    assert.match((await worker.emit("before_agent_start"))[0].message.content, /acked/);
+    await worker.emit("agent_end", { messages: [{ role: "assistant", stopReason: "error" }] });
+    await worker.emit("agent_settled", { aborted: false });
+    assert.match((await worker.emit("before_agent_start"))[0].message.content, /acked/);
+    const next = launch(w, "worker", "worker-b", "main@pi-atdd", "PLT-118", "run-b");
+    assert.match((await next.emit("before_agent_start"))[0].message.content, /acked/);
+  } finally { w.cleanup(); }
+});
+
+test("PLT-118 review P1 A05/A06: an aborted run releases pending so the same session retries", async () => {
+  const w = world();
+  try {
+    const worker = launch(w, "worker", "worker-a", "main@pi-atdd", "PLT-118", "run-a");
+    const coach = launch(w, "coach", "Coach A", "main@pi-atdd");
+    const id = (await worker.tool("attention_raise", { type: "decision", summary: "aborted run" })).details.id;
+    await coach.emit("session_start");
+    await coach.tool("attention_ack", { id });
+    assert.match((await worker.emit("before_agent_start"))[0].message.content, /acked/);
+    await worker.emit("agent_settled", { aborted: true });
+    assert.match((await worker.emit("before_agent_start"))[0].message.content, /acked/);
+  } finally { w.cleanup(); }
+});
+
+test("PLT-118 review P2 A04: a wake whose turn never starts is re-sent after its window", async () => {
+  const w = world();
+  try {
+    const worker = launch(w, "worker", "worker-a", "main@pi-atdd");
+    const coach = launch(w, "coach", "Coach A", "main@pi-atdd");
+    await coach.emit("session_start");
+    await worker.tool("attention_raise", { type: "grant", summary: "wake lost" });
+    coach.intervals[0]!.fn();
+    assert.equal(coach.messages.length, 1);
+    w.at += 30_000;
+    coach.intervals[0]!.fn();
+    assert.equal(coach.messages.length, 1);
+    w.at += 120_000;
+    coach.intervals[0]!.fn();
+    assert.equal(coach.messages.length, 2);
+  } finally { w.cleanup(); }
+});
+
+test("PLT-118 review P2 A05: every undelivered revision reaches the worker, not only the latest", async () => {
+  const w = world();
+  try {
+    const worker = launch(w, "worker", "worker-a", "main@pi-atdd", "PLT-118", "run-a");
+    const coach = launch(w, "coach", "Coach A", "main@pi-atdd");
+    const id = (await worker.tool("attention_raise", { type: "decision", summary: "two revisions" })).details.id;
+    await coach.emit("session_start");
+    await coach.tool("attention_ack", { id });
+    await coach.tool("attention_snooze", { id, hours: 1 });
+    const [msg] = await worker.emit("before_agent_start");
+    assert.match(msg.message.content, /acked/);
+    assert.match(msg.message.content, /snoozed/);
+  } finally { w.cleanup(); }
+});
+
+test("PLT-117 integration: rows for other coaches do not block a verified handoff; corrupt rows still do", async () => {
+  const w = world();
+  try {
+    const seatEnv: NodeJS.ProcessEnv = {
+      PI_CODING_AGENT_DIR: w.root, PI_ATDD_EXECUTION_MODE: "standalone",
+      PI_ATDD_EXECUTION_PROJECT_ID: "pi-atdd", PI_ATDD_EXECUTION_TASK_ID: "*",
+      PI_ATDD_EXECUTION_COACH_ADDRESS: "main@pi-atdd", PI_ATDD_EXECUTION_SEAT_ADDRESS: "main@pi-atdd",
+      PI_ATDD_EXECUTION_EXECUTION_ID: "run-coach", PI_ATDD_EXECUTION_SESSION_ID: "sess-coach",
+      PI_ATDD_EXECUTION_MODEL_ID: "model", PI_ATDD_EXECUTION_GENERATION: "1",
+      PI_ATDD_EXECUTION_OWNER_TOKEN: "token-coach",
+      PI_ATDD_ATTENTION_ROLE: "coach", PI_ATDD_ATTENTION_IDENTITY: "Coach A", PI_ATDD_ATTENTION_PROFILE: "forge",
+      PI_ATDD_ATTENTION_PROJECT_ID: "pi-atdd", PI_ATDD_ATTENTION_COACH_ADDRESS: "main@pi-atdd",
+    };
+    bootstrapSeat(executionConfigFromEnv(seatEnv)!);
+    const other = launch(w, "worker", "worker-b", "other@pi-atdd", "PLT-119", "run-b");
+    await other.tool("attention_raise", { type: "decision", summary: "other coach's task" });
+    const pi = { on: () => {}, registerCommand: () => {} };
+    const seat = registerSeatExecution(pi as any, seatEnv)!;
+    const snapshot = seat.snapshotAttention();
+    assert.equal(snapshot.state, "verified");
+    assert.deepEqual(snapshot.pendingIds, []);
+    const spool = join(w.root, "attention", "spool.jsonl");
+    const { appendFileSync } = await import("node:fs");
+    appendFileSync(spool, "{not json\n");
+    assert.equal(seat.snapshotAttention().state, "unknown");
+    assert.ok(readFileSync(spool, "utf8").length > 0);
   } finally { w.cleanup(); }
 });

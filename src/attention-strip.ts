@@ -11,6 +11,7 @@ import {
   verifyEvent,
   type Action, type AttentionItem, type Cursor, type LaunchConfig, type SignedEvent, type StateRecord,
 } from "./attention.ts";
+import type { AttentionRouteBinding } from "./attention-routing.ts";
 
 export type StripOptions = {
   env?: NodeJS.ProcessEnv;
@@ -18,8 +19,8 @@ export type StripOptions = {
   pollMs?: number;
   setInterval?: (fn: () => void, ms: number) => unknown;
   clearInterval?: (handle: unknown) => void;
-  /** Required for scoped launches: verify current seat ownership at each action. */
-  authorize?: (ctx: unknown) => boolean;
+  /** Required for scoped launches: the seat must own this exact route at each action (PLT-118 review P1 A01/A02). */
+  authorize?: (ctx: unknown, route: AttentionRouteBinding) => boolean;
 };
 
 /** The subset of Pi's extension context this module uses. */
@@ -52,7 +53,14 @@ function requireTrusted(ctx: unknown): asserts ctx is Ctx {
   if (!trusted(ctx)) throw new Error("ATDD attention requires a trusted project");
 }
 const authorized = (ctx: unknown, cfg: LaunchConfig, opts: StripOptions) =>
-  trusted(ctx) && (!cfg.route || opts.authorize?.(ctx) === true);
+  trusted(ctx) && (!cfg.route || opts.authorize?.(ctx, cfg.route) === true);
+
+/** An errored run never reached the model's answer, so its resolutions are not delivered. Read from agent_end. */
+const endedWithError = (event: unknown): boolean => {
+  const messages = (event as { messages?: unknown[] } | undefined)?.messages ?? [];
+  const last = messages.at(-1) as { role?: string; stopReason?: string } | undefined;
+  return last?.role === "assistant" && last.stopReason === "error";
+};
 function requireAuthorized(ctx: unknown, cfg: LaunchConfig, opts: StripOptions): asserts ctx is Ctx {
   requireTrusted(ctx);
   if (!authorized(ctx, cfg, opts)) throw new Error("ATDD attention seat is not authorized");
@@ -134,12 +142,20 @@ function registerWorker(api: Api, cfg: LaunchConfig, now: () => Date, opts: Stri
     if (!authorized(ctx, cfg, opts)) return undefined;
     return deliverResolutions(api, ctx, cfg, key(), pending);
   });
+  let runFailed = false;
+  api.on("agent_end", (event: unknown) => { runFailed = endedWithError(event); });
   api.on("agent_settled", (event, ctx) => {
-    if (!authorized(ctx, cfg, opts) || (event as { aborted?: boolean })?.aborted || !pending.size) return;
-    // A settled agent turn is the earliest durable evidence of model delivery.
+    const failed = runFailed;
+    runFailed = false;
+    if (pending.size === 0) return;
+    // A cancelled or errored run did not deliver the resolution: release it so the next turn retries.
+    if ((event as { aborted?: boolean })?.aborted === true || failed) { pending.clear(); return; }
+    // A settled, successful turn is the durable evidence of model delivery. Ownership is checked
+    // inside the receipt lock, in the same step as the write (PLT-118 review P1 A05/A06).
     // If it crashed before settling, replay is intentionally at-least-once.
-    if (cfg.route) commitTaskReceipts(cfg, pending);
-    for (const [id, revision] of pending) api.appendEntry(CUSTOM_TYPE, { event: "delivered", id, revision });
+    const may = () => authorized(ctx, cfg, opts);
+    const committed = cfg.route ? commitTaskReceipts(cfg, pending, may) : may();
+    if (committed) for (const [id, revision] of pending) api.appendEntry(CUSTOM_TYPE, { event: "delivered", id, revision });
     pending.clear();
   });
 }
@@ -157,21 +173,22 @@ function deliverResolutions(api: Api, ctx: Ctx, cfg: LaunchConfig, k: Buffer,
     delivered.set(id, Math.max(revision, delivered.get(id) ?? 0));
   const events = readSpool(cfg.spool, cfg, k).events;
   const items = foldAll(events);
-  const latest = new Map<string, StateRecord>();
+  // Every revision the worker has not seen, in spool order (PLT-118 review P2 A05).
+  const undelivered = new Map<string, StateRecord>();
   for (const ev of events) {
     if (ev.event !== "state" || !items.has(ev.rec.id) ||
       (!cfg.route && ev.rec.from !== cfg.identity)) continue;
-    if (ev.rec.revision > (delivered.get(ev.rec.id) ?? 1)) latest.set(ev.rec.id, ev.rec);
+    if (ev.rec.revision > (delivered.get(ev.rec.id) ?? 1)) undelivered.set(ev.rec.id + "\u0000" + ev.rec.revision, ev.rec);
   }
-  if (latest.size === 0) return undefined;
-  const lines = [...latest.values()].map(rec => {
+  if (undelivered.size === 0) return undefined;
+  const lines = [...undelivered.values()].map(rec => {
     const it = items.get(rec.id);
     const note = rec.note ? ` Note: ${rec.note}.` : "";
     const answer = rec.ownerAnswer ? ` Owner answer: ${rec.ownerAnswer}.` : "";
     return `- ${rec.id} (${it?.type ?? "item"}, "${it?.summary ?? ""}"): ${rec.state}.${note}${answer}`;
   });
-  for (const rec of latest.values()) {
-    if (cfg.route) pending.set(rec.id, rec.revision);
+  for (const rec of undelivered.values()) {
+    if (cfg.route) pending.set(rec.id, Math.max(rec.revision, pending.get(rec.id) ?? 0));
     else api.appendEntry(CUSTOM_TYPE, { event: "delivered", id: rec.id, revision: rec.revision });
   }
   return {
@@ -264,6 +281,7 @@ function registerCoach(api: Api, cfg: LaunchConfig, now: () => Date, options: St
       // Recheck expiry under the same writer lock as Coach actions. Two coach
       // processes can never append the same revision for one live item.
       const expired = withAttentionLock(cfg.spool, () => {
+        if (!authorized(ctx, cfg, options)) return [] as SignedEvent[];
         const latest = readSpool(cfg.spool, cfg, key()).events;
         const due = expiryRecords(foldAll(latest), at, cfg);
         return due.map(rec => {
@@ -283,9 +301,15 @@ function registerCoach(api: Api, cfg: LaunchConfig, now: () => Date, options: St
   const visible = (at: Date) => [...operational(foldAll(readSpool(cfg.spool, cfg, key()).events), at).values()]
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   const actionable = (at: Date) => visible(at).filter(it => effectiveState(it, at) !== "snoozed");
+  // A wake counts as announced only once a turn starts with it (before_agent_start). Until then it
+  // is in flight and is re-sent after WAKE_WINDOW_MS, so a lost follow-up is not silent (PLT-118 review P2 A04).
+  const wakeInFlight = new Map<string, number>();
+  const WAKE_WINDOW_MS = 60_000;
   const alertNew = (ctx: Ctx) => {
     if (!authorized(ctx, cfg, options)) return;
-    const unseen = actionable(now()).filter(it => !announced.has(it.id));
+    const nowMs = now().getTime();
+    const unseen = actionable(now()).filter(it => !announced.has(it.id) &&
+      nowMs - (wakeInFlight.get(it.id) ?? -Infinity) >= WAKE_WINDOW_MS);
     if (!unseen.length || !api.sendMessage) return;
     // One custom follow-up per batch. A busy Pi queues it until the run ends;
     // an idle Pi starts a turn. The item IDs, not the notice, are the record.
@@ -297,7 +321,7 @@ function registerCoach(api: Api, cfg: LaunchConfig, now: () => Date, options: St
           ". Inspect actionable items with attention_list and resolve within your grant.",
         details: { ids: unseen.map(it => it.id) },
       }, { triggerTurn: true, deliverAs: "followUp" });
-      for (const item of unseen) announced.add(item.id);
+      for (const item of unseen) wakeInFlight.set(item.id, nowMs);
     } catch (e) {
       // The signed item stays durable and the next poll retries its notice.
       ctx.ui.notify("ATDD attention wake deferred: " + String(e), "warning");
@@ -305,11 +329,12 @@ function registerCoach(api: Api, cfg: LaunchConfig, now: () => Date, options: St
   };
 
   const act = (ctx: unknown, id: string, action: Action): AttentionItem => {
-    requireAuthorized(ctx, cfg, options);
+    requireTrusted(ctx);
     const at = now();
     const ev = withAttentionLock(cfg.spool, () => {
-      // The compare-and-append is serialized; a stale coach's revision cannot
-      // overwrite a newer decision. Authorization is checked before locking.
+      // Seat ownership and the compare-and-append are one critical section (PLT-118 review P1 A05/A06):
+      // a stale coach cannot pass the check and then write after its seat was superseded.
+      requireAuthorized(ctx, cfg, options);
       const all = foldAll(readSpool(cfg.spool, cfg, key()).events);
       const rec = transition(all.get(id), action, cfg, at);
       const signed = signEvent({ event: "state", rec }, key());
@@ -324,8 +349,9 @@ function registerCoach(api: Api, cfg: LaunchConfig, now: () => Date, options: St
 
   const itemResult = (item: AttentionItem, action: string) =>
     textResult(`${item.id}: ${action} → ${item.state}`, { id: item.id, item });
-  const ensurePolling = (ctx: Ctx) => {
-    if (!authorized(ctx, cfg, options)) return;
+  // Polling is armed whether or not the seat is authorized yet. Every poll action rechecks
+  // authority, so a successor whose lease becomes current later is picked up by the next poll.
+  const startPolling = (ctx: Ctx) => {
     live = ctx;
     if (timer === undefined) timer = setTimer(() => {
       if (live) try { refresh(live); alertNew(live); }
@@ -334,11 +360,12 @@ function registerCoach(api: Api, cfg: LaunchConfig, now: () => Date, options: St
   };
 
   api.on("session_start", (_event, ctx) => {
-    if (!authorized(ctx, cfg, options)) return;
     announced.clear();
+    wakeInFlight.clear();
     if (timer !== undefined) clearTimer(timer);
     timer = undefined;
-    ensurePolling(ctx);
+    startPolling(ctx);
+    if (!authorized(ctx, cfg, options)) return;
     refresh(ctx);
     alertNew(ctx);
   });
@@ -352,7 +379,10 @@ function registerCoach(api: Api, cfg: LaunchConfig, now: () => Date, options: St
     // A fresh Pi session can be created before its lease is atomically rebound.
     // The successor's first authorized turn must activate polling even if
     // session_start observed the predecessor's now-stale lease.
-    ensurePolling(ctx);
+    startPolling(ctx);
+    // The turn that starts now carries any wake sent earlier: those items are announced.
+    for (const id of wakeInFlight.keys()) announced.add(id);
+    wakeInFlight.clear();
     refresh(ctx);
     const items = actionable(now());
     if (!items.length) return undefined;

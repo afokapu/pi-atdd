@@ -56,21 +56,27 @@ for coach A, **then** coach B does not see its content in the widget,
 **Given** a newly raised item, **when** the accountable Coach Pi process
 polls the spool, **then** it sends one model-visible Pi-native follow-up
 with `triggerTurn: true`; an idle coach starts a turn and a busy coach
-receives the follow-up when it settles. Repeated polls do not re-notify
-the same item. Each coach turn receives a bounded list of actionable items.
+receives the follow-up when it settles. The item counts as announced only
+when a turn starts with it; until then repeated polls do not re-notify it,
+and after a 60-second window with no turn it is notified again. Polling is
+armed at session start and acts only while the seat is authorized. Each
+coach turn receives a bounded list of actionable items.
 
 **Given** a coach session replacement, **when** the verified current seat
 starts, **then** its spool scan reconstructs unresolved items without
 depending on the predecessor's session JSONL.
 
 **Given** a resolution for a worker that has since been replaced,
-**when** a new authorized worker begins the same task, **then** the signed
-resolution is delivered in context. A successful settled turn publishes
-the task-scoped revision receipt for subsequent worker sessions.
+**when** a new authorized worker begins the same task, **then** every undelivered signed revision is delivered in
+context, in order. A successful settled turn publishes the task-scoped
+revision receipt for subsequent worker sessions. An aborted or errored run
+publishes nothing and releases the resolution for the next turn.
 
 **Delivery guarantee:** durable state transitions are serialized under
-a single writer lock. In normal settled runs each revision is delivered
-once across worker replacements. If an agent crashes after seeing context
+a single writer lock, and seat ownership is checked inside that lock in the
+same step as each write or receipt. A seat may act only for the exact route
+it was assigned (project, coach, task and execution). In normal settled runs
+each revision is delivered once across worker replacements. If an agent crashes after seeing context
 but before its settled-turn receipt is committed, the resolution may be
 replayed. That replay is intentional at-least-once recovery; exactly-once
 LLM processing across crashes cannot be guaranteed.
