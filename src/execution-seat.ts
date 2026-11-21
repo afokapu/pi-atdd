@@ -13,6 +13,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { parse as parseYaml } from "yaml";
 import { decideExecutionTransition, matchesSeatLease,
   type ExecutionBinding, type ExecutionCheckpoint, type SeatLeaseObservation } from "./execution-lifecycle.ts";
 
@@ -21,6 +22,8 @@ export type SeatRuntimeConfig = {
   binding: ExecutionBinding;
   leasePath: string;
   checkpointDir: string;
+  /** Read-only Flow authority; the Flow controller owns changes to these records. */
+  flowRoot?: string;
 };
 type LeaseFile = { schema: "pi-atdd/seat-lease/v1"; binding: ExecutionBinding; at: string };
 const text = (v: unknown): v is string => typeof v === "string" && v.trim().length > 0 && v.length <= 240;
@@ -56,11 +59,16 @@ export function executionConfigFromEnv(env: NodeJS.ProcessEnv): SeatRuntimeConfi
     throw new Error("PI_ATDD_EXECUTION_MODE must be standalone or external");
   const agentDir = env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent");
   const key = hash(binding.projectId + "\0" + binding.seatAddress);
+  const flowRoot = mode === "external" ? (env.ATDD_WORKFLOW_ROOT || env.PI_ATDD_EXECUTION_FLOW_ROOT)?.trim() : undefined;
   const leasePath = mode === "external"
-    ? env.PI_ATDD_EXECUTION_LEASE_FILE?.trim()
+    ? (env.PI_ATDD_EXECUTION_LEASE_FILE?.trim() || (flowRoot && join(flowRoot,
+        ".atdd-flow", "pi-runtime", encodeURIComponent(binding.seatAddress) + ".yaml")))
     : join(agentDir, "execution", "seats", key + ".json");
   if (!leasePath || !leasePath.startsWith("/")) throw new Error("execution lease file must be absolute");
-  return { mode, binding, leasePath, checkpointDir: join(agentDir, "execution", "checkpoints", key) };
+  if (mode === "external" && (!flowRoot || !flowRoot.startsWith("/")))
+    throw new Error("Flow-owned seat requires absolute ATDD_WORKFLOW_ROOT");
+  return { mode, binding, leasePath, checkpointDir: join(agentDir, "execution", "checkpoints", key),
+    ...(flowRoot ? { flowRoot } : {}) };
 }
 
 function parseLease(raw: string): LeaseFile {
@@ -114,10 +122,44 @@ export function bootstrapSeat(config: SeatRuntimeConfig): ExecutionBinding {
 
 export function ownsExecution(config: SeatRuntimeConfig, sessionId: string): boolean {
   if (!text(sessionId)) return false;
+  if (config.mode === "external") return ownsFlowExecution(config, sessionId);
   const current = readSeatLease(config.leasePath);
   return current !== undefined && same(config.binding, current) &&
     config.binding.executionId === current.executionId &&
     matchesSeatLease(config.binding, source(current)) && sessionId === current.sessionId;
+}
+
+/**
+ * A read-only adapter to the Flow Desk. Flow seat.yaml plus the current token-
+ * fenced pi-runtime record are authoritative. We never mutate either file.
+ * The task record must assign/co-ordinate this seat, or authority is unknown.
+ */
+export function ownsFlowExecution(config: SeatRuntimeConfig, sessionId: string): boolean {
+  if (config.mode !== "external" || !config.flowRoot || !text(sessionId)) return false;
+  const b = config.binding;
+  const m = /^([a-zA-Z0-9_.-]+)@([a-zA-Z0-9_.-]+)$/.exec(b.seatAddress);
+  if (!m || m[2] !== b.projectId || !/^[a-zA-Z0-9_.-]+$/.test(b.taskId)) return false;
+  try {
+    const runtime = parseYaml(readFileSync(config.leasePath, "utf8")) as {
+      schema?: string; seat?: string; owner_token?: string; pi_session?: string;
+    };
+    const seat = parseYaml(readFileSync(join(config.flowRoot, "work", b.projectId,
+      "seats", m[1]!, "seat.yaml"), "utf8")) as {
+        address?: string; project?: string; runtime?: { pi_session?: string };
+      };
+    const task = parseYaml(readFileSync(join(config.flowRoot, "work", b.projectId,
+      "tasks", b.taskId + ".yaml"), "utf8")) as {
+        schema?: string; coordinator?: string; assignee?: string; status?: string;
+      };
+    return runtime?.schema === "atdd-flow/pi-runtime-state/v1" &&
+      runtime.seat === b.seatAddress && runtime.owner_token === b.ownerToken &&
+      runtime.pi_session === sessionId && b.sessionId === sessionId &&
+      seat?.address === b.seatAddress && seat.project === b.projectId &&
+      seat.runtime?.pi_session === sessionId &&
+      task?.schema === "atdd-workflow/task/v1" &&
+      (task.coordinator === b.seatAddress || task.assignee === b.seatAddress) &&
+      !["done", "superseded", "rejected"].includes(task.status ?? "");
+  } catch { return false; }
 }
 
 /** Record an in-place model change only after the host confirms the model change succeeded. */
