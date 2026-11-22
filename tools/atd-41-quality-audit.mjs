@@ -27,11 +27,20 @@ const sourceFiles=[
 // Metrics for legacy top-level Pi hosts are reported by the native checker but
 // are not silently counted as newly introduced code-quality debt.
 const reviewFunctions=new Set([
-  "observationEnvelope","scanDomainImports","observeDomainImports",
-  "classifyFileKind","sourceSyntaxEvidence","shellStaticWriteContents",
-  "validateObservation","hierarchyObservationRules","typedRules",
-  "ReasoningSession.inputs","ReasoningSession.sourceInputs",
-  "ReasoningSession.selectorInputs",
+  // All newly introduced named source-observer functions, not just examples.
+  "observationEnvelope","generatedMarker","testMarker","classifyFileKind",
+  "sourceSyntaxEvidence","domainPrefix","staticSpecifier","collectStaticImport",
+  "markDynamicUnknowns","scanDomainImports","observeDomainImports",
+  "safeCatHeader","parseStaticHeredocHeader","readStaticHeredoc","shellStaticWriteContents",
+  // Datalog fact origin / trust boundary and adapter rule construction.
+  "hierarchyObservationRules","typedRules","validateIdentity","validateSourcePair",
+  "validateProviderEvidence","validateDetectorEvidence","validateObservation",
+  "ReasoningSession.sourceInputs","ReasoningSession.syntaxInputs","ReasoningSession.changeInputs",
+  "ReasoningSession.findingInputs","ReasoningSession.selectorInputs","ReasoningSession.inputs",
+  // Existing Pi and telemetry functions touched by Stream B.
+  "sourceFor","beforeSource","preflightPath","observe","recordReasoned","evidenceIds",
+  "isDisabled","root","activationLogPath","appendActivation","activationSummary",
+  "formatActivationSummary",
 ]);
 if(!existsSync(metricFile))throw Error("pinned ATDD-Bun metrics unavailable; run after source checkout");
 const revision=spawnSync("git",["rev-parse","HEAD"],{cwd:upstream,encoding:"utf8",shell:false});
