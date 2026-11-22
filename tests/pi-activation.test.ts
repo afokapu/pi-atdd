@@ -256,6 +256,19 @@ function flowHookFixture(cwd:string,env:NodeJS.ProcessEnv) {
     cleanup:()=>rmSync(root,{recursive:true,force:true})};
 }
 
+/** Pages are receipts, not implied model knowledge. Drain the existing Pi
+ * before_agent_start pages and assert that they terminate without duplication. */
+function drainHookPages(start:Function,ctx:unknown):string {
+  const pages:string[]=[];
+  for(let i=0;i<30;i++){
+    const next=start({messageType:"extension",prompt:""},ctx);
+    if(next===undefined)return pages.join("\n");
+    assert.equal(next?.message?.customType,"pi-atdd-inference");
+    pages.push(next.message.content);
+  }
+  assert.fail("trusted phase guidance must be delivered in bounded pages");
+}
+
 test("ATD-42: the Pi hook delivers phases from the verified Flow task without false green", () => {
   const env:NodeJS.ProcessEnv={};
   const x=sandbox(env), flow=flowHookFixture(x.cwd,env);
@@ -264,21 +277,35 @@ test("ATD-42: the Pi hook delivers phases from the verified Flow task without fa
   try {
     const plan=onStart({messageType:"user",prompt:"Implement the assigned work"},ctx);
     assert.equal(plan?.message?.customType,"pi-atdd-inference");
-    assert.match(plan.message.content,/planner\.steps\.jtbd-taxonomy/);
-    assert.match(plan.message.content,/Canonical source:/);
-    assert.match(plan.message.content,/Flow-owned task demo\/delivery/);
+    const planned=plan.message.content+"\n"+drainHookPages(onStart,ctx);
+    for(const id of ["planner.steps.jtbd-taxonomy", "planner.plan.session-lifecycle",
+      "planner.user-system-flow.route-category-assessment", "planner.acceptance.extraction-no-inference"])
+      assert.ok(planned.includes(id), "PLAN guidance omitted "+id);
+    assert.match(planned,/Canonical source:/);
+    assert.match(planned,/Flow-owned task demo\/delivery/);
     assert.equal(onStart({messageType:"extension",prompt:""},ctx),undefined,
-      "unchanged authenticated PLAN must not re-inject the same conventions");
+      "completed guidance must not be re-injected");
     assert.match(readFileSync(flow.taskFile,"utf8"),/phase: plan/,"the hook must be read-only");
 
     flow.writeTask("red");
     const red=onStart({messageType:"extension",prompt:""},ctx);
     assert.equal(red?.message?.customType,"pi-atdd-inference");
-    assert.match(red.message.content,/tester\.red\.behavioral-assertion/);
+    const redGuidance=red.message.content+"\n"+drainHookPages(onStart,ctx);
+    assert.match(redGuidance,/tester\.red\.behavioral-assertion/);
+    assert.match(redGuidance,/tester\.test\.phase-declared/);
     flow.writeTask("green");
     const green=onStart({messageType:"extension",prompt:""},ctx);
     assert.equal(green?.message?.customType,"pi-atdd-inference");
     assert.match(green.message.content,/coder\.phase\.discipline/);
+    drainHookPages(onStart,ctx);
+    flow.writeTask("refactor");
+    const refactor=onStart({messageType:"extension",prompt:""},ctx);
+    assert.equal(refactor?.message?.customType,"pi-atdd-inference");
+    const refactorGuidance=refactor.message.content+"\n"+drainHookPages(onStart,ctx);
+    for(const id of ["coder.phase.discipline", "coder.complexity.cyclomatic",
+      "coder.complexity.length", "coder.complexity.nesting", "coder.dead-code.reachability",
+      "coder.duplication.intra-layer", "coder.quality.comments", "coder.quality.mi"])
+      assert.ok(refactorGuidance.includes(id), "REFACTOR guidance omitted "+id);
 
     // A session swap invalidates the receipt; old phase guidance is withdrawn.
     writeFileSync(flow.receiptFile,stringify({
