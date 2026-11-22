@@ -47,7 +47,7 @@ export function sourceSyntaxEvidence(file: string, source?: string):
 }
 
 type ImportScan =
-  | { status: "observed"; imports: Set<string>; unresolved: boolean }
+  | { status: "observed"; imports: Set<string>; unresolved: string[] }
   | { status: "unknown"; reason: string };
 export type ImportEvidence = {
   present: boolean;
@@ -61,30 +61,62 @@ export type ImportEvidence = {
 const domainPrefix = (file: string): string | undefined => {
   const normalized = file.replaceAll("\\", "/");
   const index = normalized.indexOf("/domain/");
-  return index >= 0 ? normalized.slice(0, index) : undefined;
+  // A project may place the domain at its root, not only below a feature.
+  if (index >= 0) return normalized.slice(0, index);
+  return normalized.startsWith("domain/") ? "" : undefined;
 };
 function scanDomainImports(file: string, source: string): ImportScan {
   const path = file.replaceAll("\\", "/");
   if (source.length > 1_000_000) return { status: "unknown", reason: "source_too_large" };
   const prefix = domainPrefix(path);
-  if (prefix === undefined) return { status: "observed", imports: new Set(), unresolved: false };
+  if (prefix === undefined) return { status: "observed", imports: new Set(), unresolved: [] };
   const sf = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true,
     /\.tsx$/i.test(path) ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
   if ((sf as ts.SourceFile & { parseDiagnostics?: readonly ts.Diagnostic[] }).parseDiagnostics?.length)
     return { status: "unknown", reason: "partial_source_parse" };
   const imports = new Set<string>();
-  let unresolved = false;
+  const unresolved = new Set<string>();
+  // Re-exports also introduce dependencies. Do not silently treat them as
+  // clean negatives, even though they use export rather than import syntax.
   for (const statement of sf.statements) {
-    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
-    const spec = statement.moduleSpecifier.text;
-    if (/^(?:@\/|~\/)/.test(spec)) { unresolved = true; continue; }
-    if (!spec.startsWith("./") && !spec.startsWith("../")) continue;
+    if (ts.isImportEqualsDeclaration(statement) && ts.isExternalModuleReference(statement.moduleReference)) {
+      unresolved.add("import_equals_uninspected");
+      continue;
+    }
+    const specifier = ts.isImportDeclaration(statement) || ts.isExportDeclaration(statement)
+      ? statement.moduleSpecifier : undefined;
+    if (!specifier) continue;
+    if (!ts.isStringLiteral(specifier)) {
+      unresolved.add("nonliteral_module_specifier");
+      continue;
+    }
+    const spec = specifier.text;
+    if (!spec.startsWith("./") && !spec.startsWith("../")) {
+      // Bare packages and node: builtins are not resolved as local imports.
+      // Without tsconfig/module resolution, path-like aliases remain UNKNOWN.
+      if (/^(?:@|~|#|\/|src\/)/.test(spec)) unresolved.add("unresolved_import_alias");
+      continue;
+    }
     const target = posix.normalize(posix.join(posix.dirname(path), spec));
-    if (target === ".." || target.startsWith("../")) { unresolved = true; continue; }
-    if (target.startsWith(prefix + "/integration/"))
+    if (target === ".." || target.startsWith("../")) {
+      unresolved.add("import_escapes_observed_root");
+      continue;
+    }
+    if (target.startsWith((prefix ? prefix + "/" : "") + "integration/"))
       imports.add(target);
   }
-  return { status: "observed", imports, unresolved };
+  // import(), require(), and import type() may reference a local dependency
+  // that the bounded static-import detector cannot resolve. No clean negative.
+  const inspect = (node: ts.Node): void => {
+    if (ts.isCallExpression(node) && (
+      node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+      (ts.isIdentifier(node.expression) && node.expression.text === "require")
+    )) unresolved.add("dynamic_import_uninspected");
+    if (ts.isImportTypeNode(node)) unresolved.add("import_type_uninspected");
+    ts.forEachChild(node, inspect);
+  };
+  inspect(sf);
+  return { status: "observed", imports, unresolved: [...unresolved].sort() };
 }
 
 /**
@@ -115,7 +147,7 @@ export function observeDomainImports(file: string, proposed?: string, previous?:
     present: false, added: false, sourceObserved: false, deltaObserved: false,
     unknownReasons: [after.reason],
   };
-  const missing = after.unresolved ? ["unresolved_import_alias"] : [];
+  const missing = after.unresolved;
   if (previous === undefined) return {
     present: after.imports.size > 0, added: false, sourceObserved: true, deltaObserved: false,
     unknownReasons: [...missing, "prior_source_unavailable"],
@@ -128,7 +160,8 @@ export function observeDomainImports(file: string, proposed?: string, previous?:
   return {
     present: after.imports.size > 0,
     added: [...after.imports].some(target => !before.imports.has(target)),
-    sourceObserved: true, deltaObserved: !after.unresolved && !before.unresolved,
-    unknownReasons: [...missing, ...(before.unresolved ? ["prior_unresolved_import_alias"] : [])],
+    sourceObserved: true,
+    deltaObserved: after.unresolved.length === 0 && before.unresolved.length === 0,
+    unknownReasons: [...new Set([...missing, ...before.unresolved.map(reason => "prior_" + reason)])],
   };
 }

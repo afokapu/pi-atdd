@@ -35,3 +35,9 @@ At the pre-audit head `355f5ece22879e13b748acea7f40a0e389ccfd3b`, `.github/workf
 - Determine actual applicable Bun/Flow/core rules for this Node/Pi package, including quality and isolation, and execute the correct original detectors rather than relying on sidecar-text probes.
 - Obtain an independent convention-level and behavioral review of the changed modules against authored rule statements, exceptions and accepted source issue criteria.
 - Record per-rule PASS / FAIL / UNKNOWN / NOT_APPLICABLE with rule ID, source revision, inspected change/line and detector or reviewer evidence. This current matrix is **sampled, not exhaustive**. It cannot close ATD-22 or authorize PR merge.
+
+## Follow-on code corrections — unresolved import forms
+
+The bounded TS observer now recognizes a root `domain/` tree and static re-exports as architecture dependencies, avoiding a false negative when feature structure is flat. Dynamic `import()`, `require()`, `import type()`, `import = require()` and unresolved path aliases no longer produce an unjustified clean negative; they return explicit UNKNOWN reasons until a resolver supplies evidence. Added executable positive and negative cases in `tests/operational-observers.test.ts`.
+
+This is a **conservative observation fix**, not module-resolution parity, full cross-language coverage, a new convention or independent acceptance. Original OBS-001/002/004 and reviewer gates remain partial/open; reproduce new behavior at the current commit before claiming a test result.

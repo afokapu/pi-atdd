@@ -67,6 +67,34 @@ test("missing prior, partial syntax, alias and excluded source cannot assert a n
   assert.equal(noBaseline.deltaObserved,false);
 });
 
+test("root domain and static re-exports activate architecture facts without task-language hints", () => {
+  const atRoot="domain/price.ts";
+  const reexport='export { gateway } from "../integration/network";\n';
+  const observed=observeDomainImports(atRoot,reexport,initial);
+  assert.equal(observed.present,true);
+  assert.equal(observed.added,true);
+  assert.equal(observed.deltaObserved,true);
+  assert.deepEqual(observed.unknownReasons,[]);
+});
+
+test("uninspected dependency forms stay UNKNOWN rather than establishing a clean negative", () => {
+  const examples=[
+    ['const loader = import("../integration/network");\n', "dynamic_import_uninspected"],
+    ['const loader = require("../integration/network");\n', "dynamic_import_uninspected"],
+    ['type Network = typeof import("../integration/network");\n', "import_type_uninspected"],
+    ['import gateway = require("../integration/network");\n', "import_equals_uninspected"],
+    ['import { gateway } from "@core/integration/network";\n', "unresolved_import_alias"],
+  ] as const;
+  for(const [text,reason] of examples) {
+    const observed=observeDomainImports(path,initial+text,initial);
+    assert.equal(observed.added,false,reason);
+    assert.equal(observed.deltaObserved,false,reason);
+    assert.ok(observed.unknownReasons.includes(reason),reason);
+  }
+  const external=observeDomainImports(path,initial+'import ts from "typescript";\n',initial);
+  assert.equal(external.deltaObserved,true,"ordinary bare packages are outside local dependency scan");
+});
+
 test("source parse is explicit UNKNOWN for syntax errors; clean negative is limited to inspected syntax", () => {
   assert.deepEqual(sourceSyntaxEvidence("src/server.ts","Bun.serve({ routes: {"),
     {status:"unknown",reason:"partial_source_parse"});
