@@ -103,6 +103,11 @@ export default function atdd(pi:ExtensionAPI):void {
   /** Post-tool pages whose budget omitted rules; delivered on the next tool result. */
   type Pending={path:string;operation:"edit"|"create";provenance:string};
   const pendingPostTool=new Map<string,Pending>();
+  /** PLT-126: redeliveries per path, so a pending queue always drains. */
+  const redeliveries=new Map<string,number>();
+  const MAX_REDELIVERIES=2;
+  /** PLT-126: hard cap on post-tool hook text appended to one tool result. */
+  const POST_TOOL_CAP=20_000;
   const key=(scope:string,id:string)=>scope+"\u0000"+id;
   const digest=(value:unknown)=>createHash("sha256").update(JSON.stringify(value)).digest("hex");
   /** PLT-93 working mode for this session; undefined until resolved. */
@@ -497,17 +502,30 @@ export default function atdd(pi:ExtensionAPI):void {
     if(!fresh.length&&result.status==="matched"){pendingPostTool.delete(item.path);return undefined;}
     const page=renderReasonedPage(result,fresh,budget);
     recordActualDelivery(result,page);
-    if(page.omittedIds.length)pendingPostTool.set(item.path,item);else pendingPostTool.delete(item.path);
+    if(page.omittedIds.length&&(redeliveries.get(item.path)??0)<MAX_REDELIVERIES)pendingPostTool.set(item.path,item);
+    else{pendingPostTool.delete(item.path);redeliveries.delete(item.path);}
     return "ATDD post-tool reconciliation. Changed file "+item.path+":\n"+page.text;
   }
   /** Deliver rules a previous post-tool page omitted by budget (next tool result, any tool). */
   function drainPending(cwd:string):string[]{
     const texts:string[]=[];
     for(const item of [...pendingPostTool.values()]){
+      redeliveries.set(item.path,(redeliveries.get(item.path)??0)+1);
       try{const t=postToolPage(cwd,item,4_500);if(t)texts.push(t.replace("ATDD post-tool reconciliation.","ATDD post-tool reconciliation (continued)."));}
       catch(e){pendingPostTool.delete(item.path);texts.push("ATDD post-tool continuation failed for "+item.path+": "+String(e));}
     }
     return texts;
+  }
+  /** Keep whole notices up to the cap; summarise the rest in one line. */
+  function capTexts(texts:string[]):string[]{
+    const out:string[]=[];let used=0,dropped=0;
+    for(const t of texts){
+      if(used+t.length<=POST_TOOL_CAP||!out.length&&!dropped){out.push(t);used+=t.length;}
+      else dropped++;
+    }
+    if(dropped)out.push("ATDD: "+dropped+" more changed file notice(s) omitted to bound hook output. "+
+      "Their rules are delivered by the contextual preflight when you edit or write each file; retry the edit once to receive them.");
+    return out;
   }
   function reconcile(cwd:string,toolName:string):string[]{
     const texts:string[]=[];
@@ -550,12 +568,14 @@ export default function atdd(pi:ExtensionAPI):void {
   pi.on("tool_result",(event,ctx)=>{
     if(!ctx.isProjectTrusted()||!active(ctx.cwd))return;
     let texts:string[];
-    try{texts=drainPending(ctx.cwd);}catch{texts=[];}
+    // PLT-126: read-only tools never carry pending redelivery.
+    try{texts=READ_ONLY_TOOLS.has(event.toolName)?[]:drainPending(ctx.cwd);}catch{texts=[];}
     if(!READ_ONLY_TOOLS.has(event.toolName)){
       if(event.toolCallId)reconciledCalls.add(event.toolCallId);
       texts.push(...reconcile(ctx.cwd,event.toolName));
     }
     if(!texts.length)return;
+    texts=capTexts(texts);
     return {content:[...(event.content??[]),{type:"text" as const,text:texts.join("\n\n")}]};
   });
   // Fallback: tools whose result was not reconciled above (e.g. ended without a
@@ -564,7 +584,7 @@ export default function atdd(pi:ExtensionAPI):void {
     if(!ctx.isProjectTrusted()||!active(ctx.cwd))return;
     if(READ_ONLY_TOOLS.has(event.toolName))return;
     if(event.toolCallId&&reconciledCalls.delete(event.toolCallId))return;
-    for(const text of reconcile(ctx.cwd,event.toolName)){
+    for(const text of capTexts(reconcile(ctx.cwd,event.toolName))){
       const custom=text.startsWith("ATDD POST-TOOL OBSERVATION UNKNOWN")?"pi-atdd-observation-gap":"pi-atdd-post-tool-reconciliation";
       pi.sendMessage({customType:custom,content:text,display:false},{deliverAs:"steer"});
     }

@@ -43,7 +43,9 @@ function fingerprint(cwd:string,path:string):string {
   } catch { return "unreadable"; }
 }
 /** Ignored directories that are dependency/VCS metadata, not governed source. */
-const UNOBSERVED_IGNORED=["node_modules",".jj",".git"];
+const UNOBSERVED_IGNORED=["node_modules",".jj",".git",
+  // PLT-126: git-ignored build/test output is generated, not governed source.
+  "dist","build","out","coverage","test-artifacts",".next",".nuxt",".turbo",".cache",".parcel-cache",".svelte-kit",".vite"];
 const MAX_IGNORED=5_000;
 function git(cwd:string):RepositorySnapshot {
   if (args("git",["rev-parse","--is-inside-work-tree"],cwd).trim()!=="true")
