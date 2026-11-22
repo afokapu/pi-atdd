@@ -14,9 +14,11 @@ import { join } from "node:path";
 import atdd from "../extensions/atdd.ts";
 import { digestSource } from "../src/catalog.ts";
 import { activationLogPath } from "../src/activation-telemetry.ts";
+import type { PiObservationFrame } from "../src/pi-observation-feed.ts";
 import { stringify } from "yaml";
 
-function sandbox(env:NodeJS.ProcessEnv=process.env) {
+function sandbox(env:NodeJS.ProcessEnv=process.env,
+  observationSink?:(frame:PiObservationFrame)=>void) {
   const cwd=mkdtempSync(join(tmpdir(),"pi-atdd-pi-live-"));
   const telemetryRoot=mkdtempSync(join(tmpdir(),"pi-atdd-telemetry-isolated-"));
   const git=(...args:string[])=>execFileSync("git",args,{cwd,encoding:"utf8"});
@@ -32,7 +34,7 @@ function sandbox(env:NodeJS.ProcessEnv=process.env) {
     registerTool:()=>{},
     sendMessage:(message:{customType:string;content:string},options:unknown)=>messages.push({message,options}),
   };
-  atdd(p as any,{telemetryRoot,env});
+  atdd(p as any,{telemetryRoot,env,observationSink});
   const ctx={cwd,isProjectTrusted:()=>true,ui:{notify:()=>{}}};
   return {cwd,handlers,messages,ctx,git,
     logPath:()=>activationLogPath(cwd,{root:telemetryRoot}),
@@ -214,7 +216,7 @@ test("Pi pre-edit structural evidence and local telemetry work without task keyw
     assert.ok(entries.some(item=>item.point==="task_start" &&
       (item.ruleIds??[]).every((id:string)=>id.startsWith("shared."))));
     assert.ok(entries.some(item=>item.point==="pre_edit" && item.outcome==="matched" &&
-      item.evidenceIds.includes("ast:bun_mutating_route")));
+      item.evidenceIds.includes("ast:bun_mutating_route_missing_auth")));
     assert.ok(entries.some(item=>item.point==="pre_edit" && item.deduplicated>=1));
   }finally{x.cleanup();}
 });
@@ -429,5 +431,186 @@ test("ATD-42: edits cannot bypass phase conventions omitted from the first page"
     const transitioned=edit(event,ctx);
     assert.equal(transitioned?.block,true);
     assert.match(transitioned.reason,/ATDD phase RED guidance/);
+  }finally{x.cleanup();flow.cleanup();}
+});
+
+test("ATD-22 OBS-004: real post-tool findings reach authenticated REFACTOR, never GREEN",()=>{
+  const env:NodeJS.ProcessEnv={},x=sandbox(env),flow=flowHookFixture(x.cwd,env);
+  const ctx={...x.ctx,sessionManager:{getSessionId:()=>flow.session}};
+  const path="src/orders/domain/price.ts";
+  const valid="export const price=4;\n";
+  const bad='import { gateway } from "../integration/network";\n'+valid;
+  const outwardPath="src/orders/application/use.ts";
+  const outwardValid="export const use=1;\n";
+  const outwardBad='import {Page} from "../presentation/Page";\n'+outwardValid;
+  try{
+    mkdirSync(join(x.cwd,"src/orders/domain"),{recursive:true});
+    writeFileSync(join(x.cwd,path),valid);
+    mkdirSync(join(x.cwd,"src/orders/application"),{recursive:true});
+    writeFileSync(join(x.cwd,outwardPath),outwardValid);
+    x.git("add",".");x.git("commit","-qm","validator baseline");
+    flow.writeTask("green");
+    x.handlers.get("before_agent_start")!({messageType:"user",prompt:"Adjust price"},ctx);
+    writeFileSync(join(x.cwd,path),bad);
+    writeFileSync(join(x.cwd,outwardPath),outwardBad);
+    x.handlers.get("tool_execution_end")!({toolName:"bash",isError:false},ctx);
+    assert.equal(x.messages.some(m=>m.message.content.includes("ATDD REFACTOR validator finding")),false,
+      "GREEN cannot consume a detector finding even when ordinary source guidance exists");
+    flow.writeTask("refactor");
+    writeFileSync(join(x.cwd,path),bad+"// revised in refactor\n");
+    writeFileSync(join(x.cwd,outwardPath),outwardBad+"// revised in refactor\n");
+    x.handlers.get("tool_execution_end")!({toolName:"bash",isError:false},ctx);
+    const findings=x.messages.filter(m=>m.message.content.includes("ATDD REFACTOR validator finding"));
+    assert.ok(findings.length>0,"real source validator must publish its finding during REFACTOR");
+    const witness=findings.at(-1)!.message.content;
+    assert.match(witness,/pi-atdd\.ts-import-boundary\.v1/);
+    assert.match(witness,/coder\.architecture\.hierarchy-import/);
+    assert.match(witness,/Trigger proof/);
+    const proofs=findings.map(m=>m.message.content).join("\n");
+    assert.match(proofs,/pi-atdd\.typed-detector-architecture-review/,
+      "domain-to-integration evidence must reach the real REFACTOR consumer");
+    assert.match(proofs,/pi-atdd\.typed-detector-outward-review/,
+      "application-to-presentation evidence must reach the real REFACTOR consumer");
+    const prior=x.messages.length;
+    writeFileSync(join(x.cwd,path),valid);
+    writeFileSync(join(x.cwd,outwardPath),outwardValid);
+    x.handlers.get("tool_execution_end")!({toolName:"bash",isError:false},ctx);
+    assert.equal(x.messages.slice(prior).some(m=>m.message.content.includes("ATDD REFACTOR validator finding")),false,
+      "a clean validator run must revoke its old finding");
+    writeFileSync(join(x.cwd,path),bad+"// later regression\n");
+    writeFileSync(join(x.cwd,outwardPath),outwardBad+"// later regression\n");
+    x.handlers.get("tool_execution_end")!({toolName:"bash",isError:false},ctx);
+    const renewed=x.messages.slice(prior).filter(m=>m.message.content.includes("ATDD REFACTOR validator finding"));
+    assert.ok(renewed.length>0,"reintroduction after retraction must deliver findings");
+    assert.match(renewed.map(m=>m.message.content).join("\n"),/pi-atdd\.typed-detector-outward-review/,
+      "outward imports must also redeliver after clean retraction");
+  }finally{x.cleanup();flow.cleanup();}
+});
+
+test("ATD-22 OBS-001: outward application dependency is intercepted by real Pi before mutation",()=>{
+  const x=sandbox();
+  const path="src/orders/application/checkout.ts";
+  const prior="export const checkout = 1;\n";
+  const proposal='import {Page} from "../presentation/Page";\n'+prior;
+  try{
+    mkdirSync(join(x.cwd,"src/orders/application"),{recursive:true});
+    writeFileSync(join(x.cwd,path),prior);
+    x.git("add",".");x.git("commit","-qm","application source baseline");
+    x.handlers.get("before_agent_start")!({messageType:"user",prompt:"Update checkout"},x.ctx);
+    const event={toolName:"write",input:{path,content:proposal}};
+    const result=x.handlers.get("tool_call")!(event,x.ctx);
+    assert.equal(result.block,true,"the pre-edit hook must deliver guidance before changing source");
+    assert.match(result.reason,/coder\.architecture\.hierarchy-import/);
+    assert.equal(readFileSync(join(x.cwd,path),"utf8"),prior,"preflight must never perform the edit");
+    const telemetry=readFileSync(x.logPath(),"utf8");
+    assert.ok(telemetry.includes("change:outward_layer_import_added"),
+      "newly observed outward dependency must be identified independently of task wording");
+    assert.equal(x.handlers.get("tool_call")!(event,x.ctx),undefined,
+      "an identical already-delivered proof must not trap a retry");
+  }finally{x.cleanup();}
+});
+
+
+test("ATD-41 actual Pi hooks publish typed pre-edit and post-tool receipts with explicit retraction",()=>{
+  const frames:PiObservationFrame[]=[];
+  const x=sandbox({},frame=>frames.push(frame));
+  const path="src/orders/domain/price.ts";
+  const initial="export const price=1;\n";
+  const proposal='import {gateway} from "../integration/network";\n'+initial;
+  try{
+    mkdirSync(join(x.cwd,"src/orders/domain"),{recursive:true});
+    writeFileSync(join(x.cwd,path),initial);
+    x.git("add",".");x.git("commit","-qm","source before proposal");
+    x.handlers.get("before_agent_start")!({messageType:"user",
+      prompt:"Adjust a value; no architecture or import keywords"},x.ctx);
+    const event={toolName:"write",input:{path,content:proposal}};
+    const guarded=x.handlers.get("tool_call")!(event,x.ctx);
+    assert.equal(guarded.block,true,"Pi must inspect the proposal before it applies");
+    const proposed=frames.find(f=>f.event.point==="pre_edit"&&
+      f.event.targetPathHint===path&&f.observed.some(e=>
+        e.factType==="change"&&e.factArgs[1]==="domain_to_integration_import_added"));
+    assert.ok(proposed,"a real hook must emit the typed source delta, not just a test helper");
+    assert.equal(readFileSync(join(x.cwd,path),"utf8"),initial);
+    assert.equal(proposed.disposition,"observation_only_no_authority");
+    assert.equal(proposed.event.sourceState,"PROPOSED");
+    assert.equal(proposed.event.sourceDigest?.length,64);
+    assert.ok(proposed.receipts.some(r=>r.conventionId==="coder.architecture.hierarchy-import"));
+    assert.ok(!JSON.stringify(proposed).includes("Adjust a value"));
+    x.handlers.get("tool_call")!(event,x.ctx); // repeat may deliver no new guidance
+    writeFileSync(join(x.cwd,path),proposal);
+    x.handlers.get("tool_execution_end")!({toolName:"bash",isError:false},x.ctx);
+    const post=frames.find(f=>f.event.point==="post_tool"&&f.event.targetPathHint===path);
+    assert.ok(post,"post-tool actual source must also produce a runtime observation receipt");
+    assert.equal(post.event.sourceState,"OBSERVED");
+    assert.equal(post.event.sourceDigest?.length,64);
+    assert.ok(post.retracted.some(e=>e.factType==="change"&&
+      e.factArgs[1]==="domain_to_integration_import_added"),
+      "an actual post-edit snapshot cannot retain the proposed before/after delta");
+    const previous=frames.length;
+    writeFileSync(join(x.cwd,path),initial);
+    x.handlers.get("tool_execution_end")!({toolName:"bash",isError:false},x.ctx);
+    assert.ok(frames.slice(previous).some(f=>f.retracted.some(e=>
+      e.factType==="code_construct"&&e.factArgs[1]==="domain_to_integration_import")));
+    const resume={...x.ctx,sessionManager:{getBranch:()=>[]}};
+    x.handlers.get("session_tree")!({},resume);
+    assert.ok(frames.some(f=>f.event.point==="scope_reset"&&f.retracted.length>0),
+      "a resumed session must invalidate previously observed facts");
+    const telemetry=readFileSync(x.logPath(),"utf8");
+    assert.ok(!telemetry.includes("Adjust a value"));
+    assert.ok(!telemetry.includes(path),"the raw source path must not enter the telemetry log");
+  }finally{x.cleanup();}
+});
+
+test("ATD-41 target-only shell preflight reports EXISTING, never fabricated PROPOSED source",()=>{
+  const frames:PiObservationFrame[]=[];
+  const x=sandbox({},frame=>frames.push(frame));
+  const path="src/orders/domain/price.ts",initial="export const price=1;\n";
+  try{
+    mkdirSync(join(x.cwd,"src/orders/domain"),{recursive:true});
+    writeFileSync(join(x.cwd,path),initial);
+    x.git("add",".");x.git("commit","-qm","existing source snapshot");
+    x.handlers.get("before_agent_start")!({messageType:"user",prompt:"Make a small change"},x.ctx);
+    x.handlers.get("tool_call")!({toolName:"bash",
+      input:{command:'printf "later" >> src/orders/domain/price.ts'}},x.ctx);
+    const observed=frames.find(f=>f.event.point==="pre_edit"&&
+      f.event.targetPathHint===path);
+    assert.ok(observed);
+    assert.equal(observed.event.sourceState,"EXISTING",
+      "reading current bytes before a dynamic shell write is not a proposed source");
+    assert.equal(observed.event.sourceDigest?.length,64);
+    assert.ok(!observed.observed.some(f=>f.factType==="change"&&
+      f.factArgs[1]?.endsWith("_added")));
+    assert.equal(readFileSync(join(x.cwd,path),"utf8"),initial,
+      "the source observer must not perform a shell mutation");
+  }finally{x.cleanup();}
+});
+
+test("ATD-41 runtime evidence feed observes real detector findings and clean retraction",()=>{
+  const env:NodeJS.ProcessEnv={},frames:PiObservationFrame[]=[];
+  const x=sandbox(env,frame=>frames.push(frame)),flow=flowHookFixture(x.cwd,env);
+  const ctx={...x.ctx,sessionManager:{getSessionId:()=>flow.session}};
+  const path="src/orders/domain/price.ts";
+  const clean="export const price=1;\n";
+  const violation='import {gateway} from "../integration/network";\n'+clean;
+  try{
+    mkdirSync(join(x.cwd,"src/orders/domain"),{recursive:true});
+    writeFileSync(join(x.cwd,path),clean);
+    x.git("add",".");x.git("commit","-qm","source validator baseline");
+    flow.writeTask("refactor");
+    x.handlers.get("before_agent_start")!({messageType:"user",prompt:"Revise price"},ctx);
+    writeFileSync(join(x.cwd,path),violation);
+    x.handlers.get("tool_execution_end")!({toolName:"bash",isError:false},ctx);
+    const found=frames.find(f=>f.event.origin==="detector-result"&&
+      f.observed.some(e=>e.factType==="finding"));
+    assert.ok(found,"real Pi REFACTOR validator must publish a grounded finding");
+    assert.equal(found.event.point,"review");
+    assert.ok(found.event.repositoryRevision);
+    assert.ok(found.receipts.some(r=>r.conventionId==="coder.architecture.hierarchy-import"));
+    assert.equal(found.disposition,"observation_only_no_authority");
+    writeFileSync(join(x.cwd,path),clean);
+    x.handlers.get("tool_execution_end")!({toolName:"bash",isError:false},ctx);
+    assert.ok(frames.some(f=>f.event.point==="scope_retraction"&&
+      f.retracted.some(e=>e.factType==="finding")),
+      "clean validation must retract the prior detector support in the feed");
   }finally{x.cleanup();flow.cleanup();}
 });

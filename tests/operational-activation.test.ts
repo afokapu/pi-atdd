@@ -126,6 +126,108 @@ test("detector findings are revision-bound reviewer evidence and independent sup
   }finally{x.finish();}
 });
 
+test("source-scoped architecture excludes tests, vendor and known external imports",()=>{
+  const x=setup();
+  try{
+    const cases=[
+      ["src/orders/domain/price.test.ts",IMPORT],
+      ["vendor/src/orders/domain/price.ts",IMPORT],
+      [DOMAIN,'import ts from "typescript";\n'+BASE],
+    ] as const;
+    for(const [path,code] of cases){
+      const result=x.session.observe({
+        ...event("scope:"+path,path,code,BASE),operation:"create",
+      });
+      assert.equal(has(result,ARCH),false,
+        "a verified source exception cannot activate hierarchy guidance: "+path);
+    }
+  }finally{x.finish();}
+});
+
+test("path-only architecture guidance remains distinct from a structural finding",()=>{
+  const x=setup();
+  try {
+    const contextual=x.session.observe(event("known-clean",DOMAIN,BASE,BASE));
+    assert.equal(has(contextual,ARCH),true,
+      "existing PLT-78 domain-edit guidance is retained for compatibility");
+    assert.doesNotMatch(proof(contextual,ARCH),
+      /pi-atdd.typed-(?:domain-integration|outward-layer-import)/,
+      "contextual guidance must not masquerade as a witnessed forbidden dependency");
+    const missing=x.session.observe(event("missing-architecture-source",DOMAIN));
+    assert.equal(has(missing,ARCH),true);
+    assert.ok(missing.unknownFacts.includes("source"));
+  }finally{x.finish();}
+});
+
+test("ATD-22: authentic reviewer operation retains binding truthfulness guidance",()=>{
+  const x=setup();
+  const path="src/orders/checkout.test.ts",target="tester.acceptance.binding-declared";
+  const header="// URN: test:orders:checkout:E001-SMOKE-001\n";
+  const body='import {strict as assert} from "node:assert";\n';
+  try{
+    for(const [name,source] of [
+      ["acceptance",header+"// Acceptance: acc:checkout\n"+body],
+      ["train",header+"// Train: checkout\n"+body],
+    ] as const){
+      const observed=x.session.observe({...event("review:"+name,path,source),
+        operation:"review",task:"Review whether this bound test proves the acceptance"});
+      assert.equal(has(observed,target),true,name);
+      assert.match(proof(observed,target),/pi-atdd.typed-test-binding-truthfulness-review/,
+        "even a well-formed header still needs truthful subject/witness review");
+      assert.ok(observed.missingReasons.some(r=>
+        r.fact==="finding"&&r.reason==="test_binding_truthfulness_requires_review"));
+    }
+    const negative=x.session.observe({...event("review:no-urn",path,body),
+      operation:"review",task:"Review an unrelated test"});
+    assert.doesNotMatch(proof(negative,target),/pi-atdd.typed-test-binding-truthfulness-review/);
+  }finally{x.finish();}
+});
+
+test("ATD-22: actual URN missing-binding facts fire while inspected valid bindings do not",()=>{
+  const x=setup();
+  const prefix="// URN: test:orders:checkout:E001-SMOKE-001\n";
+  const body='import { strict as assert } from "node:assert";\n';
+  const target="tester.acceptance.binding-declared";
+  try{
+    for(const c of [
+      {name:"unbound",path:"src/order.test.ts",source:prefix+body,fire:true},
+      {name:"unit-train-only",path:"src/order.test.ts",
+        source:prefix+"// Train: order\n"+body,fire:true},
+      {name:"bound",path:"src/order.test.ts",
+        source:prefix+"// Acceptance: acc:order\n"+body,fire:false},
+      {name:"journey-train",path:"e2e/order.test.ts",
+        source:prefix+"// Train: order\n"+body,fire:false},
+      {name:"no-urn",path:"src/order.test.ts",source:body,fire:false},
+    ]as const){
+      const out=x.session.observe({...event("binding:"+c.name,c.path,c.source,body),
+        task:"Change a test without assumptions about acceptance"});
+      const proofText=proof(out,target);
+      assert.equal(has(out,target),c.fire,c.name);
+      if(c.fire)assert.match(proofText,/test_urn_missing_binding/,c.name);
+      else assert.doesNotMatch(proofText,/test_urn_missing_binding/,c.name);
+    }
+  }finally{x.finish();}
+});
+
+test("ATD-22: security evidence distinguishes a missing guard, a direct guard and opaque handler",()=>{
+  const x=setup();
+  const target="coder.security.missing-auth",path="src/server.ts";
+  const req='Bun.serve({routes:{"/orders":{POST:()=>new Response("ok")}}});';
+  const guarded='Bun.serve({routes:{"/orders":{POST:()=>{requireAuth();return new Response("ok")}}}});';
+  const opaque='Bun.serve({routes:{"/orders":{POST:handler}}});';
+  try{
+    const bad=x.session.observe(event("auth:missing",path,req));
+    assert.ok(has(bad,target));
+    assert.match(proof(bad,target),/bun_mutating_route_missing_auth/);
+    const safe=x.session.observe(event("auth:guarded",path,guarded));
+    assert.equal(has(safe,target),false,"actual guard inside POST is not a missing-auth finding");
+    const unknown=x.session.observe(event("auth:opaque",path,opaque));
+    assert.ok(unknown.missingReasons.some(r=>r.reason==="route_or_handler_unresolved"),
+      "unresolved handler body must be UNKNOWN rather than a clean negative");
+    assert.equal(unknown.observedFacts.some(f=>f.args[1]==="bun_mutating_route_missing_auth"),false);
+  }finally{x.finish();}
+});
+
 test("labeled fires/doesNotFire replays distinguish structural coverage from legacy selector false positives",()=>{
   const x=setup();
   const samples:Array<{id:string;shouldFire:boolean;operation:ContextObservation["operation"];
@@ -155,19 +257,19 @@ test("labeled fires/doesNotFire replays distinguish structural coverage from leg
         origin:"pi-event",provenance:"ATD-41 fixture "+c.id});
       const actual=has(out,c.target);
       const p=proof(out,c.target);
-      const structure=/(domain_to_integration_import|bun_mutating_route|test_urn_header)/.test(p);
+      const structure=/(domain_to_integration_import|bun_mutating_route_missing_auth|test_urn_missing_binding)/.test(p);
       if(c.shouldFire && actual)hits++;
       if(c.shouldFire && !actual)misses++;
       if(!c.shouldFire && actual)spurious++;
       assert.equal(structure,c.structural,"structural support mismatch "+c.id);
-      if(c.id!=="negated-lexical")assert.equal(actual,c.shouldFire,c.id);
+      assert.equal(actual,c.shouldFire,c.id);
       console.log("ATD41_LABELED_REPLAY "+JSON.stringify({
         case:c.id,expect:c.shouldFire,actual,structuralSupport:structure,
         status:out.status,missing:out.missingReasons.map(x=>x.fact+":"+x.reason),
       }));
     }
-    // Compatibility means the known negated-language lexical false positive
-    // is counted, not quietly 'fixed' by suppressing authored path/term selectors.
-    assert.deepEqual({hits,misses,spurious},{hits:3,misses:0,spurious:1});
+    // Explicit read-only Bun source is now an independent negative witness.
+    // An absent or unresolvable route remains UNKNOWN rather than a waiver.
+    assert.deepEqual({hits,misses,spurious},{hits:3,misses:0,spurious:0});
   }finally{x.finish();}
 });

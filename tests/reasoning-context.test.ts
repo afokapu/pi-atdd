@@ -160,7 +160,7 @@ test("co-located test URN source fact derives acceptance binding and is revoked 
     const first=a.session.observe({...input,sourceText:
       '// URN: test:orders:checkout:E001-SMOKE-001\\nimport assert from "node:assert";'});
     assert.ok(first.activations.some(x=>x.id==="tester.acceptance.binding-declared"));
-    assert.match(JSON.stringify(first.activations.find(x=>x.id==="tester.acceptance.binding-declared")!.proof),/test_urn_header/);
+    assert.match(JSON.stringify(first.activations.find(x=>x.id==="tester.acceptance.binding-declared")!.proof),/test_urn_missing_binding/);
     const second=a.session.observe({...input,sourceText:'import assert from "node:assert";'});
     assert.ok(second.removed.includes("tester.acceptance.binding-declared"));
   }finally{a.finish();}

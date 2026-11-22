@@ -1,7 +1,10 @@
 /**
- * ATD-41 -> ATD-39 provisional observation envelope.
- * In-memory evidence for coordinator evaluation, NOT a published T9 API.
- * Do not write this to the sanitized telemetry log: proof can contain paths.
+ * Historical ATD-41 snapshot-only proposal for ATD-39.
+ * It does NOT receive actual Pi runtime events or track source retractions.
+ * The live internal evidence seam is src/pi-observation-feed.ts (and the
+ * matching ATD-41/ATD-40 evidence handoff tests); do not promote this older
+ * one-shot projection into a second matcher or authoritative SDK.
+ * Never persist source-bearing proofs to sanitized telemetry.
  */
 import type { ContextObservation, Reconciliation } from "../src/reasoning-context.ts";
 

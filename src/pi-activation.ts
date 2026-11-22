@@ -14,6 +14,8 @@ import { readTrustedFlowPhase, readEnvFlowPhase, type TrustedFlowPhase } from ".
 import { renderReasonedPage, type RenderedPage } from "./render-reasoning.ts";
 import { observeRepository, type RepositorySnapshot } from "./repository-observer.ts";
 import { shellWriteTargetModes, shellStaticWriteContents } from "./shell-targets.ts";
+import { validateImportBoundary } from "./validator-observer.ts";
+import { PiObservationFeed, type PiObservationFrame } from "./pi-observation-feed.ts";
 import { registerAttentionStrip } from "./attention-strip.ts";
 import { attentionSeatOptions } from "./attention-seat.ts";
 import { registerSeatExecution } from "./execution-pi.ts";
@@ -85,10 +87,13 @@ const INTENT_RULE="Use set_atdd_mode when the user signals, in any wording or la
 const oneLine=(s:string)=>s.replace(/\s+/g," ").trim().slice(0,160);
 const MODE_CHOICES=["ATDD — remember for this repo","Plain — remember for this repo",
   "ATDD — this session only","Plain — this session only"];
-/** Pi supplies only the ExtensionAPI. A test harness may inject an isolated
- * telemetry sink; no external provider or task text can select this path.
+/** Pi supplies only the ExtensionAPI. Optional sinks are internal test/coordination
+ * seams, not model-controlled or published T9/OoC authority.
  */
-export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;env?:NodeJS.ProcessEnv} = {}):void {
+export default function atdd(pi:ExtensionAPI, runtime: {
+  telemetryRoot?:string;env?:NodeJS.ProcessEnv;
+  observationSink?:(frame:PiObservationFrame)=>void;
+} = {}):void {
   const env=runtime.env??process.env;
   const executionSeat = registerSeatExecution(pi,env); // PLT-117: inert unless launch-bound
   // PLT-118: a scoped attention route follows the live seat binding and its writes are fenced against seat transfer.
@@ -101,6 +106,13 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;e
   let observationWarning=false;
   let telemetryWarning=false;
   const sessionId=randomUUID();
+  const observationFeed=new PiObservationFeed();
+  let observationSequence=0;
+  /** Never persist a raw observation receipt or let a failing consumer block Pi. */
+  function emitObservation(frame:PiObservationFrame):void{
+    try{runtime.observationSink?.(frame);}catch{/* evidence sink is advisory */}
+  }
+  const nextObservationId=()=> "pi:"+sessionId+":"+(++observationSequence);
   const delivered=new Map<string,string>();
   const unresolvedPaths=new Set<string>();
   // PLT-102: automatic handoff. Usage is read in turn_end; the session switch runs
@@ -261,6 +273,8 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;e
     catch{return DEFAULT_COMPACTION_RESERVE;}
   }
   function reset():void{
+    if(runtime.observationSink)
+      for(const frame of observationFeed.invalidate(nextObservationId()))emitObservation(frame);
     reasoning=undefined;delivered.clear();unresolvedPaths.clear();observationWarning=false;
     pendingPostTool.clear();redeliveries.clear();
   }
@@ -276,15 +290,26 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;e
   }
   const scopeFor=(path?:string)=>"pi-run:"+serial+":"+(path?"file:"+path:"task");
   const currentRevision=()=>observedRepo?.revision??undefined;
+  /** The normal Datalog proof remains authoritative for applicability.
+   * Its observed inputs additionally flow to the in-memory coordinator seam.
+   */
+  function observeRaw(cwd:string,input:ContextObservation,
+    preEditRole?:"PROPOSED"|"EXISTING"){
+    const result=ensure(cwd).observe(input);
+    if(runtime.observationSink)try{
+      emitObservation(observationFeed.capture(nextObservationId(),input,result,preEditRole));
+    }catch{/* a proposal-only feed cannot interfere with editing */}
+    return result;
+  }
   function observe(cwd:string,operation:"task"|"edit"|"create"|"review",
     origin:ContextObservation["origin"],provenance:string,path?:string,sourceText?:string,
-    priorSourceText?:string,trusted?:TrustedFlowPhase){
-    return ensure(cwd).observe({
+    priorSourceText?:string,trusted?:TrustedFlowPhase,
+    preEditRole?:"PROPOSED"|"EXISTING"){
+    return observeRaw(cwd,{
       scope:scopeFor(path),task:task||"unknown task",path,sourceText,priorSourceText,operation,origin,provenance,
       ...(trusted?{phase:trusted.phase,actorRole:trusted.actorRole}:{}),
-      ...(trusted?{phase:trusted.phase,actorRole:trusted.actorRole}:{}),
       ...(currentRevision()?{revision:currentRevision()}:{}),
-    });
+    },preEditRole);
   }
   function newlyRelevant(result:ReturnType<typeof observe>):string[]{
     for(const id of result.removed)delivered.delete(key(result.scope,id));
@@ -428,10 +453,12 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;e
    */
   function preflightPath(cwd:string,path:string,operation:"edit"|"create",provenance:string,
     budget:number,blockUnknown:boolean,sourceText?:string,
-    priorSourceText?:string):{block:true;reason:string}|undefined{
+    priorSourceText?:string,preEditRole?:"PROPOSED"|"EXISTING"):
+    {block:true;reason:string}|undefined{
     const started=performance.now();
     try{
-      const result=observe(cwd,operation,"pi-event",provenance,path,sourceText,priorSourceText);
+      const result=observe(cwd,operation,"pi-event",provenance,path,sourceText,priorSourceText,
+        undefined,preEditRole);
       const fresh=newlyRelevant(result);
       if(result.status==="incomplete"){
         const page=renderReasonedPage(result,fresh,budget);
@@ -625,7 +652,8 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;e
             source===undefined?"Pi pre-shell tool_call (target only, proposed source UNKNOWN)":
               "Pi pre-shell tool_call (quoted literal heredoc proposal)",
             remaining,false,source===undefined?sourceFor(ctx.cwd,path):source,
-            source===undefined?undefined:beforeSource(ctx.cwd,path));
+            source===undefined?undefined:beforeSource(ctx.cwd,path),
+            source===undefined?"EXISTING":"PROPOSED");
           if(r){reasons.push(r.reason);remaining-=r.reason.length;}
         }
       }catch(e){reset();return {block:true,reason:"ATDD rule activation failed: "+String(e)};}
@@ -658,7 +686,8 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;e
         (typeof input.oldText==="string"&&typeof input.newText==="string");
       return preflightPath(ctx.cwd,path,event.toolName==="write"?"create":"edit",
         "Pi pre-edit tool_call",16_000,true,source,
-        proposed&&source!==undefined?beforeSource(ctx.cwd,path):undefined);
+        proposed&&source!==undefined?beforeSource(ctx.cwd,path):undefined,
+        proposed&&source!==undefined?"PROPOSED":"EXISTING");
     }catch(e){reset();return {block:true,reason:"ATDD rule activation failed: "+String(e)};}
   });
   const READ_ONLY_TOOLS=new Set(["read","ls","find","grep"]);
@@ -669,21 +698,69 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;e
    * API and return reconciliation texts for changed files. Each page ranks
    * file-specific rules first, so the target rule is never the one dropped.
    */
-  /** Render one post-tool page; rules omitted by the budget stay queued. */
-  function postToolPage(cwd:string,item:Pending,budget:number):string|undefined{
+  /** A real source validation receipt is distinct from a shell tool's output.
+   * REFACTOR delivery requires a freshly verified Flow task/seat/launch receipt.
+   */
+  function revokeValidatorSupport(cwd:string,scope:string):void{
+    ensure(cwd).retractScope(scope);
+    if(runtime.observationSink){
+      const frame=observationFeed.retractScope(nextObservationId(),scope,
+        "validator support revoked after source/phase reconciliation");
+      if(frame)emitObservation(frame);
+    }
+    delivered.delete(key(scope,"coder.architecture.hierarchy-import"));
+  }
+  function refactorValidatorPage(cwd:string,item:Pending,source:string|undefined,
+    trusted:TrustedFlowPhase|undefined,budget:number):string|undefined {
+    const scope=scopeFor("validator:"+item.path);
+    const revoke=()=>revokeValidatorSupport(cwd,scope);
+    if(trusted?.phase!=="REFACTOR"){revoke();return undefined;}
+    const run=validateImportBoundary(item.path,source,currentRevision());
+    if(run.status!=="finding"){
+      revoke(); // Clean or unobservable source must never retain a stale finding.
+      return run.status==="unknown"?"ATDD REFACTOR validator UNKNOWN for "+item.path+
+        ": "+run.missingReasons.join(", ")+". No finding asserted.":undefined;
+    }
+    const result=observeRaw(cwd,{
+      scope,task:task||"unknown task",path:item.path,operation:"review",
+      origin:"detector-result",
+      provenance:"actual "+run.detectorId+" source validation; "+trusted.provenance+
+        " @ sha256:"+run.sourceDigest,
+      revision:run.revision!,findings:run.findings,
+    });
+    const matched=result.activations.filter(a=>a.id==="coder.architecture.hierarchy-import" &&
+      /pi-atdd\.typed-detector-(?:architecture|outward)-review/.test(JSON.stringify(a.proof)));
+    if(!matched.length)return "ATDD REFACTOR validator observed a forbidden import, but its source-locked mapping is UNKNOWN.";
+    const eligible={...result,activations:matched};
+    const fresh=newlyRelevant(eligible);
+    if(!fresh.length)return undefined;
+    const page=renderReasonedPage(eligible,fresh,budget);
+    recordActualDelivery(eligible,page);
+    return "ATDD REFACTOR validator finding (actual source; "+run.detectorId+
+      "; revision "+run.revision+"; sha256 "+run.sourceDigest+"):\n"+page.text;
+  }
+  /** The post-tool source observation and the later REFACTOR sensor have
+   * independent supports. A positive validator result is never a pre-edit fact.
+   */
+  function postToolPage(cwd:string,item:Pending,budget:number,
+    trusted?:TrustedFlowPhase):string|undefined{
     const started=performance.now();
-    const result=observe(cwd,item.operation,"repository-observation",item.provenance,item.path,sourceFor(cwd,item.path));
+    const source=sourceFor(cwd,item.path);
+    const refactor=refactorValidatorPage(cwd,item,source,trusted,budget);
+    const result=observe(cwd,item.operation,"repository-observation",item.provenance,item.path,source);
     const fresh=newlyRelevant(result);
     if(!fresh.length&&result.status==="matched"){
       recordReasoned(cwd,"post_tool",item.operation,item.path,result,fresh,undefined,started);
-      pendingPostTool.delete(item.path);redeliveries.delete(item.path);return undefined;
+      pendingPostTool.delete(item.path);redeliveries.delete(item.path);
+      return refactor;
     }
     const page=renderReasonedPage(result,fresh,budget);
     recordActualDelivery(result,page);
     recordReasoned(cwd,"post_tool",item.operation,item.path,result,fresh,page,started);
     if(page.omittedIds.length&&(redeliveries.get(item.path)??0)<MAX_REDELIVERIES)pendingPostTool.set(item.path,item);
     else{pendingPostTool.delete(item.path);redeliveries.delete(item.path);}
-    return "ATDD post-tool reconciliation. Changed file "+item.path+":\n"+page.text;
+    const text="ATDD post-tool reconciliation. Changed file "+item.path+":\n"+page.text;
+    return refactor ? text+"\n\n"+refactor : text;
   }
   /** Deliver rules a previous post-tool page omitted by budget (next tool result, any tool). */
   function drainPending(cwd:string):string[]{
@@ -706,7 +783,7 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;e
       "Their rules are delivered by the contextual preflight when you edit or write each file; retry the edit once to receive them.");
     return out;
   }
-  function reconcile(cwd:string,toolName:string):string[]{
+  function reconcile(cwd:string,toolName:string,trusted?:TrustedFlowPhase):string[]{
     const texts:string[]=[];
     const report=observeRepository(cwd,observedRepo);
     if(report.status==="unknown"){
@@ -733,7 +810,7 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;e
       try{
         const created=report.createdPaths?.includes(path)??false;
         const text=postToolPage(cwd,{path,operation:created?"create":"edit",
-          provenance:"Git/JJ post-tool observed "+toolName+(created?" (created)":"")},perPath);
+          provenance:"Git/JJ post-tool observed "+toolName+(created?" (created)":"")},perPath,trusted);
         if(text)texts.push(text);
       }catch(e){
         record(cwd,{point:"post_tool",outcome:"error",pathCategory:activationPathCategory(path),reasonCode:"reasoner_error"});
@@ -755,7 +832,11 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;e
     try{texts=READ_ONLY_TOOLS.has(event.toolName)?[]:drainPending(ctx.cwd);}catch{texts=[];}
     if(!READ_ONLY_TOOLS.has(event.toolName)){
       if(event.toolCallId)reconciledCalls.add(event.toolCallId);
-      texts.push(...reconcile(ctx.cwd,event.toolName));
+      // Tool output cannot supply a trusted phase. Revalidate the Flow seat.
+      let phase:TrustedFlowPhase|undefined;
+      try{phase=trustedFlow(ctx);}
+      catch(e){texts.push("ATDD trusted Flow phase UNKNOWN: "+oneLine(String(e)));}
+      texts.push(...reconcile(ctx.cwd,event.toolName,phase));
     }
     if(!texts.length)return;
     texts=capTexts(texts);
@@ -767,7 +848,11 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;e
     if(!ctx.isProjectTrusted()||!active(ctx.cwd))return;
     if(READ_ONLY_TOOLS.has(event.toolName))return;
     if(event.toolCallId&&reconciledCalls.delete(event.toolCallId))return;
-    for(const text of capTexts(reconcile(ctx.cwd,event.toolName))){
+    let phase:TrustedFlowPhase|undefined;
+    try{phase=trustedFlow(ctx);}
+    catch(e){pi.sendMessage({customType:"pi-atdd-observation-gap",
+      content:"ATDD trusted Flow phase UNKNOWN: "+oneLine(String(e)),display:false},{deliverAs:"steer"});}
+    for(const text of capTexts(reconcile(ctx.cwd,event.toolName,phase))){
       const custom=text.startsWith("ATDD POST-TOOL OBSERVATION UNKNOWN")?"pi-atdd-observation-gap":"pi-atdd-post-tool-reconciliation";
       pi.sendMessage({customType:custom,content:text,display:false},{deliverAs:"steer"});
     }
