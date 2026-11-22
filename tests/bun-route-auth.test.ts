@@ -37,6 +37,12 @@ test("aliased and mutable route maps never certify a clean security negative",()
   const mutated='const routes={"/x":{GET:()=>1}};routes["/x"].POST=()=>2;Bun.serve({routes});';
   assert.equal(inspectBunRouteAuth("src/server.ts",mutated).status,"unknown",
     "an alias mutated to POST cannot prove a read-only route");
+  const handlerAlias='const handlers={POST:()=>{requireAuth();return 1}};Bun.serve({routes:{"/x":handlers}});';
+  assert.equal(inspectBunRouteAuth("src/server.ts",handlerAlias).status,"unknown",
+    "a handler map alias can acquire another unguarded method");
+  const unguardedHandler='const handlers={POST:()=>1};Bun.serve({routes:{"/x":handlers}});';
+  assert.equal(inspectBunRouteAuth("src/server.ts",unguardedHandler).status,"unguarded",
+    "a positive source witness survives ambiguity of later alias changes");
   const guardedAlias='const routes={"/x":{POST:()=>{requireAuth();return 1}}};Bun.serve({routes});';
   assert.equal(inspectBunRouteAuth("src/server.ts",guardedAlias).status,"unknown",
     "an alias can gain a second unguarded mutation");
