@@ -179,3 +179,21 @@ test("PLT-125 A03: a successor raising an item that is already open gets the exi
     assert.notEqual(again.details.id, a.details.id, "a closed item may be raised again");
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test("PLT-125 review P2: the issue field is capped, so attention_list text stays bounded", async () => {
+  const root = mkdtempSync(join(tmpdir(), "pi-atdd-125-i-"));
+  try {
+    const worker = attention(root, "worker", "worker-1");
+    const coach = attention(root, "coach", "Coach A");
+    await assert.rejects(worker.tool("attention_raise", { type: "decision", summary: "s", issue: "P".repeat(200_000) }), /issue exceeds/);
+    // a signed record that bypasses newItem is still dropped by validation
+    const lc = readLaunchConfig({ PI_CODING_AGENT_DIR: root, PI_ATDD_ATTENTION_ROLE: "worker", PI_ATDD_ATTENTION_PROFILE: "forge",
+      PI_ATDD_ATTENTION_IDENTITY: "worker-1", PI_ATDD_ATTENTION_PROJECT_ID: "pi-atdd",
+      PI_ATDD_ATTENTION_COACH_ADDRESS: "main@pi-atdd", PI_ATDD_ATTENTION_TASK_ID: "PLT-125", PI_ATDD_ATTENTION_EXECUTION_ID: "run-a" })!;
+    const item = { ...newItem({ type: "decision", summary: "s" }, lc, new Date("2026-11-22T10:00:00Z")), issue: "P".repeat(200_000) };
+    appendSpool(lc.spool, signEvent({ event: "raised", item }, ensureKey(lc.keyPath)));
+    await coach.emit("session_start");
+    const listed: string = (await coach.tool("attention_list")).content[0].text;
+    assert.ok(listed.length < 2000, "bounded: " + listed.length);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

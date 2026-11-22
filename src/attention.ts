@@ -36,6 +36,7 @@ export const RESOLUTION_TYPE = "pi-atdd-attention-resolution";
 export const DEFAULT_TTL_HOURS = 72;
 export const MAX_TTL_HOURS = 168;
 export const MAX_TEXT = 280;
+export const MAX_ISSUE = 64;
 
 export type AttentionItem = {
   id: string;
@@ -151,7 +152,7 @@ function validItem(x: unknown): x is AttentionItem {
   if (typeof x !== "object" || x === null) return false;
   const o = x as Record<string, unknown>;
   return isId(o.id) && (ATTENTION_TYPES as readonly unknown[]).includes(o.type) &&
-    isText(o.from, 200) && isText(o.profile, 200) && (o.issue === null || typeof o.issue === "string") &&
+    isText(o.from, 200) && isText(o.profile, 200) && (o.issue === null || isText(o.issue, MAX_ISSUE)) &&
     isText(o.summary) && isIso(o.createdAt) && isIso(o.ttl) && STATES.includes(o.state as string) &&
     isRev(o.revision) && absentOr(o.snoozedUntil, isIso) &&
     absentOr(o.route, x => isValidAttentionRoute(x as AttentionRoute));
@@ -224,6 +225,7 @@ export function newItem(input: Record<string, unknown>, cfg: LaunchConfig, now: 
   if (typeof hours !== "number" || !(hours > 0 && hours <= MAX_TTL_HOURS))
     throw new Error(`ttlHours must be greater than 0 and at most ${MAX_TTL_HOURS}`);
   const issue = typeof input.issue === "string" && input.issue.trim() ? input.issue.trim() : null;
+  if (issue !== null && issue.length > MAX_ISSUE) throw new Error(`issue exceeds ${MAX_ISSUE} characters`);
   const summary = typeof input.summary === "string" ? input.summary.trim() : "";
   if (!summary) throw new Error("summary is required");
   if (summary.length > MAX_TEXT) throw new Error(`summary exceeds ${MAX_TEXT} characters`);

@@ -109,3 +109,14 @@ the Flow-mediated equivalent requires Flow's own verified rebinding.
 
 Outstanding design limit: a successful checkpoint carries `unknown` acceptance
 and grant states unless separately verified; that never authorizes privileged action.
+
+## Mid-run checkpoint and resume (PLT-125)
+
+Besides handoff, the seat checkpoint is refreshed at every settled turn (`turn_end`), with the same
+ownership checks. A SIGKILL mid-run therefore leaves a checkpoint that resume can verify. Resume
+compares the checkpoint's recorded revision with the exact current head and refuses on a mismatch:
+
+- **git:** the head moves only on a commit. Uncommitted edits made mid-turn do not block resume; a commit made after the last settled turn does.
+- **jj:** the working copy is itself a commit (`@`), so *any* uncommitted edit made after the last settled turn changes the head and makes resume refuse.
+
+Refusal is the intended fail-closed outcome; the launcher must restore or re-checkpoint the work first.
