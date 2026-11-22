@@ -103,3 +103,47 @@ export function shellWriteTargetModes(command: string): ShellWriteTarget[] {
   for (const m of command.matchAll(/^diff --git a\/\S+ b\/(\S+)/gm)) add(m[1], "edit");
   return [...modes].map(([path, m]) => ({ path, mode: m }));
 }
+
+/** Only a single literal quoted heredoc command produces trusted proposed source.
+ * Interpolation, pipes, multiple commands and ambiguous writes stay UNKNOWN.
+ */
+type StaticHeredoc = {path: string; delimiter: string; stripTabs: boolean};
+function safeCatHeader(line: string): boolean {
+  return /^\s*cat\b/.test(line) && !/[;&|$`]/.test(line) && !/>>/.test(line);
+}
+function parseStaticHeredocHeader(line: string): StaticHeredoc | undefined {
+  if (!safeCatHeader(line)) return undefined;
+  const marker = line.match(/<<(-?)\s*(['"])([A-Za-z_][A-Za-z0-9_]*)\2/);
+  const target = line.match(/(?:^|\s)>\s*('[^']+'|"[^"]+"|[^\s<>;&|]+)/);
+  if (!marker || !target) return undefined;
+  if (line.replace(marker[0], "").replace(target[0], "").trim() !== "cat") return undefined;
+  const path = target[1]!.replace(/^['"]|['"]$/g, "");
+  if (!PATHISH.test(path) || path.includes("..")) return undefined;
+  return {path, delimiter: marker[3]!, stripTabs: marker[1] === "-"};
+}
+function readStaticHeredoc(lines: readonly string[], from: number, header: StaticHeredoc):
+  {text: string; end: number} | undefined {
+  const body: string[] = [];
+  for (let i = from + 1; i < lines.length; i++) {
+    const line = header.stripTabs ? lines[i]!.replace(/^\t+/, "") : lines[i]!;
+    if (line === header.delimiter) return {text: body.join("\n") + "\n", end:i};
+    body.push(line);
+  }
+  return undefined;
+}
+export function shellStaticWriteContents(command: string): ReadonlyMap<string, string> {
+  const unknown = () => new Map<string, string>();
+  const lines = command.split(/\r?\n/);
+  let proposal: {path: string; text: string} | undefined;
+  for (let i = 0; i < lines.length; i++) {
+    if (!lines[i]!.trim()) continue;
+    if (proposal) return unknown(); // another command could overwrite the first
+    const header = parseStaticHeredocHeader(lines[i]!);
+    if (!header) return unknown();
+    const body = readStaticHeredoc(lines, i, header);
+    if (!body) return unknown();
+    proposal = {path:header.path,text:body.text};
+    i = body.end;
+  }
+  return proposal ? new Map([[proposal.path,proposal.text]]) : unknown();
+}

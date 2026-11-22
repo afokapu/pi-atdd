@@ -12,7 +12,7 @@ import type { StructureProfile } from "./profile.ts";
 import { ReasoningSession, type ContextObservation } from "./reasoning-context.ts";
 import { renderReasonedPage, type RenderedPage } from "./render-reasoning.ts";
 import { observeRepository, type RepositorySnapshot } from "./repository-observer.ts";
-import { shellWriteTargetModes } from "./shell-targets.ts";
+import { shellWriteTargetModes, shellStaticWriteContents } from "./shell-targets.ts";
 import { registerAttentionStrip } from "./attention-strip.ts";
 import { attentionSeatOptions } from "./attention-seat.ts";
 import { registerSeatExecution } from "./execution-pi.ts";
@@ -84,7 +84,10 @@ const INTENT_RULE="Use set_atdd_mode when the user signals, in any wording or la
 const oneLine=(s:string)=>s.replace(/\s+/g," ").trim().slice(0,160);
 const MODE_CHOICES=["ATDD — remember for this repo","Plain — remember for this repo",
   "ATDD — this session only","Plain — this session only"];
-export default function atdd(pi:ExtensionAPI):void {
+/** Pi supplies only the ExtensionAPI. A test harness may inject an isolated
+ * telemetry sink; no external provider or task text can select this path.
+ */
+export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string} = {}):void {
   const executionSeat = registerSeatExecution(pi); // PLT-117: inert unless launch-bound
   // PLT-118: a scoped attention route follows the live seat binding and its writes are fenced against seat transfer.
   const attentionStrip=registerAttentionStrip(pi, attentionSeatOptions(executionSeat)); // PLT-101
@@ -118,22 +121,27 @@ export default function atdd(pi:ExtensionAPI):void {
   /** PLT-93 working mode for this session; undefined until resolved. */
   let current:Resolution|undefined;
   const active=(cwd:string)=>current?.mode==="atdd"&&repositoryRoot(cwd)!==null;
-  /** Only closed, stable identifiers from proof nodes are logged: never prose, code, or paths. */
+  /** Only closed, stable identifiers from proof nodes enter telemetry.
+   * Predicate-to-prefix mapping is deliberately exhaustive and auditable;
+   * all other facts, including task text and raw file paths, stay out.
+   */
   function evidenceIds(result: ReturnType<ReasoningSession["observe"]>):string[]{
+    const prefixes: Record<string,string> = {
+      selector_hit:"selector:",code_construct:"ast:",file_layer:"layer:",
+      phase:"phase:",file_kind:"file_kind:",change:"change:",finding:"finding:",
+    };
     const found = new Set<string>();
     const visit = (proof: Proof):void => {
-      const name=proof.fact.predicate, args=proof.fact.args;
-      if(name==="selector_hit" && args[1])found.add("selector:"+args[1]);
-      if(name==="code_construct" && args[1])found.add("ast:"+args[1]);
-      if(name==="file_layer" && args[1])found.add("layer:"+args[1]);
-      if(name==="phase" && args[1])found.add("phase:"+args[1]);
-      for(const d of proof.derivations) for(const p of d.premises)visit(p);
+      const prefix=prefixes[proof.fact.predicate],value=proof.fact.args[1];
+      if(prefix&&value)found.add(prefix+value);
+      for(const d of proof.derivations)for(const premise of d.premises)visit(premise);
     };
-    for(const activation of result.activations) visit(activation.proof);
+    for(const activation of result.activations)visit(activation.proof);
     return [...found].sort();
   }
   function record(cwd:string, event:ActivationEvent):void{
-    const outcome=appendActivation(cwd,{...event,sessionId,catalogDigest:catalog?.provenance[0]?.digest});
+    const outcome=appendActivation(cwd,{...event,sessionId,catalogDigest:catalog?.provenance[0]?.digest},
+      {root:runtime.telemetryRoot});
     if(!outcome.ok&&!telemetryWarning){
       telemetryWarning=true;
       try{pi.sendMessage({customType:"pi-atdd-telemetry-gap",
@@ -146,12 +154,16 @@ export default function atdd(pi:ExtensionAPI):void {
     fresh:readonly string[],page:RenderedPage|undefined,started:number):void{
     record(cwd,{point,operation,pathCategory:activationPathCategory(path),outcome:result.status,
       reasonCode:result.status==="incomplete"?"mandatory_dependency_missing":
-        result.status==="unknown"?"no_applicability_evidence":"graph_activation",
+        result.status==="unknown"?"no_applicability_evidence":
+        result.missingReasons.length?"graph_activation_with_gaps":"graph_activation",
       ruleIds:result.activations.map(a=>a.id),evidenceIds:evidenceIds(result),
       delivered:page?.emittedIds.length??0,deduplicated:Math.max(0,result.activations.length-fresh.length),
       omitted:page?.omittedIds.length??0,durationMs:performance.now()-started});
   }
-  /** Pi tool proposals are observed before execution; changed file content is observed afterward. */
+  /** Pi tool proposals are observed before execution; changed file content is observed afterward.
+   * An ambiguous edit cannot be treated as the unchanged on-disk source:
+   * that would fabricate a "before/after" comparison without a valid proposal.
+   */
   function sourceFor(cwd:string,path:string,input?:{content?:unknown;oldText?:unknown;newText?:unknown}):string|undefined{
     if(scopedPath(cwd,path)===null)return undefined; // avoid reading an untrusted symlink during post-tool inspection
     if(typeof input?.content==="string")return input.content.length<=1_000_000?input.content:undefined;
@@ -164,8 +176,22 @@ export default function atdd(pi:ExtensionAPI):void {
     if(typeof input?.oldText==="string"&&typeof input.newText==="string"){
       const parts=current.split(input.oldText);
       if(parts.length===2)return parts[0]+input.newText+parts[1];
+      return undefined; // an ambiguous/failed edit is NOT the current source
     }
     return current;
+  }
+  /** Read the actual old content before a mutation; absent new files have a known empty baseline.
+   * Failed reads, oversized input and unsafe paths remain UNKNOWN, never empty.
+   * This is evidence collection, not a filesystem authorization boundary.
+   */
+  function beforeSource(cwd:string,path:string):string|undefined{
+    if(scopedPath(cwd,path)===null)return undefined;
+    try{
+      const abs=resolve(cwd,path);
+      if(!existsSync(abs))return "";
+      if(!statSync(abs).isFile()||statSync(abs).size>1_000_000)return undefined;
+      return readFileSync(abs,"utf8");
+    }catch{return undefined;}
   }
   type Notify={cwd:string;ui:{notify:(message:string,type?:"info"|"warning"|"error")=>void}};
   function setMode(ctx:Notify,mode:Mode,source:string,announce=true):boolean{
@@ -249,9 +275,10 @@ export default function atdd(pi:ExtensionAPI):void {
   const scopeFor=(path?:string)=>"pi-run:"+serial+":"+(path?"file:"+path:"task");
   const currentRevision=()=>observedRepo?.revision??undefined;
   function observe(cwd:string,operation:"task"|"edit"|"create"|"review",
-    origin:ContextObservation["origin"],provenance:string,path?:string,sourceText?:string){
+    origin:ContextObservation["origin"],provenance:string,path?:string,sourceText?:string,
+    priorSourceText?:string){
     return ensure(cwd).observe({
-      scope:scopeFor(path),task:task||"unknown task",path,sourceText,operation,origin,provenance,
+      scope:scopeFor(path),task:task||"unknown task",path,sourceText,priorSourceText,operation,origin,provenance,
       ...(currentRevision()?{revision:currentRevision()}:{}),
     });
   }
@@ -296,7 +323,7 @@ export default function atdd(pi:ExtensionAPI):void {
     handler:async(args,ctx)=>{
       const arg=(args??"").trim().toLowerCase();
       if(arg==="on"||arg==="off"){setMode(ctx,arg==="on"?"atdd":"plain","/atdd "+arg);return;}
-      if(arg==="telemetry"){ctx.ui.notify(formatActivationSummary(ctx.cwd),"info");return;}
+      if(arg==="telemetry"){ctx.ui.notify(formatActivationSummary(ctx.cwd,{root:runtime.telemetryRoot}),"info");return;}
       if(arg&&arg!=="status"){ctx.ui.notify("Usage: /atdd on | off | status | telemetry","warning");return;}
       const mode=current??resolveMode({cwd:ctx.cwd,env:process.env});
       let line=mode.mode?"ATDD mode: "+mode.mode+" ("+mode.source+")":
@@ -360,12 +387,16 @@ export default function atdd(pi:ExtensionAPI):void {
           ". Unknown obligations are not waivers; repair graph before governed completion.",display:true}};
     }
   }
-  /** Same preflight for a governed path whether it is edited via edit/write or the shell. */
+  /** Same preflight for a governed path whether it is edited via edit/write or the shell.
+   * A blocked retry delivers missed reasoning, not a waiver or permission grant.
+   * Independent tests and reviewer evidence still govern final correctness.
+   */
   function preflightPath(cwd:string,path:string,operation:"edit"|"create",provenance:string,
-    budget:number,blockUnknown:boolean,sourceText?:string):{block:true;reason:string}|undefined{
+    budget:number,blockUnknown:boolean,sourceText?:string,
+    priorSourceText?:string):{block:true;reason:string}|undefined{
     const started=performance.now();
     try{
-      const result=observe(cwd,operation,"pi-event",provenance,path,sourceText);
+      const result=observe(cwd,operation,"pi-event",provenance,path,sourceText,priorSourceText);
       const fresh=newlyRelevant(result);
       if(result.status==="incomplete"){
         const page=renderReasonedPage(result,fresh,budget);
@@ -538,13 +569,22 @@ export default function atdd(pi:ExtensionAPI):void {
         if(byPath.get(p)!=="create")byPath.set(p,op);
       }
       const targets=[...byPath.keys()];
+      const proposed=new Map<string,string>();
+      for(const [candidate,content] of shellStaticWriteContents(command)){
+        const path=scopedPath(ctx.cwd,candidate);
+        if(path!==null)proposed.set(path,content);
+      }
       const reasons:string[]=[];
       let remaining=16_000; // PLT-96 budget raise (was 12_000): shell preflight page must hold a write's full rule set
       try{
         for(const path of targets){
           if(remaining<2_500)break; // targets not yet delivered are preflighted on retry
-          const r=preflightPath(ctx.cwd,path,byPath.get(path)!,"Pi pre-shell tool_call (static write target)",
-            remaining,false,sourceFor(ctx.cwd,path));
+          const source=proposed.get(path);
+          const r=preflightPath(ctx.cwd,path,byPath.get(path)!,
+            source===undefined?"Pi pre-shell tool_call (target only, proposed source UNKNOWN)":
+              "Pi pre-shell tool_call (quoted literal heredoc proposal)",
+            remaining,false,source===undefined?sourceFor(ctx.cwd,path):source,
+            source===undefined?undefined:beforeSource(ctx.cwd,path));
           if(r){reasons.push(r.reason);remaining-=r.reason.length;}
         }
       }catch(e){reset();return {block:true,reason:"ATDD rule activation failed: "+String(e)};}
@@ -565,8 +605,15 @@ export default function atdd(pi:ExtensionAPI):void {
       return {block:true,reason:"ATDD cannot govern edits outside the repository."};
     }
     try{
+      const source=sourceFor(ctx.cwd,path,input);
+      // Only a fully proposed write or a uniquely applied oldText/newText edit
+      // has an independently observed before/after pair. Unspecified proposals
+      // can still reveal present syntax but cannot claim an added import.
+      const proposed=typeof input.content==="string" ||
+        (typeof input.oldText==="string"&&typeof input.newText==="string");
       return preflightPath(ctx.cwd,path,event.toolName==="write"?"create":"edit",
-        "Pi pre-edit tool_call",16_000,true,sourceFor(ctx.cwd,path,input)); // PLT-96: same budget as the shell path (parity test)
+        "Pi pre-edit tool_call",16_000,true,source,
+        proposed&&source!==undefined?beforeSource(ctx.cwd,path):undefined);
     }catch(e){reset();return {block:true,reason:"ATDD rule activation failed: "+String(e)};}
   });
   const READ_ONLY_TOOLS=new Set(["read","ls","find","grep"]);
