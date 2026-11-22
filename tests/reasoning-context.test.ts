@@ -191,3 +191,25 @@ test("ATD-42: a trusted PLAN fact automatically supplies JTBD and acceptance con
     assert.ok(refactor.activations.some(x=>x.id==="coder.phase.discipline"));
   } finally {a.finish();}
 });
+
+
+test("ATD-42: missing required PLAN guidance is INCOMPLETE, never falsely ready", () => {
+  const a=setup();
+  try {
+    // Simulate one unavailable canonical rule without modifying pinned source.
+    const sparse={...a.catalog,rules:new Map(a.catalog.rules)};
+    sparse.rules.delete("planner.steps.jtbd-taxonomy");
+    const session=new ReasoningSession(sparse,[]);
+    const observation={
+      scope:"missing-phase-rule",task:"Deliver a bounded task",operation:"task" as const,
+      phase:"PLAN" as const,origin:"trusted-work-provider" as const,
+      provenance:"verified Flow task and launch receipt",
+    };
+    const result=session.observe(observation);
+    assert.equal(result.status,"incomplete");
+    assert.ok(result.gaps.some(g=>g.missingId==="planner.steps.jtbd-taxonomy"));
+    const cleared=session.observe({...observation,phase:undefined});
+    assert.ok(!cleared.gaps.some(g=>g.missingId==="planner.steps.jtbd-taxonomy"),
+      "the missing requirement is scoped to the trusted PLAN phase");
+  }finally{a.finish();}
+});
