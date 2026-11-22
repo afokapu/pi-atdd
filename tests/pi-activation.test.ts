@@ -296,7 +296,7 @@ test("ATD-41 literal shell heredoc preflight and runtime-computed bypass post-ob
 
 /** A real Flow launcher writes this Desk tuple and the runtime receipt before Pi starts.
  * The environment is local to one extension instance, not shared process state. */
-function flowHookFixture(cwd:string,env:NodeJS.ProcessEnv) {
+function flowHookFixture(cwd:string,env:NodeJS.ProcessEnv,governed=false) {
   const root=mkdtempSync(join(tmpdir(),"pi-atdd-flow-hook-"));
   const seat="driver.delivery@demo", session="atd-42-pi-session";
   const taskFile=join(root,"work","demo","tasks","delivery.yaml");
@@ -308,6 +308,7 @@ function flowHookFixture(cwd:string,env:NodeJS.ProcessEnv) {
   const writeTask=(phase:string)=>writeFileSync(taskFile,stringify({
     schema:"atdd-workflow/task/v1",title:"Deliver a bounded task",status:"in_progress",
     coordinator:"coordinator@demo",assignee:seat,phase,
+    ...(governed ? {plan_required:true} : {}),
     done_when:[{text:"Demonstrate the intended behavior"}],
   }));
   writeTask("plan");
@@ -429,5 +430,35 @@ test("ATD-42: edits cannot bypass phase conventions omitted from the first page"
     const transitioned=edit(event,ctx);
     assert.equal(transitioned?.block,true);
     assert.match(transitioned.reason,/ATDD phase RED guidance/);
+  }finally{x.cleanup();flow.cleanup();}
+});
+
+
+test("ATD-42: governed PLAN and RED stop implementation edits before accepted handoffs",()=>{
+  const env:NodeJS.ProcessEnv={};
+  const x=sandbox(env), flow=flowHookFixture(x.cwd,env,true);
+  const ctx={...x.ctx,sessionManager:{getSessionId:()=>flow.session}};
+  const edit=x.handlers.get("tool_call")!;
+  try {
+    const source=edit({toolName:"edit",input:{path:"src/orders/routes/create.ts"}},ctx);
+    assert.equal(source?.block,true);
+    assert.match(source.reason,/ATDD PLAN: only scoped plan artifacts/);
+    const planning=edit({toolName:"write",input:{path:"plan/delivery.yaml",content:"acceptances: []"}},ctx);
+    assert.ok(!planning?.reason?.includes("ATDD PLAN: only scoped plan artifacts"),
+      "PLAN still permits actual planning artifacts, subject to ordinary preflight");
+    flow.writeTask("red");
+    const implementation=edit({toolName:"edit",input:{path:"src/orders/routes/create.ts"}},ctx);
+    assert.equal(implementation?.block,true);
+    assert.match(implementation.reason,/ATDD RED: write behavioral tests first/);
+    flow.writeTask("green");
+    const rewritePlan=edit({toolName:"write",input:{path:"plan/delivery.yaml",content:"revised"}},ctx);
+    assert.equal(rewritePlan?.block,true);
+    assert.match(rewritePlan.reason,/accepted plan is locked outside PLAN/);
+    // No Plan→RED gate is imposed on legacy Flow task projections.
+    flow.cleanup();
+    const old=flowHookFixture(x.cwd,env,false);
+    const legacy=edit({toolName:"edit",input:{path:"src/orders/routes/create.ts"}},ctx);
+    assert.ok(!legacy?.reason?.includes("ATDD PLAN: only scoped plan artifacts"));
+    old.cleanup();
   }finally{x.cleanup();flow.cleanup();}
 });
