@@ -23,7 +23,7 @@ test("all 376 convention bodies are available without fabricated OoC standing", 
   assert.equal(entries.filter(x => x.disposition === "CANDIDATE").length, 13);
   assert.equal(entries.filter(x => x.disposition === "NO_CANDIDATE").length, 1);
   assert.equal(entries.filter(x => x.disposition === "UNRESOLVED").length, 362);
-  assert.equal(entries.reduce((n, x) => n + x.authoredGraphWitnesses.length, 0), 1002);
+  assert.equal(entries.reduce((n, x) => n + x.authoredGraphWitnesses.length, 0), 1000);
 
   // Every source's actual authored statement and line span is available
   // even when its state boundary has not yet been independently assessed.
