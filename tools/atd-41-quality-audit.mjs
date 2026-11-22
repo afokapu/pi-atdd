@@ -47,9 +47,13 @@ const reviewFunctions=new Set([
   "architectureExcludedBySource","knownSafeArchitectureImports",
   // ATD-22 follow-up: the live validator, generic layer scan and witness replay.
   // Auth and header observers must pass the same pinned Bun metric thresholds.
-  "keyOf","objectOf","member","bodyOf","hasDirectGuard","handlerState",
-  "routeStates","methodBranch","fetchStates","inspectBunRouteAuth",
+  "keyOf","objectOf","member","bodyOf","nestedFunction","callName",
+  "hasDirectGuard","guardCall","guardAtEntry","handlerState","methodState",
+  "routeStates","methodBranch","methodAliases","fetchBranchStates","fetchStates",
+  "routeObject","serveStates","isBunServe","topLevelBindings","collectStates",
+  "summarize","sourceGap","inspectBunRouteAuth",
   "testHeaderFacts","bunAuthFacts","discoverSourceEvidence",
+  "oneRuleSelector","selectorExcludedBySource",
   "validRevision","validateImportBoundary","roleInPath","specifierOf",
   "collect","dynamicUnknowns","scan","summarizedEdges","reconcileOutwardScans",
   "observeOutwardImports",
