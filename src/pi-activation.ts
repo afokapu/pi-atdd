@@ -14,6 +14,7 @@ import { readTrustedFlowPhase, readEnvFlowPhase, type TrustedFlowPhase } from ".
 import { renderReasonedPage, type RenderedPage } from "./render-reasoning.ts";
 import { observeRepository, type RepositorySnapshot } from "./repository-observer.ts";
 import { shellWriteTargetModes, shellStaticWriteContents } from "./shell-targets.ts";
+import { validateImportBoundary } from "./validator-observer.ts";
 import { registerAttentionStrip } from "./attention-strip.ts";
 import { attentionSeatOptions } from "./attention-seat.ts";
 import { registerSeatExecution } from "./execution-pi.ts";
@@ -281,7 +282,6 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;e
     priorSourceText?:string,trusted?:TrustedFlowPhase){
     return ensure(cwd).observe({
       scope:scopeFor(path),task:task||"unknown task",path,sourceText,priorSourceText,operation,origin,provenance,
-      ...(trusted?{phase:trusted.phase,actorRole:trusted.actorRole}:{}),
       ...(trusted?{phase:trusted.phase,actorRole:trusted.actorRole}:{}),
       ...(currentRevision()?{revision:currentRevision()}:{}),
     });
@@ -669,21 +669,63 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;e
    * API and return reconciliation texts for changed files. Each page ranks
    * file-specific rules first, so the target rule is never the one dropped.
    */
-  /** Render one post-tool page; rules omitted by the budget stay queued. */
-  function postToolPage(cwd:string,item:Pending,budget:number):string|undefined{
+  /** A real source validation receipt is distinct from a shell tool's output.
+   * REFACTOR delivery requires a freshly verified Flow task/seat/launch receipt.
+   */
+  function refactorValidatorPage(cwd:string,item:Pending,source:string|undefined,
+    trusted:TrustedFlowPhase|undefined,budget:number):string|undefined {
+    const scope=scopeFor("validator:"+item.path);
+    const revoke=()=>{
+      ensure(cwd).retractScope(scope);
+      delivered.delete(key(scope,"coder.architecture.hierarchy-import"));
+    };
+    if(trusted?.phase!=="REFACTOR"){revoke();return undefined;}
+    const run=validateImportBoundary(item.path,source,currentRevision());
+    if(run.status!=="finding"){
+      revoke(); // Clean or unobservable source must never retain a stale finding.
+      return run.status==="unknown"?"ATDD REFACTOR validator UNKNOWN for "+item.path+
+        ": "+run.missingReasons.join(", ")+". No finding asserted.":undefined;
+    }
+    const result=ensure(cwd).observe({
+      scope,task:task||"unknown task",path:item.path,operation:"review",
+      origin:"detector-result",
+      provenance:"actual "+run.detectorId+" source validation; "+trusted.provenance+
+        " @ sha256:"+run.sourceDigest,
+      revision:run.revision!,findings:run.findings,
+    });
+    const matched=result.activations.filter(a=>a.id==="coder.architecture.hierarchy-import" &&
+      JSON.stringify(a.proof).includes("pi-atdd.typed-detector-architecture-review"));
+    if(!matched.length)return "ATDD REFACTOR validator observed a forbidden import, but its source-locked mapping is UNKNOWN.";
+    const eligible={...result,activations:matched};
+    const fresh=newlyRelevant(eligible);
+    if(!fresh.length)return undefined;
+    const page=renderReasonedPage(eligible,fresh,budget);
+    recordActualDelivery(eligible,page);
+    return "ATDD REFACTOR validator finding (actual source; "+run.detectorId+
+      "; revision "+run.revision+"; sha256 "+run.sourceDigest+"):\n"+page.text;
+  }
+  /** The post-tool source observation and the later REFACTOR sensor have
+   * independent supports. A positive validator result is never a pre-edit fact.
+   */
+  function postToolPage(cwd:string,item:Pending,budget:number,
+    trusted?:TrustedFlowPhase):string|undefined{
     const started=performance.now();
-    const result=observe(cwd,item.operation,"repository-observation",item.provenance,item.path,sourceFor(cwd,item.path));
+    const source=sourceFor(cwd,item.path);
+    const refactor=refactorValidatorPage(cwd,item,source,trusted,budget);
+    const result=observe(cwd,item.operation,"repository-observation",item.provenance,item.path,source);
     const fresh=newlyRelevant(result);
     if(!fresh.length&&result.status==="matched"){
       recordReasoned(cwd,"post_tool",item.operation,item.path,result,fresh,undefined,started);
-      pendingPostTool.delete(item.path);redeliveries.delete(item.path);return undefined;
+      pendingPostTool.delete(item.path);redeliveries.delete(item.path);
+      return refactor;
     }
     const page=renderReasonedPage(result,fresh,budget);
     recordActualDelivery(result,page);
     recordReasoned(cwd,"post_tool",item.operation,item.path,result,fresh,page,started);
     if(page.omittedIds.length&&(redeliveries.get(item.path)??0)<MAX_REDELIVERIES)pendingPostTool.set(item.path,item);
     else{pendingPostTool.delete(item.path);redeliveries.delete(item.path);}
-    return "ATDD post-tool reconciliation. Changed file "+item.path+":\n"+page.text;
+    const text="ATDD post-tool reconciliation. Changed file "+item.path+":\n"+page.text;
+    return refactor ? text+"\n\n"+refactor : text;
   }
   /** Deliver rules a previous post-tool page omitted by budget (next tool result, any tool). */
   function drainPending(cwd:string):string[]{
@@ -706,7 +748,7 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;e
       "Their rules are delivered by the contextual preflight when you edit or write each file; retry the edit once to receive them.");
     return out;
   }
-  function reconcile(cwd:string,toolName:string):string[]{
+  function reconcile(cwd:string,toolName:string,trusted?:TrustedFlowPhase):string[]{
     const texts:string[]=[];
     const report=observeRepository(cwd,observedRepo);
     if(report.status==="unknown"){
@@ -733,7 +775,7 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;e
       try{
         const created=report.createdPaths?.includes(path)??false;
         const text=postToolPage(cwd,{path,operation:created?"create":"edit",
-          provenance:"Git/JJ post-tool observed "+toolName+(created?" (created)":"")},perPath);
+          provenance:"Git/JJ post-tool observed "+toolName+(created?" (created)":"")},perPath,trusted);
         if(text)texts.push(text);
       }catch(e){
         record(cwd,{point:"post_tool",outcome:"error",pathCategory:activationPathCategory(path),reasonCode:"reasoner_error"});
@@ -755,7 +797,11 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;e
     try{texts=READ_ONLY_TOOLS.has(event.toolName)?[]:drainPending(ctx.cwd);}catch{texts=[];}
     if(!READ_ONLY_TOOLS.has(event.toolName)){
       if(event.toolCallId)reconciledCalls.add(event.toolCallId);
-      texts.push(...reconcile(ctx.cwd,event.toolName));
+      // Tool output cannot supply a trusted phase. Revalidate the Flow seat.
+      let phase:TrustedFlowPhase|undefined;
+      try{phase=trustedFlow(ctx);}
+      catch(e){texts.push("ATDD trusted Flow phase UNKNOWN: "+oneLine(String(e)));}
+      texts.push(...reconcile(ctx.cwd,event.toolName,phase));
     }
     if(!texts.length)return;
     texts=capTexts(texts);
@@ -767,7 +813,11 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;e
     if(!ctx.isProjectTrusted()||!active(ctx.cwd))return;
     if(READ_ONLY_TOOLS.has(event.toolName))return;
     if(event.toolCallId&&reconciledCalls.delete(event.toolCallId))return;
-    for(const text of capTexts(reconcile(ctx.cwd,event.toolName))){
+    let phase:TrustedFlowPhase|undefined;
+    try{phase=trustedFlow(ctx);}
+    catch(e){pi.sendMessage({customType:"pi-atdd-observation-gap",
+      content:"ATDD trusted Flow phase UNKNOWN: "+oneLine(String(e)),display:false},{deliverAs:"steer"});}
+    for(const text of capTexts(reconcile(ctx.cwd,event.toolName,phase))){
       const custom=text.startsWith("ATDD POST-TOOL OBSERVATION UNKNOWN")?"pi-atdd-observation-gap":"pi-atdd-post-tool-reconciliation";
       pi.sendMessage({customType:custom,content:text,display:false},{deliverAs:"steer"});
     }

@@ -431,3 +431,40 @@ test("ATD-42: edits cannot bypass phase conventions omitted from the first page"
     assert.match(transitioned.reason,/ATDD phase RED guidance/);
   }finally{x.cleanup();flow.cleanup();}
 });
+
+test("ATD-22 OBS-004: real post-tool findings reach authenticated REFACTOR, never GREEN",()=>{
+  const env:NodeJS.ProcessEnv={},x=sandbox(env),flow=flowHookFixture(x.cwd,env);
+  const ctx={...x.ctx,sessionManager:{getSessionId:()=>flow.session}};
+  const path="src/orders/domain/price.ts";
+  const valid="export const price=4;\n";
+  const bad='import { gateway } from "../integration/network";\n'+valid;
+  try{
+    mkdirSync(join(x.cwd,"src/orders/domain"),{recursive:true});
+    writeFileSync(join(x.cwd,path),valid);
+    x.git("add",".");x.git("commit","-qm","validator baseline");
+    flow.writeTask("green");
+    x.handlers.get("before_agent_start")!({messageType:"user",prompt:"Adjust price"},ctx);
+    writeFileSync(join(x.cwd,path),bad);
+    x.handlers.get("tool_execution_end")!({toolName:"bash",isError:false},ctx);
+    assert.equal(x.messages.some(m=>m.message.content.includes("ATDD REFACTOR validator finding")),false,
+      "GREEN cannot consume a detector finding even when ordinary source guidance exists");
+    flow.writeTask("refactor");
+    writeFileSync(join(x.cwd,path),bad+"// revised in refactor\n");
+    x.handlers.get("tool_execution_end")!({toolName:"bash",isError:false},ctx);
+    const findings=x.messages.filter(m=>m.message.content.includes("ATDD REFACTOR validator finding"));
+    assert.ok(findings.length>0,"real source validator must publish its finding during REFACTOR");
+    const witness=findings.at(-1)!.message.content;
+    assert.match(witness,/pi-atdd\.ts-import-boundary\.v1/);
+    assert.match(witness,/coder\.architecture\.hierarchy-import/);
+    assert.match(witness,/Trigger proof/);
+    const prior=x.messages.length;
+    writeFileSync(join(x.cwd,path),valid);
+    x.handlers.get("tool_execution_end")!({toolName:"bash",isError:false},ctx);
+    assert.equal(x.messages.slice(prior).some(m=>m.message.content.includes("ATDD REFACTOR validator finding")),false,
+      "a clean validator run must revoke its old finding");
+    writeFileSync(join(x.cwd,path),bad+"// later regression\n");
+    x.handlers.get("tool_execution_end")!({toolName:"bash",isError:false},ctx);
+    assert.ok(x.messages.slice(prior).some(m=>m.message.content.includes("ATDD REFACTOR validator finding")),
+      "reintroduction after retraction must deliver a new source-identified finding");
+  }finally{x.cleanup();flow.cleanup();}
+});
