@@ -118,3 +118,27 @@ test("PLT-123 P2: a verified issue passed by the caller is the only source of th
   assert.match(buildHandoff({ ...base, task: "do ZZTEST-999999" }), /^Issue: unknown/m);
   assert.match(buildHandoff({ ...base, task: "do ZZTEST-999999", issue: "PLT-5" }), /^Issue: PLT-5$/m);
 });
+
+test("PLT-123 P2: the successor's kickoff carries no chat-derived issue id (fresh handoff and latest relaunch)", async () => {
+  const task = "Please look at ZZTEST-999999.";
+  const cwd = mkdtempSync(join(tmpdir(), "pi-atdd-kick-"));
+  const handlers = new Map<string, Function>(); const commands = new Map<string, { handler: Function }>(); const sent: string[] = [];
+  atdd({ on: (n: string, fn: Function) => { const p = handlers.get(n); handlers.set(n, p ? async (...a: unknown[]) => (await p(...a)) ?? (await fn(...a)) : fn); },
+    registerCommand: (n: string, s: { handler: Function }) => { commands.set(n, s); }, registerTool: () => {}, sendMessage: () => {},
+    appendEntry: () => {}, getActiveTools: () => [], setActiveTools: () => {}, sendUserMessage: (t: string) => { sent.push(t); } } as any);
+  const sessionManager = { getSessionFile: () => "/p.jsonl", getSessionId: () => "s",
+    getBranch: () => [{ type: "message", message: { role: "user", content: [{ type: "text", text: task }] } }] };
+  const ctx = { cwd, isProjectTrusted: () => true, ui: { notify: () => {}, setWidget: () => {} },
+    getContextUsage: () => ({ tokens: 900, contextWindow: 1000, percent: 90 }), model: { provider: "p", id: "m" }, sessionManager };
+  const kicks: string[] = [];
+  const ok = async (o: any) => { await o.setup({ appendMessage: () => {} }); await o.withSession({ sendUserMessage: async (t: string) => kicks.push(t) }); return { cancelled: false }; };
+  try {
+    await handlers.get("session_start")!({}, ctx);
+    await handlers.get("turn_end")!({ message: { content: [] } }, ctx);
+    await handlers.get("agent_settled")!({ aborted: false }, ctx);
+    await commands.get("atdd-handoff")!.handler("", { cwd, ui: ctx.ui, sessionManager, newSession: ok });
+    await commands.get("atdd-handoff")!.handler("latest", { cwd, ui: ctx.ui, sessionManager, newSession: ok });
+    assert.equal(kicks.length, 2);
+    for (const k of kicks) { assert.doesNotMatch(k, /ZZTEST-999999/); assert.match(k, /^Continue from the ATDD context handoff above\./); }
+  } finally { await handlers.get("session_shutdown")?.({}, ctx); rmSync(cwd, { recursive: true, force: true }); }
+});
