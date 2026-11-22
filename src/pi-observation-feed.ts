@@ -25,11 +25,17 @@ export type ObservedReceipt = {
   sourceDigest:string|null;
   evidenceState:"OBSERVED"|"RETRACTED";
 };
+/** These are proof origins, not grantable authorities or OoC standing. */
+export type SupportKind =
+  "STRUCTURAL_SOURCE"|"SOURCE_DELTA"|"FILE_CONTEXT"|"TRUSTED_PHASE"|
+  "DETECTOR_FINDING"|"LEGACY_SELECTOR"|"MANDATORY_REQUIRES"|
+  "OBSERVED_OPERATION"|"REPOSITORY_REVISION"|"OTHER";
 export type RuleReceipt = {
   conventionId:string;
   sourcePath:string;
   sourceDigest:string|null;
   proof:Proof;
+  supportKinds:readonly SupportKind[];
   mandatoryRequires:readonly {
     fromRuleId:string;toRuleId:string;constraint:"mandatory";sourcePath:string;
   }[];
@@ -103,12 +109,39 @@ function pointOf(input:ContextObservation):Point{
   if(input.origin==="pi-event")return "pre_edit";
   return "review";
 }
+/** Keep lexical selectors and source-grounded facts distinguishable even
+ * when both activate the same convention. Neither is an OoC authorization.
+ */
+function supportKinds(proof:Proof):SupportKind[]{
+  const supports=new Set<SupportKind>();
+  const classify=(p:Proof):void=>{
+    const pred=p.fact.predicate;
+    if(pred==="selector_hit")supports.add("LEGACY_SELECTOR");
+    else if(pred==="code_construct"||pred==="layer_dependency")
+      supports.add("STRUCTURAL_SOURCE");
+    else if(pred==="change")supports.add("SOURCE_DELTA");
+    else if(pred==="file_kind"||pred==="file_layer"||pred==="file")
+      supports.add("FILE_CONTEXT");
+    else if(pred==="phase")supports.add(p.assertions.some(a=>a.source==="trusted-work-provider")
+      ?"TRUSTED_PHASE":"OTHER");
+    else if(pred==="finding")supports.add("DETECTOR_FINDING");
+    else if(pred==="operation")supports.add("OBSERVED_OPERATION");
+    else if(pred==="revision")supports.add("REPOSITORY_REVISION");
+    for(const d of p.derivations){
+      if(d.rule==="pi-atdd.mandatory-prerequisites")
+        supports.add("MANDATORY_REQUIRES");
+      for(const premise of d.premises)classify(premise);
+    }
+  };
+  classify(proof);
+  return [...supports].sort();
+}
 /** The source pin comes from the catalog, not from a guessed OoC identity. */
 function ruleReceipts(result:Reconciliation):RuleReceipt[]{
   return result.activations.map(a=>({
     conventionId:a.id,sourcePath:a.convention.source,
     sourceDigest:result.provenance.find(p=>p.id===a.convention.source)?.digest??null,
-    proof:a.proof,
+    proof:a.proof,supportKinds:supportKinds(a.proof),
     mandatoryRequires:a.requiredPath
       .filter(e=>e.type==="requires"&&e.constraint==="mandatory")
       .map(e=>({fromRuleId:e.source,toRuleId:e.target,
