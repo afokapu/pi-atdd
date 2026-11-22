@@ -532,6 +532,8 @@ test("ATD-41 actual Pi hooks publish typed pre-edit and post-tool receipts with 
     assert.ok(proposed,"a real hook must emit the typed source delta, not just a test helper");
     assert.equal(readFileSync(join(x.cwd,path),"utf8"),initial);
     assert.equal(proposed.disposition,"observation_only_no_authority");
+    assert.equal(proposed.event.sourceState,"PROPOSED");
+    assert.equal(proposed.event.sourceDigest?.length,64);
     assert.ok(proposed.receipts.some(r=>r.conventionId==="coder.architecture.hierarchy-import"));
     assert.ok(!JSON.stringify(proposed).includes("Adjust a value"));
     x.handlers.get("tool_call")!(event,x.ctx); // repeat may deliver no new guidance
@@ -539,6 +541,8 @@ test("ATD-41 actual Pi hooks publish typed pre-edit and post-tool receipts with 
     x.handlers.get("tool_execution_end")!({toolName:"bash",isError:false},x.ctx);
     const post=frames.find(f=>f.event.point==="post_tool"&&f.event.targetPathHint===path);
     assert.ok(post,"post-tool actual source must also produce a runtime observation receipt");
+    assert.equal(post.event.sourceState,"OBSERVED");
+    assert.equal(post.event.sourceDigest?.length,64);
     assert.ok(post.retracted.some(e=>e.factType==="change"&&
       e.factArgs[1]==="domain_to_integration_import_added"),
       "an actual post-edit snapshot cannot retain the proposed before/after delta");
