@@ -21,8 +21,6 @@ export const CATEGORY_TIER: Readonly<Record<string, CoachTier>> = {
   "write-brief": "act-report",
   "comment-own-plt-issue": "act-report",
   "request-rebase-or-fix": "act-report",
-  "ratify-bounded-plan-and-report": "act-report",
-  "change-owner-approved-intent-or-scope": "ask-owner",
   "merge": "ask-owner",
   "shared-install-move": "ask-owner",
   "tier-escalation-high-or-xhigh": "ask-owner",
