@@ -26,6 +26,10 @@ const STREAMS = {
     wrapper: "ATD-42", source: "ATD-42", other: ["ATD-39"],
     criteria: [], // Pi-only phase slice; the broad cross-repo Coach gate remains separately pending.
   },
+  "feature/atd-42-plan-red-code-guard": {
+    wrapper: "ATD-42", source: "ATD-42", other: ["ATD-39"],
+    criteria: [], // A gated Pi write-boundary checkpoint, not the complete multi-repo issue.
+  },
 };
 
 export function inspectIntegrationPR({base, head, body = ""}) {
