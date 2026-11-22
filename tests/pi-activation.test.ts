@@ -12,6 +12,7 @@ import { join } from "node:path";
 import atdd from "../extensions/atdd.ts";
 import { digestSource } from "../src/catalog.ts";
 import { activationLogPath } from "../src/activation-telemetry.ts";
+import { stringify } from "yaml";
 
 function sandbox() {
   const cwd=mkdtempSync(join(tmpdir(),"pi-atdd-pi-live-"));
@@ -214,5 +215,88 @@ test("Pi pre-edit structural evidence and local telemetry work without task keyw
     x.cleanup();rmSync(root,{recursive:true,force:true});
     if(old===undefined)delete process.env.PI_ATDD_TELEMETRY_DIR;
     else process.env.PI_ATDD_TELEMETRY_DIR=old;
+  }
+});
+
+
+test("ATD-42: the Pi before_agent_start hook delivers phase-specific conventions from the verified Flow task", () => {
+  const x=sandbox();
+  const desk=mkdtempSync(join(tmpdir(),"pi-atdd-flow-hook-"));
+  const keys=[
+    "ATDD_WORKFLOW_ROOT", "ATDD_WORKFLOW_SEAT", "ATDD_FLOW_PI_SESSION",
+    "ATDD_FLOW_HERDR_SESSION", "ATDD_FLOW_HERDR_PANE",
+  ] as const;
+  const previous=Object.fromEntries(keys.map(k=>[k,process.env[k]]));
+  const seatAddress="driver.delivery@demo", session="atd-42-pi-session";
+  const taskFile=join(desk,"work","demo","tasks","delivery.yaml");
+  const seatFile=join(desk,"work","demo","seats","driver.delivery","seat.yaml");
+  const receiptFile=join(desk,"launch-receipt.yaml");
+  const piSessionPath=join(desk,"pi-session.jsonl");
+  const writeTask=(phase:string)=>writeFileSync(taskFile,stringify({
+    schema:"atdd-workflow/task/v1",title:"Deliver a bounded task",status:"in_progress",
+    coordinator:"coordinator@demo",assignee:seatAddress,phase,
+    done_when:[{text:"Demonstrate the intended behavior"}],
+  }));
+  try {
+    mkdirSync(join(desk,"work","demo","tasks"),{recursive:true});
+    mkdirSync(join(desk,"work","demo","seats","driver.delivery"),{recursive:true});
+    writeTask("plan");
+    writeFileSync(receiptFile,stringify({
+      schema:"atdd-flow/pi-runtime-launch-receipt/v1",
+      seat:seatAddress,pi_session:session,pi_session_path:piSessionPath,
+      herdr_session:"forge",pane:"w1:p2",
+    }));
+    const runtime={
+      application:"herdr",wake:"native",
+      addresses:{herdr:{session:"forge",pane:"w1:p2"}},
+      pi_session:session,pi_session_path:piSessionPath,launch_receipt:receiptFile,
+    };
+    writeFileSync(seatFile,stringify({
+      schema:"atdd-workflow/seat/v2",address:seatAddress,role:"driver",
+      project:"demo",worktree:x.cwd,branch:"delivery/demo",runtime,
+    }));
+    Object.assign(process.env,{
+      ATDD_WORKFLOW_ROOT:desk, ATDD_WORKFLOW_SEAT:seatAddress,
+      ATDD_FLOW_PI_SESSION:session, ATDD_FLOW_HERDR_SESSION:"forge",
+      ATDD_FLOW_HERDR_PANE:"w1:p2",
+    });
+    const ctx={...x.ctx,sessionManager:{getSessionId:()=>session}};
+    const onStart=x.handlers.get("before_agent_start")!;
+    const plan=onStart({messageType:"user",prompt:"Implement the assigned work"},ctx);
+    assert.equal(plan?.message?.customType,"pi-atdd-inference");
+    assert.match(plan.message.content,/planner\.steps\.jtbd-taxonomy/);
+    assert.match(plan.message.content,/Canonical source:/);
+    assert.match(plan.message.content,/Flow-owned task demo\/delivery/);
+    assert.equal(onStart({messageType:"extension",prompt:""},ctx),undefined,
+      "unchanged authenticated PLAN must not re-inject the same conventions");
+    const unchanged=readFileSync(taskFile,"utf8");
+    assert.match(unchanged,/phase: plan/, "the Pi hook must be read-only");
+
+    writeTask("red");
+    const red=onStart({messageType:"extension",prompt:""},ctx);
+    assert.equal(red?.message?.customType,"pi-atdd-inference");
+    assert.match(red.message.content,/tester\.red\.behavioral-assertion/);
+    writeTask("green");
+    const green=onStart({messageType:"extension",prompt:""},ctx);
+    assert.equal(green?.message?.customType,"pi-atdd-inference");
+    assert.match(green.message.content,/coder\.phase\.discipline/);
+
+    writeFileSync(receiptFile,stringify({
+      schema:"atdd-flow/pi-runtime-launch-receipt/v1",
+      seat:seatAddress,pi_session:"a-superseded-session",pi_session_path:piSessionPath,
+      herdr_session:"forge",pane:"w1:p2",
+    }));
+    const refused=onStart({messageType:"extension",prompt:""},ctx);
+    assert.equal(refused?.message?.customType,"pi-atdd-error");
+    assert.match(refused.message.content,/launch receipt does not match/);
+    assert.ok(!refused.message.content.includes("coder.phase.discipline"),
+      "a superseded launcher receipt must never authorize a phase");
+  }finally{
+    for(const key of keys) {
+      if(previous[key]===undefined)delete process.env[key];
+      else process.env[key]=previous[key];
+    }
+    x.cleanup();
+    rmSync(desk,{recursive:true,force:true});
   }
 });
