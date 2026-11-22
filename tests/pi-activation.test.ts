@@ -215,3 +215,92 @@ test("Pi pre-edit structural evidence and local telemetry work without task keyw
     else process.env.PI_ATDD_TELEMETRY_DIR=old;
   }
 });
+
+
+test("ATD-41 Pi pre-edit write/edit send source delta proof before mutation",()=>{
+  const x=sandbox();
+  const root=mkdtempSync(join(tmpdir(),"pi-atdd-structural-pi-"));
+  const old=process.env.PI_ATDD_TELEMETRY_DIR;
+  process.env.PI_ATDD_TELEMETRY_DIR=root;
+  try{
+    mkdirSync(join(x.cwd,"src/orders/domain"),{recursive:true});
+    const path="src/orders/domain/price.ts";
+    const original="export const price = 4;\n";
+    writeFileSync(join(x.cwd,path),original);
+    x.git("add",".");x.git("commit","-qm","domain baseline");
+    const proposed='import { gateway } from "../integration/network";\n'+original;
+    x.handlers.get("before_agent_start")!({messageType:"user",prompt:"Simplify pricing"},x.ctx);
+    const write={toolName:"write",input:{path,content:proposed}};
+    const first=x.handlers.get("tool_call")!(write,x.ctx);
+    assert.equal(first.block,true);
+    assert.match(first.reason,/coder\.architecture\.hierarchy-import/);
+    assert.equal(readFileSync(join(x.cwd,path),"utf8"),original,"Pi preflight does not mutate");
+    const log=readFileSync(activationLogPath(x.cwd),"utf8");
+    assert.ok(!log.includes(path));
+    assert.ok(!log.includes("gateway"));
+    assert.ok(log.includes("change:domain_to_integration_import_added"));
+    assert.equal(x.handlers.get("tool_call")!(write,x.ctx),undefined,"same proof is deduplicated");
+
+    // Fresh task and precise edit proposal must derive the same structural change.
+    x.handlers.get("before_agent_start")!({messageType:"user",prompt:"Refine price"},x.ctx);
+    const edit={toolName:"edit",input:{path,oldText:original,newText:proposed}};
+    const second=x.handlers.get("tool_call")!(edit,x.ctx);
+    assert.equal(second.block,true);
+    assert.ok(readFileSync(activationLogPath(x.cwd),"utf8").includes("change:domain_to_integration_import_added"));
+    const malformed={toolName:"edit",input:{path,oldText:"NO SUCH TEXT",newText:proposed}};
+    x.handlers.get("before_agent_start")!({messageType:"user",prompt:"Refine something"},x.ctx);
+    x.handlers.get("tool_call")!(malformed,x.ctx);
+    const latest=readFileSync(activationLogPath(x.cwd),"utf8").trim().split("\n").map(JSON.parse)
+      .filter((item:any)=>item.point==="pre_edit").at(-1);
+    assert.ok(!latest.evidenceIds.includes("change:domain_to_integration_import_added"),
+      "an edit that cannot be applied is not a structural delta");
+  }finally{
+    x.cleanup();rmSync(root,{recursive:true,force:true});
+    if(old===undefined)delete process.env.PI_ATDD_TELEMETRY_DIR;
+    else process.env.PI_ATDD_TELEMETRY_DIR=old;
+  }
+});
+
+test("ATD-41 literal shell heredoc preflight and runtime-computed bypass post-observation",()=>{
+  const x=sandbox();
+  const root=mkdtempSync(join(tmpdir(),"pi-atdd-structural-bypass-"));
+  const old=process.env.PI_ATDD_TELEMETRY_DIR;
+  process.env.PI_ATDD_TELEMETRY_DIR=root;
+  try{
+    mkdirSync(join(x.cwd,"src/orders/domain"),{recursive:true});
+    const path="src/orders/domain/price.ts";
+    const baseline="export const price = 4;\n";
+    const changed='import { network } from "../integration/gateway";\n'+baseline;
+    writeFileSync(join(x.cwd,path),baseline);
+    x.git("add",".");x.git("commit","-qm","base");
+    x.handlers.get("before_agent_start")!({messageType:"user",prompt:"Adjust prices"},x.ctx);
+    const literal={toolName:"bash",input:{command:"cat > "+path+" <<'EOF'\n"+changed+"EOF"}};
+    const before=x.handlers.get("tool_call")!(literal,x.ctx);
+    assert.equal(before.block,true);
+    assert.match(before.reason,/ATDD shell-write preflight/);
+    assert.ok(readFileSync(activationLogPath(x.cwd),"utf8").includes("change:domain_to_integration_import_added"));
+    assert.equal(readFileSync(join(x.cwd,path),"utf8"),baseline);
+    // Opaque runtime-computed shell write cannot be preflighted for a delta.
+    x.handlers.get("before_agent_start")!({messageType:"user",prompt:"Adjust prices again"},x.ctx);
+    const dynamic={toolName:"bash",input:{command:'p="src/orders/domain/price.ts"; printf "%s" "$source" > "$p"'}};
+    x.handlers.get("tool_call")!(dynamic,x.ctx);
+    writeFileSync(join(x.cwd,path),changed);
+    x.handlers.get("tool_execution_end")!({toolName:"bash",isError:false},x.ctx);
+    const notice=x.messages.find(m=>m.message.customType==="pi-atdd-post-tool-reconciliation");
+    assert.ok(notice,"bypass is observed after mutation");
+    assert.match(notice.message.content,/coder\.architecture\.hierarchy-import/);
+    const entries=readFileSync(activationLogPath(x.cwd),"utf8").trim().split("\n").map(JSON.parse);
+    assert.ok(entries.some((item:any)=>item.point==="post_tool" &&
+      item.evidenceIds.includes("ast:domain_to_integration_import")));
+    assert.ok(!entries.some((item:any)=>item.point==="post_tool" &&
+      item.evidenceIds.includes("change:domain_to_integration_import_added")),
+      "post-tool content without a before/after proposal cannot claim the import was added");
+    const count=x.messages.length;
+    x.handlers.get("tool_execution_end")!({toolName:"bash",isError:false},x.ctx);
+    assert.equal(x.messages.length,count,"unchanged bypass does not redeliver");
+  }finally{
+    x.cleanup();rmSync(root,{recursive:true,force:true});
+    if(old===undefined)delete process.env.PI_ATDD_TELEMETRY_DIR;
+    else process.env.PI_ATDD_TELEMETRY_DIR=old;
+  }
+});

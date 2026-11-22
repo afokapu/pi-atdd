@@ -95,3 +95,10 @@ The classification is about *responsibilities*, not whole files. A module may co
 ## Decommission gate
 
 Only retire old toolkits when all eight parity areas pass: plan/graph parsing, rule treatment, traceability/behavior, JJ exact ancestry, durable messaging/recovery, Linear idempotency/permissions, independently enforced CI, and owner-aware cleanup/rollback. Every cutover needs a reproducible old-vs-new evidence comparison. This initial migration ledger is intentionally incomplete; source modules have been enumerated and representative logic inspected, but exhaustive per-rule detector parity is a separate PR.
+
+## ATD-41 — Operational observation slice (integration candidate, 2026-11-22)
+
+- **Preserve:** Source-locked Bun/Flow YAML/digests and authored mandatory `requires` closure; existing selector/path matching, Pi edit/write/shell preflight, post-tool repository observation and local sanitized telemetry.
+- **New, still advisory:** A syntax-grounded `domain/ → integration/` import-presence and before/after `import_added` fact; bounded `file_kind`; revision-bound `finding` and explicitly trusted `phase` ingestion; in-memory proposal-only ATD-39 observation/proof envelope. Dynamic shell mutations lack before/after preflight proof and are observed after execution when possible. Source tree is not an OoC ledger or T9 realization authority.
+- **Unverified scope:** Full 358 convention-sidecar replay, cross-host hook parity, semantic OoC/Change Path binding, independent effectiveness of agent behavior and source-level compliance. The legacy broad domain-edit selector and negated-language false positive remain visible in the labeled replay, not silently waived.
+- **Validation:** See [ATD-41 structural activation evidence](./ATD-41-STRUCTURAL-ACTIVATION-EVIDENCE.md), current-head draft PR checks, and ATD-39 integration review; no owner cutover or merge decision is implied.

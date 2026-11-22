@@ -120,6 +120,7 @@ export function renderReasonedPage(r:Reconciliation,ids?:readonly string[],maxCh
     header,
     "Task scope: "+r.scope+"; state: "+r.status.toUpperCase(),
     r.unknownFacts.length?"Unknown context facts (NOT assumed false): "+r.unknownFacts.join(", "):"",
+    r.missingReasons?.length?"Observation gaps (NOT a negative verdict): "+r.missingReasons.slice(0,6).map(x=>x.fact+"="+x.reason).join(", "):"",
     r.unresolvedGraphEdges.length?"Graph has "+r.unresolvedGraphEdges.length+
       " external unresolved edges; completeness is NOT established.":"",
     ...r.gaps.slice(0,8).map(g=>"MISSING mandatory graph dependency: "+g.missingId),
@@ -133,6 +134,7 @@ export function renderReasonedPage(r:Reconciliation,ids?:readonly string[],maxCh
     header,
     "Task scope: "+clip(r.scope,120)+"; state: "+r.status.toUpperCase(),
     r.unknownFacts.length?"Unknown context facts (NOT assumed false): "+clip(r.unknownFacts.join(", "),80):"",
+    r.missingReasons?.length?"Observation gaps: "+clip(r.missingReasons.map(x=>x.fact+"="+x.reason).join(", "),110):"",
     r.unresolvedGraphEdges.length?"Graph has "+r.unresolvedGraphEdges.length+
       " external unresolved edges; completeness is NOT established.":"",
     r.gaps.length?clip("MISSING "+r.gaps.length+" mandatory graph dependencies: "+r.gaps.map(g=>g.missingId).join(", "),220):"",

@@ -9,14 +9,23 @@ import { DEFAULT_PROFILE, profileByName, roleOfPath, type StructureProfile } fro
 import { canonicalRuleId, matchesGlob, termMatches, validateSelectors, type Catalog, type Convention, type Relation, type Selector } from "./catalog.ts";
 import { PositiveReasoner, groundKey, type Fact, type Proof, type Rule, type Delta } from "./inference.ts";
 import { discoverSourceEvidence } from "./structural-evidence.ts";
+import { classifyFileKind, observeDomainImports, sourceSyntaxEvidence } from "./operational-observers.ts";
 
 export type Phase = "RED" | "GREEN" | "REFACTOR" | "SMOKE";
 export type Operation = "task" | "create" | "edit" | "review";
-export type Origin = "pi-event" | "repository-observation" | "trusted-work-provider";
+export type Origin = "pi-event" | "repository-observation" | "trusted-work-provider" | "detector-result";
+/** Only a named, revision-bound detector adapter may submit this structured evidence. */
+export type DetectorFinding = {
+  code: "domain_to_integration_import";
+  detectorId: string; evidenceId: string; file: string; revision: string;
+};
+export type MissingFact = { fact: string; reason: string };
 export type ContextObservation = {
   scope: string; task: string; operation: Operation;
-  path?: string; sourceText?: string; phase?: Phase; revision?: string;
+  path?: string; sourceText?: string; priorSourceText?: string;
+  phase?: Phase; revision?: string;
   actorRole?: string; acceptance?: string;
+  findings?: readonly DetectorFinding[];
   origin: Origin; provenance: string;
 };
 export type Activation = {
@@ -29,7 +38,9 @@ export type Reconciliation = {
   scope: string;
   activations: Activation[]; gaps: Gap[];
   added: string[]; removed: string[]; changed: string[];
-  unknownFacts: string[];
+  unknownFacts: string[]; missingReasons: MissingFact[];
+  /** In-memory evidence only; NEVER persist task/path-bearing proofs to sanitized telemetry. */
+  observedFacts: Fact[];
   unresolvedGraphEdges: Relation[];
   provenance: Catalog["provenance"];
   stats: { scans: number; supports: number; affected: number; materialized: number };
@@ -74,6 +85,38 @@ function typedRules(catalog: Catalog): Rule[] {
     body: [
       { predicate: "file_layer", terms: ["?subject", "domain"] },
       { predicate: "operation", terms: ["?subject", "edit"] },
+    ],
+  });
+  // The historical path+operation rule above remains for compatibility. It is
+  // NOT evidence that an import was added. Structural supports are separate.
+  for (const operation of ["edit", "create"] as const) {
+    if (catalog.rules.has("coder.architecture.hierarchy-import")) {
+      typed.push({
+        id: "pi-atdd.typed-domain-integration-change-" + operation,
+        source: "pi-atdd/adapters/observed-source-delta-v1",
+        head: { predicate: "active", terms: ["?subject", "coder.architecture.hierarchy-import"] },
+        body: [
+          { predicate: "change", terms: ["?subject", "domain_to_integration_import_added"] },
+          { predicate: "operation", terms: ["?subject", operation] },
+        ],
+      }, {
+        id: "pi-atdd.typed-domain-integration-present-" + operation,
+        source: "pi-atdd/adapters/observed-source-delta-v1",
+        head: { predicate: "active", terms: ["?subject", "coder.architecture.hierarchy-import"] },
+        body: [
+          { predicate: "code_construct", terms: ["?subject", "domain_to_integration_import"] },
+          { predicate: "operation", terms: ["?subject", operation] },
+        ],
+      });
+    }
+  }
+  if (catalog.rules.has("coder.architecture.hierarchy-import")) typed.push({
+    id: "pi-atdd.typed-detector-architecture-review",
+    source: "pi-atdd/adapters/detector-finding-v1",
+    head: { predicate: "active", terms: ["?subject", "coder.architecture.hierarchy-import"] },
+    body: [
+      { predicate: "finding", terms: ["?subject", "domain_to_integration_import"] },
+      { predicate: "operation", terms: ["?subject", "review"] },
     ],
   });
   if (catalog.rules.has("coder.phase.discipline")) typed.push({
@@ -168,16 +211,33 @@ export class ReasoningSession {
     });
   }
 
-  private inputs(ob: ContextObservation): Map<string, Fact> {
+  private inputs(ob: ContextObservation): { entries: Map<string, Fact>; missingReasons: MissingFact[] } {
     if (!ob.scope || !ob.provenance || !ob.task || !["task","create","edit","review"].includes(ob.operation))
       throw new Error("observation requires stable scope, task, provenance and valid operation");
-    if (!["pi-event", "repository-observation", "trusted-work-provider"].includes(ob.origin))
+    if (!["pi-event", "repository-observation", "trusted-work-provider", "detector-result"].includes(ob.origin))
       throw new Error("unsupported observation provenance");
     if (ob.sourceText !== undefined && (!ob.path || typeof ob.sourceText !== "string"))
       throw new Error("source evidence requires an observed file path");
-    if (ob.origin !== "trusted-work-provider" && (ob.actorRole !== undefined || ob.phase !== undefined || ob.acceptance !== undefined))
+    if (ob.priorSourceText !== undefined &&
+      (!ob.path || ob.sourceText === undefined || typeof ob.priorSourceText !== "string"))
+      throw new Error("source delta requires an observed before/after pair");
+    if (ob.origin !== "trusted-work-provider" &&
+      (ob.actorRole !== undefined || ob.phase !== undefined || ob.acceptance !== undefined))
       throw new Error("authority, phase and acceptance require trusted provider evidence");
+    if (ob.phase && !["RED", "GREEN", "REFACTOR", "SMOKE"].includes(ob.phase))
+      throw new Error("unrecognized provider phase");
+    if (ob.origin === "trusted-work-provider" && (ob.actorRole || ob.phase || ob.acceptance) && !ob.revision)
+      throw new Error("trusted provider assertions require a pinned revision");
+    if (ob.findings !== undefined && ob.origin !== "detector-result")
+      throw new Error("detector findings require explicit detector-result provenance");
+    if (ob.origin === "detector-result" && (ob.operation !== "review" || !ob.revision || !ob.findings?.length || ob.sourceText !== undefined))
+      throw new Error("detector results require a revision-bound review observation");
     const entries = new Map<string, Fact>();
+    const missingReasons: MissingFact[] = [];
+    const missing = (fact: string, reason: string) => {
+      if (!missingReasons.some(x => x.fact === fact && x.reason === reason))
+        missingReasons.push({ fact, reason });
+    };
     const add = (predicate: string, args: string[], detail = ob.provenance) => {
       const id = ob.scope + ":" + groundKey(predicate, args);
       entries.set(id, fact(id, predicate, args, ob.origin, detail));
@@ -188,11 +248,45 @@ export class ReasoningSession {
       add("file", [ob.scope, ob.path], "path:" + ob.path + " observed by " + ob.provenance);
       const layer = roleOfPath(this.profile, ob.path); // role-level fact: the stack's local layer names never reach the rules
       if (layer) add("file_layer", [ob.scope, layer], "layer:" + layer + " from " + ob.path);
-      if (ob.sourceText !== undefined) {
-        for (const construct of discoverSourceEvidence(ob.path, ob.sourceText))
-          add("code_construct", [ob.scope, construct], "ast:" + construct + " @ " + ob.provenance);
+      const kind = classifyFileKind(ob.path, ob.sourceText);
+      if (kind.status === "observed")
+        add("file_kind", [ob.scope, kind.kind], "file_kind:" + kind.basis + " @ " + ob.provenance);
+      else missing("file_kind", kind.reason);
+      if (ob.origin !== "detector-result") {
+        if (kind.status === "observed" && !["generated", "vendor", "declaration"].includes(kind.kind)) {
+          const syntax = sourceSyntaxEvidence(ob.path, ob.sourceText);
+          if (syntax.status === "unknown") missing("code_construct", syntax.reason);
+          else for (const construct of discoverSourceEvidence(ob.path, ob.sourceText!))
+            add("code_construct", [ob.scope, construct], "ast:" + construct + " @ " + ob.provenance);
+        }
+        const imports = observeDomainImports(ob.path, ob.sourceText, ob.priorSourceText);
+        if (imports.present) add("code_construct", [ob.scope, "domain_to_integration_import"],
+          "ast:domain_to_integration_import @ " + ob.provenance);
+        if (imports.added) add("change", [ob.scope, "domain_to_integration_import_added"],
+          "before_after:domain_to_integration_import_added @ " + ob.provenance);
+        for (const reason of imports.unknownReasons) missing(
+          reason.includes("prior_") || reason === "unresolved_import_alias" ? "change" : "source", reason);
+        if (!imports.deltaObserved && !imports.unknownReasons.length) missing("change", "delta_not_observable");
       }
+    } else if (ob.operation === "edit" || ob.operation === "create") {
+      missing("file_kind", "path_unavailable");
+      missing("change", "target_unavailable");
     }
+    if (ob.findings) {
+      const safeId = /^[a-z][a-z0-9._:-]{0,127}$/i;
+      for (const finding of ob.findings) {
+        if (finding.code !== "domain_to_integration_import" ||
+            !safeId.test(finding.detectorId) || !safeId.test(finding.evidenceId) ||
+            finding.file !== ob.path || finding.revision !== ob.revision)
+          throw new Error("unverified or mismatched detector finding");
+        // Independent detectors asserting the same ground finding retain distinct
+        // assertion identities; losing one proof must not revoke the other.
+        const evidenceKey = ob.scope + ":finding:" + finding.detectorId + ":" + finding.evidenceId;
+        entries.set(evidenceKey, fact(evidenceKey, "finding", [ob.scope, finding.code],
+          ob.origin, "detector:" + finding.detectorId + "/evidence:" + finding.evidenceId +
+          " @ revision:" + finding.revision));
+      }
+    } else if (ob.operation === "review") missing("finding", "detector_result_unavailable");
     if (ob.phase) add("phase", [ob.scope, ob.phase]);
     if (ob.actorRole) add("actor_role", [ob.scope, ob.actorRole]);
     if (ob.acceptance) add("acceptance", [ob.scope, ob.acceptance]);
@@ -213,12 +307,13 @@ export class ReasoningSession {
           "pi-atdd/selector-registry", evidence + " @ " + ob.provenance));
       }
     }
-    return entries;
+    return { entries, missingReasons };
   }
 
   observe(ob: ContextObservation): Reconciliation {
     const before = this.current(ob.scope);
-    const wanted = this.inputs(ob), existing = this.observations.get(ob.scope) ?? new Map();
+    const { entries: wanted, missingReasons } = this.inputs(ob);
+    const existing = this.observations.get(ob.scope) ?? new Map();
     const mergedStats = { scans: 0, supports: 0, affected: 0 };
     const tally = (delta: Delta) => {
       mergedStats.scans += delta.scans;
@@ -247,12 +342,18 @@ export class ReasoningSession {
       .filter(item => item.args[0] === ob.scope)
       .map(item => ({ missingId: item.args[1]!,
         proof: this.engine.query("missing_requirement", item.args).proof! }));
-    const unknownFacts = ["phase", "actor_role", "acceptance", "revision"].filter(name =>
-      this.engine.facts(name).every(item => item.args[0] !== ob.scope));
+    const unknownFacts = [...new Set([
+      ...["phase", "actor_role", "acceptance", "revision"].filter(name =>
+        this.engine.facts(name).every(item => item.args[0] !== ob.scope)),
+      ...missingReasons.map(x => x.fact),
+    ])].sort();
     return {
       status: gaps.length ? "incomplete" : activations.length ? "matched" : "unknown",
       scope: ob.scope, activations, gaps, added, removed, changed,
-      unknownFacts, unresolvedGraphEdges: this.catalog.unresolvedEdges,
+      unknownFacts, missingReasons,
+      observedFacts: [...wanted.values()].filter(f =>
+        ["change", "file_kind", "code_construct", "finding", "phase", "file_layer"].includes(f.predicate)),
+      unresolvedGraphEdges: this.catalog.unresolvedEdges,
       provenance: this.catalog.provenance,
       stats: { ...mergedStats, materialized: this.engine.materializedCount },
     };

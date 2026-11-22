@@ -90,6 +90,7 @@ test("phase and role are UNKNOWN unless supported by a trusted adapter, not clai
       scope:"phase",task:"Implement order",path:"src/orders/application/service.ts",
       operation:"edit",phase:"GREEN",actorRole:"driver",
       origin:"trusted-work-provider",provenance:"verified-linear-session-and-plan-rev-a",
+      revision:"verified-plan-rev-a",
     });
     assert.ok(trusted.activations.some(x=>x.id==="coder.phase.discipline"));
     assert.ok(!trusted.unknownFacts.includes("phase"));

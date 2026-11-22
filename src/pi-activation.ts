@@ -12,7 +12,7 @@ import type { StructureProfile } from "./profile.ts";
 import { ReasoningSession, type ContextObservation } from "./reasoning-context.ts";
 import { renderReasonedPage, type RenderedPage } from "./render-reasoning.ts";
 import { observeRepository, type RepositorySnapshot } from "./repository-observer.ts";
-import { shellWriteTargetModes } from "./shell-targets.ts";
+import { shellWriteTargetModes, shellStaticWriteContents } from "./shell-targets.ts";
 import { registerAttentionStrip } from "./attention-strip.ts";
 import { attentionSeatOptions } from "./attention-seat.ts";
 import { registerSeatExecution } from "./execution-pi.ts";
@@ -127,6 +127,9 @@ export default function atdd(pi:ExtensionAPI):void {
       if(name==="code_construct" && args[1])found.add("ast:"+args[1]);
       if(name==="file_layer" && args[1])found.add("layer:"+args[1]);
       if(name==="phase" && args[1])found.add("phase:"+args[1]);
+      if(name==="file_kind" && args[1])found.add("file_kind:"+args[1]);
+      if(name==="change" && args[1])found.add("change:"+args[1]);
+      if(name==="finding" && args[1])found.add("finding:"+args[1]);
       for(const d of proof.derivations) for(const p of d.premises)visit(p);
     };
     for(const activation of result.activations) visit(activation.proof);
@@ -146,7 +149,8 @@ export default function atdd(pi:ExtensionAPI):void {
     fresh:readonly string[],page:RenderedPage|undefined,started:number):void{
     record(cwd,{point,operation,pathCategory:activationPathCategory(path),outcome:result.status,
       reasonCode:result.status==="incomplete"?"mandatory_dependency_missing":
-        result.status==="unknown"?"no_applicability_evidence":"graph_activation",
+        result.status==="unknown"?"no_applicability_evidence":
+        result.missingReasons.length?"graph_activation_with_gaps":"graph_activation",
       ruleIds:result.activations.map(a=>a.id),evidenceIds:evidenceIds(result),
       delivered:page?.emittedIds.length??0,deduplicated:Math.max(0,result.activations.length-fresh.length),
       omitted:page?.omittedIds.length??0,durationMs:performance.now()-started});
@@ -164,8 +168,19 @@ export default function atdd(pi:ExtensionAPI):void {
     if(typeof input?.oldText==="string"&&typeof input.newText==="string"){
       const parts=current.split(input.oldText);
       if(parts.length===2)return parts[0]+input.newText+parts[1];
+      return undefined; // an ambiguous/failed edit is NOT the current source
     }
     return current;
+  }
+  /** Read the actual old content before a mutation; absent new files have a known empty baseline. */
+  function beforeSource(cwd:string,path:string):string|undefined{
+    if(scopedPath(cwd,path)===null)return undefined;
+    try{
+      const abs=resolve(cwd,path);
+      if(!existsSync(abs))return "";
+      if(!statSync(abs).isFile()||statSync(abs).size>1_000_000)return undefined;
+      return readFileSync(abs,"utf8");
+    }catch{return undefined;}
   }
   type Notify={cwd:string;ui:{notify:(message:string,type?:"info"|"warning"|"error")=>void}};
   function setMode(ctx:Notify,mode:Mode,source:string,announce=true):boolean{
@@ -249,9 +264,10 @@ export default function atdd(pi:ExtensionAPI):void {
   const scopeFor=(path?:string)=>"pi-run:"+serial+":"+(path?"file:"+path:"task");
   const currentRevision=()=>observedRepo?.revision??undefined;
   function observe(cwd:string,operation:"task"|"edit"|"create"|"review",
-    origin:ContextObservation["origin"],provenance:string,path?:string,sourceText?:string){
+    origin:ContextObservation["origin"],provenance:string,path?:string,sourceText?:string,
+    priorSourceText?:string){
     return ensure(cwd).observe({
-      scope:scopeFor(path),task:task||"unknown task",path,sourceText,operation,origin,provenance,
+      scope:scopeFor(path),task:task||"unknown task",path,sourceText,priorSourceText,operation,origin,provenance,
       ...(currentRevision()?{revision:currentRevision()}:{}),
     });
   }
@@ -362,10 +378,11 @@ export default function atdd(pi:ExtensionAPI):void {
   }
   /** Same preflight for a governed path whether it is edited via edit/write or the shell. */
   function preflightPath(cwd:string,path:string,operation:"edit"|"create",provenance:string,
-    budget:number,blockUnknown:boolean,sourceText?:string):{block:true;reason:string}|undefined{
+    budget:number,blockUnknown:boolean,sourceText?:string,
+    priorSourceText?:string):{block:true;reason:string}|undefined{
     const started=performance.now();
     try{
-      const result=observe(cwd,operation,"pi-event",provenance,path,sourceText);
+      const result=observe(cwd,operation,"pi-event",provenance,path,sourceText,priorSourceText);
       const fresh=newlyRelevant(result);
       if(result.status==="incomplete"){
         const page=renderReasonedPage(result,fresh,budget);
@@ -538,13 +555,22 @@ export default function atdd(pi:ExtensionAPI):void {
         if(byPath.get(p)!=="create")byPath.set(p,op);
       }
       const targets=[...byPath.keys()];
+      const proposed=new Map<string,string>();
+      for(const [candidate,content] of shellStaticWriteContents(command)){
+        const path=scopedPath(ctx.cwd,candidate);
+        if(path!==null)proposed.set(path,content);
+      }
       const reasons:string[]=[];
       let remaining=16_000; // PLT-96 budget raise (was 12_000): shell preflight page must hold a write's full rule set
       try{
         for(const path of targets){
           if(remaining<2_500)break; // targets not yet delivered are preflighted on retry
-          const r=preflightPath(ctx.cwd,path,byPath.get(path)!,"Pi pre-shell tool_call (static write target)",
-            remaining,false,sourceFor(ctx.cwd,path));
+          const source=proposed.get(path);
+          const r=preflightPath(ctx.cwd,path,byPath.get(path)!,
+            source===undefined?"Pi pre-shell tool_call (target only, proposed source UNKNOWN)":
+              "Pi pre-shell tool_call (quoted literal heredoc proposal)",
+            remaining,false,source===undefined?sourceFor(ctx.cwd,path):source,
+            source===undefined?undefined:beforeSource(ctx.cwd,path));
           if(r){reasons.push(r.reason);remaining-=r.reason.length;}
         }
       }catch(e){reset();return {block:true,reason:"ATDD rule activation failed: "+String(e)};}
@@ -565,8 +591,15 @@ export default function atdd(pi:ExtensionAPI):void {
       return {block:true,reason:"ATDD cannot govern edits outside the repository."};
     }
     try{
+      const source=sourceFor(ctx.cwd,path,input);
+      // Only a fully proposed write or a uniquely applied oldText/newText edit
+      // has an independently observed before/after pair. Unspecified proposals
+      // can still reveal present syntax but cannot claim an added import.
+      const proposed=typeof input.content==="string" ||
+        (typeof input.oldText==="string"&&typeof input.newText==="string");
       return preflightPath(ctx.cwd,path,event.toolName==="write"?"create":"edit",
-        "Pi pre-edit tool_call",16_000,true,sourceFor(ctx.cwd,path,input)); // PLT-96: same budget as the shell path (parity test)
+        "Pi pre-edit tool_call",16_000,true,source,
+        proposed&&source!==undefined?beforeSource(ctx.cwd,path):undefined);
     }catch(e){reset();return {block:true,reason:"ATDD rule activation failed: "+String(e)};}
   });
   const READ_ONLY_TOOLS=new Set(["read","ls","find","grep"]);
