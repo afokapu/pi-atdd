@@ -26,7 +26,7 @@ test("coordinator checker validates all 20 original source acceptance rows", () 
   const cases = readFileSync(join(root, "tests/integration-contract-check.test.mjs"), "utf8")
     .match(/^test\(/gm) ?? [];
   assert.equal(cases.length, 13);
-  assert.match(run.stdout, /# fail 0/);
+  assert.equal(run.status, 0, "node:test integration-contract cases must pass");
 });
 
 test("review worker has an exact integration-derived pinned fork, not a main fork", () => {
