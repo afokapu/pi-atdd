@@ -49,6 +49,11 @@ export type PassASourceEvidence = {
   admission: "NOT_ASSESSED_BY_THIS_EXPORT";
 };
 
+/**
+ * A span marks a whole YAML top-level block, never a fabricated assertion.
+ * Nested terms, exceptions and validators remain in their authored object;
+ * reviewers can reconstruct each value at the exact source path.
+ */
 function authoredSpans(text: string): Record<string, SourceSpan> {
   const lines = text.split("\n");
   const starts: Array<{ key: string; line: number }> = [];
@@ -66,8 +71,13 @@ function authoredSpans(text: string): Record<string, SourceSpan> {
   return spans;
 }
 
-function json(x: unknown): Json {
-  return x === undefined ? null : x as Json;
+/**
+ * Explicit null and an omitted YAML field are different source states.
+ * Never manufacture a null value for a field that was never authored.
+ * The absence token is research metadata, NOT an authored convention value.
+ */
+function authoredValue(doc: Record<string, unknown>, field: string): Json {
+  return Object.hasOwn(doc, field) ? doc[field] as Json : { "$source": "ABSENT" };
 }
 
 /** Reproduces authored material, not independent semantic interpretation. */
@@ -97,6 +107,8 @@ export function readPassASourceEvidence(): PassASourceEvidence[] {
     assert.equal(column(row, "source_id_verification"), "YAML_HEADER_CHECKED_BY_VERIFIER");
     assert.ok(["CANDIDATE", "NO_CANDIDATE", "UNRESOLVED"].includes(status),
       "unknown Pass A disposition: " + status);
+    // Only the three authoritative roots are eligible. Fixtures, generated
+    // sidecars and arbitrary paths never become silent extra source rules.
     const text = readFileSync(join(root, path), "utf8");
     const authored = readYaml(join(root, path));
     assert.equal(authored.rule_id, id, "source rule identity drift: " + path);
@@ -114,19 +126,19 @@ export function readPassASourceEvidence(): PassASourceEvidence[] {
       authoredGraphWitnesses: column(row, "graph_witnesses_out_and_in").split(";").filter(Boolean),
       sourceSpans: spans,
       source: {
-        schemaVersion: json(authored.schema_version),
-        kind: json(authored.kind),
-        status: json(authored.status),
+        schemaVersion: authoredValue(authored, "schema_version"),
+        kind: authoredValue(authored, "kind"),
+        status: authoredValue(authored, "status"),
         statement: authored.statement,
-        rationale: json(authored.rationale),
-        terms: json(authored.terms),
-        exceptions: json(authored.exceptions),
-        content: json(authored.content),
-        validation: json(authored.validation),
-        implementation: json(authored.implementation),
-        sourceProvenance: json(authored.source),
-        metadata: json(authored.metadata),
-        parity: json(authored.parity),
+        rationale: authoredValue(authored, "rationale"),
+        terms: authoredValue(authored, "terms"),
+        exceptions: authoredValue(authored, "exceptions"),
+        content: authoredValue(authored, "content"),
+        validation: authoredValue(authored, "validation"),
+        implementation: authoredValue(authored, "implementation"),
+        sourceProvenance: authoredValue(authored, "source"),
+        metadata: authoredValue(authored, "metadata"),
+        parity: authoredValue(authored, "parity"),
       },
       admission: "NOT_ASSESSED_BY_THIS_EXPORT" as const,
     };
