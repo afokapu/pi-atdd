@@ -46,6 +46,8 @@ test("Bun/Flow/local examples retain authored terms, exceptions and use", () => 
   assert.ok(typeof bun.source.content === "object" && bun.source.content !== null);
   const content = bun.source.content as Record<string, unknown>;
   assert.ok(Array.isArray(content.exceptions), "GET/HEAD and test exceptions must remain inspectable");
+  // Missing authorship must not be confused with YAML's explicitly written null.
+  assert.deepEqual(bun.source.validation, { "$source": "ABSENT" });
 
   const flow = byId.get("coach.collaboration.accountable-delegation")!;
   assert.equal(flow.family, "Flow");
