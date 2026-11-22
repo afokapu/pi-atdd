@@ -17,17 +17,26 @@ const GENERATED = /(?:^|[./_-])generated(?:[./_-]|$)/i;
 const TEST = /(?:\.test|\.spec)\.[cm]?[jt]sx?$/i;
 const E2E = /(^|\/)(?:e2e|end-to-end)(\/|$)/i;
 
+/** Generated artifacts and tests are excluded from production-source predicates.
+ * Centralize the path/header heuristics so every observer shares one scope.
+ */
+function generatedMarker(path: string, source?: string): boolean {
+  return GENERATED.test(path) || (source !== undefined &&
+    /^\s*(?:\/\/|\/\*)\s*(?:@generated|generated\s+file\b)/i.test(source));
+}
+function testMarker(path: string): boolean {
+  return TEST.test(path) || /(^|\/)(?:tests|__tests__)(\/|$)/i.test(path);
+}
 export function classifyFileKind(file: string, source?: string): FileKindEvidence {
   const path = file.replaceAll("\\", "/");
   if (!path || path.includes("\0")) return { status: "unknown", reason: "invalid_path" };
   if (EXCLUDED.test(path)) return { status: "observed", kind: "vendor", basis: "excluded_path" };
-  if (GENERATED.test(path) || (source !== undefined && /^\s*(?:\/\/|\/\*)\s*(?:@generated|generated\s+file\b)/i.test(source)))
+  if (generatedMarker(path, source))
     return { status: "observed", kind: "generated", basis: "generated_marker" };
   if (/\.d\.[cm]?ts$/i.test(path)) return { status: "observed", kind: "declaration", basis: "declaration_suffix" };
   if (!SOURCE.test(path)) return { status: "unknown", reason: "unsupported_file_kind" };
   if (E2E.test(path)) return { status: "observed", kind: "e2e", basis: "e2e_path" };
-  if (TEST.test(path) || /(^|\/)(?:tests|__tests__)(\/|$)/i.test(path))
-    return { status: "observed", kind: "test", basis: "test_path" };
+  if (testMarker(path)) return { status: "observed", kind: "test", basis: "test_path" };
   return { status: "observed", kind: "source", basis: "source_extension" };
 }
 
@@ -65,6 +74,50 @@ const domainPrefix = (file: string): string | undefined => {
   if (index >= 0) return normalized.slice(0, index);
   return normalized.startsWith("domain/") ? "" : undefined;
 };
+/** Only statically inspect module specifiers, never assume alias resolution.
+ * An unsupported form is an explicit gap, not a negative dependency claim.
+ */
+function staticSpecifier(statement: ts.Statement, unresolved: Set<string>): string | undefined {
+  if (ts.isImportEqualsDeclaration(statement) && ts.isExternalModuleReference(statement.moduleReference)) {
+    unresolved.add("import_equals_uninspected");
+    return undefined;
+  }
+  const specifier = ts.isImportDeclaration(statement) || ts.isExportDeclaration(statement)
+    ? statement.moduleSpecifier : undefined;
+  if (!specifier) return undefined;
+  if (!ts.isStringLiteral(specifier)) {
+    unresolved.add("nonliteral_module_specifier");
+    return undefined;
+  }
+  return specifier.text;
+}
+/** Resolve only relative specifiers within the observed feature root. */
+function collectStaticImport(file: string, prefix: string, spec: string, imports: Set<string>, unresolved: Set<string>): void {
+  if (!spec.startsWith("./") && !spec.startsWith("../")) {
+    // Bare npm imports are external, but path-shaped aliases need resolution.
+    if (/^(?:@|~|#|\/|src\/)/.test(spec)) unresolved.add("unresolved_import_alias");
+    return;
+  }
+  const target = posix.normalize(posix.join(posix.dirname(file), spec));
+  if (target === ".." || target.startsWith("../")) {
+    unresolved.add("import_escapes_observed_root");
+    return;
+  }
+  if (target.startsWith((prefix ? prefix + "/" : "") + "integration/"))
+    imports.add(target);
+}
+/** Dynamic, require and import-type forms are not a clean static negative. */
+function markDynamicUnknowns(sf: ts.SourceFile, unresolved: Set<string>): void {
+  const visit = (node: ts.Node): void => {
+    if (ts.isCallExpression(node) && (
+      node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+      (ts.isIdentifier(node.expression) && node.expression.text === "require")
+    )) unresolved.add("dynamic_import_uninspected");
+    if (ts.isImportTypeNode(node)) unresolved.add("import_type_uninspected");
+    ts.forEachChild(node, visit);
+  };
+  visit(sf);
+}
 function scanDomainImports(file: string, source: string): ImportScan {
   const path = file.replaceAll("\\", "/");
   if (source.length > 1_000_000) return { status: "unknown", reason: "source_too_large" };
@@ -76,46 +129,11 @@ function scanDomainImports(file: string, source: string): ImportScan {
     return { status: "unknown", reason: "partial_source_parse" };
   const imports = new Set<string>();
   const unresolved = new Set<string>();
-  // Re-exports also introduce dependencies. Do not silently treat them as
-  // clean negatives, even though they use export rather than import syntax.
   for (const statement of sf.statements) {
-    if (ts.isImportEqualsDeclaration(statement) && ts.isExternalModuleReference(statement.moduleReference)) {
-      unresolved.add("import_equals_uninspected");
-      continue;
-    }
-    const specifier = ts.isImportDeclaration(statement) || ts.isExportDeclaration(statement)
-      ? statement.moduleSpecifier : undefined;
-    if (!specifier) continue;
-    if (!ts.isStringLiteral(specifier)) {
-      unresolved.add("nonliteral_module_specifier");
-      continue;
-    }
-    const spec = specifier.text;
-    if (!spec.startsWith("./") && !spec.startsWith("../")) {
-      // Bare packages and node: builtins are not resolved as local imports.
-      // Without tsconfig/module resolution, path-like aliases remain UNKNOWN.
-      if (/^(?:@|~|#|\/|src\/)/.test(spec)) unresolved.add("unresolved_import_alias");
-      continue;
-    }
-    const target = posix.normalize(posix.join(posix.dirname(path), spec));
-    if (target === ".." || target.startsWith("../")) {
-      unresolved.add("import_escapes_observed_root");
-      continue;
-    }
-    if (target.startsWith((prefix ? prefix + "/" : "") + "integration/"))
-      imports.add(target);
+    const spec = staticSpecifier(statement, unresolved);
+    if (spec !== undefined) collectStaticImport(path, prefix, spec, imports, unresolved);
   }
-  // import(), require(), and import type() may reference a local dependency
-  // that the bounded static-import detector cannot resolve. No clean negative.
-  const inspect = (node: ts.Node): void => {
-    if (ts.isCallExpression(node) && (
-      node.expression.kind === ts.SyntaxKind.ImportKeyword ||
-      (ts.isIdentifier(node.expression) && node.expression.text === "require")
-    )) unresolved.add("dynamic_import_uninspected");
-    if (ts.isImportTypeNode(node)) unresolved.add("import_type_uninspected");
-    ts.forEachChild(node, inspect);
-  };
-  inspect(sf);
+  markDynamicUnknowns(sf, unresolved);
   return { status: "observed", imports, unresolved: [...unresolved].sort() };
 }
 
