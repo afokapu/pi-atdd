@@ -220,6 +220,7 @@ export function inspectBunRouteAuth(file:string,source?:string):BunRouteAuth{
   if(source===undefined)return {status:"unknown",reasons:["source_unavailable"]};
   const gap=sourceGap(file,source);
   if(gap)return gap;
-  const ast=ts.createSourceFile(file,source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS);
+  const kind=/\.[jt]sx$/i.test(file)?ts.ScriptKind.TSX:ts.ScriptKind.TS;
+  const ast=ts.createSourceFile(file,source,ts.ScriptTarget.Latest,true,kind);
   return summarize(collectStates(ast));
 }
