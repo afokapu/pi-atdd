@@ -111,32 +111,38 @@ function routeStates(routes:ts.ObjectLiteralExpression,
   return states.length?states:["unknown"];
 }
 /** A source-visible mutating comparison is required for fetch branches. */
-function methodBranch(node:ts.Expression,aliases:Set<string>):boolean{
+/** An arbitrary object's `method` property must not be confused with
+ * the request argument of Bun's fetch handler.
+ */
+function isRequestMethod(n:ts.Node,request:string):boolean {
+  return ts.isPropertyAccessExpression(n)&&n.name.text==="method"&&
+    ts.isIdentifier(n.expression)&&n.expression.text===request;
+}
+function methodBranch(node:ts.Expression,aliases:Set<string>,request:string):boolean{
   if(!ts.isBinaryExpression(node))return false;
   const op=node.operatorToken.kind;
   if(op!==ts.SyntaxKind.EqualsEqualsEqualsToken&&op!==ts.SyntaxKind.EqualsEqualsToken)return false;
   const pair=[node.left,node.right];
   const mutates=pair.some(x=>ts.isStringLiteral(x)&&MUTATING.has(x.text.toUpperCase()));
-  const method=pair.some(x=>ts.isPropertyAccessExpression(x)&&x.name.text==="method"||
+  const method=pair.some(x=>isRequestMethod(x,request)||
     ts.isIdentifier(x)&&aliases.has(x.text));
   return mutates&&method;
 }
-/** Alias evidence is only local and restricted to request method reads. */
-function methodAliases(body:ts.Node):Set<string>{
+/** Alias evidence is only local and restricted to observed request method reads. */
+function methodAliases(body:ts.Node,request:string):Set<string>{
   const aliases=new Set<string>();
   const visit=(n:ts.Node):void=>{
     if(ts.isVariableDeclaration(n)&&ts.isIdentifier(n.name)&&n.initializer&&
-      ts.isPropertyAccessExpression(n.initializer)&&n.initializer.name.text==="method")
-      aliases.add(n.name.text);
+      isRequestMethod(n.initializer,request))aliases.add(n.name.text);
     ts.forEachChild(n,visit);
   };
   visit(body);
   return aliases;
 }
-function fetchBranchStates(body:ts.Node,aliases:Set<string>):State[]{
+function fetchBranchStates(body:ts.Node,aliases:Set<string>,request:string):State[]{
   const result:State[]=[];
   const visit=(n:ts.Node):void=>{
-    if(ts.isIfStatement(n)&&methodBranch(n.expression,aliases)){
+    if(ts.isIfStatement(n)&&methodBranch(n.expression,aliases,request)){
       if(guardAtEntry(n.thenStatement))result.push("guarded");
       else result.push(hasDirectGuard(n.thenStatement)?"unknown":"unguarded");
     }
@@ -145,11 +151,20 @@ function fetchBranchStates(body:ts.Node,aliases:Set<string>):State[]{
   visit(body);
   return result;
 }
+/** A fetch handler without a named request parameter cannot assert a method. */
+function fetchRequestName(node:ts.Node|undefined):string|undefined {
+  const fn=node&&ts.isMethodDeclaration(node)?node:
+    node&&ts.isPropertyAssignment(node)&&
+      (ts.isArrowFunction(node.initializer)||ts.isFunctionExpression(node.initializer))
+      ?node.initializer:undefined;
+  const name=fn?.parameters[0]?.name;
+  return name&&ts.isIdentifier(name)?name.text:undefined;
+}
 /** Do not treat an opaque fetch function as a read-only handler. */
 function fetchStates(handler:ts.Node|undefined):State[]{
-  const body=bodyOf(handler);
-  if(!body)return ["unknown"];
-  const states=fetchBranchStates(body,methodAliases(body));
+  const body=bodyOf(handler),request=fetchRequestName(handler);
+  if(!body||!request)return ["unknown"];
+  const states=fetchBranchStates(body,methodAliases(body,request),request);
   return states.length?states:["unknown"];
 }
 /** Allow only resolved local route maps, never arbitrary computed config. */
