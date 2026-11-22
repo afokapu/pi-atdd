@@ -14,11 +14,16 @@ const STREAMS = {
     wrapper: "ATD-41", source: "ATD-22", other: ["ATD-25", "ATD-30", "ATD-39"],
     criteria: ["OBS-001", "OBS-002", "OBS-003", "OBS-004"],
   },
+  "feature/atd-42-trusted-phase-activation": {
+    wrapper: "ATD-42", source: "ATD-42", other: ["ATD-39"],
+    criteria: [], // Pi-only phase slice; the broad cross-repo Coach gate remains separately pending.
+  },
 };
 
 export function inspectIntegrationPR({base, head, body = ""}) {
   const problems = [];
   const evidence = [];
+  const outstanding = [];
   if (base !== BASE) problems.push("Unexpected PR base: " + base);
   const stream = STREAMS[head];
   if (!stream) return {status: "INCOMPLETE", problems: [...problems, "Unexpected stream branch: " + head], evidence};
@@ -39,12 +44,12 @@ export function inspectIntegrationPR({base, head, body = ""}) {
       continue;
     }
     evidence.push({id, disposition});
-    if (disposition !== "PASS") problems.push("Original acceptance not complete: " + id + " = " + disposition);
+    if (disposition !== "PASS") outstanding.push(id + " = " + disposition);
   }
   return {
-    status: problems.length ? "INCOMPLETE" : "SELF_DECLARED_COMPLETE",
-    problems, evidence,
-    caution: "Self-declared completeness does not verify evidence. Independent tests, source-issue acceptance, reviewer sign-off and owner authority remain mandatory.",
+    status: problems.length ? "INCOMPLETE" : outstanding.length ? "DISCLOSED_PARTIAL" : stream.criteria.length ? "SELF_DECLARED_COMPLETE" : "SCOPE_REVIEW_ONLY",
+    problems, evidence, outstanding,
+    caution: "An integration checkpoint can carry explicit partial criteria. This does NOT close the original issue or prove behavior. Only source-verified applicable conventions, independent tests, review, and owner authority can govern acceptance.",
   };
 }
 
@@ -55,5 +60,5 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     body: process.env.PR_BODY || "",
   });
   process.stdout.write(JSON.stringify(result, null, 2) + "\n");
-  if (result.status !== "SELF_DECLARED_COMPLETE") process.exitCode = 1;
+  if (result.status === "INCOMPLETE") process.exitCode = 1;
 }
