@@ -8,6 +8,7 @@
  * The caller may inspect the frames in process; NEVER serialize these proofs
  * into the sanitized telemetry log (source paths/provenance may be sensitive).
  */
+import { createHash } from "node:crypto";
 import type { ContextObservation, Reconciliation, MissingFact } from "./reasoning-context.ts";
 import type { Fact, Proof } from "./inference.ts";
 
@@ -20,6 +21,8 @@ export type ObservedReceipt = {
   factArgs:readonly string[];
   origin:string;
   provenance:string|null;
+  sourceRevision:string|null;
+  sourceDigest:string|null;
   evidenceState:"OBSERVED"|"RETRACTED";
 };
 export type RuleReceipt = {
@@ -38,6 +41,9 @@ export type PiObservationFrame = {
     operation:Operation;point:Point;provenance:string;
     repositoryRevision:string|null;
     targetPathHint:string|null;
+    /** The digest of source bytes supplied with THIS event, not necessarily HEAD. */
+    sourceDigest:string|null;
+    sourceState:"PROPOSED"|"OBSERVED"|"UNVERIFIED"|"MISSING"|"RETRACTED";
   };
   /** These are NOT Resource classes or OoC identities. */
   resourceHints:{fileKind:string|null;layer:string|null};
@@ -53,7 +59,8 @@ export type PiObservationFrame = {
   disposition:"observation_only_no_authority";
 };
 type ScopeSnapshot = {
-  input:ContextObservation;
+  input:Pick<ContextObservation,"operation"|"path"|"revision">;
+  sourceDigest:string|null;
   facts:Map<string,Fact>;
   ruleIds:readonly string[];
 };
@@ -64,9 +71,25 @@ function allowedFacts(result:Reconciliation):Map<string,Fact>{
     .filter(f=>f.predicate!=="task")
     .map(f=>[f.id,f]));
 }
-function receipt(f:Fact,state:ObservedReceipt["evidenceState"]):ObservedReceipt {
+/** Only source-backed facts may inherit the exact observed source-byte digest.
+ * A phase, task operation or claimed authority is not proved by source bytes.
+ */
+const SOURCE_FACTS=new Set(["code_construct","change","file_kind","layer_dependency"]);
+function receipt(f:Fact,state:ObservedReceipt["evidenceState"],
+  sourceDigest:string|null,revision:string|null):ObservedReceipt {
   return {factId:f.id,factType:f.predicate,factArgs:[...f.args],
-    origin:f.source,provenance:f.provenance??null,evidenceState:state};
+    origin:f.source,provenance:f.provenance??null,
+    sourceRevision:revision,
+    sourceDigest:SOURCE_FACTS.has(f.predicate)?sourceDigest:null,evidenceState:state};
+}
+/** A proposed edit's digest is NOT a repository revision/committed-source proof. */
+function sourceIdentity(input:ContextObservation){
+  if(input.sourceText===undefined)return {digest:null,state:"MISSING" as const};
+  const digest=createHash("sha256").update(input.sourceText).digest("hex");
+  const state=input.origin==="repository-observation"?"OBSERVED" as const:
+    input.origin==="pi-event"&&["edit","create"].includes(input.operation)
+      ?"PROPOSED" as const:"UNVERIFIED" as const;
+  return {digest,state};
 }
 /** Stable fact identity is not enough if source or provenance was replaced. */
 function sameSupport(a:Fact,b:Fact):boolean {
@@ -108,18 +131,22 @@ export class PiObservationFeed {
     if(!eventIdValid(id)||input.scope!==result.scope)
       throw new Error("observation event identity/scope mismatch");
     const facts=allowedFacts(result),previous=this.scopes.get(input.scope);
+    const source=sourceIdentity(input),priorDigest=previous?.sourceDigest??null;
     const retracted=[...(previous?.facts.values()??[])]
-      .filter(f=>!facts.has(f.id)||!sameSupport(f,facts.get(f.id)!))
-      .map(f=>receipt(f,"RETRACTED"));
-    this.scopes.set(input.scope,{input,facts,
-      ruleIds:result.activations.map(a=>a.id)});
+      .filter(f=>!facts.has(f.id)||!sameSupport(f,facts.get(f.id)!)||
+        SOURCE_FACTS.has(f.predicate)&&priorDigest!==source.digest)
+      .map(f=>receipt(f,"RETRACTED",priorDigest,previous?.input.revision??null));
+    this.scopes.set(input.scope,{input:{
+      operation:input.operation,path:input.path,revision:input.revision,
+    },sourceDigest:source.digest,facts,ruleIds:result.activations.map(a=>a.id)});
     return {
       schema:"pi-atdd/observation-handoff/internal-v1",
       event:{id,scope:input.scope,origin:input.origin,operation:input.operation,
         point:pointOf(input),provenance:input.provenance,
-        repositoryRevision:input.revision??null,targetPathHint:input.path??null},
+        repositoryRevision:input.revision??null,targetPathHint:input.path??null,
+        sourceDigest:source.digest,sourceState:source.state},
       resourceHints:{fileKind:hint(facts,"file_kind"),layer:hint(facts,"file_layer")},
-      observed:[...facts.values()].map(f=>receipt(f,"OBSERVED")),
+      observed:[...facts.values()].map(f=>receipt(f,"OBSERVED",source.digest,input.revision??null)),
       retracted,missing:[...result.missingReasons],
       unknownFacts:[...result.unknownFacts],receipts:ruleReceipts(result),
       removedRuleIds:[...result.removed],changedRuleIds:[...result.changed],
@@ -140,9 +167,11 @@ export class PiObservationFeed {
       event:{id,scope,origin:"pi-reconciliation",operation:snapshot.input.operation,
         point:"scope_retraction",provenance:reason,
         repositoryRevision:snapshot.input.revision??null,
-        targetPathHint:snapshot.input.path??null},
+        targetPathHint:snapshot.input.path??null,
+        sourceDigest:snapshot.sourceDigest,sourceState:"RETRACTED"},
       resourceHints:{fileKind:null,layer:null},
-      observed:[],retracted:[...snapshot.facts.values()].map(f=>receipt(f,"RETRACTED")),
+      observed:[],retracted:[...snapshot.facts.values()].map(f=>
+        receipt(f,"RETRACTED",snapshot.sourceDigest,snapshot.input.revision??null)),
       missing:[{fact:"observation",reason}],unknownFacts:["observation"],
       receipts:[],removedRuleIds:[...snapshot.ruleIds],changedRuleIds:[],
       graphGaps:[],status:"unknown",disposition:"observation_only_no_authority",
