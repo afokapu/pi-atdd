@@ -319,3 +319,33 @@ test("ATD-42: the Pi hook delivers phases from the verified Flow task without fa
     assert.ok(!refused.message.content.includes("coder.phase.discipline"));
   }finally{x.cleanup();flow.cleanup();}
 });
+
+
+test("ATD-42: edits cannot bypass phase conventions omitted from the first page", () => {
+  const env:NodeJS.ProcessEnv={}, x=sandbox(env), flow=flowHookFixture(x.cwd,env);
+  const ctx={...x.ctx,sessionManager:{getSessionId:()=>flow.session}};
+  const start=x.handlers.get("before_agent_start")!, edit=x.handlers.get("tool_call")!;
+  try {
+    const initial=start({messageType:"user",prompt:"Implement this delivery"},ctx);
+    assert.equal(initial?.message?.customType,"pi-atdd-inference");
+    const event={toolName:"edit",input:{path:"src/orders/routes/create.ts"}};
+    let sawStageGuard=false, sawFileGuard=false;
+    for(let i=0;i<35;i++){
+      const response=edit(event,ctx);
+      if(response?.reason?.includes("ATDD phase PLAN guidance")) {
+        sawStageGuard=true;
+        assert.equal(response.block,true);
+        continue;
+      }
+      // Once phase guidance is delivered, the normal file-specific preflight
+      // still applies rather than being bypassed by stage pagination.
+      assert.equal(response?.block,true);
+      assert.match(response.reason,/ATDD contextual preflight/);
+      sawFileGuard=true;
+      break;
+    }
+    assert.equal(sawStageGuard,initial.message.content.includes("omitted by budget"),
+      "stage preflight must exactly account for undelivered phase rules");
+    assert.equal(sawFileGuard,true,"the bounded stage pages must eventually drain");
+  }finally{x.cleanup();flow.cleanup();}
+});
