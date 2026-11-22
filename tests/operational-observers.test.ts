@@ -53,6 +53,18 @@ test("missing prior, partial syntax, alias and excluded source cannot assert a n
   assert.equal(excluded.present,false);
   const nonDomain=observeDomainImports("src/orders/application/price.ts",outbound,initial);
   assert.equal(nonDomain.added,false);
+  assert.equal(nonDomain.sourceObserved,true);
+  assert.equal(nonDomain.deltaObserved,true);
+  // Path-based detector inapplicability is NOT a source or delta observation.
+  const absent=observeDomainImports("src/orders/application/price.ts");
+  assert.equal(absent.sourceObserved,false);
+  assert.equal(absent.deltaObserved,false);
+  const absentExcluded=observeDomainImports("vendor/orders/domain/price.ts");
+  assert.equal(absentExcluded.sourceObserved,false);
+  assert.equal(absentExcluded.deltaObserved,false);
+  const noBaseline=observeDomainImports("src/orders/application/price.ts",initial);
+  assert.equal(noBaseline.sourceObserved,true);
+  assert.equal(noBaseline.deltaObserved,false);
 });
 
 test("source parse is explicit UNKNOWN for syntax errors; clean negative is limited to inspected syntax", () => {
@@ -71,4 +83,10 @@ test("quoted literal cat heredocs supply a conservative shell proposal", () => {
   assert.equal(shellStaticWriteContents("cat > "+path+" <<'EOF'\n"+outbound).size,0,
     "unterminated heredoc is not a proposal");
   assert.equal(shellStaticWriteContents("cat > "+path+" <<'EOF'; rm -rf .\n"+outbound+"EOF").size,0);
+  assert.equal(shellStaticWriteContents(command+"\nprintf 'override' > "+path).size,0,
+    "a later write makes the preflight proposal untrustworthy");
+  assert.equal(shellStaticWriteContents("true\n"+command).size,0,
+    "preconditions and shell scripts are not a standalone static write");
+  assert.equal(shellStaticWriteContents(command+"\ncat > src/other.ts <<'NEXT'\nexport {};\nNEXT").size,0,
+    "multiple writes require independent source observation");
 });

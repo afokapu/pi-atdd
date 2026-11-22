@@ -98,11 +98,13 @@ export function observeDomainImports(file: string, proposed?: string, previous?:
     present: false, added: false, sourceObserved: false, deltaObserved: false,
     unknownReasons: [kind.reason],
   };
-  if (kind.kind !== "source") return {
-    present: false, added: false, sourceObserved: true, deltaObserved: true, unknownReasons: [],
-  };
-  if (domainPrefix(file) === undefined) return {
-    present: false, added: false, sourceObserved: true, deltaObserved: true, unknownReasons: [],
+  if (kind.kind !== "source" || domainPrefix(file) === undefined) return {
+    // Scope is established by the path, but unread source or an absent baseline
+    // cannot be reported as observed merely because the detector is inapplicable.
+    present: false, added: false,
+    sourceObserved: proposed !== undefined,
+    deltaObserved: proposed !== undefined && previous !== undefined,
+    unknownReasons: [],
   };
   if (proposed === undefined) return {
     present: false, added: false, sourceObserved: false, deltaObserved: false,

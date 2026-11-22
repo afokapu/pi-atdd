@@ -110,19 +110,23 @@ export function shellWriteTargetModes(command: string): ShellWriteTarget[] {
  * and are caught by post-tool repository observation when possible.
  */
 export function shellStaticWriteContents(command: string): ReadonlyMap<string, string> {
-  const proposals = new Map<string, string>();
-  const ambiguous = new Set<string>();
+  // Only a single complete, standalone command has an unambiguous final
+  // proposal. Any other command (before or after it) may alter the same file.
+  const unknown = () => new Map<string, string>();
   const lines = command.split(/\r?\n/);
+  let proposal: { path: string; text: string } | undefined;
   for (let i = 0; i < lines.length; i++) {
     const header = lines[i]!;
-    if (!/^\s*cat\b/.test(header) || /[;&|$`]/.test(header) || />>/.test(header)) continue;
+    if (!header.trim()) continue;
+    if (proposal || !/^\s*cat\b/.test(header) || /[;&|$`]/.test(header) || />>/.test(header))
+      return unknown();
     const heredoc = header.match(/<<(-?)\s*(['"])([A-Za-z_][A-Za-z0-9_]*)\2/);
     const target = header.match(/(?:^|\s)>\s*('[^']+'|"[^"]+"|[^\s<>;&|]+)/);
-    if (!heredoc || !target) continue; // unquoted delimiters may expand variables
+    if (!heredoc || !target) return unknown();
     const remainder = header.replace(heredoc[0], "").replace(target[0], "").trim();
-    if (remainder !== "cat") continue;
+    if (remainder !== "cat") return unknown();
     const path = target[1]!.replace(/^['"]|['"]$/g, "");
-    if (!PATHISH.test(path) || path.includes("..") || !path) continue;
+    if (!PATHISH.test(path) || path.includes("..") || !path) return unknown();
     const body: string[] = [];
     let end = -1;
     for (let j = i + 1; j < lines.length; j++) {
@@ -130,11 +134,9 @@ export function shellStaticWriteContents(command: string): ReadonlyMap<string, s
       if (line === heredoc[3]) { end = j; break; }
       body.push(line);
     }
-    if (end < 0) continue; // unterminated heredoc is not a source proposal
-    if (proposals.has(path)) ambiguous.add(path);
-    else proposals.set(path, body.join("\n") + "\n");
+    if (end < 0) return unknown();
+    proposal = { path, text: body.join("\n") + "\n" };
     i = end;
   }
-  for (const path of ambiguous) proposals.delete(path);
-  return proposals;
+  return proposal ? new Map([[proposal.path, proposal.text]]) : unknown();
 }
