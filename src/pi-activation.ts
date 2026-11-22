@@ -406,12 +406,32 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;e
           ". Unknown obligations are not waivers; repair graph before governed completion.",display:true}};
     }
   }
+  /** Missing launcher or lease authority is UNKNOWN, not permission to bypass
+   * a configured Flow-run gate. Plain standalone Pi sessions are unaffected. */
+  function flowConfigured():boolean {
+    return Boolean(env.ATDD_WORKFLOW_ROOT && env.ATDD_WORKFLOW_SEAT) ||
+      Boolean(executionSeat?.current()?.flowRoot);
+  }
+  /** Common dynamic writes whose targets cannot be proven before execution.
+   * A static-target preflight is not a sandbox: refuse obvious computed writes
+   * during the governed planning/test phases rather than allowing the bypass. */
+  function computedShellMutation(command:string):boolean {
+    const variableTarget=/(?:^|[^<])(?:>>?|&>>?)\\s*['\"]?\\s*(?:\\$|\x60)/m.test(command);
+    const computedFileCall=/\\b(?:writeFileSync|appendFileSync|writeFile|appendFile|createWriteStream|rmSync|unlinkSync|openSync|copyFileSync|renameSync)\\s*\\(\\s*(?!['\"\x60])/m.test(command);
+    const computedCommand=/(?:^|[;|&\\n])\\s*(?:(?:[A-Za-z_]\\w*=\\S+|env|sudo)\\s+)*(?:cp|mv|install|rm|touch|tee|ln|rsync|dd|truncate|shred|sed|perl)\\b[^\\n;|&]*(?:\\$|\x60)/m.test(command);
+    const opaqueInterpreter=/(?:^|[;|&\\n])\\s*(?:bash|sh|python[0-9.]*|node|bun)\\s+(?:-c|-e|--eval)\\b/m.test(command);
+    return variableTarget || computedFileCall || computedCommand || opaqueInterpreter;
+  }
   /** A governed Flow phase constrains the kind of edits the driver may make.
    * This is workflow readiness, not a claim that the rules themselves passed. */
   function governedPhaseWrite(ctx:{cwd:string;sessionManager?:{getSessionId:()=>string}},path:string):
     {block:true;reason:string}|undefined {
     const state=trustedFlow(ctx);
-    if(!state?.planRequired)return undefined;
+    if(!state){
+      if(flowConfigured())return {block:true,reason:"ATDD Flow phase UNKNOWN: verify the assigned task and live launch receipt before writing."};
+      return undefined;
+    }
+    if(!state.planRequired)return undefined;
     const plan=path.startsWith("plan/");
     if(state.phase==="PLAN" && !plan)
       return {block:true,reason:"ATDD PLAN: only scoped plan artifacts may change before operator ratification and Coach acceptance into RED."};
@@ -620,6 +640,12 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;e
         if(byPath.get(p)!=="create")byPath.set(p,op);
       }
       const targets=[...byPath.keys()];
+      try {
+        const phase=trustedFlow(ctx);
+        if((phase?.planRequired && (phase.phase==="PLAN"||phase.phase==="RED") ||
+            !phase && flowConfigured()) && computedShellMutation(command))
+          return {block:true,reason:"ATDD governed phase: computed shell mutations cannot be verified before execution; use Pi write/edit on the allowed PLAN or RED paths."};
+      }catch(e){reset();return {block:true,reason:"ATDD governed shell phase verification failed: "+String(e)};}
       if(targets.length) {
         try {
           for(const path of targets){
