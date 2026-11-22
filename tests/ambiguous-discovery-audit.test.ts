@@ -148,7 +148,7 @@ test("ambiguous multi-stage handoff task: discover evidence as work unfolds, not
   }finally{x.finish();}
 });
 
-test("adversarial negated task wording can activate a lexical security rule on GET-only code",()=>{
+test("source-proven GET-only Bun code suppresses negated lexical missing-auth overactivation",()=>{
   const x=setup();
   try{
     const result=probe(x.session,"negated","Do not touch authentication; change the public read text only.",
@@ -160,8 +160,8 @@ test("adversarial negated task wording can activate a lexical security rule on G
       selectorEvidence:activation?.reasons.filter(s=>s.includes("term:"))??[],
       status:result.status,
     }));
-    assert.ok(activation,"record existing lexical negation false-positive as a known discovery gap");
-    assert.ok(activation.reasons.some(s=>s.includes("term:authentication")));
-    assert.ok(!activation.reasons.some(s=>s.includes("bun_mutating_route")));
+    assert.equal(activation,undefined,"a verified read-only registration must override a misleading task term");
+    assert.ok(!result.observedFacts.some(f=>f.predicate==="code_construct"&&
+      f.args[1]==="bun_mutating_route_missing_auth"));
   }finally{x.finish();}
 });
