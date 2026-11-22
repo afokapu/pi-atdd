@@ -23,6 +23,14 @@
 
 **Negative/UNKNOWN boundaries:** A GitHub CI success means only its named jobs passed. GitHub source blobs establish provenance, not all convention behavior. Missing selector support, real authored RATIFY declarations, incomplete downstream measurements, source graph external endpoints and missing provider authority remain explicitly unresolved. No executable T9 matcher or canonical OoC identity is created by these corrections.
 
+## Correction: incomplete authored-graph evidence
+
+The first implementation parsed only edge blocks whose `source_ref` appeared directly after `-`. This was incorrect: the Bun graph stores `- confidence` first and `source_ref` later. Consequently, the original ledger omitted **429 of 508 Bun graph edges** while file/blob checks passed.
+
+The corrected ledger retains **all 508 Bun and 14 local typed edges**, including source/target, direction, constraint and source-line provenance. An omitted `constraint` is recorded as `default:mandatory`, reflecting the existing `src/catalog.ts` loader; it is not falsely attributed to authored YAML. The result has **1,002 in-corpus graph witnesses**. Missing/external endpoints remain unresolved; `enables`, `blocks` and `runs_alongside` are not retyped as `requires`.
+
+The read-only checker now reconstructs every witness from the original graph files and compares the entire expected set with the ledger for each convention. Regression tests insert missing and forged normative edges and require rejection. This is a **fix to our extracted evidence**, not a change to the existing convention or normative graph.
+
 ## Checks and acceptance
 
 Run `npm run check` at the **current PR head**; this now typechecks `tools/atd-40-verify-ledger.ts` and executes `tests/atd-40-ledger.test.ts` and fail-closed cases. Run the existing `smoke:catalog`, `smoke:pi`, tracker checker, and other unchanged CI jobs as appropriate, and report their *actual* results rather than inferring success. The source-ledger validation tests do **not** independently extract 362 unresolved conventions.
