@@ -293,21 +293,23 @@ export default function atdd(pi:ExtensionAPI, runtime: {
   /** The normal Datalog proof remains authoritative for applicability.
    * Its observed inputs additionally flow to the in-memory coordinator seam.
    */
-  function observeRaw(cwd:string,input:ContextObservation){
+  function observeRaw(cwd:string,input:ContextObservation,
+    preEditRole?:"PROPOSED"|"EXISTING"){
     const result=ensure(cwd).observe(input);
     if(runtime.observationSink)try{
-      emitObservation(observationFeed.capture(nextObservationId(),input,result));
+      emitObservation(observationFeed.capture(nextObservationId(),input,result,preEditRole));
     }catch{/* a proposal-only feed cannot interfere with editing */}
     return result;
   }
   function observe(cwd:string,operation:"task"|"edit"|"create"|"review",
     origin:ContextObservation["origin"],provenance:string,path?:string,sourceText?:string,
-    priorSourceText?:string,trusted?:TrustedFlowPhase){
+    priorSourceText?:string,trusted?:TrustedFlowPhase,
+    preEditRole?:"PROPOSED"|"EXISTING"){
     return observeRaw(cwd,{
       scope:scopeFor(path),task:task||"unknown task",path,sourceText,priorSourceText,operation,origin,provenance,
       ...(trusted?{phase:trusted.phase,actorRole:trusted.actorRole}:{}),
       ...(currentRevision()?{revision:currentRevision()}:{}),
-    });
+    },preEditRole);
   }
   function newlyRelevant(result:ReturnType<typeof observe>):string[]{
     for(const id of result.removed)delivered.delete(key(result.scope,id));
@@ -451,10 +453,12 @@ export default function atdd(pi:ExtensionAPI, runtime: {
    */
   function preflightPath(cwd:string,path:string,operation:"edit"|"create",provenance:string,
     budget:number,blockUnknown:boolean,sourceText?:string,
-    priorSourceText?:string):{block:true;reason:string}|undefined{
+    priorSourceText?:string,preEditRole?:"PROPOSED"|"EXISTING"):
+    {block:true;reason:string}|undefined{
     const started=performance.now();
     try{
-      const result=observe(cwd,operation,"pi-event",provenance,path,sourceText,priorSourceText);
+      const result=observe(cwd,operation,"pi-event",provenance,path,sourceText,priorSourceText,
+        undefined,preEditRole);
       const fresh=newlyRelevant(result);
       if(result.status==="incomplete"){
         const page=renderReasonedPage(result,fresh,budget);
@@ -648,7 +652,8 @@ export default function atdd(pi:ExtensionAPI, runtime: {
             source===undefined?"Pi pre-shell tool_call (target only, proposed source UNKNOWN)":
               "Pi pre-shell tool_call (quoted literal heredoc proposal)",
             remaining,false,source===undefined?sourceFor(ctx.cwd,path):source,
-            source===undefined?undefined:beforeSource(ctx.cwd,path));
+            source===undefined?undefined:beforeSource(ctx.cwd,path),
+            source===undefined?"EXISTING":"PROPOSED");
           if(r){reasons.push(r.reason);remaining-=r.reason.length;}
         }
       }catch(e){reset();return {block:true,reason:"ATDD rule activation failed: "+String(e)};}
@@ -681,7 +686,8 @@ export default function atdd(pi:ExtensionAPI, runtime: {
         (typeof input.oldText==="string"&&typeof input.newText==="string");
       return preflightPath(ctx.cwd,path,event.toolName==="write"?"create":"edit",
         "Pi pre-edit tool_call",16_000,true,source,
-        proposed&&source!==undefined?beforeSource(ctx.cwd,path):undefined);
+        proposed&&source!==undefined?beforeSource(ctx.cwd,path):undefined,
+        proposed&&source!==undefined?"PROPOSED":"EXISTING");
     }catch(e){reset();return {block:true,reason:"ATDD rule activation failed: "+String(e)};}
   });
   const READ_ONLY_TOOLS=new Set(["read","ls","find","grep"]);
