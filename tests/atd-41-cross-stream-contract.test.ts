@@ -30,6 +30,9 @@ test("S1/S2 source-backed mutation enters existing graph, GET-only retracts with
     const match=first.receipts.find(r=>r.conventionId==="coder.security.missing-auth");
     assert.ok(match);
     assert.match(JSON.stringify(match.proof),/bun_mutating_route_missing_auth/);
+    assert.ok(match.supportKinds.includes("STRUCTURAL_SOURCE"));
+    assert.ok(!match.supportKinds.includes("TRUSTED_PHASE"),
+      "source syntax does not grant provider phase or governance authority");
     assert.equal(match.sourceDigest?.length,64);
     assert.ok(first.observed.some(f=>f.factType==="code_construct"&&
       f.factArgs[1]==="bun_mutating_route_missing_auth"));
@@ -78,6 +81,11 @@ test("S4/S5 graph closure is authored mandatory only; potential Drivers are not 
     assert.ok(dependent.mandatoryRequires.some(e=>e.fromRuleId==="reviewer.reconciliation.behavioral"
       && e.toRuleId==="reviewer.inspectability.owner"&&e.constraint==="mandatory"));
     assert.ok(dependent.mandatoryRequires.every(e=>e.constraint==="mandatory"&&!!e.sourcePath));
+    assert.ok(dependent.supportKinds.includes("MANDATORY_REQUIRES"));
+    const legacy=frame.receipts.find(r=>r.conventionId==="reviewer.reconciliation.behavioral");
+    assert.ok(legacy?.supportKinds.includes("LEGACY_SELECTOR"),
+      "a legacy wording-based match must remain visibly distinct from a structural witness");
+    assert.ok(!legacy.supportKinds.includes("STRUCTURAL_SOURCE"));
     assert.ok(!JSON.stringify(dependent.mandatoryRequires).includes("runs_alongside"));
     assert.equal(frame.disposition,"observation_only_no_authority");
     assert.equal((frame as any).possibleDrivers,undefined);
