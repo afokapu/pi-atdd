@@ -416,10 +416,10 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;e
    * A static-target preflight is not a sandbox: refuse obvious computed writes
    * during the governed planning/test phases rather than allowing the bypass. */
   function computedShellMutation(command:string):boolean {
-    const variableTarget=/(?:^|[^<])(?:>>?|&>>?)\\s*['\"]?\\s*(?:\\$|\x60)/m.test(command);
-    const computedFileCall=/\\b(?:writeFileSync|appendFileSync|writeFile|appendFile|createWriteStream|rmSync|unlinkSync|openSync|copyFileSync|renameSync)\\s*\\(\\s*(?!['\"\x60])/m.test(command);
-    const computedCommand=/(?:^|[;|&\\n])\\s*(?:(?:[A-Za-z_]\\w*=\\S+|env|sudo)\\s+)*(?:cp|mv|install|rm|touch|tee|ln|rsync|dd|truncate|shred|sed|perl)\\b[^\\n;|&]*(?:\\$|\x60)/m.test(command);
-    const opaqueInterpreter=/(?:^|[;|&\\n])\\s*(?:bash|sh|python[0-9.]*|node|bun)\\s+(?:-c|-e|--eval)\\b/m.test(command);
+    const variableTarget=/(?:^|[^<])(?:>>?|&>>?)\s*['"]?\s*(?:\$|\x60)/m.test(command);
+    const computedFileCall=/\b(?:writeFileSync|appendFileSync|writeFile|appendFile|createWriteStream|rmSync|unlinkSync|openSync|copyFileSync|renameSync)\s*\(\s*(?!['"\x60])/m.test(command);
+    const computedCommand=/(?:^|[;|&\n])\s*(?:(?:[A-Za-z_]\w*=\S+|env|sudo)\s+)*(?:cp|mv|install|rm|touch|tee|ln|rsync|dd|truncate|shred|sed|perl)\b[^\n;|&]*(?:\$|\x60)/m.test(command);
+    const opaqueInterpreter=/(?:^|[;|&\n])\s*(?:bash|sh|python[0-9.]*|node|bun)\s+(?:-c|-e|--eval)\b/m.test(command);
     return variableTarget || computedFileCall || computedCommand || opaqueInterpreter;
   }
   /** A governed Flow phase constrains the kind of edits the driver may make.
