@@ -32,6 +32,7 @@ function flowRecord(root: string, file: string): unknown {
  * The enum is closed: unknown phases must never be silently normalized. */
 function phaseFor(task: Record<string, unknown>, taskId: string, provenance: string): TrustedFlowPhase | undefined {
   if (task.status !== "todo" && task.status !== "in_progress") return undefined;
+  if (task.blocker || task.deferred) return undefined; // paused work is not executable
   const phase = task.phase ?? "plan";
   if (!["plan", "red", "green", "refactor"].includes(String(phase)))
     throw new Error("Unknown authoritative Flow task phase");
@@ -77,7 +78,8 @@ function nativeRuntime(seat: Record<string, unknown>, pi: string, herdr: string,
   const locator = addresses && object(addresses.herdr) ? addresses.herdr : undefined;
   if (runtime.application !== "herdr" || runtime.wake !== "native" ||
       runtime.pi_session !== pi || locator?.session !== herdr ||
-      locator?.pane !== pane || typeof runtime.pi_session_path !== "string")
+      locator?.pane !== pane || typeof runtime.pi_session_path !== "string" ||
+      !isAbsolute(runtime.pi_session_path))
     throw new Error("Flow runtime binding does not match the live Pi and Herdr placement");
   if (typeof runtime.launch_receipt !== "string" || !isAbsolute(runtime.launch_receipt))
     throw new Error("Flow runtime launch receipt must be an absolute Flow-owned path");
@@ -87,7 +89,12 @@ function nativeRuntime(seat: Record<string, unknown>, pi: string, herdr: string,
 /** Flow's receipt stores *which tasks* the launcher actually authorized.
  * A task assigned after launch must not inherit another task's trusted phase. */
 function nativeReceipt(root: string, path: string, expected: Record<string, string>): Set<string> {
-  const receipt = flowRecord(root, path);
+  // Flow's launcher writes receipts under one protected Desk subdirectory.
+  const directory = realpathSync(join(root, ".atdd-flow", "runtime-launch"));
+  const physical = realpathSync(path), rel = relative(directory, physical);
+  if (!rel || rel === ".." || rel.startsWith(".." + sep) || isAbsolute(rel))
+    throw new Error("Flow launch receipt is outside the runtime-launch directory");
+  const receipt = flowRecord(root, physical);
   if (!object(receipt) || !Object.entries(expected).every(([k, value]) => receipt[k] === value))
     throw new Error("Flow launch receipt does not match the live seat binding");
   const tasks = receipt.tasks;
