@@ -177,6 +177,13 @@ function routeObject(node:ts.Node|undefined,
     return objectOf(bindings.get(node.name.text),bindings);
   return undefined;
 }
+/** Referenced method maps may change even when the outer routes object
+ * is an inline literal. A source-negative needs both levels source-visible.
+ */
+function routeHandlerAliases(routes:ts.ObjectLiteralExpression):boolean {
+  return routes.properties.some(p=>!ts.isPropertyAssignment(p)||
+    !ts.isObjectLiteralExpression(p.initializer));
+}
 /** An aliased route map or config can be mutated after declaration.
  * It may support a witnessed violation, never a proof of a clean handler.
  */
@@ -185,7 +192,10 @@ function aliasMayChange(call:ts.CallExpression,routes:ts.Node|undefined):boolean
   if(!cfg||!ts.isObjectLiteralExpression(cfg))return true;
   if(!routes)return false;
   if(ts.isShorthandPropertyAssignment(routes))return true;
-  if(ts.isPropertyAssignment(routes))return !ts.isObjectLiteralExpression(routes.initializer);
+  if(ts.isPropertyAssignment(routes)){
+    const value=routes.initializer;
+    return !ts.isObjectLiteralExpression(value)||routeHandlerAliases(value);
+  }
   return true;
 }
 function serveStates(call:ts.CallExpression,bindings:Map<string,ts.Expression>):State[]{
