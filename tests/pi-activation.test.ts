@@ -186,10 +186,9 @@ test("budget-clipped pre-edit rules are paged and cannot be silently skipped on 
 
 
 test("Pi pre-edit structural evidence and local telemetry work without task keywords",()=>{
-  const x=sandbox();
   const root=mkdtempSync(join(tmpdir(),"pi-atdd-telemetry-pi-"));
-  const old=process.env.PI_ATDD_TELEMETRY_DIR;
-  process.env.PI_ATDD_TELEMETRY_DIR=root;
+  const env:NodeJS.ProcessEnv={PI_ATDD_TELEMETRY_DIR:root};
+  const x=sandbox(env);
   try{
     const start=x.handlers.get("before_agent_start")!;
     start({messageType:"user",prompt:"Make orders cancellable"},x.ctx);
@@ -201,7 +200,7 @@ test("Pi pre-edit structural evidence and local telemetry work without task keyw
     assert.match(first.reason,/coder\.security\.missing-auth/);
     assert.equal(x.handlers.get("tool_call")!(event,x.ctx),undefined,
       "unchanged evidence should not repeatedly block on identical guidance");
-    const log=readFileSync(activationLogPath(x.cwd),"utf8");
+    const log=readFileSync(activationLogPath(x.cwd,env),"utf8");
     assert.ok(!log.includes("Make orders cancellable"),"task prompt must not enter telemetry");
     assert.ok(!log.includes("src/server.ts"),"raw path must not enter telemetry");
     assert.ok(!log.includes("DELETE:()=>"),"code must not enter telemetry");
@@ -215,8 +214,6 @@ test("Pi pre-edit structural evidence and local telemetry work without task keyw
     assert.ok(entries.some(item=>item.point==="pre_edit" && item.deduplicated>=1));
   }finally{
     x.cleanup();rmSync(root,{recursive:true,force:true});
-    if(old===undefined)delete process.env.PI_ATDD_TELEMETRY_DIR;
-    else process.env.PI_ATDD_TELEMETRY_DIR=old;
   }
 });
 
