@@ -20,9 +20,9 @@ test("all 376 convention bodies are available without fabricated OoC standing", 
   const entries = readPassASourceEvidence();
   assert.equal(entries.length, 376);
   assert.equal(new Set(entries.map(x => x.ruleId)).size, 376);
-  assert.equal(entries.filter(x => x.disposition === "CANDIDATE").length, 13);
+  assert.equal(entries.filter(x => x.disposition === "CANDIDATE").length, 26);
   assert.equal(entries.filter(x => x.disposition === "NO_CANDIDATE").length, 1);
-  assert.equal(entries.filter(x => x.disposition === "UNRESOLVED").length, 362);
+  assert.equal(entries.filter(x => x.disposition === "UNRESOLVED").length, 349);
   assert.equal(entries.reduce((n, x) => n + x.authoredGraphWitnesses.length, 0), 1000);
 
   // Every source's actual authored statement and line span is available
@@ -52,7 +52,8 @@ test("Bun/Flow/local examples retain authored terms, exceptions and use", () => 
   const flow = byId.get("coach.collaboration.accountable-delegation")!;
   assert.equal(flow.family, "Flow");
   assert.match(flow.source.statement, /accountable delegation/);
-  assert.equal(flow.disposition, "UNRESOLVED");
+  assert.equal(flow.disposition, "CANDIDATE");
+  assert.deepEqual(flow.candidateLabels, ["PA-F01", "PA-F02"]);
 
   const local = byId.get("shared.convention.propose")!;
   assert.equal(local.family, "Local");
