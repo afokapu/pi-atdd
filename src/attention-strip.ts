@@ -114,8 +114,10 @@ const keyOf = (ev: SignedEvent) =>
 export type StripHandle = { liveItems: () => string[] | undefined };
 
 export function registerAttentionStrip(pi: ExtensionAPI, options: StripOptions = {}): StripHandle {
-  const cfg = readLaunchConfig(options.env ?? process.env);
   const none: StripHandle = { liveItems: () => undefined };
+  // ATD-36: an incomplete route is refused by the execution-pi session_start safeguard, not by a load crash.
+  let cfg: LaunchConfig | undefined;
+  try { cfg = readLaunchConfig(options.env ?? process.env); } catch { return none; }
   if (!cfg) return none;
   const now = options.now ?? (() => new Date());
   const api = pi as unknown as Api;

@@ -59,8 +59,19 @@ export function seatAuthorizationRefusal(env: NodeJS.ProcessEnv): string {
   const missing = missingExecutionVariables(env);
   return "ATDD attention seat is not authorized: " + (missing.length
     ? "no execution seat is bound; set " + missing.join(", ") +
-      " (the launcher bootstraps it with `atdd seat bootstrap`)"
+      " (start Pi with `atdd launch`, which sets them and bootstraps the seat)"
     : "the execution seat is not owned by this session (stale, foreign or not bootstrapped)");
+}
+
+/** The attention route settings a governed session needs for its role. Names only, never values (ATD-36). */
+export function missingAttentionRouteVariables(env: NodeJS.ProcessEnv): string[] {
+  const role = env.PI_ATDD_ATTENTION_ROLE?.trim();
+  const missing = ["PI_ATDD_ATTENTION_IDENTITY", "PI_ATDD_ATTENTION_PROFILE", "PI_ATDD_ATTENTION_PROJECT_ID",
+    "PI_ATDD_ATTENTION_COACH_ADDRESS"].filter(name => !env[name]?.trim());
+  if (role === "worker" || role === "reviewer")
+    missing.push(...["PI_ATDD_ATTENTION_TASK_ID", "PI_ATDD_ATTENTION_EXECUTION_ID"].filter(name => !env[name]?.trim()));
+  if (role !== "coach" && role !== "worker" && role !== "reviewer") missing.unshift("PI_ATDD_ATTENTION_ROLE");
+  return missing;
 }
 
 /** A scoped launch is all-or-nothing. No fields means that existing Pi is unaffected. */

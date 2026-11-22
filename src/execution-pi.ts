@@ -7,7 +7,7 @@
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
-  acknowledgeRecovery, claimSeatHolder, executionConfigFromEnv, missingExecutionVariables, ownsExecution, recordSeatCheckpoint,
+  acknowledgeRecovery, claimSeatHolder, executionConfigFromEnv, missingAttentionRouteVariables, missingExecutionVariables, ownsExecution, recordSeatCheckpoint,
   recordSeatModel, adoptSuccessorLease, replaceSeat, resumeSeatFromCheckpoint, seatAuthorizationRefusal, vcsHead,
   withSeatFence, type SeatRuntimeConfig,
 } from "./execution-seat.ts";
@@ -42,18 +42,30 @@ const isContext = (x: unknown): x is Ctx => Boolean(x) && typeof x === "object" 
   typeof (x as Ctx).sessionManager?.getSessionId === "function";
 const modelName = (model: Ctx["model"]) => model ? model.provider + "/" + model.id : "unknown";
 
+/** ATD-36: the startup refusal for scoped attention without a complete route or seat. Names each missing setting. */
+const attentionLaunchRefusal = (env: NodeJS.ProcessEnv, seatError?: string): string | undefined => {
+  if (!env.PI_ATDD_ATTENTION_ROLE && !seatError) return undefined;
+  const route = missingAttentionRouteVariables(env);
+  const seat = seatError ? [seatError] : missingExecutionVariables(env);
+  const parts: string[] = [];
+  if (route.length) parts.push("attention route missing " + route.join(", "));
+  if (seat.length) parts.push("execution seat missing " + seat.join(", "));
+  return "ATDD launch refused: " + (parts.join("; ") || "unknown setting") +
+    ". Start Pi with `atdd launch`, which sets every setting and bootstraps the seat; never start bare pi.";
+};
+
 export function registerSeatExecution(pi: ExtensionAPI, env: NodeJS.ProcessEnv = process.env): SeatController | undefined {
   const api = pi as unknown as Api;
-  const configured = executionConfigFromEnv(env);
+  let configured: SeatRuntimeConfig | undefined;
+  let seatError: string | undefined;
+  try { configured = executionConfigFromEnv(env); }
+  catch (e) { seatError = e instanceof Error ? e.message : String(e); }
   if (!configured) {
-    // ATD-36: attention scope without a seat stays fail-closed; say at startup what is missing.
-    if (env.PI_ATDD_ATTENTION_ROLE) {
-      api.on("session_start", (_event, ctx) => {
-        const missing = missingExecutionVariables(env).join(", ");
-        (ctx as Partial<Ctx>)?.ui?.notify("ATDD attention is scoped but no execution seat is bound; attention tools " +
-          "will refuse. Missing: " + missing + ". The launcher must bootstrap the seat (atdd seat bootstrap) and " +
-          "export these before Pi starts.", "warning");
-      });
+    // ATD-36: scoped attention without a complete route or seat is refused at session start, naming each setting.
+    const refusal = attentionLaunchRefusal(env, seatError);
+    if (refusal) {
+      api.on("session_start", (_event, ctx) => { (ctx as Partial<Ctx>)?.ui?.notify(refusal, "error"); });
+      api.on("tool_call", () => ({ block: true, reason: refusal }));
     }
     return undefined;
   }
