@@ -210,7 +210,7 @@ function typedRules(catalog: Catalog): Rule[] {
       source: "pi-atdd/adapters/structural-evidence-v1",
       head: { predicate: "active", terms: [DATALOG_SUBJECT, "tester.acceptance.binding-declared"] },
       body: [
-        { predicate: "code_construct", terms: [DATALOG_SUBJECT, "test_urn_header"] },
+        { predicate: "code_construct", terms: [DATALOG_SUBJECT, "test_urn_missing_binding"] },
         { predicate: "operation", terms: [DATALOG_SUBJECT, operation] },
       ],
     });
