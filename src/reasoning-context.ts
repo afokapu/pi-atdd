@@ -216,6 +216,17 @@ function typedRules(catalog: Catalog): Rule[] {
       ],
     });
   }
+  // Presence and binding-kind validation are source-observable; whether a
+  // declared acceptance/Train is truthful remains a reviewer obligation.
+  if (catalog.rules.has("tester.acceptance.binding-declared")) typed.push({
+    id: "pi-atdd.typed-test-binding-truthfulness-review",
+    source: "pi-atdd/adapters/observed-test-urn-review-v1",
+    head: { predicate: "active", terms: [DATALOG_SUBJECT, "tester.acceptance.binding-declared"] },
+    body: [
+      { predicate: "code_construct", terms: [DATALOG_SUBJECT, "test_urn_header"] },
+      { predicate: "operation", terms: [DATALOG_SUBJECT, "review"] },
+    ],
+  });
   return [...typed, ...trustedPhaseRules(catalog)];
 }
 
