@@ -445,6 +445,8 @@ test("ATD-42: governed PLAN and RED stop implementation edits before accepted ha
     const started=x.handlers.get("before_agent_start")!(
       {messageType:"user",prompt:"Implement the assigned governed task"},ctx);
     assert.equal(started?.message?.customType,"pi-atdd-inference");
+    // A stale external tracking label cannot override the authoritative Flow phase.
+    writeFileSync(flow.taskFile,readFileSync(flow.taskFile,"utf8")+"external_tracking_status: done\n");
     const source=edit({toolName:"edit",input:{path:"src/orders/routes/create.ts"}},ctx);
     assert.equal(source?.block,true);
     assert.match(source.reason,/ATDD PLAN: only scoped plan artifacts/);
