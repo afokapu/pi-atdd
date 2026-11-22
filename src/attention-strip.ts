@@ -21,6 +21,14 @@ export type StripOptions = {
   clearInterval?: (handle: unknown) => void;
   /** Required for scoped launches: the seat must own this exact route at each action (PLT-118 review P1 A01/A02). */
   authorize?: (ctx: unknown, route: AttentionRouteBinding) => boolean;
+  /**
+   * The route in force for this session, derived from the CURRENT authorized seat binding, or undefined
+   * when the session is not authorized. Replaces `authorize`: PLT-117 recovery rotates the execution id
+   * in process, so the launch route alone would reject an authorized successor (PLT-118 fix P1 A05).
+   */
+  liveRoute?: (ctx: unknown, launched: AttentionRouteBinding) => AttentionRouteBinding | undefined;
+  /** Runs a write while no seat transfer can commit; throws when the seat is not owned (fix P1 A02/A05/A06). */
+  fence?: <T>(ctx: unknown, work: () => T) => T;
 };
 
 /** The subset of Pi's extension context this module uses. */
@@ -52,8 +60,18 @@ const trusted = (ctx: unknown): ctx is Ctx =>
 function requireTrusted(ctx: unknown): asserts ctx is Ctx {
   if (!trusted(ctx)) throw new Error("ATDD attention requires a trusted project");
 }
-const authorized = (ctx: unknown, cfg: LaunchConfig, opts: StripOptions) =>
-  trusted(ctx) && (!cfg.route || opts.authorize?.(ctx, cfg.route) === true);
+/** The launch config with the route in force right now, or undefined when this session is not authorized. */
+function effective(ctx: unknown, cfg: LaunchConfig, opts: StripOptions): LaunchConfig | undefined {
+  if (!trusted(ctx)) return undefined;
+  if (!cfg.route) return cfg;
+  if (opts.liveRoute) {
+    const route = opts.liveRoute(ctx, cfg.route);
+    return route ? { ...cfg, route } : undefined;
+  }
+  return opts.authorize?.(ctx, cfg.route) === true ? cfg : undefined;
+}
+const authorized = (ctx: unknown, cfg: LaunchConfig, opts: StripOptions) => effective(ctx, cfg, opts) !== undefined;
+const fenced = <T>(ctx: unknown, opts: StripOptions, work: () => T): T => opts.fence ? opts.fence(ctx, work) : work();
 
 /** An errored run never reached the model's answer, so its resolutions are not delivered. Read from agent_end. */
 const endedWithError = (event: unknown): boolean => {
@@ -61,9 +79,11 @@ const endedWithError = (event: unknown): boolean => {
   const last = messages.at(-1) as { role?: string; stopReason?: string } | undefined;
   return last?.role === "assistant" && last.stopReason === "error";
 };
-function requireAuthorized(ctx: unknown, cfg: LaunchConfig, opts: StripOptions): asserts ctx is Ctx {
+function requireAuthorized(ctx: unknown, cfg: LaunchConfig, opts: StripOptions): LaunchConfig {
   requireTrusted(ctx);
-  if (!authorized(ctx, cfg, opts)) throw new Error("ATDD attention seat is not authorized");
+  const current = effective(ctx, cfg, opts);
+  if (!current) throw new Error("ATDD attention seat is not authorized");
+  return current;
 }
 
 type Entry = { type?: string; customType?: string; data?: unknown };
@@ -112,9 +132,14 @@ function registerWorker(api: Api, cfg: LaunchConfig, now: () => Date, opts: Stri
       ttlHours: { type: "number", description: "Default 72, maximum 168" },
     }, ["type", "summary"]),
     execute: async (_id: string, params: Record<string, unknown>, _signal: unknown, _update: unknown, ctx: unknown) => {
-      requireAuthorized(ctx, cfg, opts);
-      const item = newItem(params, cfg, now());
-      withAttentionLock(cfg.spool, () => appendSpool(cfg.spool, signEvent({ event: "raised", item }, key())));
+      requireTrusted(ctx);
+      // Ownership is decided inside the seat fence and the spool lock, in the same step as the write.
+      const item = fenced(ctx, opts, () => withAttentionLock(cfg.spool, () => {
+        const current = requireAuthorized(ctx, cfg, opts);
+        const raised = newItem(params, current, now());
+        appendSpool(cfg.spool, signEvent({ event: "raised", item: raised }, key()));
+        return raised;
+      }));
       return textResult(`Raised ${item.id} (${item.type}). The Coach sees it on its next refresh.`, { id: item.id, item });
     },
   });
@@ -124,9 +149,9 @@ function registerWorker(api: Api, cfg: LaunchConfig, now: () => Date, opts: Stri
     description: "Show the open attention items this worker raised. Resolved, cancelled and expired items are removed.",
     parameters: schema({ id: { type: "string" } }, []),
     execute: async (_id: string, params: Record<string, unknown>, _signal: unknown, _update: unknown, ctx: unknown) => {
-      requireAuthorized(ctx, cfg, opts);
-      const mine = [...fold(readSpool(cfg.spool, cfg, key()).events, now()).values()]
-        .filter(it => cfg.route ? it.route?.taskId === (cfg.route.role === "worker" ? cfg.route.taskId : "") : it.from === cfg.identity);
+      const current = requireAuthorized(ctx, cfg, opts);
+      const mine = [...fold(readSpool(current.spool, current, key()).events, now()).values()]
+        .filter(it => current.route ? it.route?.taskId === (current.route.role === "worker" ? current.route.taskId : "") : it.from === current.identity);
       if (typeof params.id === "string") {
         const item = mine.find(it => it.id === params.id);
         return item
@@ -139,8 +164,9 @@ function registerWorker(api: Api, cfg: LaunchConfig, now: () => Date, opts: Stri
   });
   api.on("session_start", () => pending.clear());
   api.on("before_agent_start", (_event, ctx) => {
-    if (!authorized(ctx, cfg, opts)) return undefined;
-    return deliverResolutions(api, ctx, cfg, key(), pending);
+    const current = effective(ctx, cfg, opts);
+    if (!current) return undefined;
+    return deliverResolutions(api, ctx, current, key(), pending);
   });
   let runFailed = false;
   api.on("agent_end", (event: unknown) => { runFailed = endedWithError(event); });
@@ -154,7 +180,9 @@ function registerWorker(api: Api, cfg: LaunchConfig, now: () => Date, opts: Stri
     // inside the receipt lock, in the same step as the write (PLT-118 review P1 A05/A06).
     // If it crashed before settling, replay is intentionally at-least-once.
     const may = () => authorized(ctx, cfg, opts);
-    const committed = cfg.route ? commitTaskReceipts(cfg, pending, may) : may();
+    let committed = false;
+    try { committed = cfg.route ? fenced(ctx, opts, () => commitTaskReceipts(cfg, pending, may)) : may(); }
+    catch { committed = false; } // a lost seat writes nothing; the successor replays the resolution
     if (committed) for (const [id, revision] of pending) api.appendEntry(CUSTOM_TYPE, { event: "delivered", id, revision });
     pending.clear();
   });
@@ -280,7 +308,7 @@ function registerCoach(api: Api, cfg: LaunchConfig, now: () => Date, options: St
     if (cfg.route) {
       // Recheck expiry under the same writer lock as Coach actions. Two coach
       // processes can never append the same revision for one live item.
-      const expired = withAttentionLock(cfg.spool, () => {
+      const expired = fenced(ctx, options, () => withAttentionLock(cfg.spool, () => {
         if (!authorized(ctx, cfg, options)) return [] as SignedEvent[];
         const latest = readSpool(cfg.spool, cfg, key()).events;
         const due = expiryRecords(foldAll(latest), at, cfg);
@@ -289,7 +317,7 @@ function registerCoach(api: Api, cfg: LaunchConfig, now: () => Date, options: St
           appendSpool(cfg.spool, ev);
           return ev;
         });
-      });
+      }));
       for (const ev of expired) api.appendEntry(CUSTOM_TYPE, ev);
       render(ctx, foldAll(readSpool(cfg.spool, cfg, key()).events), at);
     } else {
@@ -331,7 +359,7 @@ function registerCoach(api: Api, cfg: LaunchConfig, now: () => Date, options: St
   const act = (ctx: unknown, id: string, action: Action): AttentionItem => {
     requireTrusted(ctx);
     const at = now();
-    const ev = withAttentionLock(cfg.spool, () => {
+    const ev = fenced(ctx, options, () => withAttentionLock(cfg.spool, () => {
       // Seat ownership and the compare-and-append are one critical section (PLT-118 review P1 A05/A06):
       // a stale coach cannot pass the check and then write after its seat was superseded.
       requireAuthorized(ctx, cfg, options);
@@ -340,7 +368,7 @@ function registerCoach(api: Api, cfg: LaunchConfig, now: () => Date, options: St
       const signed = signEvent({ event: "state", rec }, key());
       appendSpool(cfg.spool, signed);
       return signed;
-    });
+    }));
     api.appendEntry(CUSTOM_TYPE, ev);
     const all = foldAll(readSpool(cfg.spool, cfg, key()).events);
     render(ctx, all, at);

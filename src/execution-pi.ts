@@ -8,7 +8,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   acknowledgeRecovery, claimSeatHolder, executionConfigFromEnv, ownsExecution, recordSeatCheckpoint,
-  recordSeatModel, replaceSeat, resumeSeatFromCheckpoint, vcsHead, type SeatRuntimeConfig,
+  recordSeatModel, replaceSeat, resumeSeatFromCheckpoint, vcsHead, withSeatFence, type SeatRuntimeConfig,
 } from "./execution-seat.ts";
 import type { ExecutionCheckpoint } from "./execution-lifecycle.ts";
 import { ensureKey, foldAll, operational, readLaunchConfig, verifyAuthentic, type AttentionItem, type SignedEvent } from "./attention.ts";
@@ -32,6 +32,8 @@ export type SeatController = {
   /** Fences the old seat before delivering a kickoff to the new Pi session. */
   activateSuccessor: (ctx: unknown, checkpoint: ExecutionCheckpoint) => void;
   current: () => SeatRuntimeConfig;
+  /** Runs `work` under the seat lock after re-checking ownership; throws when the seat is not owned. */
+  fence: <T>(ctx: unknown, work: () => T) => T;
   snapshotAttention: () => ExecutionCheckpoint["attention"];
 };
 const isContext = (x: unknown): x is Ctx => Boolean(x) && typeof x === "object" &&
@@ -176,5 +178,9 @@ export function registerSeatExecution(pi: ExtensionAPI, env: NodeJS.ProcessEnv =
         ", generation " + b.generation + (owns(ctx) ? " (owned)" : " (NOT owned)"), owns(ctx) ? "info" : "warning");
     },
   });
-  return { owns, checkpoint, activateSuccessor, snapshotAttention, current: () => current };
+  const fence = <T>(x: unknown, work: () => T): T => withSeatFence(current, () => {
+    if (!owns(x)) throw new Error("ATDD attention seat is not authorized");
+    return work();
+  });
+  return { owns, checkpoint, activateSuccessor, snapshotAttention, current: () => current, fence };
 }

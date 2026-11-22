@@ -129,6 +129,16 @@ export function bootstrapSeat(config: SeatRuntimeConfig): ExecutionBinding {
   });
 }
 
+/**
+ * Runs `work` while no seat transfer can commit: standalone seats hold the seat lock, so a
+ * transfer fails closed instead of landing between a caller's ownership check and its write.
+ * Flow-owned seats are changed by Flow, which this process cannot lock; the caller's own check
+ * inside `work` is the best available fence there.
+ */
+export function withSeatFence<T>(config: SeatRuntimeConfig, work: () => T): T {
+  return config.mode === "standalone" ? locked(config.leasePath, work) : work();
+}
+
 export function ownsExecution(config: SeatRuntimeConfig, sessionId: string): boolean {
   if (!text(sessionId)) return false;
   if (config.mode === "external") return ownsFlowExecution(config, sessionId);

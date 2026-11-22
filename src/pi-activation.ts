@@ -14,7 +14,7 @@ import { renderReasonedPage, type RenderedPage } from "./render-reasoning.ts";
 import { observeRepository, type RepositorySnapshot } from "./repository-observer.ts";
 import { shellWriteTargetModes } from "./shell-targets.ts";
 import { registerAttentionStrip } from "./attention-strip.ts";
-import { seatOwnsRoute } from "./attention-routing.ts";
+import { attentionSeatOptions } from "./attention-seat.ts";
 import { registerSeatExecution } from "./execution-pi.ts";
 import type { ExecutionCheckpoint } from "./execution-lifecycle.ts";
 import { registerBusyState } from "./busy-state.ts";
@@ -83,9 +83,8 @@ const MODE_CHOICES=["ATDD — remember for this repo","Plain — remember for th
   "ATDD — this session only","Plain — this session only"];
 export default function atdd(pi:ExtensionAPI):void {
   const executionSeat = registerSeatExecution(pi); // PLT-117: inert unless launch-bound
-  // PLT-118: a scoped attention route needs the live seat lease AND a seat assigned to that exact route (review P1 A01/A02).
-  registerAttentionStrip(pi, executionSeat ? { authorize: (ctx, route) =>
-    executionSeat.owns(ctx) && seatOwnsRoute(executionSeat.current().binding, route) } : {});
+  // PLT-118: a scoped attention route follows the live seat binding and its writes are fenced against seat transfer.
+  registerAttentionStrip(pi, attentionSeatOptions(executionSeat));
   registerBusyState(pi); // PLT-121: busy/idle state file for the relaunch script; inert without an identity
   let cwdKey="", task="", serial=0;
   let catalog:Catalog|undefined,selectors:Selector[]=[],profile:StructureProfile|undefined;
