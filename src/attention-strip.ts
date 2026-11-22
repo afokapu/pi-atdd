@@ -8,7 +8,7 @@ import {
   ATTENTION_TYPES, CUSTOM_TYPE, RESOLUTION_TYPE, WIDGET_KEY, appendSpool, effectiveState, ensureKey,
   expiryRecords, fold, foldAll, newItem, operational, readLaunchConfig, readSpool, signEvent, transition,
   commitTaskReceipts, readTaskReceipts, withAttentionLock,
-  verifyEvent,
+  verifyEvent, verifyAuthentic,
   type Action, type AttentionItem, type Cursor, type LaunchConfig, type SignedEvent, type StateRecord,
 } from "./attention.ts";
 import type { AttentionRouteBinding } from "./attention-routing.ts";
@@ -103,7 +103,9 @@ function isCursor(d: unknown): d is Cursor {
 /** Verified attention records from this Coach or worker session. Other entries are ignored. */
 const sessionEvents = (ctx: Ctx, cfg: LaunchConfig, key: Buffer): SignedEvent[] =>
   ours(ctx).flatMap(d => {
-    const ev = verifyEvent(d, cfg, key);
+    // Scoped: a cached record may have been reassigned away since it was ingested (ATD-35); it is still
+    // authentic, and the durable spool read decides what is visible.
+    const ev = cfg.route ? verifyAuthentic(d, cfg, key) : verifyEvent(d, cfg, key);
     return ev ? [ev] : [];
   });
 
@@ -135,7 +137,7 @@ function listText(items: ReadonlyArray<AttentionItem>, at: Date): string {
     (it.issue ? ` ${it.issue}` : "") + ` from ${it.from}: ${it.summary.slice(0, 280)}`);
   const more = items.length > LIST_LIMIT ? `\n${items.length - LIST_LIMIT} more item(s) not shown.` : "";
   return `${items.length} current attention item(s):\n${lines.join("\n")}${more}\n` +
-    "Resolve with attention_resolve (id, scope, note); acknowledge with attention_ack.";
+    "Resolve with attention_resolve (id, scope, note); acknowledge with attention_ack; reassign with attention_reassign (id, toCoach, note); reopen a resolved item with attention_reopen (id, note).";
 }
 
 /** A still-live item from the same task (or sender) with the same type, issue and summary. */
@@ -395,20 +397,21 @@ function registerCoach(api: Api, cfg: LaunchConfig, now: () => Date, options: St
   const act = (ctx: unknown, id: string, action: Action): AttentionItem => {
     requireTrusted(ctx);
     const at = now();
-    const ev = fenced(ctx, options, () => withAttentionLock(cfg.spool, () => {
+    const { ev, prior } = fenced(ctx, options, () => withAttentionLock(cfg.spool, () => {
       // Seat ownership and the compare-and-append are one critical section (PLT-118 review P1 A05/A06):
       // a stale coach cannot pass the check and then write after its seat was superseded.
       requireAuthorized(ctx, cfg, options);
-      const all = foldAll(readSpool(cfg.spool, cfg, key()).events);
-      const rec = transition(all.get(id), action, cfg, at);
+      const before = readSpool(cfg.spool, cfg, key()).events;
+      const rec = transition(foldAll(before).get(id), action, cfg, at);
       const signed = signEvent({ event: "state", rec }, key());
       appendSpool(cfg.spool, signed);
-      return signed;
+      return { ev: signed, prior: before };
     }));
     api.appendEntry(CUSTOM_TYPE, ev);
-    const all = foldAll(readSpool(cfg.spool, cfg, key()).events);
-    render(ctx, all, at);
-    return all.get(id) as AttentionItem;
+    render(ctx, foldAll(readSpool(cfg.spool, cfg, key()).events), at);
+    // A reassignment moves the item out of this coach's view, so the result is folded from what this
+    // coach held before the write plus the record it just signed (ATD-35).
+    return foldAll([...prior, ev]).get(id) as AttentionItem;
   };
 
   const itemResult = (item: AttentionItem, action: string) =>
@@ -502,6 +505,26 @@ function registerCoach(api: Api, cfg: LaunchConfig, now: () => Date, options: St
     parameters: schema({ id: { type: "string" }, hours: { type: "number" } }, ["id", "hours"]),
     execute: async (_id: string, params: Record<string, unknown>, _signal: unknown, _update: unknown, ctx: unknown) =>
       itemResult(act(ctx, String(params.id), { kind: "snooze", hours: Number(params.hours) }), "snooze"),
+  });
+  api.registerTool({
+    name: "attention_reassign",
+    label: "Reassign attention",
+    description: "Reassign an open attention item you hold to another Coach of this project, with a note. The move is recorded; the item leaves your list and joins the target Coach's list (Coach).",
+    parameters: schema({
+      id: { type: "string" },
+      toCoach: { type: "string", description: "Coach address of the accountable coach" },
+      note: { type: "string" },
+    }, ["id", "toCoach", "note"]),
+    execute: async (_id: string, params: Record<string, unknown>, _signal: unknown, _update: unknown, ctx: unknown) =>
+      itemResult(act(ctx, String(params.id), { kind: "reassign", to: params.toCoach, note: params.note }), "reassign"),
+  });
+  api.registerTool({
+    name: "attention_reopen",
+    label: "Reopen attention",
+    description: "Reopen a resolved attention item you hold, with a note. It returns to your open list (Coach).",
+    parameters: schema({ id: { type: "string" }, note: { type: "string" } }, ["id", "note"]),
+    execute: async (_id: string, params: Record<string, unknown>, _signal: unknown, _update: unknown, ctx: unknown) =>
+      itemResult(act(ctx, String(params.id), { kind: "reopen", note: params.note }), "reopen"),
   });
   api.registerTool({
     name: "attention_resolve",
