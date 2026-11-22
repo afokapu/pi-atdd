@@ -250,7 +250,7 @@ test("ATD-41 Pi pre-edit write/edit send source delta proof before mutation",()=
     const malformed={toolName:"edit",input:{path,oldText:"NO SUCH TEXT",newText:proposed}};
     x.handlers.get("before_agent_start")!({messageType:"user",prompt:"Refine something"},x.ctx);
     x.handlers.get("tool_call")!(malformed,x.ctx);
-    const latest=readFileSync(activationLogPath(x.cwd),"utf8").trim().split("\n").map(JSON.parse)
+    const latest=readFileSync(activationLogPath(x.cwd),"utf8").trim().split("\n").map((line:string)=>JSON.parse(line))
       .filter((item:any)=>item.point==="pre_edit").at(-1);
     assert.ok(!latest.evidenceIds.includes("change:domain_to_integration_import_added"),
       "an edit that cannot be applied is not a structural delta");
@@ -289,7 +289,7 @@ test("ATD-41 literal shell heredoc preflight and runtime-computed bypass post-ob
     const notice=x.messages.find(m=>m.message.customType==="pi-atdd-post-tool-reconciliation");
     assert.ok(notice,"bypass is observed after mutation");
     assert.match(notice.message.content,/coder\.architecture\.hierarchy-import/);
-    const entries=readFileSync(activationLogPath(x.cwd),"utf8").trim().split("\n").map(JSON.parse);
+    const entries=readFileSync(activationLogPath(x.cwd),"utf8").trim().split("\n").map((line:string)=>JSON.parse(line));
     assert.ok(entries.some((item:any)=>item.point==="post_tool" &&
       item.evidenceIds.includes("ast:domain_to_integration_import")));
     assert.ok(!entries.some((item:any)=>item.point==="post_tool" &&
