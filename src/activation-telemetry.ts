@@ -63,6 +63,35 @@ function ids(value: readonly string[] | undefined): string[] {
 function count(value: number | undefined): number {
   return Number.isFinite(value) ? Math.max(0, Math.floor(value!)) : 0;
 }
+/** Accept only a bounded session identity; never copy a prompt or free-form label. */
+function safeSessionId(value: string | undefined): string {
+  return typeof value === "string" && /^[a-zA-Z0-9-]{1,50}$/.test(value) ? value : "unknown";
+}
+/** Keep reason and catalog identifiers closed to prevent raw evidence leakage. */
+function safeReasonCode(value: string | undefined): string {
+  return value && ID.test(value) ? value : "none";
+}
+function safeCatalogDigest(value: string | undefined): string {
+  return value && /^[a-f0-9]{12,64}$/.test(value) ? value.slice(0, 12) : "unknown";
+}
+function safeDurationMs(value: number | undefined): number {
+  return Number.isFinite(value) ? Math.max(0, Math.round(value! * 10) / 10) : 0;
+}
+/** Construct only whitelisted fields, never spread the untrusted event object. */
+function sanitizedRecord(cwd: string, event: ActivationEvent) {
+  return {
+    schema: SCHEMA, at: new Date().toISOString(),
+    repoId: createHash("sha256").update(resolve(cwd)).digest("hex").slice(0, 20),
+    sessionId: safeSessionId(event.sessionId),
+    point: event.point, outcome: event.outcome, operation: event.operation ?? "task",
+    pathCategory: event.pathCategory ?? "none",
+    reasonCode: safeReasonCode(event.reasonCode),
+    ruleIds: ids(event.ruleIds), evidenceIds: ids(event.evidenceIds),
+    delivered: count(event.delivered), deduplicated: count(event.deduplicated),
+    omitted: count(event.omitted), durationMs: safeDurationMs(event.durationMs),
+    catalogDigest: safeCatalogDigest(event.catalogDigest),
+  };
+}
 /** Persist sanitized counters only. A write failure is an observability gap,
  * not grounds to approve, waive, block or falsely claim code compliance.
  */
@@ -74,21 +103,7 @@ export function appendActivation(cwd: string, event: ActivationEvent,
     const path = activationLogPath(cwd, options);
     // Build a closed schema: ignore unknown event keys even when supplied by
     // an untrusted tool result. Never stringify the original event object.
-    const record = {
-      schema: SCHEMA, at: new Date().toISOString(),
-      repoId: createHash("sha256").update(resolve(cwd)).digest("hex").slice(0, 20),
-      sessionId: typeof event.sessionId === "string" && /^[a-zA-Z0-9-]{1,50}$/.test(event.sessionId)
-        ? event.sessionId : "unknown",
-      point: event.point, outcome: event.outcome, operation: event.operation ?? "task",
-      pathCategory: event.pathCategory ?? "none",
-      reasonCode: event.reasonCode && ID.test(event.reasonCode) ? event.reasonCode : "none",
-      ruleIds: ids(event.ruleIds), evidenceIds: ids(event.evidenceIds),
-      delivered: count(event.delivered), deduplicated: count(event.deduplicated),
-      omitted: count(event.omitted),
-      durationMs: Number.isFinite(event.durationMs) ? Math.max(0, Math.round(event.durationMs! * 10) / 10) : 0,
-      catalogDigest: event.catalogDigest && /^[a-f0-9]{12,64}$/.test(event.catalogDigest)
-        ? event.catalogDigest.slice(0, 12) : "unknown",
-    };
+    const record = sanitizedRecord(cwd,event);
     const line = JSON.stringify(record) + "\n";
     const limit = options.maxBytes ?? LIMIT;
     // Keep one bounded current file and one rotated predecessor. Private
@@ -115,29 +130,43 @@ export type TelemetrySummary = {
 /** Malformed, oversized or unreadable logs are counted as gaps rather than
  * being accepted as clean zero-event records. A summary is not a policy verdict.
  */
+type PerFileCounts = {total: number; malformed: number; unreadable: number};
+/** A malformed event is an observation gap, not a successful empty record. */
+function countLine(line: string, groups: TelemetrySummary["groups"]): boolean {
+  try {
+    const raw: unknown = JSON.parse(line);
+    if (!raw || typeof raw !== "object") return false;
+    const value = raw as {schema?: string; point?: string; outcome?: string};
+    if (value.schema !== SCHEMA || !POINTS.includes(value.point as ActivationPoint) ||
+        !OUTCOMES.includes(value.outcome as ActivationOutcome)) return false;
+    groups[value.point as ActivationPoint][value.outcome as ActivationOutcome]++;
+    return true;
+  } catch { return false; }
+}
+/** Each file is bounded; failed reads are counted, never silently ignored. */
+function countFile(file: string, groups: TelemetrySummary["groups"]): PerFileCounts {
+  if (!existsSync(file)) return {total: 0, malformed: 0, unreadable: 0};
+  try {
+    if (statSync(file).size > 2 * LIMIT) return {total: 0, malformed: 0, unreadable: 1};
+    let total=0, malformed=0;
+    for (const line of readFileSync(file, "utf8").split("\n").filter(Boolean)) {
+      if (countLine(line, groups)) total++;
+      else malformed++;
+    }
+    return {total,malformed,unreadable:0};
+  } catch { return {total:0,malformed:0,unreadable:1}; }
+}
+/** Summaries retain both the current and rotated windows, never an all-time
+ * compliance denominator. Missing or invalid records remain visible as gaps.
+ */
 export function activationSummary(cwd: string, options: TelemetryLocation = {}): TelemetrySummary {
   const groups = {task_start: emptyCounts(), pre_edit: emptyCounts(), post_tool: emptyCounts()};
-  let malformed = 0, unreadable = 0, total = 0;
-  if (isDisabled(options)) return {groups, malformed, unreadable, total};
-  const path = activationLogPath(cwd, options);
-  for (const file of [path + ".1", path]) {
-    if (!existsSync(file)) continue;
-    try {
-      if (statSync(file).size > 2 * LIMIT) {unreadable++; continue;}
-      for (const line of readFileSync(file, "utf8").split("\n").filter(Boolean)) {
-        try {
-          const e: unknown = JSON.parse(line);
-          if (!e || typeof e !== "object") {malformed++;continue;}
-          const v = e as {schema?:string;point?:string;outcome?:string};
-          if (v.schema !== SCHEMA || !POINTS.includes(v.point as ActivationPoint) ||
-              !OUTCOMES.includes(v.outcome as ActivationOutcome)) {malformed++;continue;}
-          groups[v.point as ActivationPoint][v.outcome as ActivationOutcome]++;
-          total++;
-        } catch {malformed++; }
-      }
-    } catch { unreadable++; }
-  }
-  return {groups, malformed, unreadable, total};
+  if (isDisabled(options)) return {groups, malformed:0, unreadable:0, total:0};
+  const path = activationLogPath(cwd,options);
+  const older = countFile(path+".1", groups);
+  const current = countFile(path, groups);
+  return {groups, malformed:older.malformed+current.malformed,
+    unreadable:older.unreadable+current.unreadable,total:older.total+current.total};
 }
 /** Present the eligible-attempt denominator beside matched counts; matches
  * alone cannot measure false activations, recall or agent implementation quality.

@@ -121,21 +121,22 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string} 
   /** PLT-93 working mode for this session; undefined until resolved. */
   let current:Resolution|undefined;
   const active=(cwd:string)=>current?.mode==="atdd"&&repositoryRoot(cwd)!==null;
-  /** Only closed, stable identifiers from proof nodes are logged: never prose, code, or paths. */
+  /** Only closed, stable identifiers from proof nodes enter telemetry.
+   * Predicate-to-prefix mapping is deliberately exhaustive and auditable;
+   * all other facts, including task text and raw file paths, stay out.
+   */
   function evidenceIds(result: ReturnType<ReasoningSession["observe"]>):string[]{
+    const prefixes: Record<string,string> = {
+      selector_hit:"selector:",code_construct:"ast:",file_layer:"layer:",
+      phase:"phase:",file_kind:"file_kind:",change:"change:",finding:"finding:",
+    };
     const found = new Set<string>();
     const visit = (proof: Proof):void => {
-      const name=proof.fact.predicate, args=proof.fact.args;
-      if(name==="selector_hit" && args[1])found.add("selector:"+args[1]);
-      if(name==="code_construct" && args[1])found.add("ast:"+args[1]);
-      if(name==="file_layer" && args[1])found.add("layer:"+args[1]);
-      if(name==="phase" && args[1])found.add("phase:"+args[1]);
-      if(name==="file_kind" && args[1])found.add("file_kind:"+args[1]);
-      if(name==="change" && args[1])found.add("change:"+args[1]);
-      if(name==="finding" && args[1])found.add("finding:"+args[1]);
-      for(const d of proof.derivations) for(const p of d.premises)visit(p);
+      const prefix=prefixes[proof.fact.predicate],value=proof.fact.args[1];
+      if(prefix&&value)found.add(prefix+value);
+      for(const d of proof.derivations)for(const premise of d.premises)visit(premise);
     };
-    for(const activation of result.activations) visit(activation.proof);
+    for(const activation of result.activations)visit(activation.proof);
     return [...found].sort();
   }
   function record(cwd:string, event:ActivationEvent):void{
