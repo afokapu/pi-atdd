@@ -15,6 +15,7 @@ import { renderReasonedPage, type RenderedPage } from "./render-reasoning.ts";
 import { observeRepository, type RepositorySnapshot } from "./repository-observer.ts";
 import { shellWriteTargetModes, shellStaticWriteContents } from "./shell-targets.ts";
 import { validateImportBoundary } from "./validator-observer.ts";
+import { PiObservationFeed, type PiObservationFrame } from "./pi-observation-feed.ts";
 import { registerAttentionStrip } from "./attention-strip.ts";
 import { attentionSeatOptions } from "./attention-seat.ts";
 import { registerSeatExecution } from "./execution-pi.ts";
@@ -86,10 +87,13 @@ const INTENT_RULE="Use set_atdd_mode when the user signals, in any wording or la
 const oneLine=(s:string)=>s.replace(/\s+/g," ").trim().slice(0,160);
 const MODE_CHOICES=["ATDD — remember for this repo","Plain — remember for this repo",
   "ATDD — this session only","Plain — this session only"];
-/** Pi supplies only the ExtensionAPI. A test harness may inject an isolated
- * telemetry sink; no external provider or task text can select this path.
+/** Pi supplies only the ExtensionAPI. Optional sinks are internal test/coordination
+ * seams, not model-controlled or published T9/OoC authority.
  */
-export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;env?:NodeJS.ProcessEnv} = {}):void {
+export default function atdd(pi:ExtensionAPI, runtime: {
+  telemetryRoot?:string;env?:NodeJS.ProcessEnv;
+  observationSink?:(frame:PiObservationFrame)=>void;
+} = {}):void {
   const env=runtime.env??process.env;
   const executionSeat = registerSeatExecution(pi,env); // PLT-117: inert unless launch-bound
   // PLT-118: a scoped attention route follows the live seat binding and its writes are fenced against seat transfer.
@@ -102,6 +106,13 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;e
   let observationWarning=false;
   let telemetryWarning=false;
   const sessionId=randomUUID();
+  const observationFeed=new PiObservationFeed();
+  let observationSequence=0;
+  /** Never persist a raw observation receipt or let a failing consumer block Pi. */
+  function emitObservation(frame:PiObservationFrame):void{
+    try{runtime.observationSink?.(frame);}catch{/* evidence sink is advisory */}
+  }
+  const nextObservationId=()=> "pi:"+sessionId+":"+(++observationSequence);
   const delivered=new Map<string,string>();
   const unresolvedPaths=new Set<string>();
   // PLT-102: automatic handoff. Usage is read in turn_end; the session switch runs
@@ -262,6 +273,8 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;e
     catch{return DEFAULT_COMPACTION_RESERVE;}
   }
   function reset():void{
+    if(runtime.observationSink)
+      for(const frame of observationFeed.invalidate(nextObservationId()))emitObservation(frame);
     reasoning=undefined;delivered.clear();unresolvedPaths.clear();observationWarning=false;
     pendingPostTool.clear();redeliveries.clear();
   }
@@ -277,10 +290,20 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;e
   }
   const scopeFor=(path?:string)=>"pi-run:"+serial+":"+(path?"file:"+path:"task");
   const currentRevision=()=>observedRepo?.revision??undefined;
+  /** The normal Datalog proof remains authoritative for applicability.
+   * Its observed inputs additionally flow to the in-memory coordinator seam.
+   */
+  function observeRaw(cwd:string,input:ContextObservation){
+    const result=ensure(cwd).observe(input);
+    if(runtime.observationSink)try{
+      emitObservation(observationFeed.capture(nextObservationId(),input,result));
+    }catch{/* a proposal-only feed cannot interfere with editing */}
+    return result;
+  }
   function observe(cwd:string,operation:"task"|"edit"|"create"|"review",
     origin:ContextObservation["origin"],provenance:string,path?:string,sourceText?:string,
     priorSourceText?:string,trusted?:TrustedFlowPhase){
-    return ensure(cwd).observe({
+    return observeRaw(cwd,{
       scope:scopeFor(path),task:task||"unknown task",path,sourceText,priorSourceText,operation,origin,provenance,
       ...(trusted?{phase:trusted.phase,actorRole:trusted.actorRole}:{}),
       ...(currentRevision()?{revision:currentRevision()}:{}),
@@ -677,6 +700,11 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;e
     const scope=scopeFor("validator:"+item.path);
     const revoke=()=>{
       ensure(cwd).retractScope(scope);
+      if(runtime.observationSink){
+        const frame=observationFeed.retractScope(nextObservationId(),scope,
+          "validator support revoked after source/phase reconciliation");
+        if(frame)emitObservation(frame);
+      }
       delivered.delete(key(scope,"coder.architecture.hierarchy-import"));
     };
     if(trusted?.phase!=="REFACTOR"){revoke();return undefined;}
@@ -686,7 +714,7 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;e
       return run.status==="unknown"?"ATDD REFACTOR validator UNKNOWN for "+item.path+
         ": "+run.missingReasons.join(", ")+". No finding asserted.":undefined;
     }
-    const result=ensure(cwd).observe({
+    const result=observeRaw(cwd,{
       scope,task:task||"unknown task",path:item.path,operation:"review",
       origin:"detector-result",
       provenance:"actual "+run.detectorId+" source validation; "+trusted.provenance+
