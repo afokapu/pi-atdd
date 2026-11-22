@@ -242,7 +242,7 @@ test("ATD-42: the Pi before_agent_start hook delivers phase-specific conventions
     writeTask("plan");
     writeFileSync(receiptFile,stringify({
       schema:"atdd-flow/pi-runtime-launch-receipt/v1",
-      seat:seatAddress,pi_session:session,pi_session_path:piSessionPath,
+      seat:seatAddress,tasks:["delivery"],pi_session:session,pi_session_path:piSessionPath,
       herdr_session:"forge",pane:"w1:p2",
     }));
     const runtime={
@@ -282,7 +282,7 @@ test("ATD-42: the Pi before_agent_start hook delivers phase-specific conventions
 
     writeFileSync(receiptFile,stringify({
       schema:"atdd-flow/pi-runtime-launch-receipt/v1",
-      seat:seatAddress,pi_session:"a-superseded-session",pi_session_path:piSessionPath,
+      seat:seatAddress,tasks:["delivery"],pi_session:"a-superseded-session",pi_session_path:piSessionPath,
       herdr_session:"forge",pane:"w1:p2",
     }));
     const refused=onStart({messageType:"extension",prompt:""},ctx);
