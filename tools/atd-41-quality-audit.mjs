@@ -67,7 +67,7 @@ const reviewFunctions=new Set([
   "PiObservationFeed.capture","PiObservationFeed.retractScope","PiObservationFeed.invalidate",
   "emitObservation","nextObservationId","observeRaw",
   "sourceFor","beforeSource","preflightPath","observe","recordReasoned","evidenceIds",
-  "refactorValidatorPage","postToolPage",
+  "revokeValidatorSupport","refactorValidatorPage","postToolPage",
   "safeSessionId","safeReasonCode","safeCatalogDigest","safeDurationMs",
   "sanitizedRecord","countLine","countFile",
   "isDisabled","root","activationLogPath","appendActivation","activationSummary",
