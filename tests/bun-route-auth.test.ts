@@ -29,6 +29,22 @@ test("a guard after an observable write or inside a nested callback is not a saf
   assert.equal(inspectBunRouteAuth("src/server.ts",branch).status,"unknown");
 });
 
+test("aliased and mutable route maps never certify a clean security negative",()=>{
+  const inline='Bun.serve({routes:{"/x":{GET:()=>1}}});';
+  assert.equal(inspectBunRouteAuth("src/server.ts",inline).status,"read-only");
+  const alias='const routes={"/x":{GET:()=>1}};Bun.serve({routes});';
+  assert.equal(inspectBunRouteAuth("src/server.ts",alias).status,"unknown");
+  const mutated='const routes={"/x":{GET:()=>1}};routes["/x"].POST=()=>2;Bun.serve({routes});';
+  assert.equal(inspectBunRouteAuth("src/server.ts",mutated).status,"unknown",
+    "an alias mutated to POST cannot prove a read-only route");
+  const guardedAlias='const routes={"/x":{POST:()=>{requireAuth();return 1}}};Bun.serve({routes});';
+  assert.equal(inspectBunRouteAuth("src/server.ts",guardedAlias).status,"unknown",
+    "an alias can gain a second unguarded mutation");
+  const unguardedAlias='const routes={"/x":{POST:()=>1}};Bun.serve({routes});';
+  assert.equal(inspectBunRouteAuth("src/server.ts",unguardedAlias).status,"unguarded",
+    "a witnessed violation remains positive despite alias uncertainty");
+});
+
 test("unresolved handler, dynamic config and incomplete syntax are UNKNOWN, not safe",()=>{
   assert.deepEqual(inspectBunRouteAuth("src/server.ts",route("POST","handler")),
     {status:"unknown",reasons:["route_or_handler_unresolved"]});
