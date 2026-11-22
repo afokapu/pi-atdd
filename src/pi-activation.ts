@@ -695,18 +695,19 @@ export default function atdd(pi:ExtensionAPI, runtime: {
   /** A real source validation receipt is distinct from a shell tool's output.
    * REFACTOR delivery requires a freshly verified Flow task/seat/launch receipt.
    */
+  function revokeValidatorSupport(cwd:string,scope:string):void{
+    ensure(cwd).retractScope(scope);
+    if(runtime.observationSink){
+      const frame=observationFeed.retractScope(nextObservationId(),scope,
+        "validator support revoked after source/phase reconciliation");
+      if(frame)emitObservation(frame);
+    }
+    delivered.delete(key(scope,"coder.architecture.hierarchy-import"));
+  }
   function refactorValidatorPage(cwd:string,item:Pending,source:string|undefined,
     trusted:TrustedFlowPhase|undefined,budget:number):string|undefined {
     const scope=scopeFor("validator:"+item.path);
-    const revoke=()=>{
-      ensure(cwd).retractScope(scope);
-      if(runtime.observationSink){
-        const frame=observationFeed.retractScope(nextObservationId(),scope,
-          "validator support revoked after source/phase reconciliation");
-        if(frame)emitObservation(frame);
-      }
-      delivered.delete(key(scope,"coder.architecture.hierarchy-import"));
-    };
+    const revoke=()=>revokeValidatorSupport(cwd,scope);
     if(trusted?.phase!=="REFACTOR"){revoke();return undefined;}
     const run=validateImportBoundary(item.path,source,currentRevision());
     if(run.status!=="finding"){
