@@ -121,6 +121,24 @@ function hint(facts:Map<string,Fact>,predicate:string):string|null {
 function eventIdValid(id:string):boolean{
   return /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/.test(id);
 }
+/** Source-byte changes invalidate source-backed assertions even when their
+ * Datalog predicate and arguments happen to remain equal.
+ */
+function withdrawn(f:Fact,old:ScopeSnapshot,current:Map<string,Fact>,
+  newDigest:string|null):boolean {
+  const now=current.get(f.id);
+  if(!now)return true;
+  if(!sameSupport(f,now))return true;
+  return SOURCE_FACTS.has(f.predicate)&&old.sourceDigest!==newDigest;
+}
+function withdrawnReceipts(previous:ScopeSnapshot|undefined,current:Map<string,Fact>,
+  digest:string|null):ObservedReceipt[]{
+  if(!previous)return [];
+  return [...previous.facts.values()]
+    .filter(f=>withdrawn(f,previous,current,digest))
+    .map(f=>receipt(f,"RETRACTED",previous.sourceDigest,previous.input.revision??null));
+}
+
 /** A new observation replaces prior support in its own scope, not other scopes.
  * The old fact receipts are explicitly retracted; absent facts are never
  * transformed into NO_RULE_REQUIRED.
@@ -131,11 +149,8 @@ export class PiObservationFeed {
     if(!eventIdValid(id)||input.scope!==result.scope)
       throw new Error("observation event identity/scope mismatch");
     const facts=allowedFacts(result),previous=this.scopes.get(input.scope);
-    const source=sourceIdentity(input),priorDigest=previous?.sourceDigest??null;
-    const retracted=[...(previous?.facts.values()??[])]
-      .filter(f=>!facts.has(f.id)||!sameSupport(f,facts.get(f.id)!)||
-        SOURCE_FACTS.has(f.predicate)&&priorDigest!==source.digest)
-      .map(f=>receipt(f,"RETRACTED",priorDigest,previous?.input.revision??null));
+    const source=sourceIdentity(input);
+    const retracted=withdrawnReceipts(previous,facts,source.digest);
     this.scopes.set(input.scope,{input:{
       operation:input.operation,path:input.path,revision:input.revision,
     },sourceDigest:source.digest,facts,ruleIds:result.activations.map(a=>a.id)});
