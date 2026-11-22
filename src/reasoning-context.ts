@@ -105,34 +105,42 @@ function typedRules(catalog: Catalog): Rule[] {
       ],
     });
   }
-  // ATD-42: only trusted work-provider phase facts trigger these bundles.
-  // This is activation of existing canonical rules, not new inferred graph edges.
-  const byPhase: Record<Phase, readonly string[]> = {
-    PLAN: [
-      "planner.decomposition.local-scope",
-      "planner.steps.jtbd-taxonomy",
-      "planner.decomposition.jtbd-vs-odi-grammar",
-      "planner.decomposition.user-system-flow-journey",
-      "planner.decomposition.keep-pivot-kill",
-      "planner.plan.confirm-before-author",
-      "planner.acceptance.well-formed",
-      "planner.plan.granularity-completeness",
-    ],
-    RED: ["tester.red.behavioral-assertion", "tester.red.fails-first"],
-    GREEN: ["coder.phase.discipline"],
-    REFACTOR: ["coder.phase.discipline"],
-    SMOKE: ["planner.desired-outcome.must-have-smoke-acceptance"],
-  };
-  for (const [phase, ids] of Object.entries(byPhase)) for (const id of ids) {
-    if (!catalog.rules.has(id)) continue;
-    typed.push({
+  return [...typed, ...trustedPhaseRules(catalog)];
+}
+
+/** A phase is an observed workflow fact, not a word guessed from the prompt.
+ * This table activates existing pinned rules without altering the source graph. */
+const guidanceByPhase: Record<Phase, readonly string[]> = {
+  PLAN: [
+    "planner.decomposition.local-scope",
+    "planner.steps.jtbd-taxonomy",
+    "planner.decomposition.jtbd-vs-odi-grammar",
+    "planner.decomposition.user-system-flow-journey",
+    "planner.decomposition.keep-pivot-kill",
+    "planner.plan.confirm-before-author",
+    "planner.acceptance.well-formed",
+    "planner.plan.granularity-completeness",
+  ],
+  RED: ["tester.red.behavioral-assertion", "tester.red.fails-first"],
+  GREEN: ["coder.phase.discipline"],
+  REFACTOR: ["coder.phase.discipline"],
+  SMOKE: ["planner.desired-outcome.must-have-smoke-acceptance"],
+};
+
+/** Missing phase guidance is INCOMPLETE, not a silently dropped rule.
+ * A weaker model must not need to recognize the missing convention. */
+function trustedPhaseRules(catalog: Catalog): Rule[] {
+  const result: Rule[] = [];
+  for (const [phase, ids] of Object.entries(guidanceByPhase)) for (const id of ids) {
+    const available = catalog.rules.has(id);
+    result.push({
       id: "pi-atdd.trusted-phase-" + phase.toLowerCase() + "-" + id,
       source: "pi-atdd/adapters/trusted-work-phase-v1",
-      head: { predicate: "active", terms: ["?subject", id] },
+      head: { predicate: available ? "active" : "missing_requirement", terms: ["?subject", id] },
       body: [{ predicate: "phase", terms: ["?subject", phase] }],
     });
   }
-  return typed;
+  return result;
 }
 function collectReasons(proof: Proof): string[] {
   const reasons = new Set<string>();
