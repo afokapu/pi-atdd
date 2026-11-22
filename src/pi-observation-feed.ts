@@ -49,7 +49,7 @@ export type PiObservationFrame = {
     targetPathHint:string|null;
     /** The digest of source bytes supplied with THIS event, not necessarily HEAD. */
     sourceDigest:string|null;
-    sourceState:"PROPOSED"|"OBSERVED"|"UNVERIFIED"|"MISSING"|"RETRACTED";
+    sourceState:"PROPOSED"|"EXISTING"|"OBSERVED"|"UNVERIFIED"|"MISSING"|"RETRACTED";
   };
   /** These are NOT Resource classes or OoC identities. */
   resourceHints:{fileKind:string|null;layer:string|null};
@@ -89,12 +89,15 @@ function receipt(f:Fact,state:ObservedReceipt["evidenceState"],
     sourceDigest:SOURCE_FACTS.has(f.predicate)?sourceDigest:null,evidenceState:state};
 }
 /** A proposed edit's digest is NOT a repository revision/committed-source proof. */
-function sourceIdentity(input:ContextObservation){
+/** Existing on-disk source in a preflight is not a proposed edit.
+ * The Pi adapter identifies that distinction explicitly, not by task words.
+ */
+function sourceIdentity(input:ContextObservation,preEditRole?:"PROPOSED"|"EXISTING"){
   if(input.sourceText===undefined)return {digest:null,state:"MISSING" as const};
   const digest=createHash("sha256").update(input.sourceText).digest("hex");
-  const state=input.origin==="repository-observation"?"OBSERVED" as const:
-    input.origin==="pi-event"&&["edit","create"].includes(input.operation)
-      ?"PROPOSED" as const:"UNVERIFIED" as const;
+  const state=preEditRole??(input.origin==="repository-observation"?"OBSERVED" as const:
+    input.origin==="pi-event"&&input.priorSourceText!==undefined
+      ?"PROPOSED" as const:"UNVERIFIED" as const);
   return {digest,state};
 }
 /** Stable fact identity is not enough if source or provenance was replaced. */
@@ -178,11 +181,12 @@ function withdrawnReceipts(previous:ScopeSnapshot|undefined,current:Map<string,F
  */
 export class PiObservationFeed {
   private scopes=new Map<string,ScopeSnapshot>();
-  capture(id:string,input:ContextObservation,result:Reconciliation):PiObservationFrame {
+  capture(id:string,input:ContextObservation,result:Reconciliation,
+    preEditRole?:"PROPOSED"|"EXISTING"):PiObservationFrame {
     if(!eventIdValid(id)||input.scope!==result.scope)
       throw new Error("observation event identity/scope mismatch");
     const facts=allowedFacts(result),previous=this.scopes.get(input.scope);
-    const source=sourceIdentity(input);
+    const source=sourceIdentity(input,preEditRole);
     const retracted=withdrawnReceipts(previous,facts,source.digest);
     this.scopes.set(input.scope,{input:{
       operation:input.operation,path:input.path,revision:input.revision,
