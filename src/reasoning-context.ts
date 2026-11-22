@@ -368,6 +368,18 @@ function architectureExcludedBySource(ob:ContextObservation):boolean {
     knownSafeArchitectureImports(ob.path,ob.sourceText);
 }
 
+/** A complete, inspected test header can disprove missing binding, unlike
+ * task prose or a path match. Keep unknown syntax on legacy fallback.
+ */
+function bindingExcludedBySource(ob:ContextObservation):boolean {
+  if(!ob.path||ob.sourceText===undefined)return false;
+  const kind=classifyFileKind(ob.path,ob.sourceText);
+  if(kind.status!=="observed")return false;
+  if(!["test","e2e"].includes(kind.kind))return true;
+  if(sourceSyntaxEvidence(ob.path,ob.sourceText).status!=="observed")return false;
+  return !discoverSourceEvidence(ob.path,ob.sourceText).includes("test_urn_missing_binding");
+}
+
 const SOURCE_GAP_REASONS = new Set([
   "invalid_path", "unsupported_file_kind", "proposed_source_unavailable",
   "partial_source_parse", "source_too_large",
@@ -507,6 +519,9 @@ export class ReasoningSession {
       const onlyArchitecture=selector.rules.length>0 &&
         selector.rules.every(id=>canonicalRuleId(this.catalog,id)==="coder.architecture.hierarchy-import");
       if(onlyArchitecture&&architectureExcludedBySource(ob))continue;
+      const onlyBinding=selector.rules.length>0 &&
+        selector.rules.every(id=>canonicalRuleId(this.catalog,id)==="tester.acceptance.binding-declared");
+      if(onlyBinding&&bindingExcludedBySource(ob))continue;
       const matches = [
         ...(selector.terms ?? []).filter(term => termMatches(ob.task, term))
           .map(term => "term:" + term),
