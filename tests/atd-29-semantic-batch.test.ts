@@ -61,7 +61,9 @@ test("ATD-29 batch 01: every inspected span points inside the actual original so
     const text = readFileSync(join(root, row[positions.path!]!), "utf8");
     const total = text.split("\n").length;
     const spans = row[positions.inspected_rule_spans!]!.split(";");
-    assert.ok(spans.length >= 2);
+    // Every source has an exact statement span; terms/exceptions spans exist only
+    // when those fields are authored. No second invented line range is required.
+    assert.ok(spans.length >= 1);
     for (const span of spans) {
       const match = /^L(\d+)-L(\d+)$/.exec(span);
       assert.ok(match, "bad span for " + id + ": " + span);
