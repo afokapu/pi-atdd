@@ -406,6 +406,22 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;e
           ". Unknown obligations are not waivers; repair graph before governed completion.",display:true}};
     }
   }
+  /** A governed Flow phase constrains the kind of edits the driver may make.
+   * This is workflow readiness, not a claim that the rules themselves passed. */
+  function governedPhaseWrite(ctx:{cwd:string;sessionManager?:{getSessionId:()=>string}},path:string):
+    {block:true;reason:string}|undefined {
+    const state=trustedFlow(ctx);
+    if(!state?.planRequired)return undefined;
+    const plan=path.startsWith("plan/");
+    if(state.phase==="PLAN" && !plan)
+      return {block:true,reason:"ATDD PLAN: only scoped plan artifacts may change before operator ratification and Coach acceptance into RED."};
+    if(state.phase==="RED" && !(path.startsWith("tests/")||path.startsWith("e2e/")||
+        /(?:\.test|\.spec)\.[cm]?[jt]sx?$/.test(path)))
+      return {block:true,reason:"ATDD RED: write behavioral tests first; implementation files must wait for an accepted RED handoff."};
+    if(state.phase!=="PLAN" && plan)
+      return {block:true,reason:"ATDD: accepted plan is locked outside PLAN; request a return to planning before changing it."};
+    return undefined;
+  }
   /** Do not start editing with only the first page of a phase's conventions.
    * Reuse the bounded page receipts; missing mandatory rules block rather than waive. */
   function phasePreflight(ctx:{cwd:string;sessionManager?:{getSessionId:()=>string}}):
@@ -606,6 +622,14 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;e
       const targets=[...byPath.keys()];
       if(targets.length) {
         try {
+          for(const path of targets){
+            const blocked=governedPhaseWrite(ctx,path);
+            if(blocked)return blocked;
+          }
+        }catch(e){reset();return {block:true,reason:"ATDD governed phase could not be verified: "+String(e)};}
+      }
+      if(targets.length) {
+        try {
           const stage=phasePreflight(ctx);
           if(stage)return stage;
         }catch(e){reset();return {block:true,reason:"ATDD phase verification failed: "+String(e)};}
@@ -646,6 +670,8 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;e
       return {block:true,reason:"ATDD cannot govern edits outside the repository."};
     }
     try {
+      const governed=governedPhaseWrite(ctx,path);
+      if(governed)return governed;
       const stage=phasePreflight(ctx);
       if(stage)return stage;
     }catch(e){reset();return {block:true,reason:"ATDD phase verification failed: "+String(e)};}
