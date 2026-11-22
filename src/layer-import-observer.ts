@@ -85,6 +85,38 @@ function scan(file:string,source:string,role:LayerRole):Scan {
 /** Compare exact offending target identities; moving a forbidden dependency
  * counts as a new edge, but an unchanged import does not fabricate a delta.
  */
+type ObservedScan=Extract<Scan,{status:"observed"}>;
+/** Keep the concrete offending import target for change comparison, but
+ * group equivalent layer edges for the reasoner's bounded explanation.
+ */
+function summarizedEdges(values:Iterable<string>):string[] {
+  return [...new Set([...values].map(x=>x.split("@")[0]!))].sort();
+}
+/** Compare two independently parsed sources without treating an absent or
+ * incomplete prior snapshot as an observed negative change.
+ */
+function reconcileOutwardScans(file:string,role:LayerRole,
+  after:ObservedScan,previous?:string):OutwardImportEvidence {
+  const edges=summarizedEdges(after.edges);
+  if(previous===undefined)return {
+    present:after.edges.size>0,added:false,sourceObserved:true,deltaObserved:false,
+    edges,addedEdges:[],unknownReasons:[...after.unresolved,"prior_source_unavailable"],
+  };
+  const before=scan(file,previous,role);
+  if(before.status==="unknown")return {
+    present:after.edges.size>0,added:false,sourceObserved:true,deltaObserved:false,
+    edges,addedEdges:[],unknownReasons:[...after.unresolved,"prior_"+before.reason],
+  };
+  const added=[...after.edges].filter(x=>!before.edges.has(x));
+  return {present:after.edges.size>0,added:added.length>0,
+    sourceObserved:true,deltaObserved:!after.unresolved.length&&!before.unresolved.length,
+    edges,addedEdges:summarizedEdges(added),
+    unknownReasons:[...new Set([...after.unresolved,...before.unresolved.map(x=>"prior_"+x)])],
+  };
+}
+/** A positive source witness is independent of the previous version. A change
+ * witness additionally requires complete before/after syntax and provenance.
+ */
 export function observeOutwardImports(file:string,proposed?:string,previous?:string):OutwardImportEvidence {
   const empty=(reason:string[]=[]):OutwardImportEvidence=>({
     present:false,added:false,sourceObserved:false,deltaObserved:false,
@@ -100,20 +132,5 @@ export function observeOutwardImports(file:string,proposed?:string,previous?:str
   if(proposed===undefined)return empty(["proposed_source_unavailable"]);
   const after=scan(file,proposed,role);
   if(after.status==="unknown")return empty([after.reason]);
-  const edges=[...new Set([...after.edges].map(x=>x.split("@")[0]!))].sort();
-  if(previous===undefined)return {
-    present:after.edges.size>0,added:false,sourceObserved:true,deltaObserved:false,
-    edges,addedEdges:[],unknownReasons:[...after.unresolved,"prior_source_unavailable"],
-  };
-  const before=scan(file,previous,role);
-  if(before.status==="unknown")return {
-    present:after.edges.size>0,added:false,sourceObserved:true,deltaObserved:false,
-    edges,addedEdges:[],unknownReasons:[...after.unresolved,"prior_"+before.reason],
-  };
-  const added=[...after.edges].filter(x=>!before.edges.has(x));
-  return {present:after.edges.size>0,added:added.length>0,
-    sourceObserved:true,deltaObserved:!after.unresolved.length&&!before.unresolved.length,
-    edges,addedEdges:[...new Set(added.map(x=>x.split("@")[0]!))].sort(),
-    unknownReasons:[...new Set([...after.unresolved,...before.unresolved.map(x=>"prior_"+x)])],
-  };
+  return reconcileOutwardScans(file,role,after,previous);
 }

@@ -73,11 +73,47 @@ export type WitnessReport = {
 };
 
 /** Every witness is identified by a frozen case, never free-floating examples. */
+type PinnedExample=ReturnType<typeof enumerateSidecarExamples>["examples"][number];
+/** Execute one independently authored file/diff witness. The natural-language
+ * case text is used only to pin its identity, never as source or trusted phase.
+ */
+function evaluateWitness(sample:SourceWitness,lookup:ReadonlyMap<string,PinnedExample>,
+  catalog:ReturnType<typeof loadCatalog>,reasoner:ReasoningSession):WitnessOutcome {
+  const original=lookup.get(key(sample.sourceId,sample.kind,sample.index));
+  if(!original)throw Error("missing pinned sidecar case "+JSON.stringify(sample));
+  const rule=canonicalRuleId(catalog,original.effectiveRuleId);
+  if(!catalog.rules.has(rule))throw Error("unmapped canonical source rule "+rule);
+  const input:ContextObservation={
+    scope:"witness:"+sample.kind+":"+sample.index,
+    task:"Carry out a local source proposal",operation:sample.operation,
+    origin:"pi-event",provenance:"independently authored source witness",
+    path:sample.path,sourceText:sample.proposed,priorSourceText:sample.prior,
+  };
+  const result=reasoner.observe(input);
+  const target=result.activations.find(x=>x.id===rule);
+  const proof=JSON.stringify(target?.proof??null);
+  // Guidance may activate for a path without proving a forbidden dependency.
+  // Keep the contextual activation and independent structural proof separate.
+  const structuralProof=/pi-atdd.typed-(?:domain-integration|outward-layer-import)/.test(proof);
+  const activated=!!target;
+  const structuralPass=sample.expected?structuralProof:!structuralProof;
+  const pass=activated===sample.expected&&structuralPass;
+  const legacyOveractivation=!sample.expected&&activated&&!structuralProof;
+  return {sourceId:sample.sourceId,kind:sample.kind,index:sample.index,
+    expected:sample.expected,activated,qualified:true,pass,structuralProof,
+    structuralPass,legacyOveractivation,
+    sourceLock:original.sourceSha256,basis:sample.structuralBasis,
+    ...(!pass?{unexpectedSupport:target?.reasons??[]}:{}),
+  };
+}
+/** Qualify only evidence with an independently inspectable AST/source change.
+ * The 2,579-case source lock remains exhaustive even when most cases have
+ * no executable witness and therefore cannot honestly be declared PASS.
+ */
 export function replayQualifiedSidecarWitnesses():WitnessReport {
   const manifest=enumerateSidecarExamples();
   if(manifest.lockFailures.length)throw Error("sidecar source lock drift");
-  // Check source and sidecar digest locks *before* any observed case is used.
-  // Missing or duplicated source identities are failures, not skipped cases.
+  // Split part IDs, not their shared parent source ID, identify replay cases.
   const lookup=new Map(manifest.examples.map(x=>[key(x.effectiveRuleId,x.kind,x.index),x]));
   const cwd=mkdtempSync(join(tmpdir(),"pi-atdd-obs002-structural-"));
   const cases:WitnessOutcome[]=[];
@@ -85,34 +121,7 @@ export function replayQualifiedSidecarWitnesses():WitnessReport {
     const config=loadConfig(cwd);
     const catalog=loadCatalog(config.sources,cwd);
     const reasoner=new ReasoningSession(catalog,config.selectors);
-    for(const sample of WITNESSES){
-      const original=lookup.get(key(sample.sourceId,sample.kind,sample.index));
-      if(!original)throw Error("missing pinned sidecar case "+JSON.stringify(sample));
-      const rule=canonicalRuleId(catalog,original.effectiveRuleId);
-      if(!catalog.rules.has(rule))throw Error("unmapped canonical source rule "+rule);
-      const input:ContextObservation={
-        scope:"witness:"+sample.kind+":"+sample.index,
-        task:"Carry out a local source proposal",operation:sample.operation,
-        origin:"pi-event",provenance:"independently authored source witness",
-        path:sample.path,sourceText:sample.proposed,priorSourceText:sample.prior,
-      };
-      const result=reasoner.observe(input);
-      const target=result.activations.find(x=>x.id===rule);
-      const proof=JSON.stringify(target?.proof??null);
-      // A lexical/path selector may deliver contextual guidance without a
-      // witnessed dependency. Record it separately from source-backed proof.
-      const structuralProof=/pi-atdd.typed-(?:domain-integration|outward-layer-import)/.test(proof);
-      const activated=!!target;
-      const structuralPass=sample.expected?structuralProof:!structuralProof;
-      const pass=activated===sample.expected&&structuralPass;
-      const legacyOveractivation=!sample.expected&&activated&&!structuralProof;
-      cases.push({sourceId:sample.sourceId,kind:sample.kind,index:sample.index,
-        expected:sample.expected,activated,qualified:true,pass,structuralProof,
-        structuralPass,legacyOveractivation,
-        sourceLock:original.sourceSha256,basis:sample.structuralBasis,
-        ...(!pass ? {unexpectedSupport:target?.reasons ?? []}:{}),
-      });
-    }
+    for(const sample of WITNESSES)cases.push(evaluateWitness(sample,lookup,catalog,reasoner));
   }finally{rmSync(cwd,{recursive:true,force:true});}
   const originalCases=new Set(manifest.examples.map(x=>key(x.effectiveRuleId,x.kind,x.index)));
   if(originalCases.size!==manifest.examples.length)throw Error("duplicate source case identity");

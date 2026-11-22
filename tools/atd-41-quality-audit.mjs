@@ -43,8 +43,9 @@ const reviewFunctions=new Set([
   "architectureExcludedBySource",
   // ATD-22 follow-up: the live validator, generic layer scan and witness replay.
   "validRevision","validateImportBoundary","roleInPath","specifierOf",
-  "collect","dynamicUnknowns","scan","observeOutwardImports",
-  "replayQualifiedSidecarWitnesses","fullWitnessGapSummary",
+  "collect","dynamicUnknowns","scan","summarizedEdges","reconcileOutwardScans",
+  "observeOutwardImports",
+  "evaluateWitness","replayQualifiedSidecarWitnesses","fullWitnessGapSummary",
   // Existing Pi and telemetry functions touched by Stream B.
   "sourceFor","beforeSource","preflightPath","observe","recordReasoned","evidenceIds",
   "safeSessionId","safeReasonCode","safeCatalogDigest","safeDurationMs",
