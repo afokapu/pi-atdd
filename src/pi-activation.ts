@@ -135,7 +135,7 @@ export default function atdd(pi:ExtensionAPI,env:NodeJS.ProcessEnv=process.env):
     return [...found].sort();
   }
   function record(cwd:string, event:ActivationEvent):void{
-    const outcome=appendActivation(cwd,{...event,sessionId,catalogDigest:catalog?.provenance[0]?.digest});
+    const outcome=appendActivation(cwd,{...event,sessionId,catalogDigest:catalog?.provenance[0]?.digest},{env});
     if(!outcome.ok&&!telemetryWarning){
       telemetryWarning=true;
       try{pi.sendMessage({customType:"pi-atdd-telemetry-gap",
@@ -300,7 +300,7 @@ export default function atdd(pi:ExtensionAPI,env:NodeJS.ProcessEnv=process.env):
     handler:async(args,ctx)=>{
       const arg=(args??"").trim().toLowerCase();
       if(arg==="on"||arg==="off"){setMode(ctx,arg==="on"?"atdd":"plain","/atdd "+arg);return;}
-      if(arg==="telemetry"){ctx.ui.notify(formatActivationSummary(ctx.cwd),"info");return;}
+      if(arg==="telemetry"){ctx.ui.notify(formatActivationSummary(ctx.cwd,env),"info");return;}
       if(arg&&arg!=="status"){ctx.ui.notify("Usage: /atdd on | off | status | telemetry","warning");return;}
       const mode=current??resolveMode({cwd:ctx.cwd,env:env});
       let line=mode.mode?"ATDD mode: "+mode.mode+" ("+mode.source+")":
