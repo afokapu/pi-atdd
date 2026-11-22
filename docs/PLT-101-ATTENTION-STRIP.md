@@ -65,10 +65,17 @@ Meaning of the types:
 
 - **Widget**: `ctx.ui.setWidget("pi-atdd-attention", lines, {placement:"aboveEditor"})`. Shows open,
   acked and snoozed items, sorted by type then age. Cleared (`undefined`) when the list is empty.
-- **Actions**: `ack`, `resolve`, `snooze <until>`, `cancel` (Coach only). Exposed as
-  - Coach agent tools `attention_ack`, `attention_resolve`, `attention_snooze` (for the Coach agent), and
+- **Actions**: `ack`, `resolve`, `snooze <until>`, `cancel`, plus ATD-35 `reassign` and `reopen` (Coach only). Exposed as
+  - Coach agent tools `attention_ack`, `attention_resolve`, `attention_snooze`, `attention_reassign` (`id`, `toCoach`, `note`)
+    and `attention_reopen` (`id`, `note`) (for the Coach agent), and
   - `/attention ack|resolve|snooze|cancel <id> [...]` (for the owner, typed in the Coach pane).
 - `resolve` requires a note (one line). `cancelled` is set only by the Coach; never by a worker.
+- **Reassign and reopen (ATD-35)**: a routed Coach can reassign an open item it holds to another Coach of the same
+  project (`reassigned` signed record, with `reassignTo` and a required note). The item leaves the giving Coach's list
+  and is open on the target's list; the worker sees the move. A Coach can reopen a `resolved` item it holds (`reopened`
+  signed record); it returns to open and the worker is told. Cancelled and expired items cannot be reopened. Routing is
+  unchanged: a Coach still cannot see or act on an item it does not hold. Visibility is decided from the authenticated
+  history: a Coach sees an item on its current route, a worker on the route the item was raised on.
 - **Q4 (owner decision, final)**: the Coach agent MAY resolve items **within its grant**
   (`scope: "within_grant"`). For anything **above its grant** it asks the owner first, then resolves with
   `scope: "owner_answer"` and `ownerAnswer: <owner's answer>`. The owner's answer is recorded in the resolution note

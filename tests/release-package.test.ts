@@ -1,4 +1,8 @@
-// ATD-20: pi-atdd is a versioned Pi package. Acceptance (release, local checks):
+// URN: test:pi-atdd:release:ATD-20-ACC-1
+// Acceptance: acc:pi-atdd:ATD-20-ACC-1
+// ATD-20: pi-atdd is a versioned Pi package. These checks support ACC-1 (a tagged git source installs).
+// Item 3 (licence record) supports no ATD-20 acceptance: it is a release checklist check.
+// ACC-2 and ACC-3 are pending and are not claimed here. Checks:
 // 1 package.json is publishable (no "private": true) and carries a semver version;
 // 2 CHANGELOG.md is in Pi's format (## [x.y.z] - YYYY-MM-DD) with a heading for that version,
 //   newest first, so Pi's "Extension Updates" can read it;
