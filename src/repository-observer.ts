@@ -43,7 +43,9 @@ function fingerprint(cwd:string,path:string):string {
   } catch { return "unreadable"; }
 }
 /** Ignored directories that are dependency/VCS metadata, not governed source. */
-const UNOBSERVED_IGNORED=["node_modules",".jj",".git"];
+const UNOBSERVED_IGNORED=["node_modules",".jj",".git",
+  // PLT-126: git-ignored build/test output is generated, not governed source.
+  "dist","build","out","coverage","test-artifacts",".next",".nuxt",".turbo",".cache",".parcel-cache",".svelte-kit",".vite"];
 const MAX_IGNORED=5_000;
 function git(cwd:string):RepositorySnapshot {
   if (args("git",["rev-parse","--is-inside-work-tree"],cwd).trim()!=="true")
@@ -66,7 +68,7 @@ function git(cwd:string):RepositorySnapshot {
   const untracked=new Set(untrackedList.map(p=>safe(cwd,p)).filter((p):p is string=>!!p));
   try {
     const ignored=pathsFrom(execFileSync("git",["ls-files","--others","--ignored","--exclude-standard","-z","--",".",
-      ...UNOBSERVED_IGNORED.flatMap(d=>[":(exclude)"+d,":(exclude)**/"+d])],
+      ...UNOBSERVED_IGNORED.flatMap(d=>[":(exclude,glob)**/"+d+"/**"])],
       {cwd,encoding:"utf8",timeout:2500,maxBuffer:4_000_000,windowsHide:true}));
     if (ignored.length>MAX_IGNORED) gaps.push(ignored.length+" ignored files exceed the observation limit ("+MAX_IGNORED+")");
     else for (const path of ignored) {
