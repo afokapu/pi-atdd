@@ -39,3 +39,8 @@ test("ATD-42 Pi-only scope is tracked without unrelated OoC or Coach gates", () 
   const result=inspectIntegrationPR({base,head:"feature/atd-42-trusted-phase-activation",body:"ATD-42 ATD-39: Pi-only verified Flow phase activation; the separate Flow Coach transition gate is not in this change."});
   assert.equal(result.status,"SCOPE_REVIEW_ONLY");
 });
+
+test("coordinator merge-resolution PR is scoped separately from worker acceptance", () => {
+  const result=inspectIntegrationPR({base,head:"feature/atd-39-reconcile-trusted-phase",body:"ATD-39 ATD-42 ATD-41: merge-conflict reconciliation, no full issue completion claimed"});
+  assert.equal(result.status,"SCOPE_REVIEW_ONLY");
+});
