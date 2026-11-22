@@ -8,7 +8,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   acknowledgeRecovery, claimSeatHolder, executionConfigFromEnv, ownsExecution, recordSeatCheckpoint,
-  recordSeatModel, replaceSeat, resumeSeatFromCheckpoint, vcsHead, type SeatRuntimeConfig,
+  recordSeatModel, adoptSuccessorLease, replaceSeat, resumeSeatFromCheckpoint, vcsHead, withSeatFence, type SeatRuntimeConfig,
 } from "./execution-seat.ts";
 import type { ExecutionCheckpoint } from "./execution-lifecycle.ts";
 import { ensureKey, foldAll, operational, readLaunchConfig, verifyAuthentic, type AttentionItem, type SignedEvent } from "./attention.ts";
@@ -32,6 +32,8 @@ export type SeatController = {
   /** Fences the old seat before delivering a kickoff to the new Pi session. */
   activateSuccessor: (ctx: unknown, checkpoint: ExecutionCheckpoint) => void;
   current: () => SeatRuntimeConfig;
+  /** Runs `work` under the seat lock after re-checking ownership; throws when the seat is not owned. */
+  fence: <T>(ctx: unknown, work: () => T) => T;
   snapshotAttention: () => ExecutionCheckpoint["attention"];
 };
 const isContext = (x: unknown): x is Ctx => Boolean(x) && typeof x === "object" &&
@@ -89,8 +91,13 @@ export function registerSeatExecution(pi: ExtensionAPI, env: NodeJS.ProcessEnv =
       return { state: "verified", pendingIds };
     } catch { return { state: "unknown", pendingIds: [] }; }
   };
-  const owns = (x: unknown): boolean => isContext(x) && x.isProjectTrusted() &&
-    ownsExecution(current, x.sessionManager.getSessionId());
+  const owns = (x: unknown): boolean => {
+    if (!isContext(x) || !x.isProjectTrusted()) return false;
+    const id = x.sessionManager.getSessionId();
+    // A rebuilt runtime in the successor session learns its rotated binding from the lease that names it.
+    if (!ownsExecution(current, id)) current = adoptSuccessorLease(current, id);
+    return ownsExecution(current, id);
+  };
   const checkpoint = (x: unknown, attention: ExecutionCheckpoint["attention"]): ExecutionCheckpoint => {
     if (!isContext(x) || !owns(x)) throw new Error("cannot checkpoint unowned ATDD task seat");
     if (attention.state !== "verified") throw new Error("pending attention cannot be verified for handoff");
@@ -176,5 +183,9 @@ export function registerSeatExecution(pi: ExtensionAPI, env: NodeJS.ProcessEnv =
         ", generation " + b.generation + (owns(ctx) ? " (owned)" : " (NOT owned)"), owns(ctx) ? "info" : "warning");
     },
   });
-  return { owns, checkpoint, activateSuccessor, snapshotAttention, current: () => current };
+  const fence = <T>(x: unknown, work: () => T): T => withSeatFence(current, () => {
+    if (!owns(x)) throw new Error("ATDD attention seat is not authorized");
+    return work();
+  });
+  return { owns, checkpoint, activateSuccessor, snapshotAttention, current: () => current, fence };
 }

@@ -16,6 +16,11 @@ import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import { renameSync, rmSync } from "node:fs";
+import { withDurableLock } from "./durable-lock.ts";
+import { coachOwnsAttention, taskOwnsAttention, isValidAttentionRoute, readAttentionRouteBinding,
+  routeFromWorkerBinding, type AttentionRoute, type AttentionRouteBinding } from "./attention-routing.ts";
 
 export const ATTENTION_TYPES = ["decision", "grant", "review", "intervention"] as const;
 export type AttentionType = (typeof ATTENTION_TYPES)[number];
@@ -38,6 +43,8 @@ export type AttentionItem = {
   from: string;
   profile: string;
   issue: string | null;
+  /** Immutable launcher-stamped recipient; absent only on legacy records. */
+  route?: AttentionRoute;
   summary: string;
   createdAt: string;
   ttl: string;
@@ -54,6 +61,7 @@ export type StateRecord = {
   state: Exclude<AttentionState, "open">;
   by: string;
   at: string;
+  route?: AttentionRoute;
   note?: string;
   scope?: ResolveScope;
   ownerAnswer?: string;
@@ -67,7 +75,8 @@ export type SignedEvent =
 export type Cursor = { event: "ingested"; offset: number } | { event: "delivered"; id: string; revision: number };
 
 export type LaunchConfig = {
-  role: "worker" | "coach";
+  role: "worker" | "reviewer" | "coach";
+  route?: AttentionRouteBinding;
   identity: string;
   profile: string;
   spool: string;
@@ -78,13 +87,16 @@ export type LaunchConfig = {
 export function readLaunchConfig(env: NodeJS.ProcessEnv): LaunchConfig | undefined {
   const role = env.PI_ATDD_ATTENTION_ROLE;
   if (role === undefined || role === "") return undefined;
-  if (role !== "worker" && role !== "coach") throw new Error("PI_ATDD_ATTENTION_ROLE must be worker or coach");
+  if (role !== "worker" && role !== "reviewer" && role !== "coach")
+    throw new Error("PI_ATDD_ATTENTION_ROLE must be worker, reviewer or coach");
   const identity = env.PI_ATDD_ATTENTION_IDENTITY?.trim();
   const profile = env.PI_ATDD_ATTENTION_PROFILE?.trim();
   if (!identity || !profile) throw new Error("attention launch config incomplete: identity and profile are required");
   const agentDir = env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent");
   return {
     role, identity, profile,
+    ...(readAttentionRouteBinding(env, role === "coach" ? "coach" : "worker")
+      ? { route: readAttentionRouteBinding(env, role === "coach" ? "coach" : "worker") } : {}),
     spool: join(agentDir, "attention", "spool.jsonl"),
     keyPath: join(agentDir, "attention", "attention.key"),
   };
@@ -141,7 +153,8 @@ function validItem(x: unknown): x is AttentionItem {
   return isId(o.id) && (ATTENTION_TYPES as readonly unknown[]).includes(o.type) &&
     isText(o.from, 200) && isText(o.profile, 200) && (o.issue === null || typeof o.issue === "string") &&
     isText(o.summary) && isIso(o.createdAt) && isIso(o.ttl) && STATES.includes(o.state as string) &&
-    isRev(o.revision) && absentOr(o.snoozedUntil, isIso);
+    isRev(o.revision) && absentOr(o.snoozedUntil, isIso) &&
+    absentOr(o.route, x => isValidAttentionRoute(x as AttentionRoute));
 }
 
 function validRec(x: unknown): x is StateRecord {
@@ -153,33 +166,53 @@ function validRec(x: unknown): x is StateRecord {
     absentOr(o.note, x => typeof x === "string") &&
     absentOr(o.scope, x => x === "within_grant" || x === "owner_answer") &&
     absentOr(o.ownerAnswer, x => typeof x === "string") &&
-    absentOr(o.snoozedUntil, isIso);
+    absentOr(o.snoozedUntil, isIso) && absentOr(o.route, x => isValidAttentionRoute(x as AttentionRoute));
 }
 
 /** A record counts only if it is well-formed, belongs to this profile and carries a valid MAC. */
 export function verifyEvent(raw: unknown, cfg: LaunchConfig, key: Buffer): SignedEvent | undefined {
+  return verify(raw, cfg, key, true);
+}
+
+/**
+ * Authentic for this profile (shape, profile, MAC) whatever its recipient. A reader that must tell
+ * "another coach's record" from a corrupt line uses this; it never shows or copies the record.
+ */
+export function verifyAuthentic(raw: unknown, cfg: LaunchConfig, key: Buffer): SignedEvent | undefined {
+  return verify(raw, cfg, key, false);
+}
+
+/** PLT-118 review P1 A01: a state record reaches a reader only on the item route it belongs to. */
+function stateVisible(rec: StateRecord, cfg: LaunchConfig): boolean {
+  const route = cfg.route;
+  if (!route) return rec.route === undefined;
+  if (!rec.route) return false;
+  return route.role === "coach"
+    ? coachOwnsAttention({ route: rec.route }, route) : taskOwnsAttention({ route: rec.route }, route);
+}
+
+function verify(raw: unknown, cfg: LaunchConfig, key: Buffer, recipient: boolean): SignedEvent | undefined {
   if (typeof raw !== "object" || raw === null) return undefined;
   const o = raw as Record<string, unknown>;
   if (o.event === "raised") {
     const item = o.item;
     if (!validItem(item) || item.profile !== cfg.profile) return undefined;
+    if (recipient) {
+      if (cfg.route) {
+        const matches = cfg.route.role === "coach"
+          ? coachOwnsAttention(item, cfg.route) : taskOwnsAttention(item, cfg.route);
+        if (!matches) return undefined;
+      } else if (item.route) return undefined; // Never broadcast routed records to a legacy coach.
+    }
     return macOk({ event: "raised", item }, o.mac, key) ? { event: "raised", item, mac: o.mac as string } : undefined;
   }
   if (o.event === "state") {
     const rec = o.rec;
-    if (!validRec(rec)) return undefined;
+    if (!validRec(rec) || (rec.route && rec.route.profile !== cfg.profile)) return undefined;
+    if (recipient && !stateVisible(rec, cfg)) return undefined;
     return macOk({ event: "state", rec }, o.mac, key) ? { event: "state", rec, mac: o.mac as string } : undefined;
   }
   return undefined;
-}
-
-/**
- * Authentic for this profile (shape, profile, MAC). A reader that must tell a verified row from a
- * corrupt one uses this; it never shows or copies the record. This branch has no routing, so no
- * recipient filter applies.
- */
-export function verifyAuthentic(raw: unknown, cfg: LaunchConfig, key: Buffer): SignedEvent | undefined {
-  return verifyEvent(raw, cfg, key);
 }
 
 /** Worker raise. `from` and `profile` come from launch config; any such fields in the input are ignored. */
@@ -200,6 +233,8 @@ export function newItem(input: Record<string, unknown>, cfg: LaunchConfig, now: 
     from: cfg.identity,
     profile: cfg.profile,
     issue,
+    ...(cfg.route && cfg.route.role === "worker"
+      ? { route: routeFromWorkerBinding(cfg.route) } : {}),
     summary,
     createdAt: now.toISOString(),
     ttl: new Date(now.getTime() + hours * 3_600_000).toISOString(),
@@ -218,6 +253,8 @@ export function foldAll(events: ReadonlyArray<SignedEvent>): Map<string, Attenti
     }
     const it = items.get(e.rec.id);
     if (!it || TERMINAL.has(it.state) || e.rec.from !== it.from || e.rec.revision <= it.revision) continue;
+    // A signed state can only mutate the task and logical recipient of its original raise.
+    if (JSON.stringify(e.rec.route ?? null) !== JSON.stringify(it.route ?? null)) continue;
     it.revision = e.rec.revision;
     it.state = e.rec.state;
     if (e.rec.state === "snoozed") it.snoozedUntil = e.rec.snoozedUntil;
@@ -263,6 +300,7 @@ export function expiryRecords(all: ReadonlyMap<string, AttentionItem>, now: Date
     out.push({
       id: it.id, from: it.from, revision: it.revision + 1, state: "expired",
       by: cfg.identity, at: now.toISOString(), note: "ttl expired",
+      ...(it.route ? { route: it.route } : {}),
     });
   }
   return out;
@@ -286,7 +324,11 @@ export function transition(item: AttentionItem | undefined, action: Action, cfg:
   if (!item) throw new Error("unknown attention item");
   if (TERMINAL.has(item.state)) throw new Error(`attention item ${item.id} is already ${item.state}`);
   if (Date.parse(item.ttl) <= now.getTime()) throw new Error(`attention item ${item.id} has expired`);
-  const base = { id: item.id, from: item.from, revision: item.revision + 1, by: cfg.identity, at: now.toISOString() };
+  if (cfg.role !== "coach") throw new Error("only the Coach may change attention state");
+  if (cfg.route && (cfg.route.role !== "coach" || !coachOwnsAttention(item, cfg.route)))
+    throw new Error("attention item belongs to another coach");
+  const base = { id: item.id, from: item.from, revision: item.revision + 1, by: cfg.identity, at: now.toISOString(),
+    ...(item.route ? { route: item.route } : {}) };
   switch (action.kind) {
     case "ack":
       if (item.state !== "open") throw new Error(`cannot ack a ${item.state} item`);
@@ -344,4 +386,57 @@ export function appendSpool(path: string, ev: SignedEvent): void {
   const current = existsSync(path) ? readFileSync(path) : Buffer.alloc(0);
   const torn = current.length > 0 && current[current.length - 1] !== 10;
   appendFileSync(path, (torn ? "\n" : "") + JSON.stringify(ev) + "\n");
+}
+
+/**
+ * One writer at a time for spool state transitions. Locks are not stolen on a
+ * timeout: a crash leaves a diagnosable recovery obligation, never two owners.
+ */
+export const withAttentionLock = withDurableLock;
+
+/** Durable task-level delivery receipt, shared by successive authorized worker sessions. */
+function receiptPath(cfg: LaunchConfig): string | undefined {
+  if (!cfg.route || cfg.route.role !== "worker") return undefined;
+  const route = cfg.route;
+  const hash = createHash("sha256").update(JSON.stringify([
+    route.profile, route.projectId, route.taskId, route.coachAddress])).digest("hex").slice(0, 32);
+  return join(dirname(cfg.spool), "deliveries", hash + ".json");
+}
+export function readTaskReceipts(cfg: LaunchConfig): Map<string, number> {
+  const path = receiptPath(cfg);
+  if (!path) return new Map();
+  let raw: string;
+  try { raw = readFileSync(path, "utf8"); }
+  catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return new Map(); throw e; }
+  const o: unknown = JSON.parse(raw);
+  if (!o || typeof o !== "object" || Array.isArray(o)) throw new Error("malformed task attention receipt");
+  const receipts = new Map<string, number>();
+  for (const [id, rev] of Object.entries(o)) {
+    if (!isId(id) || !isRev(rev)) throw new Error("malformed task attention receipt");
+    receipts.set(id, rev as number);
+  }
+  return receipts;
+}
+/**
+ * Advances receipts only while `mayCommit` holds, checked inside the receipt lock (PLT-118 review
+ * P1 A05/A06). Returns false, writing nothing, when the seat no longer owns the route.
+ */
+export function commitTaskReceipts(cfg: LaunchConfig, delivered: ReadonlyMap<string, number>,
+  mayCommit: () => boolean = () => true): boolean {
+  const path = receiptPath(cfg);
+  if (!path || delivered.size === 0) return true;
+  return withAttentionLock(path, () => {
+    if (!mayCommit()) return false;
+    const merged = readTaskReceipts(cfg);
+    for (const [id, revision] of delivered) {
+      if (!isId(id) || !isRev(revision)) throw new Error("invalid attention receipt");
+      merged.set(id, Math.max(revision, merged.get(id) ?? 0));
+    }
+    const tmp = path + "." + randomUUID() + ".tmp";
+    try {
+      writeFileSync(tmp, JSON.stringify(Object.fromEntries(merged)) + "\n", { flag: "wx", mode: 0o600 });
+      renameSync(tmp, path);
+    } finally { rmSync(tmp, { force: true }); }
+    return true;
+  });
 }
