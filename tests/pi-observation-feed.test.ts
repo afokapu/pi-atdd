@@ -42,7 +42,8 @@ test("pre-edit source facts expose full typed arguments, source proof, and no Oo
       f.factArgs[0]===input.scope&&f.factArgs[1]==="domain_to_integration_import_added"&&
       f.sourceDigest===frame.event.sourceDigest&&f.sourceRevision===input.revision));
     assert.ok(frame.receipts.some(r=>r.conventionId==="coder.architecture.hierarchy-import"&&
-      r.sourceDigest?.length===64&&JSON.stringify(r.proof).includes("domain_to_integration_import_added")));
+      r.sourceDigest?.length===64&&JSON.stringify(r.proof).includes("domain_to_integration_import_added")&&
+      r.supportKinds.includes("SOURCE_DELTA")&&r.supportKinds.includes("STRUCTURAL_SOURCE")));
     assert.ok(!frame.observed.some(f=>f.factType==="task"),
       "raw prompt text must not be exported as an observation");
     assert.ok(!JSON.stringify(frame).includes("Private customer request"),
@@ -108,7 +109,8 @@ test("detector evidence carries independent supports and a later retraction",()=
     const after=feed.capture("detector:2",second,x.session.observe(second));
     assert.equal(after.retracted.filter(f=>f.factType==="finding").length,1);
     assert.equal(after.observed.filter(f=>f.factType==="finding").length,1);
-    assert.ok(after.receipts.some(r=>r.conventionId==="coder.architecture.hierarchy-import"));
+    assert.ok(after.receipts.some(r=>r.conventionId==="coder.architecture.hierarchy-import"&&
+      r.supportKinds.includes("DETECTOR_FINDING")));
     const closed=feed.retractScope("detector:3",base.scope,"clean validator");
     assert.equal(closed?.event.point,"scope_retraction");
     assert.equal(closed?.retracted.filter(f=>f.factType==="finding").length,1);
