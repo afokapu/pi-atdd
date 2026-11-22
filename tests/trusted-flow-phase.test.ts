@@ -35,6 +35,7 @@ function fixture() {
   const receiptFile = join(root, "receipt.yaml");
   const receipt = {
     schema: "atdd-flow/pi-runtime-launch-receipt/v1", seat: seatAddress,
+    tasks: ["delivery"],
     pi_session: session, pi_session_path: join(root, "session.jsonl"),
     herdr_session: "forge", pane: "w1:p2",
   };
@@ -126,6 +127,9 @@ test("ATD-42: stale or misbound Flow runtime never becomes an authoritative phas
     x.writeSeat();
     writeFileSync(x.receiptFile, stringify({...x.receipt, pi_session: "stale-session"}));
     assert.throws(() => readEnvFlowPhase(x.env, x.ctx), /receipt does not match/);
+    // Rebinding an assigned task without a new launch must not borrow phase authority.
+    writeFileSync(x.receiptFile, stringify({...x.receipt, tasks:["unrelated"]}));
+    assert.throws(() => readEnvFlowPhase(x.env, x.ctx), /did not authorize the active task/);
     x.writeSeat({...x.record, runtime: {...x.record.runtime, launch_receipt: ""}});
     assert.equal(readEnvFlowPhase(x.env, x.ctx), undefined, "missing receipt means unknown");
   } finally { x.finish(); }
