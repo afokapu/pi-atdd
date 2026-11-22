@@ -25,10 +25,17 @@ test("B must map all original OBS acceptance", () => {
 });
 test("partial remains incomplete", () => {
   const body = make("ATD-22",["OBS-001","OBS-002","OBS-003","OBS-004"],"ATD-41 ATD-25 ATD-30 ATD-39","PARTIAL");
-  assert.equal(inspectIntegrationPR({base,head:b,body}).status,"INCOMPLETE");
+  const outcome=inspectIntegrationPR({base,head:b,body});
+  assert.equal(outcome.status,"DISCLOSED_PARTIAL");
+  assert.equal(outcome.outstanding.length,4);
 });
 test("wrong base and unregistered branch cannot report ready", () => {
   const body = make("ATD-29",["Acceptance-01","Acceptance-02","Acceptance-03","Acceptance-04"],"ATD-40 ATD-26 ATD-39");
   assert.equal(inspectIntegrationPR({base:"main",head:a,body}).status,"INCOMPLETE");
   assert.equal(inspectIntegrationPR({base,head:"feature/wrong",body}).status,"INCOMPLETE");
+});
+
+test("ATD-42 Pi-only scope is tracked without unrelated OoC or Coach gates", () => {
+  const result=inspectIntegrationPR({base,head:"feature/atd-42-trusted-phase-activation",body:"ATD-42 ATD-39: Pi-only verified Flow phase activation; the separate Flow Coach transition gate is not in this change."});
+  assert.equal(result.status,"SCOPE_REVIEW_ONLY");
 });
