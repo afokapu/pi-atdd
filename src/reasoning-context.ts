@@ -95,47 +95,48 @@ const selectorRules: Rule[] = [
 /** Preserve legacy path guidance and independent observed import supports.
  * These are adapter applicability rules; they do not add normative graph edges.
  */
-function hierarchyObservationRules(catalog: Catalog): Rule[] {
-  const hierarchy: Rule[] = [];
-  if (catalog.rules.has("coder.architecture.hierarchy-import")) hierarchy.push({
-    id: "pi-atdd.typed-domain-dependency-flow",
-    source: "pi-atdd/adapters/typed-path-facts-v1",
-    head: { predicate: "active", terms: [DATALOG_SUBJECT, "coder.architecture.hierarchy-import"] },
-    body: [
-      { predicate: "file_layer", terms: [DATALOG_SUBJECT, "domain"] },
-      // The path-only legacy guidance must not fire on test/vendor files.
-      { predicate: "file_kind", terms: [DATALOG_SUBJECT, "source"] },
-      { predicate: "operation", terms: [DATALOG_SUBJECT, "edit"] },
+/** Legacy domain-path guidance remains available for edits with unknown
+ * structural situation. It is intentionally not proof that an import changed.
+ */
+function legacyDomainObservationRules():Rule[] {
+  const rules:Rule[]=[{
+    id:"pi-atdd.typed-domain-dependency-flow",
+    source:"pi-atdd/adapters/typed-path-facts-v1",
+    head:{predicate:"active",terms:[DATALOG_SUBJECT,"coder.architecture.hierarchy-import"]},
+    body:[
+      {predicate:"file_layer",terms:[DATALOG_SUBJECT,"domain"]},
+      {predicate:"file_kind",terms:[DATALOG_SUBJECT,"source"]},
+      {predicate:"operation",terms:[DATALOG_SUBJECT,"edit"]},
     ],
-  });
-  // The historical path+operation rule above remains for compatibility. It is
-  // NOT evidence that an import was added. Structural supports are separate.
-  for (const operation of ["edit", "create"] as const) {
-    if (catalog.rules.has("coder.architecture.hierarchy-import")) {
-      hierarchy.push({
-        id: "pi-atdd.typed-domain-integration-change-" + operation,
-        source: "pi-atdd/adapters/observed-source-delta-v1",
-        head: { predicate: "active", terms: [DATALOG_SUBJECT, "coder.architecture.hierarchy-import"] },
-        body: [
-          { predicate: "change", terms: [DATALOG_SUBJECT, "domain_to_integration_import_added"] },
-          { predicate: "operation", terms: [DATALOG_SUBJECT, operation] },
-        ],
-      }, {
-        id: "pi-atdd.typed-domain-integration-present-" + operation,
-        source: "pi-atdd/adapters/observed-source-delta-v1",
-        head: { predicate: "active", terms: [DATALOG_SUBJECT, "coder.architecture.hierarchy-import"] },
-        body: [
-          { predicate: "code_construct", terms: [DATALOG_SUBJECT, "domain_to_integration_import"] },
-          { predicate: "operation", terms: [DATALOG_SUBJECT, operation] },
-        ],
-      });
-    }
-  }
-  // Authoritative outward dependencies include application/presentation and
-  // integration/presentation, not only the initial domain/integration example.
+  }];
   for(const operation of ["edit","create"] as const){
-    if(!catalog.rules.has("coder.architecture.hierarchy-import"))continue;
-    hierarchy.push({
+    rules.push({
+      id:"pi-atdd.typed-domain-integration-change-"+operation,
+      source:"pi-atdd/adapters/observed-source-delta-v1",
+      head:{predicate:"active",terms:[DATALOG_SUBJECT,"coder.architecture.hierarchy-import"]},
+      body:[
+        {predicate:"change",terms:[DATALOG_SUBJECT,"domain_to_integration_import_added"]},
+        {predicate:"operation",terms:[DATALOG_SUBJECT,operation]},
+      ],
+    },{
+      id:"pi-atdd.typed-domain-integration-present-"+operation,
+      source:"pi-atdd/adapters/observed-source-delta-v1",
+      head:{predicate:"active",terms:[DATALOG_SUBJECT,"coder.architecture.hierarchy-import"]},
+      body:[
+        {predicate:"code_construct",terms:[DATALOG_SUBJECT,"domain_to_integration_import"]},
+        {predicate:"operation",terms:[DATALOG_SUBJECT,operation]},
+      ],
+    });
+  }
+  return rules;
+}
+/** The authored hierarchy includes application/presentation and
+ * integration/presentation, not just the original domain/integration sample.
+ */
+function outwardArchitectureRules():Rule[] {
+  const rules:Rule[]=[];
+  for(const operation of ["edit","create"] as const){
+    rules.push({
       id:"pi-atdd.typed-outward-layer-import-present-"+operation,
       source:"pi-atdd/adapters/observed-layer-import-v1",
       head:{predicate:"active",terms:[DATALOG_SUBJECT,"coder.architecture.hierarchy-import"]},
@@ -153,16 +154,21 @@ function hierarchyObservationRules(catalog: Catalog): Rule[] {
       ],
     });
   }
-  if (catalog.rules.has("coder.architecture.hierarchy-import")) hierarchy.push({
-    id: "pi-atdd.typed-detector-architecture-review",
-    source: "pi-atdd/adapters/detector-finding-v1",
-    head: { predicate: "active", terms: [DATALOG_SUBJECT, "coder.architecture.hierarchy-import"] },
-    body: [
-      { predicate: "finding", terms: [DATALOG_SUBJECT, "domain_to_integration_import"] },
-      { predicate: "operation", terms: [DATALOG_SUBJECT, "review"] },
+  return rules;
+}
+/** A detector result is independent evidence and only review operation
+ * may consume it; it does not assert a phase or grant reviewer authority.
+ */
+function architectureFindingRules():Rule[] {
+  return [{
+    id:"pi-atdd.typed-detector-architecture-review",
+    source:"pi-atdd/adapters/detector-finding-v1",
+    head:{predicate:"active",terms:[DATALOG_SUBJECT,"coder.architecture.hierarchy-import"]},
+    body:[
+      {predicate:"finding",terms:[DATALOG_SUBJECT,"domain_to_integration_import"]},
+      {predicate:"operation",terms:[DATALOG_SUBJECT,"review"]},
     ],
-  });
-  if (catalog.rules.has("coder.architecture.hierarchy-import")) hierarchy.push({
+  },{
     id:"pi-atdd.typed-detector-outward-review",
     source:"pi-atdd/adapters/detector-finding-v1",
     head:{predicate:"active",terms:[DATALOG_SUBJECT,"coder.architecture.hierarchy-import"]},
@@ -170,8 +176,12 @@ function hierarchyObservationRules(catalog: Catalog): Rule[] {
       {predicate:"finding",terms:[DATALOG_SUBJECT,"outward_layer_import"]},
       {predicate:"operation",terms:[DATALOG_SUBJECT,"review"]},
     ],
-  });
-  return hierarchy;
+  }];
+}
+function hierarchyObservationRules(catalog:Catalog):Rule[] {
+  if(!catalog.rules.has("coder.architecture.hierarchy-import"))return [];
+  return [...legacyDomainObservationRules(),...outwardArchitectureRules(),
+    ...architectureFindingRules()];
 }
 
 function typedRules(catalog: Catalog): Rule[] {
@@ -333,22 +343,29 @@ function validateObservation(ob: ContextObservation): void {
  * while no-import domain edits retain the PLT-78 construction guidance.
  * Unparsed and aliased imports stay UNKNOWN, never a silent exemption.
  */
-function architectureExcludedBySource(ob: ContextObservation): boolean {
+/** A positive module-declaration AST is needed to supersede the broad path
+ * selector; empty files still receive PLT-78 construction guidance.
+ */
+function knownSafeArchitectureImports(file:string,source:string):boolean {
+  const outward=observeOutwardImports(file,source);
+  if(!outward.sourceObserved||outward.present)return false;
+  if(outward.unknownReasons.some(x=>x!=="prior_source_unavailable"))return false;
+  if(sourceSyntaxEvidence(file,source).status!=="observed")return false;
+  const ast=ts.createSourceFile(file,source,ts.ScriptTarget.Latest,true,
+    /\.[jt]sx$/i.test(file)?ts.ScriptKind.TSX:ts.ScriptKind.TS);
+  return ast.statements.some(node=>
+    ts.isImportDeclaration(node)||ts.isExportDeclaration(node));
+}
+/** Explicit test/vendor and inspected non-outward imports are excluded.
+ * All unresolved source situations retain the conservative compatibility hint.
+ */
+function architectureExcludedBySource(ob:ContextObservation):boolean {
   if(!ob.path)return false;
   const kind=classifyFileKind(ob.path,ob.sourceText);
   if(kind.status!=="observed")return false;
   if(["test","e2e","vendor","declaration"].includes(kind.kind))return true;
-  if(kind.kind!=="source" || ob.sourceText===undefined)return false;
-  const outward=observeOutwardImports(ob.path,ob.sourceText);
-  if(!outward.sourceObserved||outward.present ||
-    outward.unknownReasons.some(reason=>reason!=="prior_source_unavailable"))return false;
-  if(sourceSyntaxEvidence(ob.path,ob.sourceText).status!=="observed")return false;
-  const ast=ts.createSourceFile(ob.path,ob.sourceText,ts.ScriptTarget.Latest,true,
-    /\.[jt]sx$/i.test(ob.path)?ts.ScriptKind.TSX:ts.ScriptKind.TS);
-  // A known local/external import can establish a negative; no-import source
-  // continues to receive domain-edit construction guidance (PLT-78).
-  return ast.statements.some(statement=>
-    ts.isImportDeclaration(statement)||ts.isExportDeclaration(statement));
+  return kind.kind==="source" && ob.sourceText!==undefined &&
+    knownSafeArchitectureImports(ob.path,ob.sourceText);
 }
 
 const SOURCE_GAP_REASONS = new Set([
@@ -427,19 +444,24 @@ export class ReasoningSession {
   }
 
   /** Present imports and added imports have different evidence requirements. */
-  private changeInputs(ob: ContextObservation, add: AddObserved, missing: NoteMissing): void {
-    const imports = observeDomainImports(ob.path!, ob.sourceText, ob.priorSourceText);
-    if (imports.present) add("code_construct", [ob.scope, "domain_to_integration_import"],
-      "ast:domain_to_integration_import @ " + ob.provenance);
-    if (imports.added) add("change", [ob.scope, "domain_to_integration_import_added"],
-      "before_after:domain_to_integration_import_added @ " + ob.provenance);
-    // An inspected but unresolved dependency is missing a change witness, not source text.
-    for (const reason of imports.unknownReasons)
-      missing(SOURCE_GAP_REASONS.has(reason) ? "source" : "change", reason);
-    if (!imports.deltaObserved && !imports.unknownReasons.length)
-      missing("change", "delta_not_observable");
-    // Keep generic architecture evidence independent from the narrow legacy
-    // domain→integration code. Unsupported resolution remains UNKNOWN.
+  /** Preserve the original domain→integration delta as an independent
+   * proof so older Pi guidance remains explainable after adding full layers.
+   */
+  private domainImportInputs(ob:ContextObservation,add:AddObserved,missing:NoteMissing):void {
+    const imports=observeDomainImports(ob.path!,ob.sourceText,ob.priorSourceText);
+    if(imports.present)add("code_construct",[ob.scope,"domain_to_integration_import"],
+      "ast:domain_to_integration_import @ "+ob.provenance);
+    if(imports.added)add("change",[ob.scope,"domain_to_integration_import_added"],
+      "before_after:domain_to_integration_import_added @ "+ob.provenance);
+    for(const reason of imports.unknownReasons)
+      missing(SOURCE_GAP_REASONS.has(reason)?"source":"change",reason);
+    if(!imports.deltaObserved&&!imports.unknownReasons.length)
+      missing("change","delta_not_observable");
+  }
+  /** The generic layer witness reports the exact authored source/target
+   * role edges, never invented resolved module identities.
+   */
+  private outwardImportInputs(ob:ContextObservation,add:AddObserved,missing:NoteMissing):void {
     const outward=observeOutwardImports(ob.path!,ob.sourceText,ob.priorSourceText);
     if(outward.present)add("code_construct",[ob.scope,"outward_layer_import"],
       "ast:outward_layer_import:"+outward.edges.join(",")+" @ "+ob.provenance);
@@ -449,6 +471,10 @@ export class ReasoningSession {
       add("layer_dependency",[ob.scope,edge],"observed_architecture_edge:"+edge+" @ "+ob.provenance);
     for(const reason of outward.unknownReasons)
       missing(SOURCE_GAP_REASONS.has(reason)?"source":"change",reason);
+  }
+  private changeInputs(ob:ContextObservation,add:AddObserved,missing:NoteMissing):void {
+    this.domainImportInputs(ob,add,missing);
+    this.outwardImportInputs(ob,add,missing);
   }
 
   /** Detector supports keep their own evidence identities for precise retraction. */

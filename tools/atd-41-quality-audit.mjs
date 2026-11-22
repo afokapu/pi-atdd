@@ -36,11 +36,13 @@ const reviewFunctions=new Set([
   "markDynamicUnknowns","scanDomainImports","observeDomainImports",
   "safeCatHeader","parseStaticHeredocHeader","readStaticHeredoc","shellStaticWriteContents",
   // Datalog fact origin / trust boundary and adapter rule construction.
-  "hierarchyObservationRules","typedRules","validateIdentity","validateSourcePair",
+  "legacyDomainObservationRules","outwardArchitectureRules",
+  "architectureFindingRules","hierarchyObservationRules","typedRules","validateIdentity","validateSourcePair",
   "validateProviderEvidence","validateDetectorEvidence","validateObservation",
   "ReasoningSession.sourceInputs","ReasoningSession.syntaxInputs","ReasoningSession.changeInputs",
   "ReasoningSession.findingInputs","ReasoningSession.selectorInputs","ReasoningSession.inputs",
-  "architectureExcludedBySource",
+  "ReasoningSession.domainImportInputs","ReasoningSession.outwardImportInputs",
+  "architectureExcludedBySource","knownSafeArchitectureImports",
   // ATD-22 follow-up: the live validator, generic layer scan and witness replay.
   "validRevision","validateImportBoundary","roleInPath","specifierOf",
   "collect","dynamicUnknowns","scan","summarizedEdges","reconcileOutwardScans",
