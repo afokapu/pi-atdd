@@ -219,14 +219,14 @@ test("labeled fires/doesNotFire replays distinguish structural coverage from leg
       if(c.shouldFire && !actual)misses++;
       if(!c.shouldFire && actual)spurious++;
       assert.equal(structure,c.structural,"structural support mismatch "+c.id);
-      if(c.id!=="negated-lexical")assert.equal(actual,c.shouldFire,c.id);
+      assert.equal(actual,c.shouldFire,c.id);
       console.log("ATD41_LABELED_REPLAY "+JSON.stringify({
         case:c.id,expect:c.shouldFire,actual,structuralSupport:structure,
         status:out.status,missing:out.missingReasons.map(x=>x.fact+":"+x.reason),
       }));
     }
-    // Compatibility means the known negated-language lexical false positive
-    // is counted, not quietly 'fixed' by suppressing authored path/term selectors.
-    assert.deepEqual({hits,misses,spurious},{hits:3,misses:0,spurious:1});
+    // Explicit read-only Bun source is now an independent negative witness.
+    // An absent or unresolvable route remains UNKNOWN rather than a waiver.
+    assert.deepEqual({hits,misses,spurious},{hits:3,misses:0,spurious:0});
   }finally{x.finish();}
 });
