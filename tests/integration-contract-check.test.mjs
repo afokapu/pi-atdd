@@ -17,13 +17,13 @@ test("A complete declaration is not independent verification", () => {
   const body = make("ATD-29",["Acceptance-01","Acceptance-02","Acceptance-03","Acceptance-04"],"ATD-40 ATD-39 ATD-26");
   const result = inspectIntegrationPR({base,head:a,body});
   assert.equal(result.status,"SELF_DECLARED_COMPLETE");
-  assert.match(result.caution,/does not verify/);
+  assert.match(result.caution,/does NOT close the original issue|does NOT close the original issue/i);
 });
 test("B must map all original OBS acceptance", () => {
   const body = make("ATD-22",["OBS-001","OBS-002","OBS-003","OBS-004"],"ATD-41 ATD-25 ATD-30 ATD-39");
   assert.equal(inspectIntegrationPR({base,head:b,body}).status,"SELF_DECLARED_COMPLETE");
 });
-test("partial remains incomplete", () => {
+test("partial is disclosed without pretending to complete the source issue", () => {
   const body = make("ATD-22",["OBS-001","OBS-002","OBS-003","OBS-004"],"ATD-41 ATD-25 ATD-30 ATD-39","PARTIAL");
   const outcome=inspectIntegrationPR({base,head:b,body});
   assert.equal(outcome.status,"DISCLOSED_PARTIAL");
