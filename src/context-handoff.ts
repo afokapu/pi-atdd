@@ -162,6 +162,23 @@ const KICKOFF_PATTERN = /^Continue (\S+ )?from the ATDD context handoff above\./
 /** True for the kickoff this module generates; it points at the record and is never a task. */
 export function isKickoff(text: string): boolean { return KICKOFF_PATTERN.test(text.trim()); }
 
+const RELAY_PATTERN = /^\[from [^\]\n]{1,300}\]/;
+/**
+ * True for an inter-agent relay: agent-say tags it "[from <session> · <tab> | reply-to <block>]". A relay is a
+ * message from another agent, not the owner's brief, so it is never the task (ATD-37).
+ */
+export function isRelay(text: string): boolean { return RELAY_PATTERN.test(text.trimStart()); }
+
+/**
+ * The live task after a new user prompt. A kickoff or a relay keeps the current task (or the unknown-task
+ * marker when there is none yet); any other prompt replaces it.
+ */
+export function taskFromPrompt(current: string, prompt: string | undefined): string {
+  const text = prompt ?? "";
+  if (isKickoff(text) || isRelay(text)) return current || UNKNOWN_TASK;
+  return text || "unknown task";
+}
+
 const TASK_START = "<<<TASK";
 const TASK_END = "<<<END TASK>>>";
 /** A task must not be able to carry its own delimiters. */
@@ -174,7 +191,7 @@ const UNKNOWN_TASK = "unknown task (session resume requires authoritative task l
  * real user message replaces it. Text that is not a record or a kickoff is a plain prompt.
  */
 export function resolveTask(userTexts: string[]): string {
-  const texts = userTexts.filter(t => t.trim() !== "");
+  const texts = userTexts.filter(t => t.trim() !== "" && !isRelay(t));
   let recordAt = -1;
   texts.forEach((t, i) => { if (t.includes(RECORD_HEADER)) recordAt = i; });
   if (recordAt < 0) return texts.at(-1) ?? UNKNOWN_TASK;
@@ -191,17 +208,48 @@ export function resolveTask(userTexts: string[]): string {
 export type CoachState = {
   role: string; identity?: string; profile?: string;
   issues?: string[]; /** ids and PR links merely mentioned in the task text; shown as unverified */ taskRefs?: string[]; workers?: string[]; prs?: string[]; attention?: string[]; decisions?: string[]; nextSteps?: string[];
+  /** Present when the coach wrote its state file before the switch (ATD-37). Its fields are agent-reported. */
+  stateFile?: { writtenAt: string };
 };
 
+/** The fields a Coach writes into its state file before the switch (ATD-37). */
+export type AgentCoachState = { workers?: string[]; prs?: string[]; decisions?: string[]; nextSteps?: string[] };
+export const COACH_STATE_MAX_BYTES = 16_384;
+const COACH_STATE_LIST_MAX = 10;
+const COACH_STATE_ITEM_MAX = 200;
+
+/**
+ * Parse the coach's state file. Each field must be a list of strings; a field that is not is left out (UNKNOWN).
+ * Unreadable or non-object text gives undefined. Items are redacted and bounded like the task text.
+ */
+export function parseCoachStateFile(text: string): AgentCoachState | undefined {
+  let value: unknown;
+  try { value = JSON.parse(text); } catch { return undefined; }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  const source = value as Record<string, unknown>;
+  const out: AgentCoachState = {};
+  const fields: Array<keyof AgentCoachState> = ["workers", "prs", "decisions", "nextSteps"];
+  for (const field of fields) {
+    const raw = source[field];
+    if (!Array.isArray(raw) || !raw.every(item => typeof item === "string")) continue;
+    out[field] = (raw as string[]).slice(0, COACH_STATE_LIST_MAX)
+      .map(item => clip(redact(item.trim()), COACH_STATE_ITEM_MAX)).filter(item => item !== "");
+  }
+  return out;
+}
+
 function coachLines(c: CoachState): string[] {
-  const list = (label: string, items: string[] | undefined) =>
-    label + ": " + (items && items.length > 0 ? clip(redact(items.slice(0, 10).join(", ")), 400) : "UNKNOWN");
+  const list = (label: string, items: string[] | undefined, empty = "UNKNOWN") =>
+    label + ": " + (items && items.length > 0 ? clip(redact(items.slice(0, 10).join(", ")), 400) : items ? empty : "UNKNOWN");
   const who = [c.identity, c.profile ? "profile " + c.profile : undefined].filter(Boolean).join(", ");
   return ["Coach state:",
     "Role: " + clip(redact(c.role), 80) + (who ? " (" + clip(redact(who), 120) + ")" : ""),
-    list("Issues", c.issues), list("Workers", c.workers), list("PRs", c.prs),
+    "Agent-written state: " + (c.stateFile
+      ? "written " + clip(redact(c.stateFile.writtenAt), 40) + "; unverified, written by the coach before the switch"
+      : "UNKNOWN (no readable state written before the switch)"),
+    list("Issues", c.issues), list("Workers", c.workers, "none"), list("PRs", c.prs, "none"),
     list("Task references (unverified, mentioned in the task text)", c.taskRefs),
-    list("Attention items", c.attention), list("Owner decisions", c.decisions), list("Next steps", c.nextSteps)];
+    list("Attention items", c.attention), list("Owner decisions", c.decisions, "none"), list("Next steps", c.nextSteps, "none")];
 }
 
 export type HandoffInput = {
