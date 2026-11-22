@@ -109,24 +109,24 @@ function pointOf(input:ContextObservation):Point{
   if(input.origin==="pi-event")return "pre_edit";
   return "review";
 }
-/** Keep lexical selectors and source-grounded facts distinguishable even
- * when both activate the same convention. Neither is an OoC authorization.
+/** Classify existing Datalog proof origins without inferring an OoC. */
+const SUPPORT_BY_PREDICATE:Record<string,SupportKind>={
+  selector_hit:"LEGACY_SELECTOR",code_construct:"STRUCTURAL_SOURCE",
+  layer_dependency:"STRUCTURAL_SOURCE",change:"SOURCE_DELTA",
+  file_kind:"FILE_CONTEXT",file_layer:"FILE_CONTEXT",file:"FILE_CONTEXT",
+  finding:"DETECTOR_FINDING",operation:"OBSERVED_OPERATION",
+  revision:"REPOSITORY_REVISION",
+};
+/** A source-backed proof and a lexical selector may coexist for one rule.
+ * Consumers must inspect the proof rather than promoting a term match.
  */
 function supportKinds(proof:Proof):SupportKind[]{
   const supports=new Set<SupportKind>();
   const classify=(p:Proof):void=>{
-    const pred=p.fact.predicate;
-    if(pred==="selector_hit")supports.add("LEGACY_SELECTOR");
-    else if(pred==="code_construct"||pred==="layer_dependency")
-      supports.add("STRUCTURAL_SOURCE");
-    else if(pred==="change")supports.add("SOURCE_DELTA");
-    else if(pred==="file_kind"||pred==="file_layer"||pred==="file")
-      supports.add("FILE_CONTEXT");
-    else if(pred==="phase")supports.add(p.assertions.some(a=>a.source==="trusted-work-provider")
-      ?"TRUSTED_PHASE":"OTHER");
-    else if(pred==="finding")supports.add("DETECTOR_FINDING");
-    else if(pred==="operation")supports.add("OBSERVED_OPERATION");
-    else if(pred==="revision")supports.add("REPOSITORY_REVISION");
+    const kind=SUPPORT_BY_PREDICATE[p.fact.predicate];
+    if(kind)supports.add(kind);
+    if(p.fact.predicate==="phase")supports.add(p.assertions.some(a=>
+      a.source==="trusted-work-provider")?"TRUSTED_PHASE":"OTHER");
     for(const d of p.derivations){
       if(d.rule==="pi-atdd.mandatory-prerequisites")
         supports.add("MANDATORY_REQUIRES");
