@@ -52,7 +52,7 @@ const reviewFunctions=new Set([
   "routeStates","methodBranch","methodAliases","fetchBranchStates","fetchStates",
   "routeObject","serveStates","isBunServe","topLevelBindings","collectStates",
   "summarize","sourceGap","inspectBunRouteAuth",
-  "testHeaderFacts","bunAuthFacts","discoverSourceEvidence",
+  "testHeaderFacts","bunAuthFacts","eligibleSource","discoverSourceEvidence",
   "oneRuleSelector","selectorExcludedBySource",
   "validRevision","validateImportBoundary","roleInPath","specifierOf",
   "collect","dynamicUnknowns","scan","summarizedEdges","reconcileOutwardScans",
