@@ -35,6 +35,8 @@ The tests compare the actual reasoner/feed to ATD-40 S1–S7 categories: unguard
 
 The original sidecar matrix of 2,579 examples is a coverage ledger. Only independently executable source-backed examples can claim a structural PASS; the previously reported 2,558 unqualified examples are not relabeled successful or automatically made individual Pi implementation tasks.
 
+**Systemic merge overlap:** [ATD-42 draft PR #51](https://github.com/afokapu/pi-atdd/pull/51) also modifies the live Pi hook (src/pi-activation.ts) and its integration tests; [ATD-29/26/28/27 draft PR #52](https://github.com/afokapu/pi-atdd/pull/52) does not overlap this source. ATD-39 must rerun the Flow PLAN/RED guard and observation feed on the actual combined tree, not infer merge safety from separate feature-branch checks.
+
 ## Acceptance boundary
 
 ATD-41's B-01..B-05 and original ATD-22 OBS-001..004 remain the governing criteria. The private feed does not replace phase-provider trust, a real validator's source receipts, or external reviewer acceptance. Existing static shell limitations and genuine semantic mapping gaps stay explicit UNKNOWN. Verify exact-head TS, unit tests, pinned Bun source metrics, real Pi and catalog smoke, and author-side systemic/systematic/adversarial checks before handing to ATD-39. Cross-stream semantic binding, OoC admission, independent reviewer approval and any integration/main merge are **ATD-39/owner-owned**, not self-approved by the Pi worker.
