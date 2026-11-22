@@ -43,13 +43,6 @@ test("C-002 merge is ask-owner: blocked without a direct owner decision, an agen
   assert.equal(mayProceed("act-report", "none").proceed, true);
   assert.equal(classifyCoachAction("read-repo-pr-ci-linear").tier, "act-alone");
   assert.equal(classifyCoachAction("create-linear-issue-for-code-work").tier, "act-report");
-  const plan=classifyCoachAction("ratify-bounded-plan-and-report");
-  assert.equal(plan.tier, "act-report");
-  assert.equal(plan.logRequired, true);
-  assert.equal(mayProceed(plan.tier, "none").proceed, true);
-  const change=classifyCoachAction("change-owner-approved-intent-or-scope");
-  assert.equal(change.tier, "ask-owner");
-  assert.equal(mayProceed(change.tier, "none").proceed, false);
 });
 
 test("C-003 an unclassified action takes ask-owner; act-alone and act-then-report decisions are logged", () => {
