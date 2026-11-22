@@ -67,7 +67,7 @@ test("issue id is taken from the task text", () => {
 test("handoff record names issue, workspace, state and resume path, and is bounded", () => {
   const text = buildHandoff({
     task: "PLT-102 automatic context handoff " + "x".repeat(20_000), cwd: "/work/plt-102", percent: 85.4, contextWindow: 200000,
-    revision: "abc123", handoffPath: "/work/plt-102/.atdd-pi/handoffs/a.md",
+    revision: "abc123", issue: "PLT-102", handoffPath: "/work/plt-102/.atdd-pi/handoffs/a.md",
   });
   assert.match(text, /^# ATDD context handoff \(shared\.handoff\)/);
   assert.match(text, /Issue: PLT-102/);

@@ -22,7 +22,7 @@ import { Type } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { MODE_FILE, guardsAtdd, modeFromText, recordMode, repositoryRoot, resolveMode, type Mode, type Resolution } from "./mode.ts";
 import {
-  buildHandoff, clampToCompaction, decideContextAction, decideSettle, extractIssueId, INITIAL_HANDOFF_STATE, kickoffText,
+  buildHandoff, clampToCompaction, decideContextAction, decideSettle, INITIAL_HANDOFF_STATE, kickoffText,
   parseHop, resolveCompactionReserve, DEFAULT_COMPACTION_RESERVE, resolveMaxHops, resolveThresholds,
   RECORD_HEADER, type HandoffInput, type HandoffState, type CoachState, resolveTask, isKickoff, extractIssueIds, extractPullRequests,
 } from "./context-handoff.ts";
@@ -319,7 +319,7 @@ export default function atdd(pi:ExtensionAPI):void {
   function coachState(text:string):{coach?:CoachState}{
     if(process.env.PI_ATDD_ATTENTION_ROLE!=="coach")return {};
     return {coach:{role:"coach",identity:process.env.PI_ATDD_ATTENTION_IDENTITY,profile:process.env.PI_ATDD_ATTENTION_PROFILE,
-      issues:extractIssueIds(text),prs:extractPullRequests(text),attention:attentionStrip.liveItems()}};
+      taskRefs:[...extractIssueIds(text),...extractPullRequests(text)],attention:attentionStrip.liveItems()}};
   }
   pi.on("turn_end",(_event,ctx)=>{
     if(!ctx.isProjectTrusted())return;
@@ -364,7 +364,7 @@ export default function atdd(pi:ExtensionAPI):void {
         (seatCheckpoint.grant.reference ? " (reference "+seatCheckpoint.grant.reference+")" : "")+"." : record;
       mkdirSync(dirname(path),{recursive:true});
       writeFileSync(path,text,{flag:"wx"});
-      readyHandoff={text,path,kickoff:kickoffText(extractIssueId(request.task)),
+      readyHandoff={text,path,kickoff:kickoffText(undefined),
         ...(seatCheckpoint?{seatCheckpoint}:{})};
       pi.sendUserMessage("/atdd-handoff",{expandPromptTemplates:true});
     }catch(e){
@@ -409,7 +409,7 @@ export default function atdd(pi:ExtensionAPI):void {
         if(!text.includes(RECORD_HEADER)){ctx.ui.notify(arg+" is not a handoff record in "+dir,"error");return;}
         if(!text.includes("\n<<<TASK\n"))
           ctx.ui.notify("Legacy handoff record (written before task markers): its task is UNKNOWN. Restate and verify the task before relying on it.","warning");
-        ready={text,path:file,kickoff:kickoffText(extractIssueId(resolveTask([text])))};
+        ready={text,path:file,kickoff:kickoffText(undefined)};
       }
       if(!ready){ctx.ui.notify("No ATDD context handoff is pending","info");return;}
       // The record stays pending until the switch succeeds, so a cancelled or failed
