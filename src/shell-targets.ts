@@ -104,39 +104,46 @@ export function shellWriteTargetModes(command: string): ShellWriteTarget[] {
   return [...modes].map(([path, m]) => ({ path, mode: m }));
 }
 
-/**
- * Only a literal, single-command, single-destination, quoted cat heredoc is
- * a reliable pre-mutation source proposal. Dynamic shell writes remain UNKNOWN
- * and are caught by post-tool repository observation when possible.
+/** Only a single literal quoted heredoc command produces trusted proposed source.
+ * Interpolation, pipes, multiple commands and ambiguous writes stay UNKNOWN.
  */
+type StaticHeredoc = {path: string; delimiter: string; stripTabs: boolean};
+function safeCatHeader(line: string): boolean {
+  return /^\s*cat\b/.test(line) && !/[;&|$`]/.test(line) && !/>>/.test(line);
+}
+function parseStaticHeredocHeader(line: string): StaticHeredoc | undefined {
+  if (!safeCatHeader(line)) return undefined;
+  const marker = line.match(/<<(-?)\s*(['"])([A-Za-z_][A-Za-z0-9_]*)\2/);
+  const target = line.match(/(?:^|\s)>\s*('[^']+'|"[^"]+"|[^\s<>;&|]+)/);
+  if (!marker || !target) return undefined;
+  if (line.replace(marker[0], "").replace(target[0], "").trim() !== "cat") return undefined;
+  const path = target[1]!.replace(/^['"]|['"]$/g, "");
+  if (!PATHISH.test(path) || path.includes("..")) return undefined;
+  return {path, delimiter: marker[3]!, stripTabs: marker[1] === "-"};
+}
+function readStaticHeredoc(lines: readonly string[], from: number, header: StaticHeredoc):
+  {text: string; end: number} | undefined {
+  const body: string[] = [];
+  for (let i = from + 1; i < lines.length; i++) {
+    const line = header.stripTabs ? lines[i]!.replace(/^\t+/, "") : lines[i]!;
+    if (line === header.delimiter) return {text: body.join("\n") + "\n", end:i};
+    body.push(line);
+  }
+  return undefined;
+}
 export function shellStaticWriteContents(command: string): ReadonlyMap<string, string> {
-  // Only a single complete, standalone command has an unambiguous final
-  // proposal. Any other command (before or after it) may alter the same file.
   const unknown = () => new Map<string, string>();
   const lines = command.split(/\r?\n/);
-  let proposal: { path: string; text: string } | undefined;
+  let proposal: {path: string; text: string} | undefined;
   for (let i = 0; i < lines.length; i++) {
-    const header = lines[i]!;
-    if (!header.trim()) continue;
-    if (proposal || !/^\s*cat\b/.test(header) || /[;&|$`]/.test(header) || />>/.test(header))
-      return unknown();
-    const heredoc = header.match(/<<(-?)\s*(['"])([A-Za-z_][A-Za-z0-9_]*)\2/);
-    const target = header.match(/(?:^|\s)>\s*('[^']+'|"[^"]+"|[^\s<>;&|]+)/);
-    if (!heredoc || !target) return unknown();
-    const remainder = header.replace(heredoc[0], "").replace(target[0], "").trim();
-    if (remainder !== "cat") return unknown();
-    const path = target[1]!.replace(/^['"]|['"]$/g, "");
-    if (!PATHISH.test(path) || path.includes("..") || !path) return unknown();
-    const body: string[] = [];
-    let end = -1;
-    for (let j = i + 1; j < lines.length; j++) {
-      const line = heredoc[1] === "-" ? lines[j]!.replace(/^\t+/, "") : lines[j]!;
-      if (line === heredoc[3]) { end = j; break; }
-      body.push(line);
-    }
-    if (end < 0) return unknown();
-    proposal = { path, text: body.join("\n") + "\n" };
-    i = end;
+    if (!lines[i]!.trim()) continue;
+    if (proposal) return unknown(); // another command could overwrite the first
+    const header = parseStaticHeredocHeader(lines[i]!);
+    if (!header) return unknown();
+    const body = readStaticHeredoc(lines, i, header);
+    if (!body) return unknown();
+    proposal = {path:header.path,text:body.text};
+    i = body.end;
   }
-  return proposal ? new Map([[proposal.path, proposal.text]]) : unknown();
+  return proposal ? new Map([[proposal.path,proposal.text]]) : unknown();
 }
