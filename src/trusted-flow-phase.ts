@@ -41,13 +41,17 @@ function phaseFor(task: Record<string, unknown>, taskId: string, provenance: str
 
 /** The Pi-ATDD execution lease was already fenced by executionSeat.owns(ctx).
  * Recheck its task/Coach tuple against Flow; never use a Coach lease as a driver. */
-export function readTrustedFlowPhase(seat: SeatRuntimeConfig | undefined): TrustedFlowPhase | undefined {
+export function readTrustedFlowPhase(seat: SeatRuntimeConfig | undefined, cwd?: string): TrustedFlowPhase | undefined {
   if (!seat || seat.mode !== "external" || !seat.flowRoot) return undefined;
   const b = seat.binding;
   if (b.taskId === "*") return undefined;
   if (![b.projectId, b.taskId].every(s => identifier.test(s)) || !isAbsolute(seat.flowRoot))
     throw new Error("Invalid Flow task identity or coordination root");
   const root = realpathSync(seat.flowRoot);
+  // The authenticated lease must still point to an active Flow DRIVER seat.
+  const name = /^([a-zA-Z0-9_.-]+)@([a-zA-Z0-9_.-]+)$/.exec(b.seatAddress);
+  if (!name || name[2] !== b.projectId) throw new Error("Flow seat does not belong to the leased project");
+  nativeDriver(root, b.projectId, name[1]!, b.seatAddress, cwd);
   const file = join(root, "work", b.projectId, "tasks", b.taskId + ".yaml");
   const task = flowRecord(root, file);
   if (!object(task) || task.schema !== "atdd-workflow/task/v1" ||
@@ -58,13 +62,15 @@ export function readTrustedFlowPhase(seat: SeatRuntimeConfig | undefined): Trust
 
 /** A native Flow seat must be the same driver, worktree and project as Pi.
  * The launcher receipt is separate proof, validated before selecting a task. */
-function nativeDriver(root: string, project: string, name: string, address: string, cwd: string) {
+function nativeDriver(root: string, project: string, name: string, address: string, cwd?: string) {
   const file = join(root, "work", project, "seats", name, "seat.yaml");
   const seat = flowRecord(root, file);
   if (!object(seat) || seat.address !== address || seat.project !== project ||
       seat.role !== "driver" || seat.retired)
     throw new Error("Flow seat does not match active driver identity");
-  if (typeof seat.worktree !== "string" || realpathSync(seat.worktree) !== realpathSync(cwd))
+  if (typeof seat.worktree !== "string")
+    throw new Error("Flow driver seat does not declare its worktree");
+  if (cwd && realpathSync(seat.worktree) !== realpathSync(cwd))
     throw new Error("Flow driver worktree does not match the running Pi repository");
   return seat;
 }
