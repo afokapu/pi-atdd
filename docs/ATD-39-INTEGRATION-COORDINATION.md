@@ -57,3 +57,16 @@ This is a **draft evaluation envelope**, not a published SDK/API or canonical on
 **Stream B:** “Work on [ATD-41](https://linear.app/af8/issue/ATD-41) using `feature/atd-41-structural-activation` in `afokapu/pi-atdd`. Read this charter and ATD-22/25/30. Own conservative, typed Pi observations and activation regression evidence. Do not invent OoCs, trusted phase or semantic authority. Produce a draft PR targeting `integration/atd-39-ooc-activation` with current-head checks and explicit gaps.”
 
 **Coordinator (this conversation):** Inspect worker Linear and draft PR updates when asked; request review, measure equivalence, reconcile only approved differences, and keep the integration branch/issue auditable. No continuous monitoring or autonomous merge is implied.
+
+
+## Authoritative original issue contracts — integration acceptance update (2026-11-22)
+
+**Correction:** The detailed original issues are not merely contextual links. Their acceptance criteria are **the conditions of completion**. Stream A is governed by [ATD-29 Acceptance-01..04](https://linear.app/af8/issue/ATD-29) within ATD-26/28/27 independent review; Stream B is governed by [ATD-22 OBS-001..004](https://linear.app/af8/issue/ATD-22) within ATD-25/30 relevant constraints. ATD-40 and ATD-41 are delivery/branch tracking wrappers **only**; they cannot narrow the original requirements.
+
+**Linear dependency enforcement:** ATD-29 **blocks** ATD-40; ATD-22 **blocks** ATD-41; both handoff issues **block** ATD-39. Neither worker directly blocks the other. The original source issue hierarchy and detailed acceptance text are preserved. The coordinator never closes a source issue from a shortened wrapper checklist.
+
+**Read before accepting PRs:** [Original-issue acceptance matrix](./ATD-39-ORIGINAL-ISSUE-ACCEPTANCE.md). PRs into this integration branch must provide original-criterion disposition/evidence rows. [Mechanical intake script](../scripts/check-integration-contract.mjs) and [workflow](../.github/workflows/integration-acceptance.yml) check routing and declared acceptance coverage, but **not semantic correctness**. The coordinator performs independent source, test, runtime and reviewer checks. GitHub status checks must be made required via repository branch protection separately; absent that setting, a workflow failure alone is not a merge authorization boundary.
+
+**Current evidence, not acceptance:** Stream A [draft PR #43](https://github.com/afokapu/pi-atdd/pull/43) claims 376-file inventory but reports 362 semantically unresolved. Its original Pass A acceptance and full external validation remain open. Stream B has begun observer commits but still needs original OBS-001..004 replay/proof. No completed/approved handoff or authority claim follows from a successful branch fork.
+
+**Worker synchronization:** Both feature branches initially forked from the coordinator charter commit `54edcf0cda4b435bb3b6dd1e9c4ea368baf3cc85`. This coordinator-only acceptance update advances the integration branch; it **does not** silently update already-running feature branches. Worker sessions should read the Linear update, refresh the integration base at the next deliberate synchronization point, and address PR-intake failures before marking work ready. No forced ref rewrites.
