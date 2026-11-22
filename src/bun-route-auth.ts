@@ -132,6 +132,7 @@ function methodBranch(node:ts.Expression,aliases:Set<string>,request:string):boo
 function methodAliases(body:ts.Node,request:string):Set<string>{
   const aliases=new Set<string>();
   const visit=(n:ts.Node):void=>{
+    if(n!==body&&nestedFunction(n))return;
     if(ts.isVariableDeclaration(n)&&ts.isIdentifier(n.name)&&n.initializer&&
       isRequestMethod(n.initializer,request))aliases.add(n.name.text);
     ts.forEachChild(n,visit);
@@ -142,6 +143,7 @@ function methodAliases(body:ts.Node,request:string):Set<string>{
 function fetchBranchStates(body:ts.Node,aliases:Set<string>,request:string):State[]{
   const result:State[]=[];
   const visit=(n:ts.Node):void=>{
+    if(n!==body&&nestedFunction(n))return;
     if(ts.isIfStatement(n)&&methodBranch(n.expression,aliases,request)){
       if(guardAtEntry(n.thenStatement))result.push("guarded");
       else result.push(hasDirectGuard(n.thenStatement)?"unknown":"unguarded");
