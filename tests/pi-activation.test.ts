@@ -482,7 +482,7 @@ test("ATD-22 OBS-001: outward application dependency is intercepted by real Pi b
     const event={toolName:"write",input:{path,content:proposal}};
     const result=x.handlers.get("tool_call")!(event,x.ctx);
     assert.equal(result.block,true,"the pre-edit hook must deliver guidance before changing source");
-    assert.match(result.reason,/coder\\.architecture\\.hierarchy-import/);
+    assert.match(result.reason,/coder\.architecture\.hierarchy-import/);
     assert.equal(readFileSync(join(x.cwd,path),"utf8"),prior,"preflight must never perform the edit");
     const telemetry=readFileSync(x.logPath(),"utf8");
     assert.ok(telemetry.includes("change:outward_layer_import_added"),
