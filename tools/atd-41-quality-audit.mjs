@@ -18,6 +18,8 @@ const sourceFiles=[
   "src/operational-observers.ts",
   "src/layer-import-observer.ts",
   "src/validator-observer.ts",
+  "src/structural-evidence.ts",
+  "src/bun-route-auth.ts",
   "src/pi-activation.ts",
   "src/reasoning-context.ts",
   "src/render-reasoning.ts",
@@ -44,6 +46,10 @@ const reviewFunctions=new Set([
   "ReasoningSession.domainImportInputs","ReasoningSession.outwardImportInputs",
   "architectureExcludedBySource","knownSafeArchitectureImports",
   // ATD-22 follow-up: the live validator, generic layer scan and witness replay.
+  // Auth and header observers must pass the same pinned Bun metric thresholds.
+  "keyOf","objectOf","member","bodyOf","hasDirectGuard","handlerState",
+  "routeStates","methodBranch","fetchStates","inspectBunRouteAuth",
+  "discoverSourceEvidence",
   "validRevision","validateImportBoundary","roleInPath","specifierOf",
   "collect","dynamicUnknowns","scan","summarizedEdges","reconcileOutwardScans",
   "observeOutwardImports",
@@ -126,6 +132,8 @@ const testFiles=[
   "tests/pi-activation.test.ts",
   "tests/reasoning-context.test.ts",
   "tests/sidecar-activation-matrix.test.ts",
+  "tests/structural-evidence.test.ts",
+  "tests/bun-route-auth.test.ts",
 ];
 // The shared-state and self-skip rules are stack-neutral. This scan checks
 // observable forbidden syntax; filesystem path provenance remains reviewer work.
