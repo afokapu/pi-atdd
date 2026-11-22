@@ -15,7 +15,7 @@ import { canonicalRuleId, matchesGlob, termMatches, validateSelectors, type Cata
 import { PositiveReasoner, groundKey, type Fact, type Proof, type Rule, type Delta } from "./inference.ts";
 import { discoverSourceEvidence } from "./structural-evidence.ts";
 import { classifyFileKind, observeDomainImports, sourceSyntaxEvidence } from "./operational-observers.ts";
-import { observeOutwardImports } from "./layer-import-observer.ts";
+import { observeOutwardImports, roleInPath } from "./layer-import-observer.ts";
 
 export type Phase = "PLAN" | "RED" | "GREEN" | "REFACTOR" | "SMOKE";
 export type Operation = "task" | "create" | "edit" | "review";
@@ -322,6 +322,24 @@ function validateObservation(ob: ContextObservation): void {
   validateDetectorEvidence(ob);
 }
 
+/** When source code is fully inspected, a known negative may outrank a
+ * broad compatibility path/term selector. No canonical YAML is changed:
+ * the selector remains available for missing/incomplete source situations.
+ */
+function sourceExcludesArchitecture(ob: ContextObservation): boolean {
+  if (!ob.path || ob.sourceText === undefined) return false;
+  const kind = classifyFileKind(ob.path, ob.sourceText);
+  if (kind.status !== "observed") return false;
+  if (kind.kind !== "source") return true;
+  const role = roleInPath(ob.path);
+  if (!role || role === "assembly") return true;
+  const outward = observeOutwardImports(ob.path, ob.sourceText);
+  if (!outward.sourceObserved || outward.present) return false;
+  // The validator can inspect PRESENT dependencies without a prior snapshot.
+  // Every other unresolved code shape forbids a negative applicability verdict.
+  return outward.unknownReasons.every(x => x === "prior_source_unavailable");
+}
+
 const SOURCE_GAP_REASONS = new Set([
   "invalid_path", "unsupported_file_kind", "proposed_source_unavailable",
   "partial_source_parse", "source_too_large",
@@ -449,6 +467,13 @@ export class ReasoningSession {
     // not equivalent to AST, before/after, provider or detector observation.
     for (const selector of this.selectors) {
       if (selector.operations?.length && !selector.operations.includes(ob.operation)) continue;
+      // The one-rule architecture selector previously over-fired on tests,
+      // vendored files and inspected bare-package imports. Keep its legacy
+      // fallback for UNKNOWN source, but honor explicit source exclusions.
+      const architectureOnly = selector.rules.length > 0 &&
+        selector.rules.every(x => canonicalRuleId(this.catalog, x) ===
+          "coder.architecture.hierarchy-import");
+      if (architectureOnly && sourceExcludesArchitecture(ob)) continue;
       const matches = [
         ...(selector.terms ?? []).filter(term => termMatches(ob.task, term))
           .map(term => "term:" + term),
