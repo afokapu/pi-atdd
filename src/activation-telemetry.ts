@@ -19,8 +19,13 @@ const SCHEMA = "pi-atdd/activation/v1";
 const LIMIT = 1_048_576; // 1 MiB current and one rotated file per repository
 const OUTCOMES: ActivationOutcome[] = ["matched", "unknown", "incomplete", "excluded", "noop", "error"];
 const POINTS: ActivationPoint[] = ["task_start", "pre_edit", "post_tool"];
+// Only closed, bounded IDs may cross the telemetry boundary. Evidence proofs,
+// prompts, code snippets and full paths must never become log fields.
 const ID = /^[a-z0-9][a-z0-9._:-]{0,127}$/i;
 
+/** Classify an observed path without persisting the path itself.
+ * Path categories support denominators but cannot establish correctness.
+ */
 export function activationPathCategory(file?: string): NonNullable<ActivationEvent["pathCategory"]> {
   if (!file) return "none";
   const path = file.replaceAll("\\", "/");
@@ -37,21 +42,31 @@ function root(override?: string): string {
   return override || process.env.PI_ATDD_TELEMETRY_DIR ||
     join(process.env.XDG_STATE_HOME || join(homedir(), ".local", "state"), "pi-atdd", "activation");
 }
+/** Hash the repository path so two local checkouts cannot share a log file.
+ * The root override is controlled by the Pi extension caller, not by task text.
+ */
 export function activationLogPath(cwd: string, options: TelemetryLocation = {}): string {
   const repoId = createHash("sha256").update(resolve(cwd)).digest("hex").slice(0, 20);
   return join(root(options.root), repoId + ".jsonl");
 }
+// Even well-formed IDs are capped, sorted and deduplicated to prevent a tool
+// from turning telemetry into an unbounded evidence-exfiltration channel.
 function ids(value: readonly string[] | undefined): string[] {
   return [...new Set((value ?? []).filter(x => ID.test(x)))].sort().slice(0, 64);
 }
 function count(value: number | undefined): number {
   return Number.isFinite(value) ? Math.max(0, Math.floor(value!)) : 0;
 }
+/** Persist sanitized counters only. A write failure is an observability gap,
+ * not grounds to approve, waive, block or falsely claim code compliance.
+ */
 export function appendActivation(cwd: string, event: ActivationEvent, options: {maxBytes?: number; root?: string} = {}):
   {ok: true; path: string} | {ok: false; reason: string} {
   if (process.env.PI_ATDD_TELEMETRY === "off") return {ok: true, path: "disabled"};
   try {
     const path = activationLogPath(cwd, options);
+    // Build a closed schema: ignore unknown event keys even when supplied by
+    // an untrusted tool result. Never stringify the original event object.
     const record = {
       schema: SCHEMA, at: new Date().toISOString(),
       repoId: createHash("sha256").update(resolve(cwd)).digest("hex").slice(0, 20),
@@ -69,6 +84,8 @@ export function appendActivation(cwd: string, event: ActivationEvent, options: {
     };
     const line = JSON.stringify(record) + "\n";
     const limit = options.maxBytes ?? LIMIT;
+    // Keep one bounded current file and one rotated predecessor. Private
+    // user-state permissions remain the default for production operation.
     mkdirSync(root(options.root), {recursive: true, mode: 0o700});
     if (existsSync(path) && statSync(path).size + Buffer.byteLength(line) > limit)
       renameSync(path, path + ".1");
@@ -88,6 +105,9 @@ export type TelemetrySummary = {
   total: number;
 };
 /** Ratios describe trigger frequency, not precision, recall, compliance, or applicability truth. */
+/** Malformed, oversized or unreadable logs are counted as gaps rather than
+ * being accepted as clean zero-event records. A summary is not a policy verdict.
+ */
 export function activationSummary(cwd: string, options: TelemetryLocation = {}): TelemetrySummary {
   const groups = {task_start: emptyCounts(), pre_edit: emptyCounts(), post_tool: emptyCounts()};
   let malformed = 0, unreadable = 0, total = 0;
@@ -112,6 +132,9 @@ export function activationSummary(cwd: string, options: TelemetryLocation = {}):
   }
   return {groups, malformed, unreadable, total};
 }
+/** Present the eligible-attempt denominator beside matched counts; matches
+ * alone cannot measure false activations, recall or agent implementation quality.
+ */
 export function formatActivationSummary(cwd: string, options: TelemetryLocation = {}): string {
   if (process.env.PI_ATDD_TELEMETRY === "off") return "ATDD local activation telemetry disabled (PI_ATDD_TELEMETRY=off)";
   const s = activationSummary(cwd, options);
