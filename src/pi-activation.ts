@@ -333,6 +333,13 @@ export default function atdd(pi:ExtensionAPI,env:NodeJS.ProcessEnv=process.env):
     }
     return startRun(event,ctx);
   });
+  /** The Flow seat lease and launch receipt are authoritative; prompt claims are not.
+   * Re-check before a write so a superseded task cannot retain stage guidance. */
+  function trustedFlow(ctx:{cwd:string;sessionManager?:{getSessionId:()=>string}}){
+    return executionSeat
+      ? (executionSeat.owns(ctx)?readTrustedFlowPhase(executionSeat.current(),ctx.cwd):undefined)
+      : readEnvFlowPhase(env,ctx);
+  }
   function startRun(event:{messageType:string;prompt?:string},
     ctx:{cwd:string;sessionManager?:{getSessionId:()=>string}}){
     const newTask=event.messageType==="user";
@@ -354,9 +361,7 @@ export default function atdd(pi:ExtensionAPI,env:NodeJS.ProcessEnv=process.env):
       // A configured but unowned execution seat must not fall back to environment
       // variables: that would launder a stale/superseded session into trusted facts.
       // Flow-native seats without a Pi-ATDD lease need Flow's exact launcher receipt.
-      const trusted=executionSeat
-        ? (executionSeat.owns(ctx)?readTrustedFlowPhase(executionSeat.current(),ctx.cwd):undefined)
-        : readEnvFlowPhase(env,ctx);
+      const trusted=trustedFlow(ctx);
       const result=observe(ctx.cwd,"task",trusted?"trusted-work-provider":"pi-event",
         trusted?.provenance??"Pi before_agent_start",undefined,undefined,trusted);
       const newRules=newlyRelevant(result);
@@ -373,6 +378,22 @@ export default function atdd(pi:ExtensionAPI,env:NodeJS.ProcessEnv=process.env):
         content:"ATDD reasoning failed: "+String(e)+
           ". Unknown obligations are not waivers; repair graph before governed completion.",display:true}};
     }
+  }
+  /** Do not start editing with only the first page of a phase's conventions.
+   * Reuse the bounded page receipts; missing mandatory rules block rather than waive. */
+  function phasePreflight(ctx:{cwd:string;sessionManager?:{getSessionId:()=>string}}):
+    {block:true;reason:string}|undefined {
+    const trusted=trustedFlow(ctx);
+    if(!trusted)return undefined;
+    const result=observe(ctx.cwd,"task","trusted-work-provider",trusted.provenance,
+      undefined,undefined,trusted);
+    const pending=newlyRelevant(result);
+    if(!pending.length&&result.status!=="incomplete")return undefined;
+    const page=renderReasonedPage(result,pending,20_000);
+    recordActualDelivery(result,page);
+    return {block:true,reason:"ATDD phase "+trusted.phase+
+      " guidance must be delivered before editing. Read this page and retry:\n\n"+page.text+
+      (result.status==="incomplete"?"\nRequired phase conventions are missing; repair the pinned catalog.":"")};
   }
   /** Same preflight for a governed path whether it is edited via edit/write or the shell. */
   function preflightPath(cwd:string,path:string,operation:"edit"|"create",provenance:string,
@@ -552,6 +573,12 @@ export default function atdd(pi:ExtensionAPI,env:NodeJS.ProcessEnv=process.env):
         if(byPath.get(p)!=="create")byPath.set(p,op);
       }
       const targets=[...byPath.keys()];
+      if(targets.length) {
+        try {
+          const stage=phasePreflight(ctx);
+          if(stage)return stage;
+        }catch(e){reset();return {block:true,reason:"ATDD phase verification failed: "+String(e)};}
+      }
       const reasons:string[]=[];
       let remaining=16_000; // PLT-96 budget raise (was 12_000): shell preflight page must hold a write's full rule set
       try{
@@ -578,6 +605,10 @@ export default function atdd(pi:ExtensionAPI,env:NodeJS.ProcessEnv=process.env):
       record(ctx.cwd,{point:"pre_edit",outcome:"error",reasonCode:"unsafe_path"});
       return {block:true,reason:"ATDD cannot govern edits outside the repository."};
     }
+    try {
+      const stage=phasePreflight(ctx);
+      if(stage)return stage;
+    }catch(e){reset();return {block:true,reason:"ATDD phase verification failed: "+String(e)};}
     try{
       return preflightPath(ctx.cwd,path,event.toolName==="write"?"create":"edit",
         "Pi pre-edit tool_call",16_000,true,sourceFor(ctx.cwd,path,input)); // PLT-96: same budget as the shell path (parity test)
