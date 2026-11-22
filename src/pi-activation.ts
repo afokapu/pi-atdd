@@ -332,7 +332,8 @@ export default function atdd(pi:ExtensionAPI):void {
     }
     return startRun(event,ctx);
   });
-  function startRun(event:{messageType:string;prompt?:string},ctx:{cwd:string}){
+  function startRun(event:{messageType:string;prompt?:string},
+    ctx:{cwd:string;sessionManager?:{getSessionId:()=>string}}){
     const newTask=event.messageType==="user";
     if(newTask){
       serial++;
@@ -349,8 +350,12 @@ export default function atdd(pi:ExtensionAPI):void {
     try{
       // The authenticated seat lease and Flow task record—not task wording—own phase.
       // Other setups remain UNKNOWN rather than pretending the model's prompt is authority.
-      const trusted=(executionSeat?.owns(ctx)?readTrustedFlowPhase(executionSeat.current()):undefined)
-        ?? readEnvFlowPhase(process.env);
+      // A configured but unowned execution seat must not fall back to environment
+      // variables: that would launder a stale/superseded session into trusted facts.
+      // Flow-native seats without a Pi-ATDD lease need Flow's exact launcher receipt.
+      const trusted=executionSeat
+        ? (executionSeat.owns(ctx)?readTrustedFlowPhase(executionSeat.current()):undefined)
+        : readEnvFlowPhase(process.env,ctx);
       const result=observe(ctx.cwd,"task",trusted?"trusted-work-provider":"pi-event",
         trusted?.provenance??"Pi before_agent_start",undefined,undefined,trusted);
       const newRules=newlyRelevant(result);
