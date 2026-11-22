@@ -31,6 +31,12 @@ The corrected ledger retains **all 508 Bun and 14 local typed edges**, including
 
 The read-only checker now reconstructs every witness from the original graph files and compares the entire expected set with the ledger for each convention. Regression tests insert missing and forged normative edges and require rejection. This is a **fix to our extracted evidence**, not a change to the existing convention or normative graph.
 
+## Complete authored source-text evidence without invented state judgments
+
+The original delivery indexed the 362 unresolved files by name and digest only. That lacked the authored statements, terms, exception clauses and actual validation inputs required for a source-grounded Pass A review. The new read-only `tools/atd-40-source-evidence.ts` walks **all 376 source YAML files**, preserving the exact statement, terms, exceptions, content, validator/implementation, metadata, aliases, provenance and top-level source-line spans with the corrected 1,002 graph witnesses. Its JSONL export can be reproduced with `node --experimental-strip-types tools/atd-40-source-evidence.ts --output /tmp/atd-40-source-evidence.jsonl`; `tests/atd-40-source-evidence.test.ts` checks completeness, actual Bun/Flow/local examples, positive export and **no admission**. It distinguishes an absent field from an explicitly authored null, rather than inventing data.
+
+**Boundary:** Reading and preserving all normative source material is NOT the independent O1–O8 candidate assessment. Semantic status stays **13 candidate-bearing, 1 reasoned zero-candidate, 362 unresolved**. The original source issues ATD-29/26/28/27 and the owner still control judgment and approval; these implementation fixes do not modify a single existing convention or waive one.
+
 ## Checks and acceptance
 
 Run `npm run check` at the **current PR head**; this now typechecks `tools/atd-40-verify-ledger.ts` and executes `tests/atd-40-ledger.test.ts` and fail-closed cases. Run the existing `smoke:catalog`, `smoke:pi`, tracker checker, and other unchanged CI jobs as appropriate, and report their *actual* results rather than inferring success. The source-ledger validation tests do **not** independently extract 362 unresolved conventions.
