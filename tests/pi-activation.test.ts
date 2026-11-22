@@ -16,7 +16,7 @@ import { digestSource } from "../src/catalog.ts";
 import { activationLogPath } from "../src/activation-telemetry.ts";
 import { stringify } from "yaml";
 
-function sandbox() {
+function sandbox(env:NodeJS.ProcessEnv=process.env) {
   const cwd=mkdtempSync(join(tmpdir(),"pi-atdd-pi-live-"));
   const git=(...args:string[])=>execFileSync("git",args,{cwd,encoding:"utf8"});
   git("init","-q");git("config","user.name","Pi tester");git("config","user.email","test@example.invalid");
@@ -31,7 +31,7 @@ function sandbox() {
     registerTool:()=>{},
     sendMessage:(message:{customType:string;content:string},options:unknown)=>messages.push({message,options}),
   };
-  atdd(p as any);
+  atdd(p as any,env);
   const ctx={cwd,isProjectTrusted:()=>true,ui:{notify:()=>{}}};
   return {cwd,handlers,messages,ctx,git,cleanup:()=>rmSync(cwd,{recursive:true,force:true})};
 }
@@ -222,13 +222,10 @@ test("Pi pre-edit structural evidence and local telemetry work without task keyw
 
 
 test("ATD-42: the Pi before_agent_start hook delivers phase-specific conventions from the verified Flow task", () => {
-  const x=sandbox();
+  // Each Pi extension instance gets its own host configuration. No shared state.
+  const env:NodeJS.ProcessEnv={};
+  const x=sandbox(env);
   const desk=mkdtempSync(join(tmpdir(),"pi-atdd-flow-hook-"));
-  const keys=[
-    "ATDD_WORKFLOW_ROOT", "ATDD_WORKFLOW_SEAT", "ATDD_FLOW_PI_SESSION",
-    "ATDD_FLOW_HERDR_SESSION", "ATDD_FLOW_HERDR_PANE",
-  ] as const;
-  const previous=Object.fromEntries(keys.map(k=>[k,process.env[k]]));
   const seatAddress="driver.delivery@demo", session="atd-42-pi-session";
   const taskFile=join(desk,"work","demo","tasks","delivery.yaml");
   const seatFile=join(desk,"work","demo","seats","driver.delivery","seat.yaml");
@@ -257,7 +254,7 @@ test("ATD-42: the Pi before_agent_start hook delivers phase-specific conventions
       schema:"atdd-workflow/seat/v2",address:seatAddress,role:"driver",
       project:"demo",worktree:x.cwd,branch:"delivery/demo",runtime,
     }));
-    Object.assign(process.env,{
+    Object.assign(env,{
       ATDD_WORKFLOW_ROOT:desk, ATDD_WORKFLOW_SEAT:seatAddress,
       ATDD_FLOW_PI_SESSION:session, ATDD_FLOW_HERDR_SESSION:"forge",
       ATDD_FLOW_HERDR_PANE:"w1:p2",
@@ -294,10 +291,6 @@ test("ATD-42: the Pi before_agent_start hook delivers phase-specific conventions
     assert.ok(!refused.message.content.includes("coder.phase.discipline"),
       "a superseded launcher receipt must never authorize a phase");
   }finally{
-    for(const key of keys) {
-      if(previous[key]===undefined)delete process.env[key];
-      else process.env[key]=previous[key];
-    }
     x.cleanup();
     rmSync(desk,{recursive:true,force:true});
   }
