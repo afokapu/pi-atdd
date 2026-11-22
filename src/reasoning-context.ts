@@ -16,6 +16,7 @@ import { PositiveReasoner, groundKey, type Fact, type Proof, type Rule, type Del
 import { discoverSourceEvidence } from "./structural-evidence.ts";
 import { classifyFileKind, observeDomainImports, sourceSyntaxEvidence } from "./operational-observers.ts";
 import { observeOutwardImports } from "./layer-import-observer.ts";
+import { inspectBunRouteAuth } from "./bun-route-auth.ts";
 import ts from "typescript";
 
 export type Phase = "PLAN" | "RED" | "GREEN" | "REFACTOR" | "SMOKE";
@@ -201,7 +202,7 @@ function typedRules(catalog: Catalog): Rule[] {
       source: "pi-atdd/adapters/structural-evidence-v1",
       head: { predicate: "active", terms: [DATALOG_SUBJECT, "coder.security.missing-auth"] },
       body: [
-        { predicate: "code_construct", terms: [DATALOG_SUBJECT, "bun_mutating_route"] },
+        { predicate: "code_construct", terms: [DATALOG_SUBJECT, "bun_mutating_route_missing_auth"] },
         { predicate: "operation", terms: [DATALOG_SUBJECT, operation] },
       ],
     });
@@ -371,6 +372,15 @@ function architectureExcludedBySource(ob:ContextObservation):boolean {
 /** A complete, inspected test header can disprove missing binding, unlike
  * task prose or a path match. Keep unknown syntax on legacy fallback.
  */
+/** A fully observed read-only Bun registration or verified inline guard
+ * disproves a missing-auth finding. Opaque aliases stay UNKNOWN.
+ */
+function securityExcludedBySource(ob:ContextObservation):boolean {
+  if(!ob.path||ob.sourceText===undefined)return false;
+  const checked=inspectBunRouteAuth(ob.path,ob.sourceText);
+  return checked.status==="guarded"||checked.status==="read-only";
+}
+
 function bindingExcludedBySource(ob:ContextObservation):boolean {
   if(!ob.path||ob.sourceText===undefined)return false;
   const kind=classifyFileKind(ob.path,ob.sourceText);
@@ -451,8 +461,13 @@ export class ReasoningSession {
       missing("code_construct", syntax.reason);
       return;
     }
-    for (const construct of discoverSourceEvidence(ob.path!, ob.sourceText!))
+    for (const construct of discoverSourceEvidence(ob.path!, ob.sourceText!)) {
       add("code_construct", [ob.scope, construct], "ast:" + construct + " @ " + ob.provenance);
+      if(construct==="bun_mutating_route_unresolved")
+        missing("finding","route_or_handler_unresolved");
+      if(construct==="test_urn_header")
+        missing("finding","test_binding_truthfulness_requires_review");
+    }
   }
 
   /** Present imports and added imports have different evidence requirements. */
@@ -522,6 +537,9 @@ export class ReasoningSession {
       const onlyBinding=selector.rules.length>0 &&
         selector.rules.every(id=>canonicalRuleId(this.catalog,id)==="tester.acceptance.binding-declared");
       if(onlyBinding&&bindingExcludedBySource(ob))continue;
+      const onlySecurity=selector.rules.length>0 &&
+        selector.rules.every(id=>canonicalRuleId(this.catalog,id)==="coder.security.missing-auth");
+      if(onlySecurity&&securityExcludedBySource(ob))continue;
       const matches = [
         ...(selector.terms ?? []).filter(term => termMatches(ob.task, term))
           .map(term => "term:" + term),
