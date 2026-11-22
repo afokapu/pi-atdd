@@ -347,5 +347,11 @@ test("ATD-42: edits cannot bypass phase conventions omitted from the first page"
     assert.equal(sawStageGuard,initial.message.content.includes("omitted by budget"),
       "stage preflight must exactly account for undelivered phase rules");
     assert.equal(sawFileGuard,true,"the bounded stage pages must eventually drain");
+    // A phase transition during the same Pi turn still activates RED before
+    // the next edit; the model does not need to recognize the transition.
+    flow.writeTask("red");
+    const transitioned=edit(event,ctx);
+    assert.equal(transitioned?.block,true);
+    assert.match(transitioned.reason,/ATDD phase RED guidance/);
   }finally{x.cleanup();flow.cleanup();}
 });
