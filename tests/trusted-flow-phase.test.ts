@@ -1,10 +1,10 @@
 // Acceptance: PLT-128 — only the authenticated Flow task supplies phase facts.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { readTrustedFlowPhase } from "../src/trusted-flow-phase.ts";
+import { readTrustedFlowPhase, readEnvFlowPhase } from "../src/trusted-flow-phase.ts";
 import type { SeatRuntimeConfig } from "../src/execution-seat.ts";
 
 function fixture() {
@@ -26,6 +26,17 @@ function fixture() {
     ].join("\n"));
   };
   task("in_progress");
+  const seatFile = join(root, "work", "demo", "seats", "driver.delivery", "seat.yaml");
+  mkdirSync(join(root, "work", "demo", "seats", "driver.delivery"), { recursive: true });
+  writeFileSync(seatFile, [
+    "schema: atdd-workflow/seat/v2",
+    "address: driver.delivery@demo",
+    "role: driver",
+    "project: demo",
+    "worktree: /tmp/driver-worktree",
+    "branch: delivery/test",
+    "",
+  ].join("\n"));
   const seat: SeatRuntimeConfig = {
     mode: "external",
     flowRoot: root,
@@ -71,4 +82,28 @@ test("PLT-128: Flow phase refuses mismatched task identity and unknown phases", 
     assert.equal(readTrustedFlowPhase({...x.seat, mode:"standalone"}),undefined);
     assert.equal(readTrustedFlowPhase({...x.seat, binding:{...x.seat.binding, taskId:"*"}}),undefined);
   } finally { x.finish(); }
+});
+
+
+test("PLT-128: native Flow Pi seats activate from the host-provided Desk identity", () => {
+  const x=fixture();
+  const env={ATDD_WORKFLOW_ROOT:x.root,ATDD_WORKFLOW_SEAT:"driver.delivery@demo"};
+  try {
+    assert.equal(readEnvFlowPhase(env)?.phase,"PLAN");
+    x.task("in_progress","green");
+    assert.equal(readEnvFlowPhase(env)?.phase,"GREEN");
+    x.task("review","green");
+    assert.equal(readEnvFlowPhase(env),undefined);
+  } finally {x.finish();}
+});
+
+test("PLT-128: native phase refuses ambiguous assignments and foreign seats", () => {
+  const x=fixture();
+  const env={ATDD_WORKFLOW_ROOT:x.root,ATDD_WORKFLOW_SEAT:"driver.delivery@demo"};
+  try {
+    const taskFile=join(x.root,"work","demo","tasks","delivery.yaml");
+    writeFileSync(join(x.root,"work","demo","tasks","second.yaml"), readFileSync(taskFile));
+    assert.throws(()=>readEnvFlowPhase(env),/Several active Flow tasks/);
+    assert.throws(()=>readEnvFlowPhase({...env,ATDD_WORKFLOW_SEAT:"driver.other@demo"}),/ENOENT|Flow seat/);
+  } finally {x.finish();}
 });
