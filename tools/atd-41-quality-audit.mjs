@@ -140,6 +140,7 @@ const testFiles=[
   "tests/sidecar-witness-replay.test.ts",
   "tests/validator-observer.test.ts",
   "tests/pi-observation-feed.test.ts",
+  "tests/atd-41-cross-stream-contract.test.ts",
   "tests/pi-activation.test.ts",
   "tests/reasoning-context.test.ts",
   "tests/sidecar-activation-matrix.test.ts",
