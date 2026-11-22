@@ -11,9 +11,9 @@ The pinned Git tree contains **381** convention YAML files: 356 Bun, 2 Flow, 18 
 - **13 candidate-bearing source files** were inspected for the proposed state lenses below (not 13 unique OoCs; several source rules contribute to multiple state lenses).
 - **1 reasoned source-only no-candidate control**: `shared.convention.propose`.
 - **362 unresolved files** are listed with exact Git blob SHA and typed graph witnesses, but **their full statement/terms/exceptions have not yet received semantic assessment**. They are *not* silently counted as extracted. No zero-candidate inference from a file name.
-- Every ledger row's `rule_id_filename_derived` is **not yet exhaustively cross-checked against the YAML `rule_id` field**. The checked script under `tools/atd-40-verify-ledger.ts` will fail on any discrepancy. File accounting is complete; A-01 semantic accounting/ID verification remains **UNVERIFIED until run**.
+- The ledger's 376 filename-derived IDs have now been checked against authored YAML `rule_id` fields with source/blob digests in CI. That verifies **source identity**, not independently assessed semantic OoC boundaries for the 362 unresolved rules.
 
-The authored graph references in the TSV retain edge **type, constraint, direction and source line**, including inbound edges; they are not an OoC causal graph. Missing graph witness does not establish no relationship or no applicability. The Bun/Flow/local YAML and published source locks were **not modified**.
+The corrected TSV carries **508 Bun + 14 local = 522 source-authored edges**, represented by **1,002 in-corpus directional witnesses**. The original generator had silently omitted 429 Bun edges because it assumed `source_ref` occurred on the dash line. The corrected graph retains **authored type, explicit or default constraint, direction and actual source line**, including inbound edges; they are not an OoC causal graph. Missing graph witness does not establish no relationship or no applicability. The Bun/Flow/local YAML and published source locks were **not modified**.
 
 ### Extraction discipline
 
