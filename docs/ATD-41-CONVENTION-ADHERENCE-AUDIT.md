@@ -49,3 +49,11 @@ This is a **conservative observation fix**, not module-resolution parity, full c
 ## Unknown fact classification refinement
 
 A parsed source containing an unsupported dependency form now reports `missing: change` with a concrete `dynamic_import_uninspected`/alias/etc. reason rather than incorrectly reporting `missing: source`. Truly unavailable or unparseable source is still `missing: source`. The reasoner-level regression checks that no `change` fact is fabricated, and the explicit UNKNOWN survives through reconciliation.
+
+## Provisional contract code is not a dead production module
+
+The in-memory T9-facing proposal has moved from `src/observation-envelope.ts` to `tools/atd-41-observation-envelope.ts`.
+Only the comparison tests import it. Since `package.json` does not package `tools/`,
+the proposal cannot accidentally become a runtime export or a falsely reachable
+production source. Stream B still delivers the source-locked proposal to ATD-39;
+it remains independently reviewable, with no admitted OoC or provider authority.

@@ -3,7 +3,7 @@
  * In-memory evidence for coordinator evaluation, NOT a published T9 API.
  * Do not write this to the sanitized telemetry log: proof can contain paths.
  */
-import type { ContextObservation, Reconciliation } from "./reasoning-context.ts";
+import type { ContextObservation, Reconciliation } from "../src/reasoning-context.ts";
 
 export type ObservationEnvelope = {
   schema: "pi-atdd/observation-envelope/proposal-v1";

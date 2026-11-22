@@ -14,7 +14,7 @@ const upstream=resolve(".cache-sources/atdd-bun");
 const metricFile=resolve(upstream,"detectors/bun_ts_metrics_detector/ts_metrics.mjs");
 const sourceFiles=[
   "src/activation-telemetry.ts",
-  "src/observation-envelope.ts",
+  "tools/atd-41-observation-envelope.ts",
   "src/operational-observers.ts",
   "src/pi-activation.ts",
   "src/reasoning-context.ts",

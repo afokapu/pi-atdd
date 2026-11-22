@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadCatalog, loadConfig } from "../src/catalog.ts";
 import { ReasoningSession, type ContextObservation } from "../src/reasoning-context.ts";
-import { observationEnvelope } from "../src/observation-envelope.ts";
+import { observationEnvelope } from "../tools/atd-41-observation-envelope.ts";
 
 const DOMAIN = "src/orders/domain/price.ts";
 const BASE = 'export const price = () => 4;\n';
