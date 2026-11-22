@@ -185,6 +185,25 @@ test("ATD-22: actual URN missing-binding facts fire while inspected valid bindin
   }finally{x.finish();}
 });
 
+test("ATD-22: security evidence distinguishes a missing guard, a direct guard and opaque handler",()=>{
+  const x=setup();
+  const target="coder.security.missing-auth",path="src/server.ts";
+  const req='Bun.serve({routes:{"/orders":{POST:()=>new Response("ok")}}});';
+  const guarded='Bun.serve({routes:{"/orders":{POST:()=>{requireAuth();return new Response("ok")}}}});';
+  const opaque='Bun.serve({routes:{"/orders":{POST:handler}}});';
+  try{
+    const bad=x.session.observe(event("auth:missing",path,req));
+    assert.ok(has(bad,target));
+    assert.match(proof(bad,target),/bun_mutating_route_missing_auth/);
+    const safe=x.session.observe(event("auth:guarded",path,guarded));
+    assert.equal(has(safe,target),false,"actual guard inside POST is not a missing-auth finding");
+    const unknown=x.session.observe(event("auth:opaque",path,opaque));
+    assert.ok(unknown.missingReasons.some(r=>r.reason==="route_or_handler_unresolved"),
+      "unresolved handler body must be UNKNOWN rather than a clean negative");
+    assert.equal(unknown.observedFacts.some(f=>f.args[1]==="bun_mutating_route_missing_auth"),false);
+  }finally{x.finish();}
+});
+
 test("labeled fires/doesNotFire replays distinguish structural coverage from legacy selector false positives",()=>{
   const x=setup();
   const samples:Array<{id:string;shouldFire:boolean;operation:ContextObservation["operation"];
