@@ -76,3 +76,47 @@ test("a filename identity substituted for an authored YAML rule ID is rejected",
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /authored YAML rule_id/);
 });
+
+test("all authored Bun/local relationships are represented, without type coercion", () => {
+  const rows = ledger.trimEnd().split("\n").filter(line => line && !line.startsWith("#"));
+  const columns = rows.shift()!.split("\t");
+  const witnessColumn = columns.indexOf("graph_witnesses_out_and_in");
+  assert.ok(witnessColumn >= 0);
+  const witnesses = rows.flatMap(row => row.split("\t")[witnessColumn]!.split(";").filter(Boolean));
+  // Source-locked corpus: 508 Bun + 14 local edge objects, 1,002
+  // in-corpus directional witnesses. Missing external endpoints remain gaps.
+  assert.equal(witnesses.length, 1002);
+  assert.ok(witnesses.some(value => value.includes("out:runs_alongside/discretionary:")));
+  assert.ok(witnesses.some(value => value.includes("in:enables/discretionary:")));
+  assert.ok(witnesses.some(value => value.includes("out:requires/mandatory:")));
+  assert.ok(witnesses.some(value => value.includes("default:mandatory:")));
+});
+
+test("removing a source-authored edge witness fails closed", () => {
+  const lines = ledger.trimEnd().split("\n");
+  const index = lines.findIndex(line => line.startsWith("planner.acceptance.well-formed\t"));
+  assert.ok(index >= 0);
+  const row = lines[index]!.split("\t");
+  assert.ok(row[7] && row[7].includes(";"), "source rule must have multiple witnesses");
+  row[7] = row[7]!.split(";").slice(1).join(";");
+  lines[index] = row.join("\t");
+  const result = runMutant(lines.join("\n") + "\n");
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /authored graph witness mismatch/);
+});
+
+test("a changed authored edge type cannot be laundered into mandatory requires", () => {
+  const lines = ledger.trimEnd().split("\n");
+  const index = lines.findIndex(line => line.startsWith("shared.tracker.issue-mandatory\t"));
+  assert.ok(index >= 0);
+  const row = lines[index]!.split("\t");
+  assert.ok(row[7]?.includes("out:runs_alongside/discretionary:shared.tracker.unconfigured-notice"));
+  row[7] = row[7]!.replace(
+    "out:runs_alongside/discretionary:shared.tracker.unconfigured-notice",
+    "out:requires/mandatory:shared.tracker.unconfigured-notice",
+  );
+  lines[index] = row.join("\t");
+  const result = runMutant(lines.join("\n") + "\n");
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /authored graph witness mismatch/);
+});
