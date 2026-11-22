@@ -63,7 +63,7 @@ const reviewFunctions=new Set([
   "witnessVerdict","evaluateWitness","replayQualifiedSidecarWitnesses","fullWitnessGapSummary",
   "qualifiedCaseRows",
   // Existing Pi and telemetry functions touched by Stream B.
-  "allowedFacts","receipt","sourceIdentity","sameSupport","pointOf","ruleReceipts",
+  "allowedFacts","receipt","sourceIdentity","sameSupport","pointOf","supportKinds","ruleReceipts",
   "hint","eventIdValid","withdrawn","withdrawnReceipts",
   "PiObservationFeed.capture","PiObservationFeed.retractScope","PiObservationFeed.invalidate",
   "emitObservation","nextObservationId","observeRaw",
