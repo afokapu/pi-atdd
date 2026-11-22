@@ -146,7 +146,7 @@ export function inspectBunRouteAuth(file:string,source?:string):BunRouteAuth{
       const r=member(cfg,"routes"),f=member(cfg,"fetch");
       const routeObj=r&&ts.isPropertyAssignment(r)?objectOf(r.initializer,bindings):
         r&&ts.isShorthandPropertyAssignment(r)?objectOf(bindings.get(r.name.text),bindings):undefined;
-      if(r)states.push(...(routeObj?routeStates(routeObj,bindings):["unknown"]));
+      if(r)states.push(...(routeObj?routeStates(routeObj,bindings):(["unknown"] as State[])));
       if(f)states.push(...fetchStates(f));
       if(!r&&!f)states.push("unknown");
     }
