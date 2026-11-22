@@ -188,7 +188,7 @@ export function resolveTask(userTexts: string[]): string {
 /** Coach-state section of a Coach's record. A field that is not known is written UNKNOWN. */
 export type CoachState = {
   role: string; identity?: string; profile?: string;
-  issues?: string[]; workers?: string[]; prs?: string[]; attention?: string[]; decisions?: string[]; nextSteps?: string[];
+  issues?: string[]; /** ids and PR links merely mentioned in the task text; shown as unverified */ taskRefs?: string[]; workers?: string[]; prs?: string[]; attention?: string[]; decisions?: string[]; nextSteps?: string[];
 };
 
 function coachLines(c: CoachState): string[] {
@@ -198,6 +198,7 @@ function coachLines(c: CoachState): string[] {
   return ["Coach state:",
     "Role: " + clip(redact(c.role), 80) + (who ? " (" + clip(redact(who), 120) + ")" : ""),
     list("Issues", c.issues), list("Workers", c.workers), list("PRs", c.prs),
+    list("Task references (unverified, mentioned in the task text)", c.taskRefs),
     list("Attention items", c.attention), list("Owner decisions", c.decisions), list("Next steps", c.nextSteps)];
 }
 

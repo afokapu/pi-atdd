@@ -319,7 +319,7 @@ export default function atdd(pi:ExtensionAPI):void {
   function coachState(text:string):{coach?:CoachState}{
     if(process.env.PI_ATDD_ATTENTION_ROLE!=="coach")return {};
     return {coach:{role:"coach",identity:process.env.PI_ATDD_ATTENTION_IDENTITY,profile:process.env.PI_ATDD_ATTENTION_PROFILE,
-      issues:extractIssueIds(text),prs:extractPullRequests(text),attention:attentionStrip.liveItems()}};
+      taskRefs:[...extractIssueIds(text),...extractPullRequests(text)],attention:attentionStrip.liveItems()}};
   }
   pi.on("turn_end",(_event,ctx)=>{
     if(!ctx.isProjectTrusted())return;
