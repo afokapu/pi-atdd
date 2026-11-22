@@ -54,6 +54,8 @@ export type Reconciliation = {
 // Selector hits are separate inputs; they remain visible even when they
 // over-activate due to negated task language or broad path matching.
 // No selector result grants permission or discharges the canonical rule.
+const DATALOG_SUBJECT = "?subject"; // shared variable for every applicable predicate
+
 const selectorRules: Rule[] = [
   {
     id: "pi-atdd.match-selector",
@@ -255,7 +257,6 @@ const SOURCE_GAP_REASONS = new Set([
   "invalid_path", "unsupported_file_kind", "proposed_source_unavailable",
   "partial_source_parse", "source_too_large",
 ]);
-const DATALOG_SUBJECT = "?subject"; // shared variable for every applicable predicate
 type AddObserved = (predicate: string, args: string[], detail?: string) => void;
 type NoteMissing = (fact: string, reason: string) => void;
 
