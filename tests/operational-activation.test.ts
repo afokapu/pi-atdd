@@ -159,6 +159,32 @@ test("path-only architecture guidance remains distinct from a structural finding
   }finally{x.finish();}
 });
 
+test("ATD-22: actual URN missing-binding facts fire while inspected valid bindings do not",()=>{
+  const x=setup();
+  const prefix="// URN: test:orders:checkout:E001-SMOKE-001\n";
+  const body='import { strict as assert } from "node:assert";\n';
+  const target="tester.acceptance.binding-declared";
+  try{
+    for(const c of [
+      {name:"unbound",path:"src/order.test.ts",source:prefix+body,fire:true},
+      {name:"unit-train-only",path:"src/order.test.ts",
+        source:prefix+"// Train: order\n"+body,fire:true},
+      {name:"bound",path:"src/order.test.ts",
+        source:prefix+"// Acceptance: acc:order\n"+body,fire:false},
+      {name:"journey-train",path:"e2e/order.test.ts",
+        source:prefix+"// Train: order\n"+body,fire:false},
+      {name:"no-urn",path:"src/order.test.ts",source:body,fire:false},
+    ]as const){
+      const out=x.session.observe({...event("binding:"+c.name,c.path,c.source,body),
+        task:"Change a test without assumptions about acceptance"});
+      const proofText=proof(out,target);
+      assert.equal(has(out,target),c.fire,c.name);
+      if(c.fire)assert.match(proofText,/test_urn_missing_binding/,c.name);
+      else assert.doesNotMatch(proofText,/test_urn_missing_binding/,c.name);
+    }
+  }finally{x.finish();}
+});
+
 test("labeled fires/doesNotFire replays distinguish structural coverage from legacy selector false positives",()=>{
   const x=setup();
   const samples:Array<{id:string;shouldFire:boolean;operation:ContextObservation["operation"];
