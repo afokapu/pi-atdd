@@ -355,7 +355,7 @@ test("ATD-42: the Pi hook delivers phases from the verified Flow task without fa
     assert.equal(plan?.message?.customType,"pi-atdd-inference");
     const planned=plan.message.content+"\n"+drainHookPages(onStart,ctx);
     for(const id of ["planner.steps.jtbd-taxonomy", "planner.plan.session-lifecycle",
-      "planner.user-system-flow.route-category-assessment", "planner.acceptance.extraction-no-inference"])
+      "planner.acceptance.well-formed"])
       assert.ok(planned.includes(id), "PLAN guidance omitted "+id);
     assert.match(planned,/Canonical source:/);
     assert.match(planned,/Flow-owned task demo\/delivery/);
@@ -368,7 +368,7 @@ test("ATD-42: the Pi hook delivers phases from the verified Flow task without fa
     assert.equal(red?.message?.customType,"pi-atdd-inference");
     const redGuidance=red.message.content+"\n"+drainHookPages(onStart,ctx);
     assert.match(redGuidance,/tester\.red\.behavioral-assertion/);
-    assert.match(redGuidance,/tester\.test\.phase-declared/);
+    assert.match(redGuidance,/tester\.red\.fails-first/);
     flow.writeTask("green");
     const green=onStart({messageType:"extension",prompt:""},ctx);
     assert.equal(green?.message?.customType,"pi-atdd-inference");
@@ -378,10 +378,10 @@ test("ATD-42: the Pi hook delivers phases from the verified Flow task without fa
     const refactor=onStart({messageType:"extension",prompt:""},ctx);
     assert.equal(refactor?.message?.customType,"pi-atdd-inference");
     const refactorGuidance=refactor.message.content+"\n"+drainHookPages(onStart,ctx);
-    for(const id of ["coder.phase.discipline", "coder.complexity.cyclomatic",
-      "coder.complexity.length", "coder.complexity.nesting", "coder.dead-code.reachability",
-      "coder.duplication.intra-layer", "coder.quality.comments", "coder.quality.mi"])
+    for(const id of ["coder.phase.discipline"])
       assert.ok(refactorGuidance.includes(id), "REFACTOR guidance omitted "+id);
+    assert.ok(!refactorGuidance.includes("coder.dead-code.reachability"),
+      "a bare REFACTOR phase must not claim applicability of unobserved dead-code findings");
 
     // A session swap invalidates the receipt; old phase guidance is withdrawn.
     writeFileSync(flow.receiptFile,stringify({
