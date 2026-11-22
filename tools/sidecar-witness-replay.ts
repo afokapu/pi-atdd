@@ -71,6 +71,31 @@ const WITNESSES: readonly SourceWitness[] = [
   {sourceId:"tester.acceptance.binding-declared",kind:"doesNotFire",index:2,
     path:"src/orders/checkout.ts",proposed:URN+OLD,prior:OLD,
     operation:"edit",expected:false,structuralBasis:"non-test source excluded"},
+  // Actual Bun AST cases follow the authored mutation, guard and test scope.
+  {sourceId:"coder.security.missing-auth",kind:"fires",index:0,
+    path:"src/server.ts",
+    proposed:'Bun.serve({routes:{"/orders":{POST:()=>new Response("ok")}}});',
+    prior:OLD,operation:"edit",expected:true,structuralBasis:"POST without inline guard"},
+  {sourceId:"coder.security.missing-auth",kind:"fires",index:1,
+    path:"src/server.ts",
+    proposed:'Bun.serve({fetch(req){if(req.method==="POST"){return new Response("ok")}}});',
+    prior:OLD,operation:"edit",expected:true,structuralBasis:"fetch POST branch without guard"},
+  {sourceId:"coder.security.missing-auth",kind:"fires",index:2,
+    path:"src/server.ts",
+    proposed:'Bun.serve({routes:{"/orders":{GET:()=>{requireAuth();return 1},DELETE:()=>2}}});',
+    prior:OLD,operation:"edit",expected:true,structuralBasis:"guard exists only in sibling GET"},
+  {sourceId:"coder.security.missing-auth",kind:"doesNotFire",index:0,
+    path:"src/server.ts",
+    proposed:'Bun.serve({routes:{"/catalog":{GET:()=>1,HEAD:()=>2}}});',
+    prior:OLD,operation:"edit",expected:false,structuralBasis:"read-only GET and HEAD"},
+  {sourceId:"coder.security.missing-auth",kind:"doesNotFire",index:1,
+    path:"src/server.test.ts",
+    proposed:'Bun.serve({routes:{"/orders":{DELETE:()=>2}}});',
+    prior:OLD,operation:"edit",expected:false,structuralBasis:"test file excluded"},
+  {sourceId:"coder.security.missing-auth",kind:"doesNotFire",index:2,
+    path:"src/server.ts",
+    proposed:'Bun.serve({routes:{"/orders":{PUT:()=>{requireAuth();return 2}}}});',
+    prior:OLD,operation:"edit",expected:false,structuralBasis:"guard inside mutating handler"},
 ];
 // Split conventions share a parent source ID. The *effective variant* is the
 // unique replay identity; keying by the parent silently drops split examples.
@@ -104,7 +129,10 @@ function witnessVerdict(sample:SourceWitness,
   const proof=JSON.stringify(target?.proof??null);
   const structuralProof=sample.sourceId==="tester.acceptance.binding-declared"
     ? /pi-atdd.typed-test-urn/.test(proof) && proof.includes("test_urn_missing_binding")
-    : /pi-atdd.typed-(?:domain-integration|outward-layer-import)/.test(proof);
+    : sample.sourceId==="coder.security.missing-auth"
+      ? /pi-atdd.typed-bun-mutating-route/.test(proof) &&
+        proof.includes("bun_mutating_route_missing_auth")
+      : /pi-atdd.typed-(?:domain-integration|outward-layer-import)/.test(proof);
   const activated=!!target;
   const structuralPass=sample.expected?structuralProof:!structuralProof;
   const pass=activated===sample.expected&&structuralPass;
