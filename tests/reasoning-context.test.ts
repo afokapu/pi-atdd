@@ -174,7 +174,7 @@ test("ATD-42: a trusted PLAN fact automatically supplies JTBD and acceptance con
       scope:"phase-128",task:"Implement the assigned delivery",operation:"task" as const,
       phase,actorRole:"driver",
       origin:"trusted-work-provider" as const,
-      provenance:"Flow-owned task and authenticated seat",
+      provenance:"Flow-owned task and authenticated seat",revision:"verified-phase-test-revision",
     });
     const plan=a.session.observe(mk("PLAN"));
     const ids=new Set(plan.activations.map(x=>x.id));
@@ -213,7 +213,7 @@ test("ATD-42: missing required PLAN guidance is INCOMPLETE, never falsely ready"
     const observation={
       scope:"missing-phase-rule",task:"Deliver a bounded task",operation:"task" as const,
       phase:"PLAN" as const,origin:"trusted-work-provider" as const,
-      provenance:"verified Flow task and launch receipt",
+      provenance:"verified Flow task and launch receipt",revision:"verified-phase-test-revision",
     };
     const result=session.observe(observation);
     assert.equal(result.status,"incomplete");
