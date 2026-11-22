@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import atdd from "../extensions/atdd.ts";
 import { digestSource } from "../src/catalog.ts";
+import { activationLogPath } from "../src/activation-telemetry.ts";
 
 function sandbox() {
   const cwd=mkdtempSync(join(tmpdir(),"pi-atdd-pi-live-"));
@@ -177,4 +178,40 @@ test("budget-clipped pre-edit rules are paged and cannot be silently skipped on 
     assert.deepEqual([...displayed].sort(),ids);
     assert.equal(x.handlers.get("tool_call")!(event,x.ctx),undefined);
   }finally{x.cleanup();}
+});
+
+
+test("Pi pre-edit structural evidence and local telemetry work without task keywords",()=>{
+  const x=sandbox();
+  const root=mkdtempSync(join(tmpdir(),"pi-atdd-telemetry-pi-"));
+  const old=process.env.PI_ATDD_TELEMETRY_DIR;
+  process.env.PI_ATDD_TELEMETRY_DIR=root;
+  try{
+    const start=x.handlers.get("before_agent_start")!;
+    start({messageType:"user",prompt:"Make orders cancellable"},x.ctx);
+    const event={toolName:"write",input:{
+      path:"src/server.ts",content:'Bun.serve({routes:{"/orders":{DELETE:()=>new Response("ok")}}});',
+    }};
+    const first=x.handlers.get("tool_call")!(event,x.ctx);
+    assert.equal(first.block,true);
+    assert.match(first.reason,/coder\.security\.missing-auth/);
+    assert.equal(x.handlers.get("tool_call")!(event,x.ctx),undefined,
+      "unchanged evidence should not repeatedly block on identical guidance");
+    const log=readFileSync(activationLogPath(x.cwd),"utf8");
+    assert.ok(!log.includes("Make orders cancellable"),"task prompt must not enter telemetry");
+    assert.ok(!log.includes("src/server.ts"),"raw path must not enter telemetry");
+    assert.ok(!log.includes("DELETE:()=>"),"code must not enter telemetry");
+    const entries=log.trim().split("\n").map(line=>JSON.parse(line));
+    // Main's PLT-96 tracker rules match broad task wording, so the task start may be "matched" by generic
+    // shared.* rules; what must hold is that the task text gives no domain evidence (the route evidence comes from the edit).
+    assert.ok(entries.some(item=>item.point==="task_start" &&
+      (item.ruleIds??[]).every((id:string)=>id.startsWith("shared."))));
+    assert.ok(entries.some(item=>item.point==="pre_edit" && item.outcome==="matched" &&
+      item.evidenceIds.includes("ast:bun_mutating_route")));
+    assert.ok(entries.some(item=>item.point==="pre_edit" && item.deduplicated>=1));
+  }finally{
+    x.cleanup();rmSync(root,{recursive:true,force:true});
+    if(old===undefined)delete process.env.PI_ATDD_TELEMETRY_DIR;
+    else process.env.PI_ATDD_TELEMETRY_DIR=old;
+  }
 });

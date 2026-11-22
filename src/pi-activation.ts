@@ -3,9 +3,9 @@
  * Tool interception provides guidance. Post-tool repository inspection observes
  * bypasses. Neither constitutes independent proof of compliance.
  */
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadCatalog, loadConfig, type Catalog, type Selector } from "./catalog.ts";
 import type { StructureProfile } from "./profile.ts";
@@ -18,6 +18,9 @@ import { attentionSeatOptions } from "./attention-seat.ts";
 import { registerSeatExecution } from "./execution-pi.ts";
 import type { ExecutionCheckpoint } from "./execution-lifecycle.ts";
 import { registerBusyState } from "./busy-state.ts";
+import { appendActivation, activationPathCategory, formatActivationSummary, type ActivationEvent, type ActivationPoint } from "./activation-telemetry.ts";
+import { performance } from "node:perf_hooks";
+import type { Proof } from "./inference.ts";
 import { Type } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { MODE_FILE, guardsAtdd, modeFromText, recordMode, repositoryRoot, resolveMode, type Mode, type Resolution } from "./mode.ts";
@@ -91,6 +94,8 @@ export default function atdd(pi:ExtensionAPI):void {
   let reasoning:ReasoningSession|undefined;
   let observedRepo:RepositorySnapshot|undefined;
   let observationWarning=false;
+  let telemetryWarning=false;
+  const sessionId=randomUUID();
   const delivered=new Map<string,string>();
   const unresolvedPaths=new Set<string>();
   // PLT-102: automatic handoff. Usage is read in turn_end; the session switch runs
@@ -113,6 +118,55 @@ export default function atdd(pi:ExtensionAPI):void {
   /** PLT-93 working mode for this session; undefined until resolved. */
   let current:Resolution|undefined;
   const active=(cwd:string)=>current?.mode==="atdd"&&repositoryRoot(cwd)!==null;
+  /** Only closed, stable identifiers from proof nodes are logged: never prose, code, or paths. */
+  function evidenceIds(result: ReturnType<ReasoningSession["observe"]>):string[]{
+    const found = new Set<string>();
+    const visit = (proof: Proof):void => {
+      const name=proof.fact.predicate, args=proof.fact.args;
+      if(name==="selector_hit" && args[1])found.add("selector:"+args[1]);
+      if(name==="code_construct" && args[1])found.add("ast:"+args[1]);
+      if(name==="file_layer" && args[1])found.add("layer:"+args[1]);
+      if(name==="phase" && args[1])found.add("phase:"+args[1]);
+      for(const d of proof.derivations) for(const p of d.premises)visit(p);
+    };
+    for(const activation of result.activations) visit(activation.proof);
+    return [...found].sort();
+  }
+  function record(cwd:string, event:ActivationEvent):void{
+    const outcome=appendActivation(cwd,{...event,sessionId,catalogDigest:catalog?.provenance[0]?.digest});
+    if(!outcome.ok&&!telemetryWarning){
+      telemetryWarning=true;
+      try{pi.sendMessage({customType:"pi-atdd-telemetry-gap",
+        content:"ATDD local telemetry unavailable ("+outcome.reason+"); discovery guidance is unaffected.",
+        display:false},{deliverAs:"steer"});}catch{/* Observability must never block work. */}
+    }
+  }
+  function recordReasoned(cwd:string,point:ActivationPoint,operation:"task"|"edit"|"create",
+    path:string|undefined,result:ReturnType<ReasoningSession["observe"]>,
+    fresh:readonly string[],page:RenderedPage|undefined,started:number):void{
+    record(cwd,{point,operation,pathCategory:activationPathCategory(path),outcome:result.status,
+      reasonCode:result.status==="incomplete"?"mandatory_dependency_missing":
+        result.status==="unknown"?"no_applicability_evidence":"graph_activation",
+      ruleIds:result.activations.map(a=>a.id),evidenceIds:evidenceIds(result),
+      delivered:page?.emittedIds.length??0,deduplicated:Math.max(0,result.activations.length-fresh.length),
+      omitted:page?.omittedIds.length??0,durationMs:performance.now()-started});
+  }
+  /** Pi tool proposals are observed before execution; changed file content is observed afterward. */
+  function sourceFor(cwd:string,path:string,input?:{content?:unknown;oldText?:unknown;newText?:unknown}):string|undefined{
+    if(scopedPath(cwd,path)===null)return undefined; // avoid reading an untrusted symlink during post-tool inspection
+    if(typeof input?.content==="string")return input.content.length<=1_000_000?input.content:undefined;
+    let current:string|undefined;
+    try{
+      const abs=resolve(cwd,path);
+      if(!existsSync(abs)||statSync(abs).size>1_000_000)return undefined;
+      current=readFileSync(abs,"utf8");
+    }catch{return undefined;}
+    if(typeof input?.oldText==="string"&&typeof input.newText==="string"){
+      const parts=current.split(input.oldText);
+      if(parts.length===2)return parts[0]+input.newText+parts[1];
+    }
+    return current;
+  }
   type Notify={cwd:string;ui:{notify:(message:string,type?:"info"|"warning"|"error")=>void}};
   function setMode(ctx:Notify,mode:Mode,source:string,announce=true):boolean{
     const changed=current?.mode!==mode;
@@ -195,9 +249,9 @@ export default function atdd(pi:ExtensionAPI):void {
   const scopeFor=(path?:string)=>"pi-run:"+serial+":"+(path?"file:"+path:"task");
   const currentRevision=()=>observedRepo?.revision??undefined;
   function observe(cwd:string,operation:"task"|"edit"|"create"|"review",
-    origin:ContextObservation["origin"],provenance:string,path?:string){
+    origin:ContextObservation["origin"],provenance:string,path?:string,sourceText?:string){
     return ensure(cwd).observe({
-      scope:scopeFor(path),task:task||"unknown task",path,operation,origin,provenance,
+      scope:scopeFor(path),task:task||"unknown task",path,sourceText,operation,origin,provenance,
       ...(currentRevision()?{revision:currentRevision()}:{}),
     });
   }
@@ -238,11 +292,12 @@ export default function atdd(pi:ExtensionAPI):void {
     if(ctx.isProjectTrusted())restoreFromBranch(ctx);
   });
   pi.registerCommand("atdd",{
-    description:"ATDD or plain: /atdd on | off | status",
+    description:"ATDD or plain: /atdd on | off | status | telemetry",
     handler:async(args,ctx)=>{
       const arg=(args??"").trim().toLowerCase();
       if(arg==="on"||arg==="off"){setMode(ctx,arg==="on"?"atdd":"plain","/atdd "+arg);return;}
-      if(arg&&arg!=="status"){ctx.ui.notify("Usage: /atdd on | off | status","warning");return;}
+      if(arg==="telemetry"){ctx.ui.notify(formatActivationSummary(ctx.cwd),"info");return;}
+      if(arg&&arg!=="status"){ctx.ui.notify("Usage: /atdd on | off | status | telemetry","warning");return;}
       const mode=current??resolveMode({cwd:ctx.cwd,env:process.env});
       let line=mode.mode?"ATDD mode: "+mode.mode+" ("+mode.source+")":
         "ATDD mode: undecided (an interactive session asks at the first task; other runs use atdd)";
@@ -260,7 +315,10 @@ export default function atdd(pi:ExtensionAPI):void {
   });
   // Mode first (PLT-93): the user's words, then env/record/markers; only a TUI session asks.
   pi.on("before_agent_start",(event,ctx)=>{
-    if(!ctx.isProjectTrusted())return;
+    if(!ctx.isProjectTrusted()){
+      if(event.messageType==="user")record(ctx.cwd,{point:"task_start",outcome:"excluded",reasonCode:"untrusted_project"});
+      return;
+    }
     const said=event.messageType==="user"?modeFromText(event.prompt??""):undefined;
     if(said)setMode(ctx,said,"your message");
     if(!current){
@@ -280,16 +338,22 @@ export default function atdd(pi:ExtensionAPI):void {
       reset();
       if(active(ctx.cwd))observedRepo=observeRepository(ctx.cwd).snapshot;
     }
-    if(!active(ctx.cwd))return;
+    if(!active(ctx.cwd)){
+      if(newTask)record(ctx.cwd,{point:"task_start",outcome:"excluded",reasonCode:"plain_or_outside_repo"});
+      return;
+    }
+    const started=performance.now();
     try{
       const result=observe(ctx.cwd,"task","pi-event","Pi before_agent_start");
       const newRules=newlyRelevant(result);
       if(!newTask&&!newRules.length)return;
       const page=renderReasonedPage(result,newRules,12_000);
       recordActualDelivery(result,page);
+      if(newTask)recordReasoned(ctx.cwd,"task_start","task",undefined,result,newRules,page,started);
       return {message:{customType:"pi-atdd-inference",
         content:page.text,display:false}};
     }catch(e){
+      if(newTask)record(ctx.cwd,{point:"task_start",outcome:"error",reasonCode:"reasoner_error",durationMs:performance.now()-started});
       reset(); // no partially materialized conclusions survive a failed inference
       return {message:{customType:"pi-atdd-error",
         content:"ATDD reasoning failed: "+String(e)+
@@ -298,27 +362,37 @@ export default function atdd(pi:ExtensionAPI):void {
   }
   /** Same preflight for a governed path whether it is edited via edit/write or the shell. */
   function preflightPath(cwd:string,path:string,operation:"edit"|"create",provenance:string,
-    budget:number,blockUnknown:boolean):{block:true;reason:string}|undefined{
-    const result=observe(cwd,operation,"pi-event",provenance,path);
-    const fresh=newlyRelevant(result);
-    if(result.status==="incomplete"){
-      const page=renderReasonedPage(result,fresh,budget);
-      recordActualDelivery(result,page);
-      return {block:true,reason:page.text+
-        "\nMandatory graph dependencies unresolved. Do not proceed until authoritative sources are available."};
+    budget:number,blockUnknown:boolean,sourceText?:string):{block:true;reason:string}|undefined{
+    const started=performance.now();
+    try{
+      const result=observe(cwd,operation,"pi-event",provenance,path,sourceText);
+      const fresh=newlyRelevant(result);
+      if(result.status==="incomplete"){
+        const page=renderReasonedPage(result,fresh,budget);
+        recordActualDelivery(result,page);
+        recordReasoned(cwd,"pre_edit",operation,path,result,fresh,page,started);
+        return {block:true,reason:page.text+
+          "\nMandatory graph dependencies unresolved. Do not proceed until authoritative sources are available."};
+      }
+      if(fresh.length){
+        const page=renderReasonedPage(result,fresh,budget);
+        recordActualDelivery(result,page);
+        recordReasoned(cwd,"pre_edit",operation,path,result,fresh,page,started);
+        return {block:true,reason:"ATDD contextual preflight for "+path+"; read reasoning before retrying:\n\n"+
+          page.text};
+      }
+      recordReasoned(cwd,"pre_edit",operation,path,result,fresh,undefined,started);
+      if(blockUnknown&&result.status==="unknown"&&!unresolvedPaths.has(result.scope)){
+        unresolvedPaths.add(result.scope);
+        return {block:true,reason:renderReasonedPage(result,undefined,4_000).text+
+          "\nInspect canonical rules before retrying; this gap does not certify compliance."};
+      }
+      return undefined;
+    }catch(error){
+      record(cwd,{point:"pre_edit",operation,pathCategory:activationPathCategory(path),
+        outcome:"error",reasonCode:"reasoner_error",durationMs:performance.now()-started});
+      throw error;
     }
-    if(fresh.length){
-      const page=renderReasonedPage(result,fresh,budget);
-      recordActualDelivery(result,page);
-      return {block:true,reason:"ATDD contextual preflight for "+path+"; read reasoning before retrying:\n\n"+
-        page.text};
-    }
-    if(blockUnknown&&result.status==="unknown"&&!unresolvedPaths.has(result.scope)){
-      unresolvedPaths.add(result.scope);
-      return {block:true,reason:renderReasonedPage(result,undefined,4_000).text+
-        "\nInspect canonical rules before retrying; this gap does not certify compliance."};
-    }
-    return undefined;
   }
   /** PLT-122: a Coach's record carries what only the Coach knows; unknown fields stay UNKNOWN. */
   function coachState(text:string):{coach?:CoachState}{
@@ -443,7 +517,11 @@ export default function atdd(pi:ExtensionAPI):void {
     },
   });
   pi.on("tool_call",(event,ctx)=>{
-    if(!ctx.isProjectTrusted()||!active(ctx.cwd))return;
+    if(!ctx.isProjectTrusted()||!active(ctx.cwd)){
+      if(["bash","edit","write"].includes(event.toolName))
+        record(ctx.cwd,{point:"pre_edit",outcome:"excluded",reasonCode:"plain_or_untrusted"});
+      return;
+    }
     if(event.toolName==="bash"){
       // Shell writes get the same rule set as edit/write for every statically
       // visible in-repository target, before the command runs. Targets computed
@@ -466,7 +544,7 @@ export default function atdd(pi:ExtensionAPI):void {
         for(const path of targets){
           if(remaining<2_500)break; // targets not yet delivered are preflighted on retry
           const r=preflightPath(ctx.cwd,path,byPath.get(path)!,"Pi pre-shell tool_call (static write target)",
-            remaining,false);
+            remaining,false,sourceFor(ctx.cwd,path));
           if(r){reasons.push(r.reason);remaining-=r.reason.length;}
         }
       }catch(e){reset();return {block:true,reason:"ATDD rule activation failed: "+String(e)};}
@@ -475,16 +553,20 @@ export default function atdd(pi:ExtensionAPI):void {
       return;
     }
     if(event.toolName!=="edit"&&event.toolName!=="write")return;
-    const input=event.input as {path?:unknown};
+    const input=event.input as {path?:unknown;content?:unknown;oldText?:unknown;newText?:unknown};
     if(typeof input.path!=="string")return {block:true,reason:"ATDD requires a file path for edits."};
     const path=scopedPath(ctx.cwd,input.path);
     if(path===null){
-      if(outsideRepository(ctx.cwd,input.path))return; // PLT-93 AP-006: not refused in either mode
+      if(outsideRepository(ctx.cwd,input.path)){
+        record(ctx.cwd,{point:"pre_edit",outcome:"excluded",reasonCode:"outside_repository"});
+        return; // PLT-93 AP-006
+      }
+      record(ctx.cwd,{point:"pre_edit",outcome:"error",reasonCode:"unsafe_path"});
       return {block:true,reason:"ATDD cannot govern edits outside the repository."};
     }
     try{
       return preflightPath(ctx.cwd,path,event.toolName==="write"?"create":"edit",
-        "Pi pre-edit tool_call",16_000,true); // PLT-96: same budget as the shell path (parity test)
+        "Pi pre-edit tool_call",16_000,true,sourceFor(ctx.cwd,path,input)); // PLT-96: same budget as the shell path (parity test)
     }catch(e){reset();return {block:true,reason:"ATDD rule activation failed: "+String(e)};}
   });
   const READ_ONLY_TOOLS=new Set(["read","ls","find","grep"]);
@@ -497,11 +579,16 @@ export default function atdd(pi:ExtensionAPI):void {
    */
   /** Render one post-tool page; rules omitted by the budget stay queued. */
   function postToolPage(cwd:string,item:Pending,budget:number):string|undefined{
-    const result=observe(cwd,item.operation,"repository-observation",item.provenance,item.path);
+    const started=performance.now();
+    const result=observe(cwd,item.operation,"repository-observation",item.provenance,item.path,sourceFor(cwd,item.path));
     const fresh=newlyRelevant(result);
-    if(!fresh.length&&result.status==="matched"){pendingPostTool.delete(item.path);redeliveries.delete(item.path);return undefined;}
+    if(!fresh.length&&result.status==="matched"){
+      recordReasoned(cwd,"post_tool",item.operation,item.path,result,fresh,undefined,started);
+      pendingPostTool.delete(item.path);redeliveries.delete(item.path);return undefined;
+    }
     const page=renderReasonedPage(result,fresh,budget);
     recordActualDelivery(result,page);
+    recordReasoned(cwd,"post_tool",item.operation,item.path,result,fresh,page,started);
     if(page.omittedIds.length&&(redeliveries.get(item.path)??0)<MAX_REDELIVERIES)pendingPostTool.set(item.path,item);
     else{pendingPostTool.delete(item.path);redeliveries.delete(item.path);}
     return "ATDD post-tool reconciliation. Changed file "+item.path+":\n"+page.text;
@@ -531,6 +618,7 @@ export default function atdd(pi:ExtensionAPI):void {
     const texts:string[]=[];
     const report=observeRepository(cwd,observedRepo);
     if(report.status==="unknown"){
+      record(cwd,{point:"post_tool",outcome:"unknown",reasonCode:"repository_unobservable"});
       if(!observationWarning){
         observationWarning=true;
         texts.push("ATDD POST-TOOL OBSERVATION UNKNOWN: "+report.reason+
@@ -544,6 +632,8 @@ export default function atdd(pi:ExtensionAPI):void {
         ". Changes there are NOT observed and receive no guidance; mandatory CI and review still apply.");
     }
     observedRepo=report.snapshot;
+    if(!report.changedPaths.length)
+      record(cwd,{point:"post_tool",outcome:"noop",reasonCode:"no_observed_change"});
     // Every changed path is reconciled (none is skipped by a count cap); with
     // many changed files each page is smaller, but still keeps its top rule.
     const perPath=report.changedPaths.length>8?2_000:4_500;
@@ -554,6 +644,7 @@ export default function atdd(pi:ExtensionAPI):void {
           provenance:"Git/JJ post-tool observed "+toolName+(created?" (created)":"")},perPath);
         if(text)texts.push(text);
       }catch(e){
+        record(cwd,{point:"post_tool",outcome:"error",pathCategory:activationPathCategory(path),reasonCode:"reasoner_error"});
         reset();
         texts.push("ATDD post-tool observation failed for "+path+": "+String(e)+
           ". Independent verification remains mandatory.");

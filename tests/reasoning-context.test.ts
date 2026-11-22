@@ -125,3 +125,39 @@ test("scope-specific retraction never removes an independent task's activation",
     assert.equal(a.session.engine.query("active",["b","coder.security.missing-auth"]).status,"true");
   }finally{a.finish()}
 });
+
+
+test("source syntax alone derives and retracts Bun route authorization applicability",()=>{
+  const a=setup();
+  try{
+    const input=observation("syntax-route","Update orders","src/server.ts");
+    const before=a.session.observe({...input,sourceText:
+      'Bun.serve({routes:{"/orders":{DELETE:()=>new Response("ok")}}});'});
+    const activation=before.activations.find(x=>x.id==="coder.security.missing-auth");
+    assert.ok(activation,"DELETE registration should activate without task vocabulary or route path");
+    assert.match(JSON.stringify(activation.proof),/code_construct/);
+    assert.match(JSON.stringify(activation.proof),/bun_mutating_route/);
+    const again=a.session.observe({...input,sourceText:
+      'Bun.serve({routes:{"/orders":{DELETE:()=>new Response("ok")}}});'});
+    assert.deepEqual(again.added,[]);
+    assert.deepEqual(again.changed,[]);
+    const changed=a.session.observe({...input,sourceText:
+      'Bun.serve({routes:{"/orders":{GET:()=>new Response("ok")}}});'});
+    assert.ok(!changed.activations.some(x=>x.id==="coder.security.missing-auth"));
+    assert.ok(changed.removed.includes("coder.security.missing-auth"));
+    assert.equal(a.session.engine.query("code_construct",["syntax-route","bun_mutating_route"]).status,"unknown");
+  }finally{a.finish();}
+});
+
+test("co-located test URN source fact derives acceptance binding and is revoked on removal",()=>{
+  const a=setup();
+  try{
+    const input=observation("syntax-test","Update fixture","src/orders.test.ts");
+    const first=a.session.observe({...input,sourceText:
+      '// URN: test:orders:checkout:E001-SMOKE-001\\nimport assert from "node:assert";'});
+    assert.ok(first.activations.some(x=>x.id==="tester.acceptance.binding-declared"));
+    assert.match(JSON.stringify(first.activations.find(x=>x.id==="tester.acceptance.binding-declared")!.proof),/test_urn_header/);
+    const second=a.session.observe({...input,sourceText:'import assert from "node:assert";'});
+    assert.ok(second.removed.includes("tester.acceptance.binding-declared"));
+  }finally{a.finish();}
+});
