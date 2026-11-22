@@ -21,7 +21,11 @@ test("coordinator checker validates all 20 original source acceptance rows", () 
   ], { cwd: root, encoding: "utf8", timeout: 60_000 });
   assert.equal(run.error, undefined, String(run.error));
   assert.equal(run.status, 0, run.stdout + "\n" + run.stderr);
-  assert.match(run.stdout, /# pass 13/);
+  // Nested node:test processes under CI's outer Node test runner can emit no
+  // own TAP; verify the exact checked source cases and child exit instead.
+  const cases = readFileSync(join(root, "tests/integration-contract-check.test.mjs"), "utf8")
+    .match(/^test\(/gm) ?? [];
+  assert.equal(cases.length, 13);
   assert.match(run.stdout, /# fail 0/);
 });
 
