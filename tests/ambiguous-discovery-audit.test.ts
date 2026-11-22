@@ -138,7 +138,8 @@ test("ambiguous multi-stage handoff task: discover evidence as work unfolds, not
         stage:stage.id,point:stage.op,status:out.status,expectedRule:stage.target??null,
         targetHit:hit,actualRules:out.activations.map(a=>a.id),
       }));
-      if(stage.id==="task-start")assert.equal(out.status,"unknown","ambiguous task has no selector evidence");
+      // PLT-96 tracker rules (on main) match broad wording, so status may be "matched"; the ambiguous task still has no domain-rule evidence.
+      if(stage.id==="task-start")assert.ok(out.activations.every(a=>a.id.startsWith("shared.")),"ambiguous task has no domain selector evidence");
       if(stage.id==="Bun-write")assert.ok(hit,"generic-path mutating route must activate");
       if(stage.id==="test-write")assert.ok(hit,"co-located URN test must activate");
     }

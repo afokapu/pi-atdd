@@ -202,7 +202,10 @@ test("Pi pre-edit structural evidence and local telemetry work without task keyw
     assert.ok(!log.includes("src/server.ts"),"raw path must not enter telemetry");
     assert.ok(!log.includes("DELETE:()=>"),"code must not enter telemetry");
     const entries=log.trim().split("\n").map(line=>JSON.parse(line));
-    assert.ok(entries.some(item=>item.point==="task_start" && item.outcome==="unknown"));
+    // Main's PLT-96 tracker rules match broad task wording, so the task start may be "matched" by generic
+    // shared.* rules; what must hold is that the task text gives no domain evidence (the route evidence comes from the edit).
+    assert.ok(entries.some(item=>item.point==="task_start" &&
+      (item.ruleIds??[]).every((id:string)=>id.startsWith("shared."))));
     assert.ok(entries.some(item=>item.point==="pre_edit" && item.outcome==="matched" &&
       item.evidenceIds.includes("ast:bun_mutating_route")));
     assert.ok(entries.some(item=>item.point==="pre_edit" && item.deduplicated>=1));
