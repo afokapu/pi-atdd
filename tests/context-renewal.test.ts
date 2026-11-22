@@ -277,3 +277,30 @@ test("review P1: manual relaunch refuses symlinks and non-regular files", async 
     } finally { rmSync(cwd, { recursive: true, force: true }); rmSync(outside, { recursive: true, force: true }); }
   });
 });
+
+test("review P1 (re-review): a handoff directory redirected outside the workspace is refused; legacy records are flagged", async () => {
+  await withEnv(NO_ATTN, async () => {
+    const cwd = mkdtempSync(join(tmpdir(), "pi-atdd-renew-"));
+    const stray = mkdtempSync(join(tmpdir(), "pi-atdd-stray-"));
+    try {
+      const rec = buildHandoff({ ...base, task: TASK, hop: 1 });
+      mkdirSync(join(stray, "handoffs"));
+      writeFileSync(join(stray, "handoffs", "r.md"), rec);
+      symlinkSync(stray, join(cwd, ".atdd-pi")); // the whole chain is redirected
+      const h = harness(cwd);
+      let started = 0;
+      const ok = async (o: any) => { started++; await o.setup({ appendMessage: () => {} }); await o.withSession({ sendUserMessage: async () => {} }); return { cancelled: false }; };
+      await h.command("latest", ok);
+      assert.match(h.notes.at(-1)!, /outside the workspace/);
+      await h.command("r.md", ok);
+      assert.match(h.notes.at(-1)!, /outside the workspace/);
+      assert.equal(started, 0);
+      rmSync(join(cwd, ".atdd-pi"));
+      mkdirSync(join(cwd, ".atdd-pi", "handoffs"), { recursive: true });
+      writeFileSync(join(cwd, ".atdd-pi", "handoffs", "legacy.md"), "# ATDD context handoff (shared.handoff)\nHop: 1\nTask (user's words): old\nDone / last state: x\n");
+      await h.command("legacy.md", ok);
+      assert.equal(started, 1, "a legacy record still relaunches");
+      assert.match(h.notes.at(-1)!, /legacy.*UNKNOWN.*restate and verify/i);
+    } finally { rmSync(cwd, { recursive: true, force: true }); rmSync(stray, { recursive: true, force: true }); }
+  });
+});

@@ -2,7 +2,7 @@
 // faux 20k-token model) with role/identity/profile and model tier unchanged, the attention tool callable in the
 // successor, the original task kept, and a fresh process relaunching from the kept record with /atdd-handoff latest.
 import { spawn, execSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -32,9 +32,9 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 const failures: string[] = [];
 const check = (ok: boolean, what: string) => { console.log((ok ? "ok   " : "FAIL ") + what); if (!ok) failures.push(what); };
 
-async function session(run: (send: (o: object) => void, events: any[]) => Promise<void>) {
+async function session(run: (send: (o: object) => void, events: any[]) => Promise<void>, workdir = cwd) {
   const child = spawn(resolve(root, "node_modules/.bin/pi"), ["--offline", "--approve", "-e", resolve(root, "extensions/atdd.ts"),
-    "-e", join(extDir, "faux.ts"), "--mode", "rpc", "--model", "renew-faux/tier-med"], { cwd, env: ENV, stdio: ["pipe", "pipe", "pipe"] });
+    "-e", join(extDir, "faux.ts"), "--mode", "rpc", "--model", "renew-faux/tier-med"], { cwd: workdir, env: ENV, stdio: ["pipe", "pipe", "pipe"] });
   const events: any[] = []; let buf = "";
   child.stdout.on("data", d => { buf += d; let i; while ((i = buf.indexOf("\n")) >= 0) { try { events.push(JSON.parse(buf.slice(0, i))); } catch {} buf = buf.slice(i + 1); } });
   child.stderr.on("data", () => {});
@@ -74,6 +74,24 @@ await session(async (send, events) => {
   const file = after?.sessionFile ? readFileSync(after.sessionFile, "utf8") : "";
   check(file.includes("ATDD context handoff") && file.includes("Coordinate PLT-122"), "A05 relaunched session is seeded with the record and original task");
 });
+
+// Review P1: a handoff directory redirected outside the workspace is refused, in a real session.
+const stray = mkdtempSync(join(tmpdir(), "pi-renew-stray-"));
+const work2 = mkdtempSync(join(tmpdir(), "pi-renew-cwd2-"));
+process.on("exit", () => { for (const d of [stray, work2]) rmSync(d, { recursive: true, force: true }); });
+execSync("git init -q && git commit -q --allow-empty -m init", { cwd: work2 });
+mkdirSync(join(stray, "handoffs"), { recursive: true });
+const validRecord = readFileSync(join(cwd, ".atdd-pi", "handoffs", readdirSync(join(cwd, ".atdd-pi", "handoffs")).sort()[0]!), "utf8");
+writeFileSync(join(stray, "handoffs", "2026-01-01T00-00-00-000Z.md"), validRecord);
+symlinkSync(stray, join(work2, ".atdd-pi"));
+await session(async (send, events) => {
+  const before = await state(send, events, "e");
+  send({ type: "prompt", message: "/atdd-handoff latest" });
+  await sleep(5000);
+  const after = await state(send, events, "f");
+  check(!!before?.sessionId && before.sessionId === after?.sessionId, "review P1: a redirected handoff directory starts no successor");
+  check(JSON.stringify(events).includes("outside the workspace"), "review P1: the refusal says the directory is outside the workspace");
+}, work2);
 
 if (failures.length) { console.error("context renewal smoke FAILED:", failures.join("; ")); process.exitCode = 1; }
 else console.log("context renewal smoke passed");

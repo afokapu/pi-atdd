@@ -380,21 +380,35 @@ export default function atdd(pi:ExtensionAPI):void {
         // Manual relaunch (crashed or closed tab): seed from a record kept on disk. Only a file
         // directly inside this workspace's handoffs directory is accepted.
         const dir=join(ctx.cwd,".atdd-pi","handoffs");
+        // The whole chain must stay inside the canonical workspace: a redirected .atdd-pi or
+        // handoffs directory is refused before anything is listed or read.
+        let realDir:string;
+        try{
+          const realRoot=realpathSync(ctx.cwd);
+          realDir=realpathSync(dir);
+          if(relative(realRoot,realDir)!==join(".atdd-pi","handoffs"))throw new Error("redirected");
+        }catch(e){
+          const redirected=String(e).includes("redirected");
+          ctx.ui.notify(redirected?"Handoff directory resolves outside the workspace; refusing to read it: "+dir:"No ATDD context handoff record found in "+dir,redirected?"error":"info");
+          return;
+        }
         let name=arg;
         if(arg==="latest"){
-          try{name=readdirSync(dir).filter(f=>f.endsWith(".md")&&lstatSync(join(dir,f)).isFile()).sort().at(-1)??"";}catch{name="";}
+          try{name=readdirSync(realDir).filter(f=>f.endsWith(".md")&&lstatSync(join(realDir,f)).isFile()).sort().at(-1)??"";}catch{name="";}
           if(!name){ctx.ui.notify("No ATDD context handoff record found in "+dir,"info");return;}
         }
         const file=join(dir,name);
         let text="";
         try{
           if(!/^[\w.-]+\.md$/.test(name))throw new Error("bad name");
-          // Confine to the real handoffs directory and require a regular file, never a link.
-          const realDir=realpathSync(dir),realFile=realpathSync(file);
-          if(dirname(realFile)!==realDir||lstatSync(file).isSymbolicLink()||!lstatSync(realFile).isFile())throw new Error("not a regular file in the handoff dir");
+          // Regular file directly in the real handoffs directory, never a link.
+          const realFile=realpathSync(join(realDir,name));
+          if(dirname(realFile)!==realDir||lstatSync(join(realDir,name)).isSymbolicLink()||!lstatSync(realFile).isFile())throw new Error("not a regular file in the handoff dir");
           text=readFileSync(realFile,"utf8");
         }catch{ctx.ui.notify(arg+" is not a handoff record in "+dir,"error");return;}
         if(!text.includes(RECORD_HEADER)){ctx.ui.notify(arg+" is not a handoff record in "+dir,"error");return;}
+        if(!text.includes("\n<<<TASK\n"))
+          ctx.ui.notify("Legacy handoff record (written before task markers): its task is UNKNOWN. Restate and verify the task before relying on it.","warning");
         ready={text,path:file,kickoff:kickoffText(extractIssueId(resolveTask([text])))};
       }
       if(!ready){ctx.ui.notify("No ATDD context handoff is pending","info");return;}
