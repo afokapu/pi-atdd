@@ -6,31 +6,31 @@ import {replayQualifiedSidecarWitnesses,fullWitnessGapSummary} from "../tools/si
 
 test("pinned architecture fires and doesNotFire examples have executable source witnesses",()=>{
   const report=replayQualifiedSidecarWitnesses();
-  assert.equal(report.verified,10);
-  assert.equal(report.passed,10,JSON.stringify(report.failures));
+  assert.equal(report.verified,15);
+  assert.equal(report.passed,15,JSON.stringify(report.failures));
   assert.equal(report.failed,0,JSON.stringify(report.failures));
-  assert.equal(report.structuralPassed,10,"all 10 have correctly witnessed AST positives/negatives");
+  assert.equal(report.structuralPassed,15,"all qualified cases have witnessed source positives/negatives");
   assert.equal(report.legacyOveractivations,0,
     "source-backed test/vendor/external import exclusions must not re-trigger lexical guidance");
   assert.ok(report.cases.every(x=>x.qualified&&x.structuralPass&&x.sourceLock.length===64));
   const positives=report.cases.filter(x=>x.expected);
-  assert.equal(positives.length,5);
+  assert.equal(positives.length,7);
   assert.ok(positives.every(x=>x.activated&&x.structuralProof));
   const negatives=report.cases.filter(x=>!x.expected);
-  assert.equal(negatives.length,5);
+  assert.equal(negatives.length,8);
   assert.ok(negatives.every(x=>!x.structuralProof));
   assert.equal(negatives.filter(x=>x.legacyOveractivation).length,0);
 });
 test("entire sidecar matrix reports all remaining unqualified situations",()=>{
   const summary=fullWitnessGapSummary();
   assert.equal(summary.total,2579);
-  assert.equal(summary.qualified,10);
-  assert.equal(summary.pass,10);
+  assert.equal(summary.qualified,15);
+  assert.equal(summary.pass,15);
   assert.equal(summary.fail,0);
-  assert.equal(summary.structuralPassed,10);
+  assert.equal(summary.structuralPassed,15);
   assert.equal(summary.legacyOveractivations,0);
-  assert.equal(summary.unqualified,2569);
-  assert.equal(summary.gaps.length,2569);
+  assert.equal(summary.unqualified,2564);
+  assert.equal(summary.gaps.length,2564);
   for(const gap of summary.gaps)assert.match(gap.reason,/no independent executable/);
   process.stdout.write("ATD22_OBS002_STRUCTURAL_QUALIFICATION "+
     JSON.stringify({total:summary.total,qualified:summary.qualified,
