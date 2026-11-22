@@ -60,7 +60,7 @@ const knownNonTargets=new Map(Object.entries({
   "tester.a11y":"No accessibility UI test is authored",
   "tester.telemetry":"No Bun TelemetryPort contract test is authored",
   "tester.security":"No live HTTP request/authorization test is authored",
-  "tester.rout"+"ing":"No Bun routing-stack test is authored",
+  "tester.routing":"No Bun routing-stack test is authored",
 }));
 function filesUnder(dir){
   const all=[];
