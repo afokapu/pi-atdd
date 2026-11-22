@@ -438,18 +438,25 @@ test("ATD-22 OBS-004: real post-tool findings reach authenticated REFACTOR, neve
   const path="src/orders/domain/price.ts";
   const valid="export const price=4;\n";
   const bad='import { gateway } from "../integration/network";\n'+valid;
+  const outwardPath="src/orders/application/use.ts";
+  const outwardValid="export const use=1;\n";
+  const outwardBad='import {Page} from "../presentation/Page";\n'+outwardValid;
   try{
     mkdirSync(join(x.cwd,"src/orders/domain"),{recursive:true});
     writeFileSync(join(x.cwd,path),valid);
+    mkdirSync(join(x.cwd,"src/orders/application"),{recursive:true});
+    writeFileSync(join(x.cwd,outwardPath),outwardValid);
     x.git("add",".");x.git("commit","-qm","validator baseline");
     flow.writeTask("green");
     x.handlers.get("before_agent_start")!({messageType:"user",prompt:"Adjust price"},ctx);
     writeFileSync(join(x.cwd,path),bad);
+    writeFileSync(join(x.cwd,outwardPath),outwardBad);
     x.handlers.get("tool_execution_end")!({toolName:"bash",isError:false},ctx);
     assert.equal(x.messages.some(m=>m.message.content.includes("ATDD REFACTOR validator finding")),false,
       "GREEN cannot consume a detector finding even when ordinary source guidance exists");
     flow.writeTask("refactor");
     writeFileSync(join(x.cwd,path),bad+"// revised in refactor\n");
+    writeFileSync(join(x.cwd,outwardPath),outwardBad+"// revised in refactor\n");
     x.handlers.get("tool_execution_end")!({toolName:"bash",isError:false},ctx);
     const findings=x.messages.filter(m=>m.message.content.includes("ATDD REFACTOR validator finding"));
     assert.ok(findings.length>0,"real source validator must publish its finding during REFACTOR");
@@ -457,15 +464,24 @@ test("ATD-22 OBS-004: real post-tool findings reach authenticated REFACTOR, neve
     assert.match(witness,/pi-atdd\.ts-import-boundary\.v1/);
     assert.match(witness,/coder\.architecture\.hierarchy-import/);
     assert.match(witness,/Trigger proof/);
+    const proofs=findings.map(m=>m.message.content).join("\n");
+    assert.match(proofs,/pi-atdd\.typed-detector-architecture-review/,
+      "domain-to-integration evidence must reach the real REFACTOR consumer");
+    assert.match(proofs,/pi-atdd\.typed-detector-outward-review/,
+      "application-to-presentation evidence must reach the real REFACTOR consumer");
     const prior=x.messages.length;
     writeFileSync(join(x.cwd,path),valid);
+    writeFileSync(join(x.cwd,outwardPath),outwardValid);
     x.handlers.get("tool_execution_end")!({toolName:"bash",isError:false},ctx);
     assert.equal(x.messages.slice(prior).some(m=>m.message.content.includes("ATDD REFACTOR validator finding")),false,
       "a clean validator run must revoke its old finding");
     writeFileSync(join(x.cwd,path),bad+"// later regression\n");
+    writeFileSync(join(x.cwd,outwardPath),outwardBad+"// later regression\n");
     x.handlers.get("tool_execution_end")!({toolName:"bash",isError:false},ctx);
-    assert.ok(x.messages.slice(prior).some(m=>m.message.content.includes("ATDD REFACTOR validator finding")),
-      "reintroduction after retraction must deliver a new source-identified finding");
+    const renewed=x.messages.slice(prior).filter(m=>m.message.content.includes("ATDD REFACTOR validator finding"));
+    assert.ok(renewed.length>0,"reintroduction after retraction must deliver findings");
+    assert.match(renewed.map(m=>m.message.content).join("\n"),/pi-atdd\.typed-detector-outward-review/,
+      "outward imports must also redeliver after clean retraction");
   }finally{x.cleanup();flow.cleanup();}
 });
 
