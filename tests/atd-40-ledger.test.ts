@@ -6,7 +6,7 @@
 // ATD-29/Acceptance-01: supplemental source accounting, not admission.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -132,4 +132,33 @@ test("quoted field-qualified targets are not conflated with convention nodes", (
   // A fragment target is a source referent, not a second convention node.
   assert.ok(!harness.includes("in:requires/mandatory:planner.desired-outcome.must-have-smoke-acceptance@"));
   assert.ok(!vocabulary.includes("in:requires/mandatory:planner.desired-outcome.must-have-smoke-acceptance@"));
+});
+
+test("ATD-40 research artifacts respect the authored docs path scope", () => {
+  const rule = readFileSync(join(root,
+    "vendor/atdd-bun/conventions/planner/docs/planner.docs.asciidoc-only.convention.yaml"), "utf8");
+  assert.match(rule, /authored.*docs\//);
+  assert.match(rule, /Markdown OUTSIDE.*docs\//);
+  for (const file of [
+    "ATD-40-PASS-A-LEDGER.tsv", "ATD-40-PASS-A-EVIDENCE.md",
+    "ATD-40-PROVISIONAL-T9-HANDOFF.md",
+  ]) {
+    assert.ok(existsSync(join(root, "research/atd-40", file)));
+    // An authored Markdown/TSV under docs/ would violate the pinned Bun rule.
+    assert.ok(!existsSync(join(root, "docs", file)));
+  }
+});
+
+test("ATD-40's new TypeScript tools retain meaningful comment coverage", () => {
+  const rule = readFileSync(join(root,
+    "vendor/atdd-bun/conventions/coder/quality/coder.quality.comments.convention.yaml"), "utf8");
+  assert.match(rule, /at least 10%/);
+  for (const file of ["atd-40-verify-ledger.ts", "atd-40-source-evidence.ts"]) {
+    const nonblank = readFileSync(join(root, "tools", file), "utf8")
+      .split("\n").filter(line => line.trim());
+    // A bounded mechanical check; qualitative review is still independent.
+    const commented = nonblank.filter(line => /^\s*(?:\/\/|\/\*|\*)/.test(line));
+    assert.ok(commented.length / nonblank.length >= 0.10,
+      "source context below declared Bun comment floor: " + file);
+  }
 });
