@@ -53,13 +53,17 @@ export type AttentionItem = {
   snoozedUntil?: string;
   revision: number;
   resolution?: { by: string; note: string; at: string; scope?: ResolveScope; ownerAnswer?: string };
+  /** ATD-35: signed coach reassignments, oldest first (folded from `reassigned` records only). */
+  reassignments?: Array<{ from: string; to: string; by: string; at: string; note: string }>;
 };
 
 export type StateRecord = {
   id: string;
   from: string;
   revision: number;
-  state: Exclude<AttentionState, "open">;
+  state: Exclude<AttentionState, "open"> | "reassigned" | "reopened";
+  /** ATD-35: required on `reassigned`: the accountable coach address the item moves to. */
+  reassignTo?: string;
   by: string;
   at: string;
   route?: AttentionRoute;
@@ -161,8 +165,9 @@ function validItem(x: unknown): x is AttentionItem {
 function validRec(x: unknown): x is StateRecord {
   if (typeof x !== "object" || x === null) return false;
   const o = x as Record<string, unknown>;
-  return isId(o.id) && isText(o.from, 200) && isRev(o.revision) &&
-    ["acked", "snoozed", "resolved", "cancelled", "expired"].includes(o.state as string) &&
+  const reassignShape = o.state === "reassigned" ? isText(o.reassignTo, 200) : o.reassignTo === undefined;
+  return isId(o.id) && isText(o.from, 200) && isRev(o.revision) && reassignShape &&
+    ["acked", "snoozed", "resolved", "cancelled", "expired", "reassigned", "reopened"].includes(o.state as string) &&
     isText(o.by, 200) && isIso(o.at) &&
     absentOr(o.note, x => typeof x === "string") &&
     absentOr(o.scope, x => x === "within_grant" || x === "owner_answer") &&
@@ -254,9 +259,30 @@ export function foldAll(events: ReadonlyArray<SignedEvent>): Map<string, Attenti
       continue;
     }
     const it = items.get(e.rec.id);
-    if (!it || TERMINAL.has(it.state) || e.rec.from !== it.from || e.rec.revision <= it.revision) continue;
-    // A signed state can only mutate the task and logical recipient of its original raise.
+    if (!it || e.rec.from !== it.from || e.rec.revision <= it.revision) continue;
+    // A signed state can only mutate the task and logical recipient it was made on (the current route).
     if (JSON.stringify(e.rec.route ?? null) !== JSON.stringify(it.route ?? null)) continue;
+    if (e.rec.state === "reopened") {
+      // ATD-35: only a resolved item reopens; it returns to open with its resolution cleared.
+      if (it.state !== "resolved") continue;
+      it.state = "open";
+      delete it.resolution;
+      delete it.snoozedUntil;
+      it.revision = e.rec.revision;
+      continue;
+    }
+    if (TERMINAL.has(it.state)) continue;
+    if (e.rec.state === "reassigned") {
+      // ATD-35: the item moves to the target coach and is open on that coach's list; the move is kept.
+      if (!it.route || !e.rec.reassignTo || e.rec.reassignTo === it.route.coachAddress) continue;
+      it.reassignments = [...(it.reassignments ?? []), { from: it.route.coachAddress, to: e.rec.reassignTo,
+        by: e.rec.by, at: e.rec.at, note: e.rec.note ?? "" }];
+      it.route = { ...it.route, coachAddress: e.rec.reassignTo };
+      it.state = "open";
+      delete it.snoozedUntil;
+      it.revision = e.rec.revision;
+      continue;
+    }
     it.revision = e.rec.revision;
     it.state = e.rec.state;
     if (e.rec.state === "snoozed") it.snoozedUntil = e.rec.snoozedUntil;
@@ -312,7 +338,11 @@ export type Action =
   | { kind: "ack" }
   | { kind: "snooze"; hours: number }
   | { kind: "resolve"; scope: unknown; note: unknown; ownerAnswer?: unknown }
-  | { kind: "cancel"; note: unknown };
+  | { kind: "cancel"; note: unknown }
+  /** ATD-35: a routed Coach hands an open item it holds to another coach of the same project. */
+  | { kind: "reassign"; to: unknown; note: unknown }
+  /** ATD-35: a routed Coach reopens a resolved item it holds; it returns to open. */
+  | { kind: "reopen"; note: unknown };
 
 function text(value: unknown, field: string, max = MAX_TEXT): string {
   const s = typeof value === "string" ? value.trim() : "";
@@ -324,14 +354,26 @@ function text(value: unknown, field: string, max = MAX_TEXT): string {
 /** Coach transition. Returns the state record to record. Throws on any rule violation. */
 export function transition(item: AttentionItem | undefined, action: Action, cfg: LaunchConfig, now: Date): StateRecord {
   if (!item) throw new Error("unknown attention item");
-  if (TERMINAL.has(item.state)) throw new Error(`attention item ${item.id} is already ${item.state}`);
+  const reopening = action.kind === "reopen" && item.state === "resolved";
+  if (TERMINAL.has(item.state) && !reopening) throw new Error(`attention item ${item.id} is already ${item.state}`);
   if (Date.parse(item.ttl) <= now.getTime()) throw new Error(`attention item ${item.id} has expired`);
   if (cfg.role !== "coach") throw new Error("only the Coach may change attention state");
   if (cfg.route && (cfg.route.role !== "coach" || !coachOwnsAttention(item, cfg.route)))
     throw new Error("attention item belongs to another coach");
+  if ((action.kind === "reassign" || action.kind === "reopen") && (!cfg.route || !item.route))
+    throw new Error("reassign and reopen need a routed Coach and a routed item");
   const base = { id: item.id, from: item.from, revision: item.revision + 1, by: cfg.identity, at: now.toISOString(),
     ...(item.route ? { route: item.route } : {}) };
   switch (action.kind) {
+    case "reassign": {
+      const to = text(action.to, "toCoach", 200);
+      const note = text(action.note, "note");
+      if (to === item.route?.coachAddress) throw new Error("attention item already belongs to that coach");
+      return { ...base, state: "reassigned", reassignTo: to, note };
+    }
+    case "reopen":
+      if (item.state !== "resolved") throw new Error(`cannot reopen a ${item.state} item`);
+      return { ...base, state: "reopened", note: text(action.note, "note") };
     case "ack":
       if (item.state !== "open") throw new Error(`cannot ack a ${item.state} item`);
       return { ...base, state: "acked" };
@@ -363,7 +405,8 @@ export function transition(item: AttentionItem | undefined, action: Action, cfg:
 export function readSpool(path: string, cfg: LaunchConfig, key: Buffer, offset = 0): { events: SignedEvent[]; offset: number } {
   if (!existsSync(path)) return { events: [], offset };
   const buf = readFileSync(path);
-  const events: SignedEvent[] = [];
+  const parsed: SignedEvent[] = [];
+  const scoped = cfg.route !== undefined;
   let pos = offset > buf.length ? 0 : offset;
   for (;;) {
     const nl = buf.indexOf(10, pos);
@@ -376,10 +419,31 @@ export function readSpool(path: string, cfg: LaunchConfig, key: Buffer, offset =
     } catch {
       continue;
     }
-    const ev = verifyEvent(raw, cfg, key);
-    if (ev) events.push(ev);
+    const ev = scoped ? verifyAuthentic(raw, cfg, key) : verifyEvent(raw, cfg, key);
+    if (ev) parsed.push(ev);
   }
-  return { events, offset: pos };
+  return { events: scoped ? visibleInScope(parsed, cfg) : parsed, offset: pos };
+}
+
+/**
+ * Scoped read (PLT-118, ATD-35). Ownership is decided on the authenticated history, not line by line:
+ * a Coach sees an item while its current route (after signed reassignments) is its own; a worker keeps
+ * seeing its item on the route it was raised on, so a reassignment does not hide the outcome from it.
+ */
+function visibleInScope(events: SignedEvent[], cfg: LaunchConfig): SignedEvent[] {
+  const route = cfg.route;
+  if (!route) return events;
+  const current = foldAll(events);
+  const origin = new Map<string, AttentionRoute | undefined>();
+  for (const ev of events) if (ev.event === "raised" && !origin.has(ev.item.id)) origin.set(ev.item.id, ev.item.route);
+  const owned = (id: string): boolean => {
+    if (route.role === "coach") {
+      const it = current.get(id);
+      return it !== undefined && coachOwnsAttention(it, route);
+    }
+    return taskOwnsAttention({ route: origin.get(id) }, route);
+  };
+  return events.filter(ev => owned(ev.event === "raised" ? ev.item.id : ev.rec.id));
 }
 
 /** A torn previous write must not swallow the next record: start on a fresh line when needed. */
