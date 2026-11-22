@@ -94,8 +94,8 @@ test("two ambiguous discovery cases per convention profile: capture candidate hi
       assert.equal(SCENARIOS.filter(c=>c.profile===profile).length,2);
     assert.equal(actuals["coder-delete"]!.matched,true,"AST should catch aliased DELETE route");
     assert.equal(actuals["tester-urn"]!.matched,true,"AST should catch co-located URN test");
-    assert.equal(actuals["tester-no-urn"]!.matched,true,
-      "Characterize existing broad path selector despite rule's URN exception");
+    assert.equal(actuals["tester-no-urn"]!.matched,false,
+      "an inspected test without a URN cannot trigger the binding rule");
     assert.equal(actuals["planner-acceptance"]!.matched,false,"Planner gap currently explicit");
     assert.equal(actuals["reviewer-ambiguous"]!.matched,false,"Review intent is not inferred from stage alone");
     const applicable=SCENARIOS.filter(c=>c.shouldActivate).length;
