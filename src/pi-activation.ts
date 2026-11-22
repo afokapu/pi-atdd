@@ -694,7 +694,7 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;e
       revision:run.revision!,findings:run.findings,
     });
     const matched=result.activations.filter(a=>a.id==="coder.architecture.hierarchy-import" &&
-      JSON.stringify(a.proof).includes("pi-atdd.typed-detector-architecture-review"));
+      /pi-atdd\.typed-detector-(?:architecture|outward)-review/.test(JSON.stringify(a.proof)));
     if(!matched.length)return "ATDD REFACTOR validator observed a forbidden import, but its source-locked mapping is UNKNOWN.";
     const eligible={...result,activations:matched};
     const fresh=newlyRelevant(eligible);
