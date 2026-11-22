@@ -106,6 +106,10 @@ test("ATD-42: authenticated task refuses a foreign assignee or unknown phase", (
     assert.throws(() => readTrustedFlowPhase(x.bound), /Unknown authoritative/);
     assert.equal(readTrustedFlowPhase({...x.bound, mode: "standalone"}), undefined);
     assert.equal(readTrustedFlowPhase({...x.bound, binding: {...x.bound.binding, taskId: "*"}}), undefined);
+    x.writeSeat({...x.record, role:"coordinator"});
+    assert.throws(() => readTrustedFlowPhase(x.bound, x.cwd), /active driver identity/);
+    x.writeSeat();
+    assert.throws(() => readTrustedFlowPhase(x.bound, x.root), /worktree does not match/);
   } finally { x.finish(); }
 });
 
