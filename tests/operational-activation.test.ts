@@ -80,6 +80,12 @@ test("unknown priors, partial code and untrusted phase never become false, waive
     const parse=x.session.observe(event("unknown",DOMAIN,"import {",BASE));
     assert.ok(parse.missingReasons.some(g=>g.reason==="partial_source_parse"));
     assert.equal(parse.observedFacts.some(f=>f.predicate==="change"),false);
+    const dynamic=x.session.observe(event("unknown",DOMAIN,
+      BASE+'const loader=import("../integration/network");\n',BASE));
+    assert.ok(dynamic.missingReasons.some(g=>g.fact==="change" &&
+      g.reason==="dynamic_import_uninspected"));
+    assert.ok(dynamic.unknownFacts.includes("change"));
+    assert.equal(dynamic.observedFacts.some(f=>f.predicate==="change"),false);
     assert.throws(()=>x.session.observe({...event("x",DOMAIN,IMPORT,BASE),phase:"GREEN"}),/trusted provider/);
     assert.throws(()=>x.session.observe({...event("x",DOMAIN,IMPORT,BASE),
       origin:"trusted-work-provider",phase:"GREEN",revision:undefined}),/pinned revision/);

@@ -289,8 +289,14 @@ export class ReasoningSession {
           "ast:domain_to_integration_import @ " + ob.provenance);
         if (imports.added) add("change", [ob.scope, "domain_to_integration_import_added"],
           "before_after:domain_to_integration_import_added @ " + ob.provenance);
-        for (const reason of imports.unknownReasons) missing(
-          reason.includes("prior_") || reason === "unresolved_import_alias" ? "change" : "source", reason);
+        // An inspected file with an unresolved dependency form is missing a
+        // trustworthy change fact, not the source text we already read.
+        const missingSource = new Set([
+          "invalid_path", "unsupported_file_kind", "proposed_source_unavailable",
+          "partial_source_parse", "source_too_large",
+        ]);
+        for (const reason of imports.unknownReasons)
+          missing(missingSource.has(reason) ? "source" : "change", reason);
         if (!imports.deltaObserved && !imports.unknownReasons.length) missing("change", "delta_not_observable");
       }
     } else if (ob.operation === "edit" || ob.operation === "create") {

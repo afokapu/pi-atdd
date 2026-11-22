@@ -45,3 +45,7 @@ This is a **conservative observation fix**, not module-resolution parity, full c
 ## Review finding: explain consequential implementation invariants
 
 `src/reasoning-context.ts` now documents the trust boundary, legacy-selector false-activation distinction, mandatory-only dependencies, stable fact IDs, multi-support retraction and the coexistence of matched and UNKNOWN. `src/pi-activation.ts` now documents ambiguous edits, source-read failure, and preflight versus final verification. The source-line estimates moved from 4.04% to 11.44% (reasoning context) and 9.66% to 10.79% (Pi activation) for nonblank comment-leading lines, without adding filler or changing runtime behavior. This is a source-review quality improvement; the official Bun metric detector is **not** claimed to have run against this Node/Pi package.
+
+## Unknown fact classification refinement
+
+A parsed source containing an unsupported dependency form now reports `missing: change` with a concrete `dynamic_import_uninspected`/alias/etc. reason rather than incorrectly reporting `missing: source`. Truly unavailable or unparseable source is still `missing: source`. The reasoner-level regression checks that no `change` fact is fabricated, and the explicit UNKNOWN survives through reconciliation.
