@@ -120,3 +120,16 @@ test("a changed authored edge type cannot be laundered into mandatory requires",
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /authored graph witness mismatch/);
 });
+
+test("quoted field-qualified targets are not conflated with convention nodes", () => {
+  const entries = ledger.split("\n").filter(row => row && !row.startsWith("#"));
+  const from = entries.find(row => row.startsWith("planner.desired-outcome.must-have-smoke-acceptance\t"));
+  const harness = entries.find(row => row.startsWith("planner.acceptance.harness\t"));
+  const vocabulary = entries.find(row => row.startsWith("planner.acceptance.harness-vocabulary\t"));
+  assert.ok(from && harness && vocabulary);
+  assert.ok(from.includes("planner.acceptance.harness#harness_type"));
+  assert.ok(from.includes("planner.acceptance.harness-vocabulary#harness_code"));
+  // A fragment target is a source referent, not a second convention node.
+  assert.ok(!harness.includes("in:requires/mandatory:planner.desired-outcome.must-have-smoke-acceptance@"));
+  assert.ok(!vocabulary.includes("in:requires/mandatory:planner.desired-outcome.must-have-smoke-acceptance@"));
+});
