@@ -29,13 +29,13 @@ export function activationPathCategory(file?: string): NonNullable<ActivationEve
   if (/\.[cm]?[jt]sx?$/i.test(path)) return "source";
   return "other";
 }
-function root(): string {
-  return process.env.PI_ATDD_TELEMETRY_DIR ||
-    join(process.env.XDG_STATE_HOME || join(homedir(), ".local", "state"), "pi-atdd", "activation");
+function root(env: NodeJS.ProcessEnv = process.env): string {
+  return env.PI_ATDD_TELEMETRY_DIR ||
+    join(env.XDG_STATE_HOME || join(homedir(), ".local", "state"), "pi-atdd", "activation");
 }
-export function activationLogPath(cwd: string): string {
+export function activationLogPath(cwd: string, env: NodeJS.ProcessEnv = process.env): string {
   const repoId = createHash("sha256").update(resolve(cwd)).digest("hex").slice(0, 20);
-  return join(root(), repoId + ".jsonl");
+  return join(root(env), repoId + ".jsonl");
 }
 function ids(value: readonly string[] | undefined): string[] {
   return [...new Set((value ?? []).filter(x => ID.test(x)))].sort().slice(0, 64);
@@ -43,11 +43,13 @@ function ids(value: readonly string[] | undefined): string[] {
 function count(value: number | undefined): number {
   return Number.isFinite(value) ? Math.max(0, Math.floor(value!)) : 0;
 }
-export function appendActivation(cwd: string, event: ActivationEvent, options: {maxBytes?: number} = {}):
+export function appendActivation(cwd: string, event: ActivationEvent,
+    options: {maxBytes?: number; env?: NodeJS.ProcessEnv} = {}):
   {ok: true; path: string} | {ok: false; reason: string} {
-  if (process.env.PI_ATDD_TELEMETRY === "off") return {ok: true, path: "disabled"};
+  const env = options.env ?? process.env;
+  if (env.PI_ATDD_TELEMETRY === "off") return {ok: true, path: "disabled"};
   try {
-    const path = activationLogPath(cwd);
+    const path = activationLogPath(cwd, env);
     const record = {
       schema: SCHEMA, at: new Date().toISOString(),
       repoId: createHash("sha256").update(resolve(cwd)).digest("hex").slice(0, 20),
@@ -65,7 +67,7 @@ export function appendActivation(cwd: string, event: ActivationEvent, options: {
     };
     const line = JSON.stringify(record) + "\n";
     const limit = options.maxBytes ?? LIMIT;
-    mkdirSync(root(), {recursive: true, mode: 0o700});
+    mkdirSync(root(env), {recursive: true, mode: 0o700});
     if (existsSync(path) && statSync(path).size + Buffer.byteLength(line) > limit)
       renameSync(path, path + ".1");
     appendFileSync(path, line, {encoding: "utf8", mode: 0o600});
@@ -84,11 +86,11 @@ export type TelemetrySummary = {
   total: number;
 };
 /** Ratios describe trigger frequency, not precision, recall, compliance, or applicability truth. */
-export function activationSummary(cwd: string): TelemetrySummary {
+export function activationSummary(cwd: string, env: NodeJS.ProcessEnv = process.env): TelemetrySummary {
   const groups = {task_start: emptyCounts(), pre_edit: emptyCounts(), post_tool: emptyCounts()};
   let malformed = 0, unreadable = 0, total = 0;
-  if (process.env.PI_ATDD_TELEMETRY === "off") return {groups, malformed, unreadable, total};
-  const path = activationLogPath(cwd);
+  if (env.PI_ATDD_TELEMETRY === "off") return {groups, malformed, unreadable, total};
+  const path = activationLogPath(cwd, env);
   for (const file of [path + ".1", path]) {
     if (!existsSync(file)) continue;
     try {
@@ -108,10 +110,10 @@ export function activationSummary(cwd: string): TelemetrySummary {
   }
   return {groups, malformed, unreadable, total};
 }
-export function formatActivationSummary(cwd: string): string {
-  if (process.env.PI_ATDD_TELEMETRY === "off") return "ATDD local activation telemetry disabled (PI_ATDD_TELEMETRY=off)";
-  const s = activationSummary(cwd);
-  const lines = ["ATDD local activation log: " + activationLogPath(cwd),
+export function formatActivationSummary(cwd: string, env: NodeJS.ProcessEnv = process.env): string {
+  if (env.PI_ATDD_TELEMETRY === "off") return "ATDD local activation telemetry disabled (PI_ATDD_TELEMETRY=off)";
+  const s = activationSummary(cwd, env);
+  const lines = ["ATDD local activation log: " + activationLogPath(cwd, env),
     "Recent bounded events only; rate = matched / eligible observed attempts. Not correctness or recall."];
   for (const point of POINTS) {
     const x = s.groups[point];
