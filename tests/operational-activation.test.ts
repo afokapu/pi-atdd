@@ -159,6 +159,30 @@ test("path-only architecture guidance remains distinct from a structural finding
   }finally{x.finish();}
 });
 
+test("ATD-22: authentic reviewer operation retains binding truthfulness guidance",()=>{
+  const x=setup();
+  const path="src/orders/checkout.test.ts",target="tester.acceptance.binding-declared";
+  const header="// URN: test:orders:checkout:E001-SMOKE-001\n";
+  const body='import {strict as assert} from "node:assert";\n';
+  try{
+    for(const [name,source] of [
+      ["acceptance",header+"// Acceptance: acc:checkout\n"+body],
+      ["train",header+"// Train: checkout\n"+body],
+    ] as const){
+      const observed=x.session.observe({...event("review:"+name,path,source),
+        operation:"review",task:"Review whether this bound test proves the acceptance"});
+      assert.equal(has(observed,target),true,name);
+      assert.match(proof(observed,target),/pi-atdd.typed-test-binding-truthfulness-review/,
+        "even a well-formed header still needs truthful subject/witness review");
+      assert.ok(observed.missingReasons.some(r=>
+        r.fact==="finding"&&r.reason==="test_binding_truthfulness_requires_review"));
+    }
+    const negative=x.session.observe({...event("review:no-urn",path,body),
+      operation:"review",task:"Review an unrelated test"});
+    assert.doesNotMatch(proof(negative,target),/pi-atdd.typed-test-binding-truthfulness-review/);
+  }finally{x.finish();}
+});
+
 test("ATD-22: actual URN missing-binding facts fire while inspected valid bindings do not",()=>{
   const x=setup();
   const prefix="// URN: test:orders:checkout:E001-SMOKE-001\n";
