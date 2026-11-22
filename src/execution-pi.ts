@@ -7,8 +7,9 @@
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
-  acknowledgeRecovery, claimSeatHolder, executionConfigFromEnv, ownsExecution, recordSeatCheckpoint,
-  recordSeatModel, adoptSuccessorLease, replaceSeat, resumeSeatFromCheckpoint, vcsHead, withSeatFence, type SeatRuntimeConfig,
+  acknowledgeRecovery, claimSeatHolder, executionConfigFromEnv, missingExecutionVariables, ownsExecution, recordSeatCheckpoint,
+  recordSeatModel, adoptSuccessorLease, replaceSeat, resumeSeatFromCheckpoint, seatAuthorizationRefusal, vcsHead,
+  withSeatFence, type SeatRuntimeConfig,
 } from "./execution-seat.ts";
 import type { ExecutionCheckpoint } from "./execution-lifecycle.ts";
 import { ensureKey, foldAll, operational, readLaunchConfig, verifyAuthentic, type AttentionItem, type SignedEvent } from "./attention.ts";
@@ -42,9 +43,20 @@ const isContext = (x: unknown): x is Ctx => Boolean(x) && typeof x === "object" 
 const modelName = (model: Ctx["model"]) => model ? model.provider + "/" + model.id : "unknown";
 
 export function registerSeatExecution(pi: ExtensionAPI, env: NodeJS.ProcessEnv = process.env): SeatController | undefined {
-  const configured = executionConfigFromEnv(env);
-  if (!configured) return undefined;
   const api = pi as unknown as Api;
+  const configured = executionConfigFromEnv(env);
+  if (!configured) {
+    // ATD-36: attention scope without a seat stays fail-closed; say at startup what is missing.
+    if (env.PI_ATDD_ATTENTION_ROLE) {
+      api.on("session_start", (_event, ctx) => {
+        const missing = missingExecutionVariables(env).join(", ");
+        (ctx as Partial<Ctx>)?.ui?.notify("ATDD attention is scoped but no execution seat is bound; attention tools " +
+          "will refuse. Missing: " + missing + ". The launcher must bootstrap the seat (atdd seat bootstrap) and " +
+          "export these before Pi starts.", "warning");
+      });
+    }
+    return undefined;
+  }
   let current = configured;
   // Set only by a launcher-requested recovery. Tools stay blocked until the next prompt delivers it.
   let awaitingTurnEnd: string[] | undefined;
@@ -196,7 +208,7 @@ export function registerSeatExecution(pi: ExtensionAPI, env: NodeJS.ProcessEnv =
     },
   });
   const fence = <T>(x: unknown, work: () => T): T => withSeatFence(current, () => {
-    if (!owns(x)) throw new Error("ATDD attention seat is not authorized");
+    if (!owns(x)) throw new Error(seatAuthorizationRefusal(env));
     return work();
   });
   return { owns, checkpoint, activateSuccessor, snapshotAttention, current: () => current, fence };

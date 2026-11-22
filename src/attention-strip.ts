@@ -12,6 +12,7 @@ import {
   type Action, type AttentionItem, type Cursor, type LaunchConfig, type SignedEvent, type StateRecord,
 } from "./attention.ts";
 import type { AttentionRouteBinding } from "./attention-routing.ts";
+import { seatAuthorizationRefusal } from "./execution-seat.ts";
 
 export type StripOptions = {
   env?: NodeJS.ProcessEnv;
@@ -82,7 +83,7 @@ const endedWithError = (event: unknown): boolean => {
 function requireAuthorized(ctx: unknown, cfg: LaunchConfig, opts: StripOptions): LaunchConfig {
   requireTrusted(ctx);
   const current = effective(ctx, cfg, opts);
-  if (!current) throw new Error("ATDD attention seat is not authorized");
+  if (!current) throw new Error(seatAuthorizationRefusal(opts.env ?? process.env));
   return current;
 }
 
