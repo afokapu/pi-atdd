@@ -42,13 +42,19 @@ function bunAuthFacts(path:string,source:string):StructuralFact[]{
     return ["bun_mutating_route_unresolved"];
   return [];
 }
+/** Source eligibility is independent of the TypeScript parse result.
+ * Exclusions are not evidence that a source construct is absent.
+ */
+function eligibleSource(path:string,source:string):boolean {
+  return SOURCE.test(path)&&!IGNORE.test(path)&&!/\.d\.ts$/.test(path)&&
+    source.length<=1_000_000;
+}
 /** Deterministic, bounded TypeScript syntax facts with a content-hash cache.
  * Path, full source and comments stay in memory; telemetry records only fact IDs.
  */
 export function discoverSourceEvidence(file:string,source:string):readonly StructuralFact[]{
   const path=file.replaceAll("\\","/");
-  if(!SOURCE.test(path)||IGNORE.test(path)||/\.d\.ts$/.test(path)||source.length>1_000_000)
-    return [];
+  if(!eligibleSource(path,source))return [];
   const digest=createHash("sha256").update(path).update("\0").update(source).digest("hex");
   const hit=cache.get(digest);
   if(hit)return hit;
