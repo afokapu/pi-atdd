@@ -1,5 +1,6 @@
 // ATD-41: the Stream B handoff is an observation trace, never an OoC authority.
 import test from "node:test";
+import {createHash} from "node:crypto";
 import assert from "node:assert/strict";
 import {mkdtempSync,rmSync} from "node:fs";
 import {tmpdir} from "node:os";
@@ -32,11 +33,14 @@ test("pre-edit source facts expose full typed arguments, source proof, and no Oo
     assert.equal(frame.event.point,"pre_edit");
     assert.equal(frame.event.repositoryRevision,"f".repeat(40));
     assert.equal(frame.event.targetPathHint,path);
+    assert.equal(frame.event.sourceState,"PROPOSED");
+    assert.equal(frame.event.sourceDigest,createHash("sha256").update(newSource).digest("hex"));
     assert.equal(frame.disposition,"observation_only_no_authority");
     assert.equal(frame.resourceHints.layer,"domain");
     assert.equal(frame.resourceHints.fileKind,"source");
     assert.ok(frame.observed.some(f=>f.factType==="change"&&
-      f.factArgs[0]===input.scope&&f.factArgs[1]==="domain_to_integration_import_added"));
+      f.factArgs[0]===input.scope&&f.factArgs[1]==="domain_to_integration_import_added"&&
+      f.sourceDigest===frame.event.sourceDigest&&f.sourceRevision===input.revision));
     assert.ok(frame.receipts.some(r=>r.conventionId==="coder.architecture.hierarchy-import"&&
       r.sourceDigest?.length===64&&JSON.stringify(r.proof).includes("domain_to_integration_import_added")));
     assert.ok(!frame.observed.some(f=>f.factType==="task"),
@@ -66,6 +70,22 @@ test("support replacement, unchanged replay and scope reset have explicit retrac
     assert.equal(reset[0]!.event.origin,"pi-session-lifecycle");
     assert.ok(reset[0]!.retracted.some(f=>f.factType==="file_kind"));
     assert.equal(feed.invalidate("reset:5").length,0);
+  }finally{x.cleanup();}
+});
+test("same typed fact with revised source bytes retracts obsolete source support",()=>{
+  const x=setup(),feed=new PiObservationFeed();
+  try{
+    const old=revise("revised-bytes",newSource,oldSource);
+    const before=feed.capture("bytes:old",old,x.session.observe(old));
+    const changed=revise("revised-bytes",newSource+"// additional commentary\n",oldSource);
+    const after=feed.capture("bytes:new",changed,x.session.observe(changed));
+    assert.notEqual(after.event.sourceDigest,before.event.sourceDigest);
+    assert.equal(after.event.sourceState,"PROPOSED");
+    assert.ok(after.retracted.some(f=>f.factType==="code_construct"&&
+      f.sourceDigest===before.event.sourceDigest),
+      "a changed source must invalidate earlier source-bound evidence even if its predicate stays true");
+    assert.ok(after.observed.some(f=>f.factType==="code_construct"&&
+      f.sourceDigest===after.event.sourceDigest));
   }finally{x.cleanup();}
 });
 test("detector evidence carries independent supports and a later retraction",()=>{
