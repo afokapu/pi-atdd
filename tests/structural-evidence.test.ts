@@ -3,22 +3,39 @@ import assert from "node:assert/strict";
 import { discoverSourceEvidence } from "../src/structural-evidence.ts";
 
 const AUTH = "bun_mutating_route";
+const MISSING_AUTH = "bun_mutating_route_missing_auth";
 const URN = "test_urn_header";
 const MISSING_BINDING = "test_urn_missing_binding";
 
 test("Bun mutating route in generic file activates structural fact without task vocabulary", () => {
   const source = 'Bun.serve({ routes: {"/orders/:id": { DELETE: () => new Response("ok") }} });';
-  assert.deepEqual(discoverSourceEvidence("src/server.ts", source), [AUTH]);
-  assert.deepEqual(discoverSourceEvidence("src/server.ts", source), [AUTH], "cached result stable");
+  assert.deepEqual(discoverSourceEvidence("src/server.ts", source), [AUTH, MISSING_AUTH]);
+  assert.deepEqual(discoverSourceEvidence("src/server.ts", source), [AUTH, MISSING_AUTH], "cached result stable");
 });
 test("fetch mutation is recognized including a one-hop method alias", () => {
   assert.deepEqual(discoverSourceEvidence("src/http.ts",
-    'Bun.serve({ fetch(req) { const method = req.method; if(method === "PATCH") return new Response("ok"); } });'), [AUTH]);
+    'Bun.serve({ fetch(req) { const method = req.method; if(method === "PATCH") return new Response("ok"); } });'), [AUTH, MISSING_AUTH]);
 });
 test("Bun routes bound to a local constant are recognized", () => {
   assert.deepEqual(discoverSourceEvidence("src/server.ts",
-    'const routes = {"/orders": { POST: () => new Response("ok") }}; Bun.serve({routes});'), [AUTH]);
+    'const routes = {"/orders": { POST: () => new Response("ok") }}; Bun.serve({routes});'), [AUTH, MISSING_AUTH]);
 });
+test("Bun auth facts distinguish unguarded handlers from inline guards and unresolved aliases", () => {
+  assert.deepEqual(discoverSourceEvidence("src/server.ts",
+    'Bun.serve({routes:{"/x":{POST:()=>{requireAuth();return new Response("ok")}}}});'),
+    [AUTH,"bun_mutating_route_guarded"]);
+  assert.deepEqual(discoverSourceEvidence("src/server.ts",
+    'Bun.serve({routes:{"/x":{POST:postHandler}}});'),
+    [AUTH,"bun_mutating_route_unresolved"]);
+  assert.deepEqual(discoverSourceEvidence("src/server.ts",
+    'Bun.serve({routes:{"/x":{GET:()=>{requireAuth();return new Response("ok")},DELETE:()=>new Response("ok")}}});'),
+    [AUTH, MISSING_AUTH],
+    "sibling guard is not evidence that the DELETE handler is authenticated");
+  assert.deepEqual(discoverSourceEvidence("src/server.ts",
+    'Bun.serve({fetch(req){if(req.method==="PATCH"){requireAuth();return new Response("ok")}}});'),
+    [AUTH,"bun_mutating_route_guarded"]);
+});
+
 test("GET and unrelated DELETE object do not count as a mutating route", () => {
   assert.deepEqual(discoverSourceEvidence("src/server.ts",
     'Bun.serve({routes:{"/catalog":{GET:()=>new Response("ok")}}});'), []);
@@ -56,7 +73,7 @@ test("tests, vendors and malformed code are not classified as Bun route source",
 });
 test("changing code changes facts; no stale source-hash result", () => {
   assert.deepEqual(discoverSourceEvidence("src/http.ts",
-    'Bun.serve({routes:{"/x":{PATCH:()=>new Response("ok")}}});'), [AUTH]);
+    'Bun.serve({routes:{"/x":{PATCH:()=>new Response("ok")}}});'), [AUTH, MISSING_AUTH]);
   assert.deepEqual(discoverSourceEvidence("src/http.ts",
     'Bun.serve({routes:{"/x":{GET:()=>new Response("ok")}}});'), []);
 });
