@@ -1,0 +1,44 @@
+# Changelog
+
+Headings use Pi's format (`## [x.y.z] - YYYY-MM-DD`), so Pi can read this file for its changelog notices. Pi 1.5.2 does not show a notice for a plain pin bump; see `docs/RELEASE-0.4.0.md`.
+
+## [0.4.0] - 2026-11-22
+
+First versioned Pi package. Install with `pi install git:github.com/afokapu/pi-atdd@v0.4.0`; upgrade by bumping the pinned tag. Licence status and open items: `docs/RELEASE-0.4.0.md`.
+
+### Added
+
+- Mode by intent: `set_atdd_mode` tool and ATDD-repo guard; the ATDD or plain choice is remembered per repo.
+- Model tiers by role: rules, resolver, brief lint and agent helper.
+- Coach convention: named instances, action tiers, orchestrate-not-build.
+- Attention Strip: typed worker-to-Coach attention, routed by task and Coach.
+- Automatic context handoff at 85% usage, and automatic context renewal for Coach and workers.
+- Optional Coach state section in shared handoff records.
+- Every code-changing task is bound to a tracker issue; the tracker check is configuration-driven.
+- Stack-neutral core conventions with a Bun realisation.
+- Execution seats are resumable across seats, with fenced ownership.
+- Split-part legacy aliases resolve to their loaded rules.
+- Attention list details, a mid-run checkpoint, and no duplicate replay.
+- Local activation telemetry: a bounded, privacy-safe record of which conventions were inspected, activated, missed or delivered.
+- Structural discovery facts derived from source syntax (Bun routes and test URN syntax), available in the installed Pi runtime.
+- CI runs the tracker-issue check on each pull request as a non-blocking notice (exit 3 is a notice, not a failure).
+
+### Changed
+
+- Profile-first convention ids and `shared.convention.propose`.
+- Vocabulary rename (pi-atdd PR #26). Tag `v0.3.0` was cut from that change without a `package.json` bump; this release is the first whose version matches its tag.
+- Bundled sources are pinned by id and digest; smoke tests use isolated Pi profiles.
+- Coach relaunch uses a real busy/idle signal.
+- Post-tool reconciliation is bounded: capped output, build output skipped, read-only, redelivery counts cleared on reset.
+
+### Fixed
+
+- Planner coverage conventions are committed (they were hidden by the `coverage/` ignore).
+
+## [0.2.0] - 2026-11-19
+
+ATDD-Bun baseline, frozen. See `docs/RELEASE-0.2.0.md`.
+
+### Added
+
+- Graph delivery fixes, convention sidecar pinned to the canonical YAML, and D008 pilot-validity docs.
