@@ -10,6 +10,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadCatalog, loadConfig, type Catalog, type Selector } from "./catalog.ts";
 import type { StructureProfile } from "./profile.ts";
 import { ReasoningSession, type ContextObservation } from "./reasoning-context.ts";
+import { readTrustedFlowPhase, type TrustedFlowPhase } from "./trusted-flow-phase.ts";
 import { renderReasonedPage, type RenderedPage } from "./render-reasoning.ts";
 import { observeRepository, type RepositorySnapshot } from "./repository-observer.ts";
 import { shellWriteTargetModes } from "./shell-targets.ts";
@@ -249,9 +250,11 @@ export default function atdd(pi:ExtensionAPI):void {
   const scopeFor=(path?:string)=>"pi-run:"+serial+":"+(path?"file:"+path:"task");
   const currentRevision=()=>observedRepo?.revision??undefined;
   function observe(cwd:string,operation:"task"|"edit"|"create"|"review",
-    origin:ContextObservation["origin"],provenance:string,path?:string,sourceText?:string){
+    origin:ContextObservation["origin"],provenance:string,path?:string,sourceText?:string,
+    trusted?:TrustedFlowPhase){
     return ensure(cwd).observe({
       scope:scopeFor(path),task:task||"unknown task",path,sourceText,operation,origin,provenance,
+      ...(trusted?{phase:trusted.phase,actorRole:trusted.actorRole}:{}),
       ...(currentRevision()?{revision:currentRevision()}:{}),
     });
   }
@@ -344,10 +347,14 @@ export default function atdd(pi:ExtensionAPI):void {
     }
     const started=performance.now();
     try{
-      const result=observe(ctx.cwd,"task","pi-event","Pi before_agent_start");
+      // The authenticated seat lease and Flow task record—not task wording—own phase.
+      // Other setups remain UNKNOWN rather than pretending the model's prompt is authority.
+      const trusted=executionSeat?.owns(ctx)?readTrustedFlowPhase(executionSeat.current()):undefined;
+      const result=observe(ctx.cwd,"task",trusted?"trusted-work-provider":"pi-event",
+        trusted?.provenance??"Pi before_agent_start",undefined,undefined,trusted);
       const newRules=newlyRelevant(result);
       if(!newTask&&!newRules.length)return;
-      const page=renderReasonedPage(result,newRules,12_000);
+      const page=renderReasonedPage(result,newRules,trusted?.phase==="PLAN"?24_000:12_000);
       recordActualDelivery(result,page);
       if(newTask)recordReasoned(ctx.cwd,"task_start","task",undefined,result,newRules,page,started);
       return {message:{customType:"pi-atdd-inference",
