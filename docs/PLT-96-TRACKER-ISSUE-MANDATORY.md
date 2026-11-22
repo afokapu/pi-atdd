@@ -72,7 +72,7 @@ Absent or empty `tracker:` means **unconfigured**: the check returns `notice`, n
 | Issue created or asked for before the first change | **No** | Text obligation |
 | Planner links plan to tracker issue | **No** | Text obligation |
 | Cloud build settings changed in a console (outside the repo) | **No** | No file to observe |
-| Repository-wide CI running the validator | **No** | Not added in this PR; needs a workflow change (owner decision) |
+| Repository-wide CI running the validator | **Yes, non-blocking** (ATD-24) | `tracker-issue` job in `checks.yml` runs `scripts/tracker-check-ci.sh` on pull requests; `continue-on-error` until open PRs carry an id; exit 3 prints a notice, never a pass |
 
 ## Verification
 
