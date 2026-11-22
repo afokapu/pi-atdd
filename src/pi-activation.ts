@@ -16,6 +16,7 @@ import { shellWriteTargetModes } from "./shell-targets.ts";
 import { registerAttentionStrip } from "./attention-strip.ts";
 import { registerSeatExecution } from "./execution-pi.ts";
 import type { ExecutionCheckpoint } from "./execution-lifecycle.ts";
+import { registerBusyState } from "./busy-state.ts";
 import { Type } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { MODE_FILE, guardsAtdd, modeFromText, recordMode, repositoryRoot, resolveMode, type Mode, type Resolution } from "./mode.ts";
@@ -82,6 +83,7 @@ const MODE_CHOICES=["ATDD — remember for this repo","Plain — remember for th
 export default function atdd(pi:ExtensionAPI):void {
   const executionSeat = registerSeatExecution(pi); // PLT-117: inert unless launch-bound
   registerAttentionStrip(pi); // PLT-101: inert unless PI_ATDD_ATTENTION_ROLE is set
+  registerBusyState(pi); // PLT-121: busy/idle state file for the relaunch script; inert without an identity
   let cwdKey="", task="", serial=0;
   let catalog:Catalog|undefined,selectors:Selector[]=[],profile:StructureProfile|undefined;
   let reasoning:ReasoningSession|undefined;
