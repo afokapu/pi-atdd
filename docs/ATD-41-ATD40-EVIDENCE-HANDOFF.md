@@ -22,7 +22,7 @@ Before this correction, tools/atd-41-observation-envelope.ts was a standalone re
 | origin and provenance | Separate event and fact assertion origins | Pi event, repository source and detector finding never become provider authority |
 | sourceRevision, sourcePath, sourceDigest | Repository revision, target hint, exact source-byte digest and proposal/repository status | Proposed bytes are marked PROPOSED, never mislabeled committed or observed HEAD |
 | evidenceState | OBSERVED, RETRACTED, missing reasons and unknownFacts | Unobserved never means rule does not apply |
-| rule applicability and normative edges | Authored convention ID/source digest, Datalog proof, traversed mandatory requires edges | Do not coerce discretionary workflow edges or potential Driver influence |
+| rule applicability and normative edges | Authored convention ID/source digest, Datalog proof, explicitly typed supportKinds and traversed mandatory requires edges | LEGACY_SELECTOR stays visible and distinct from STRUCTURAL_SOURCE, DETECTOR_FINDING, TRUSTED_PHASE and mandatory closure. No word or path match becomes OoC authority |
 | Resource or Situation | Source path hint and file-kind/layer evidence | Neither is an admitted OoC or authoritative Resource identity |
 | desired Change Path, admitted identity, authority | Deliberately absent | To be provided through independently approved Stream A and owner semantics |
 | GovernanceResult dispositions | observation_only_no_authority; reasoner-local matched/unknown/incomplete | No fabricated MATCHED, NO_MATCH, REFUSAL, execution permission, or no-rule verdict |
