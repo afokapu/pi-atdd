@@ -20,6 +20,8 @@ const OLD="export const value=1;\n";
 const outbound=(layer:string)=>'import {Service} from "../'+layer+'/Service";\n'+OLD;
 // These are independently written executable programs keyed to exact case
 // indices. Descriptive sidecar prose is never interpreted as source syntax.
+const URN="// URN: test:orders:checkout:E001-SMOKE-001\n";
+const TEST_CODE='import { strict as assert } from "node:assert";\n';
 const WITNESSES: readonly SourceWitness[] = [
   {sourceId:"coder.architecture.hierarchy-import",kind:"fires",index:0,
     path:"src/orders/domain/price.ts",proposed:outbound("integration"),prior:OLD,
@@ -53,6 +55,22 @@ const WITNESSES: readonly SourceWitness[] = [
   {sourceId:"coder.architecture.hierarchy-import",kind:"doesNotFire",index:4,
     path:"src/orders/helpers.ts",proposed:outbound("integration"),prior:OLD,
     operation:"create",expected:false,structuralBasis:"unlayered file excluded"},
+  // Independently supplied test header bytes, not prose converted into evidence.
+  {sourceId:"tester.acceptance.binding-declared",kind:"fires",index:0,
+    path:"src/orders/checkout.test.ts",proposed:URN+TEST_CODE,prior:TEST_CODE,
+    operation:"edit",expected:true,structuralBasis:"test URN with no obligation binding"},
+  {sourceId:"tester.acceptance.binding-declared",kind:"fires",index:1,
+    path:"src/orders/checkout.test.ts",proposed:URN+"// Train: checkout\n"+TEST_CODE,
+    prior:TEST_CODE,operation:"edit",expected:true,structuralBasis:"Train-only unit test"},
+  {sourceId:"tester.acceptance.binding-declared",kind:"doesNotFire",index:0,
+    path:"src/orders/checkout.test.ts",proposed:TEST_CODE,prior:OLD,
+    operation:"edit",expected:false,structuralBasis:"test without URN"},
+  {sourceId:"tester.acceptance.binding-declared",kind:"doesNotFire",index:1,
+    path:"e2e/checkout.test.ts",proposed:URN+"// Train: checkout\n"+TEST_CODE,
+    prior:TEST_CODE,operation:"edit",expected:false,structuralBasis:"journey Train binding permitted"},
+  {sourceId:"tester.acceptance.binding-declared",kind:"doesNotFire",index:2,
+    path:"src/orders/checkout.ts",proposed:URN+OLD,prior:OLD,
+    operation:"edit",expected:false,structuralBasis:"non-test source excluded"},
 ];
 // Split conventions share a parent source ID. The *effective variant* is the
 // unique replay identity; keying by the parent silently drops split examples.
@@ -84,7 +102,9 @@ type PinnedExample=ReturnType<typeof enumerateSidecarExamples>["examples"][numbe
 function witnessVerdict(sample:SourceWitness,
   target:ReturnType<ReasoningSession["observe"]>["activations"][number]|undefined) {
   const proof=JSON.stringify(target?.proof??null);
-  const structuralProof=/pi-atdd.typed-(?:domain-integration|outward-layer-import)/.test(proof);
+  const structuralProof=sample.sourceId==="tester.acceptance.binding-declared"
+    ? /pi-atdd.typed-test-urn/.test(proof) && proof.includes("test_urn_missing_binding")
+    : /pi-atdd.typed-(?:domain-integration|outward-layer-import)/.test(proof);
   const activated=!!target;
   const structuralPass=sample.expected?structuralProof:!structuralProof;
   const pass=activated===sample.expected&&structuralPass;
