@@ -84,7 +84,10 @@ const INTENT_RULE="Use set_atdd_mode when the user signals, in any wording or la
 const oneLine=(s:string)=>s.replace(/\s+/g," ").trim().slice(0,160);
 const MODE_CHOICES=["ATDD — remember for this repo","Plain — remember for this repo",
   "ATDD — this session only","Plain — this session only"];
-export default function atdd(pi:ExtensionAPI):void {
+/** Pi supplies only the ExtensionAPI. A test harness may inject an isolated
+ * telemetry sink; no external provider or task text can select this path.
+ */
+export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string} = {}):void {
   const executionSeat = registerSeatExecution(pi); // PLT-117: inert unless launch-bound
   // PLT-118: a scoped attention route follows the live seat binding and its writes are fenced against seat transfer.
   const attentionStrip=registerAttentionStrip(pi, attentionSeatOptions(executionSeat)); // PLT-101
@@ -136,7 +139,8 @@ export default function atdd(pi:ExtensionAPI):void {
     return [...found].sort();
   }
   function record(cwd:string, event:ActivationEvent):void{
-    const outcome=appendActivation(cwd,{...event,sessionId,catalogDigest:catalog?.provenance[0]?.digest});
+    const outcome=appendActivation(cwd,{...event,sessionId,catalogDigest:catalog?.provenance[0]?.digest},
+      {root:runtime.telemetryRoot});
     if(!outcome.ok&&!telemetryWarning){
       telemetryWarning=true;
       try{pi.sendMessage({customType:"pi-atdd-telemetry-gap",
@@ -318,7 +322,7 @@ export default function atdd(pi:ExtensionAPI):void {
     handler:async(args,ctx)=>{
       const arg=(args??"").trim().toLowerCase();
       if(arg==="on"||arg==="off"){setMode(ctx,arg==="on"?"atdd":"plain","/atdd "+arg);return;}
-      if(arg==="telemetry"){ctx.ui.notify(formatActivationSummary(ctx.cwd),"info");return;}
+      if(arg==="telemetry"){ctx.ui.notify(formatActivationSummary(ctx.cwd,{root:runtime.telemetryRoot}),"info");return;}
       if(arg&&arg!=="status"){ctx.ui.notify("Usage: /atdd on | off | status | telemetry","warning");return;}
       const mode=current??resolveMode({cwd:ctx.cwd,env:process.env});
       let line=mode.mode?"ATDD mode: "+mode.mode+" ("+mode.source+")":

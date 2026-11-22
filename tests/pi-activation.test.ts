@@ -14,6 +14,7 @@ import { activationLogPath } from "../src/activation-telemetry.ts";
 
 function sandbox() {
   const cwd=mkdtempSync(join(tmpdir(),"pi-atdd-pi-live-"));
+  const telemetryRoot=mkdtempSync(join(tmpdir(),"pi-atdd-telemetry-isolated-"));
   const git=(...args:string[])=>execFileSync("git",args,{cwd,encoding:"utf8"});
   git("init","-q");git("config","user.name","Pi tester");git("config","user.email","test@example.invalid");
   mkdirSync(join(cwd,"src/orders/routes"),{recursive:true});
@@ -27,9 +28,14 @@ function sandbox() {
     registerTool:()=>{},
     sendMessage:(message:{customType:string;content:string},options:unknown)=>messages.push({message,options}),
   };
-  atdd(p as any);
+  atdd(p as any,{telemetryRoot});
   const ctx={cwd,isProjectTrusted:()=>true,ui:{notify:()=>{}}};
-  return {cwd,handlers,messages,ctx,git,cleanup:()=>rmSync(cwd,{recursive:true,force:true})};
+  return {cwd,handlers,messages,ctx,git,
+    logPath:()=>activationLogPath(cwd,{root:telemetryRoot}),
+    cleanup:()=>{
+      rmSync(cwd,{recursive:true,force:true});
+      rmSync(telemetryRoot,{recursive:true,force:true});
+    }};
 }
 
 test("Pi delivers typed graph reasoning automatically at task start and first edit",()=>{
@@ -183,9 +189,6 @@ test("budget-clipped pre-edit rules are paged and cannot be silently skipped on 
 
 test("Pi pre-edit structural evidence and local telemetry work without task keywords",()=>{
   const x=sandbox();
-  const root=mkdtempSync(join(tmpdir(),"pi-atdd-telemetry-pi-"));
-  const old=process.env.PI_ATDD_TELEMETRY_DIR;
-  process.env.PI_ATDD_TELEMETRY_DIR=root;
   try{
     const start=x.handlers.get("before_agent_start")!;
     start({messageType:"user",prompt:"Make orders cancellable"},x.ctx);
@@ -197,7 +200,7 @@ test("Pi pre-edit structural evidence and local telemetry work without task keyw
     assert.match(first.reason,/coder\.security\.missing-auth/);
     assert.equal(x.handlers.get("tool_call")!(event,x.ctx),undefined,
       "unchanged evidence should not repeatedly block on identical guidance");
-    const log=readFileSync(activationLogPath(x.cwd),"utf8");
+    const log=readFileSync(x.logPath(),"utf8");
     assert.ok(!log.includes("Make orders cancellable"),"task prompt must not enter telemetry");
     assert.ok(!log.includes("src/server.ts"),"raw path must not enter telemetry");
     assert.ok(!log.includes("DELETE:()=>"),"code must not enter telemetry");
@@ -209,19 +212,12 @@ test("Pi pre-edit structural evidence and local telemetry work without task keyw
     assert.ok(entries.some(item=>item.point==="pre_edit" && item.outcome==="matched" &&
       item.evidenceIds.includes("ast:bun_mutating_route")));
     assert.ok(entries.some(item=>item.point==="pre_edit" && item.deduplicated>=1));
-  }finally{
-    x.cleanup();rmSync(root,{recursive:true,force:true});
-    if(old===undefined)delete process.env.PI_ATDD_TELEMETRY_DIR;
-    else process.env.PI_ATDD_TELEMETRY_DIR=old;
-  }
+  }finally{x.cleanup();}
 });
 
 
 test("ATD-41 Pi pre-edit write/edit send source delta proof before mutation",()=>{
   const x=sandbox();
-  const root=mkdtempSync(join(tmpdir(),"pi-atdd-structural-pi-"));
-  const old=process.env.PI_ATDD_TELEMETRY_DIR;
-  process.env.PI_ATDD_TELEMETRY_DIR=root;
   try{
     mkdirSync(join(x.cwd,"src/orders/domain"),{recursive:true});
     const path="src/orders/domain/price.ts";
@@ -235,7 +231,7 @@ test("ATD-41 Pi pre-edit write/edit send source delta proof before mutation",()=
     assert.equal(first.block,true);
     assert.match(first.reason,/coder\.architecture\.hierarchy-import/);
     assert.equal(readFileSync(join(x.cwd,path),"utf8"),original,"Pi preflight does not mutate");
-    const log=readFileSync(activationLogPath(x.cwd),"utf8");
+    const log=readFileSync(x.logPath(),"utf8");
     assert.ok(!log.includes(path));
     assert.ok(!log.includes("gateway"));
     assert.ok(log.includes("change:domain_to_integration_import_added"));
@@ -246,26 +242,19 @@ test("ATD-41 Pi pre-edit write/edit send source delta proof before mutation",()=
     const edit={toolName:"edit",input:{path,oldText:original,newText:proposed}};
     const second=x.handlers.get("tool_call")!(edit,x.ctx);
     assert.equal(second.block,true);
-    assert.ok(readFileSync(activationLogPath(x.cwd),"utf8").includes("change:domain_to_integration_import_added"));
+    assert.ok(readFileSync(x.logPath(),"utf8").includes("change:domain_to_integration_import_added"));
     const malformed={toolName:"edit",input:{path,oldText:"NO SUCH TEXT",newText:proposed}};
     x.handlers.get("before_agent_start")!({messageType:"user",prompt:"Refine something"},x.ctx);
     x.handlers.get("tool_call")!(malformed,x.ctx);
-    const latest=readFileSync(activationLogPath(x.cwd),"utf8").trim().split("\n").map((line:string)=>JSON.parse(line))
+    const latest=readFileSync(x.logPath(),"utf8").trim().split("\n").map((line:string)=>JSON.parse(line))
       .filter((item:any)=>item.point==="pre_edit").at(-1);
     assert.ok(!latest.evidenceIds.includes("change:domain_to_integration_import_added"),
       "an edit that cannot be applied is not a structural delta");
-  }finally{
-    x.cleanup();rmSync(root,{recursive:true,force:true});
-    if(old===undefined)delete process.env.PI_ATDD_TELEMETRY_DIR;
-    else process.env.PI_ATDD_TELEMETRY_DIR=old;
-  }
+  }finally{x.cleanup();}
 });
 
 test("ATD-41 literal shell heredoc preflight and runtime-computed bypass post-observation",()=>{
   const x=sandbox();
-  const root=mkdtempSync(join(tmpdir(),"pi-atdd-structural-bypass-"));
-  const old=process.env.PI_ATDD_TELEMETRY_DIR;
-  process.env.PI_ATDD_TELEMETRY_DIR=root;
   try{
     mkdirSync(join(x.cwd,"src/orders/domain"),{recursive:true});
     const path="src/orders/domain/price.ts";
@@ -278,7 +267,7 @@ test("ATD-41 literal shell heredoc preflight and runtime-computed bypass post-ob
     const before=x.handlers.get("tool_call")!(literal,x.ctx);
     assert.equal(before.block,true);
     assert.match(before.reason,/ATDD shell-write preflight/);
-    assert.ok(readFileSync(activationLogPath(x.cwd),"utf8").includes("change:domain_to_integration_import_added"));
+    assert.ok(readFileSync(x.logPath(),"utf8").includes("change:domain_to_integration_import_added"));
     assert.equal(readFileSync(join(x.cwd,path),"utf8"),baseline);
     // Opaque runtime-computed shell write cannot be preflighted for a delta.
     x.handlers.get("before_agent_start")!({messageType:"user",prompt:"Adjust prices again"},x.ctx);
@@ -289,7 +278,7 @@ test("ATD-41 literal shell heredoc preflight and runtime-computed bypass post-ob
     const notice=x.messages.find(m=>m.message.customType==="pi-atdd-post-tool-reconciliation");
     assert.ok(notice,"bypass is observed after mutation");
     assert.match(notice.message.content,/coder\.architecture\.hierarchy-import/);
-    const entries=readFileSync(activationLogPath(x.cwd),"utf8").trim().split("\n").map((line:string)=>JSON.parse(line));
+    const entries=readFileSync(x.logPath(),"utf8").trim().split("\n").map((line:string)=>JSON.parse(line));
     assert.ok(entries.some((item:any)=>item.point==="post_tool" &&
       item.evidenceIds.includes("ast:domain_to_integration_import")));
     assert.ok(!entries.some((item:any)=>item.point==="post_tool" &&
@@ -298,9 +287,5 @@ test("ATD-41 literal shell heredoc preflight and runtime-computed bypass post-ob
     const count=x.messages.length;
     x.handlers.get("tool_execution_end")!({toolName:"bash",isError:false},x.ctx);
     assert.equal(x.messages.length,count,"unchanged bypass does not redeliver");
-  }finally{
-    x.cleanup();rmSync(root,{recursive:true,force:true});
-    if(old===undefined)delete process.env.PI_ATDD_TELEMETRY_DIR;
-    else process.env.PI_ATDD_TELEMETRY_DIR=old;
-  }
+  }finally{x.cleanup();}
 });
