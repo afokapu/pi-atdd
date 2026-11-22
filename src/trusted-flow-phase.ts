@@ -22,9 +22,9 @@ const object = (v: unknown): v is Record<string, unknown> =>
 export function readTrustedFlowPhase(seat: SeatRuntimeConfig | undefined): TrustedFlowPhase | undefined {
   if (!seat || seat.mode !== "external" || !seat.flowRoot) return undefined;
   const b = seat.binding;
+  if (b.taskId === "*") return undefined; // project-wide coaches do not own a driver phase
   if (![b.projectId, b.taskId].every(s => identifier.test(s)) || !isAbsolute(seat.flowRoot))
     throw new Error("Invalid Flow task identity or coordination root");
-  if (b.taskId === "*") return undefined; // project-wide coaches do not own a driver phase
   const root = realpathSync(seat.flowRoot);
   const path = realpathSync(join(root, "work", b.projectId, "tasks", b.taskId + ".yaml"));
   const rel = relative(root, path);
