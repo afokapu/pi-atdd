@@ -197,6 +197,8 @@ test("PLT-117 A02: project Coach seat is authorized across tasks without one tas
 // PLT-117 review fixes: launcher-provisioned authority, restart recovery, real Pi events.
 const here = dirname(fileURLToPath(import.meta.url));
 const PENDING = "ati_123456789abc";
+/** PLT-118 AttentionRoute shape; the resolution record carries its item's route, as a real coach transition does. */
+const PENDING_ROUTE = { profile: "forge", projectId: "pi-atdd", taskId: "PLT-117", coachAddress: "main@pi-atdd", sourceExecutionId: "run-driver-one" };
 const ctxFor = (repo: string, id: string) => ({ cwd: repo, model: { provider: "provider", id: "model-a" },
   isProjectTrusted: () => true, sessionManager: { getSessionId: () => id }, ui: { notify: () => {} } });
 function piHooks(env: NodeJS.ProcessEnv) {
@@ -218,14 +220,14 @@ function attentionWorld() {
 function raisePending(w: ReturnType<typeof attentionWorld>, id = PENDING): void {
   const cfg = readLaunchConfig(w.env)!;
   const item = { ...newItem({ type: "decision", summary: "owner decision needed", issue: "PLT-117" }, cfg, new Date()),
-    id, route: { projectId: "pi-atdd", taskId: "PLT-117", coachAddress: "main@pi-atdd", seatAddress: "driver.one@pi-atdd" } };
+    id, route: PENDING_ROUTE };
   appendSpool(cfg.spool, signEvent({ event: "raised", item }, ensureKey(cfg.keyPath)));
 }
 /** The owner answers the decision: a signed resolved record with a later revision. */
 function resolvePending(w: ReturnType<typeof attentionWorld>, id = PENDING): void {
   const cfg = readLaunchConfig(w.env)!;
   const rec = { id, from: "main@pi-atdd", revision: 2, state: "resolved" as const,
-    by: "main@pi-atdd", at: new Date().toISOString(), note: "answered" };
+    by: "main@pi-atdd", at: new Date().toISOString(), note: "answered", route: PENDING_ROUTE };
   appendSpool(cfg.spool, signEvent({ event: "state", rec }, ensureKey(cfg.keyPath)));
 }
 /** A real process that dies by SIGKILL between checkpoint and lease CAS (or before any checkpoint). */
