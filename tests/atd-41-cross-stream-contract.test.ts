@@ -83,8 +83,9 @@ test("S4/S5 graph closure is authored mandatory only; potential Drivers are not 
     assert.ok(dependent.mandatoryRequires.every(e=>e.constraint==="mandatory"&&!!e.sourcePath));
     assert.ok(dependent.supportKinds.includes("MANDATORY_REQUIRES"));
     const legacy=frame.receipts.find(r=>r.conventionId==="reviewer.reconciliation.behavioral");
-    assert.ok(legacy?.supportKinds.includes("LEGACY_SELECTOR"),
-      "a legacy wording-based match must remain visibly distinct from a structural witness");
+    assert.ok(legacy);
+    assert.ok(legacy.supportKinds.includes("LEGACY_SELECTOR"),
+      "a wording-based match must stay distinguishable from a structural witness");
     assert.ok(!legacy.supportKinds.includes("STRUCTURAL_SOURCE"));
     assert.ok(!JSON.stringify(dependent.mandatoryRequires).includes("runs_alongside"));
     assert.equal(frame.disposition,"observation_only_no_authority");
