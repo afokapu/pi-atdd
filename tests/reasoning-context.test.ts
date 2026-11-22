@@ -1,6 +1,9 @@
+// URN: test:pi-atdd:incremental-inference:E002-UNIT-001-reasoner
 // Acceptance: acc:pi-atdd:E002-UNIT-001
 // Acceptance: acc:pi-atdd:E002-UNIT-003
 // Acceptance: acc:pi-atdd:E002-UNIT-005
+// Phase: UNIT
+// Layer: application
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { mkdtempSync, rmSync } from "node:fs";
