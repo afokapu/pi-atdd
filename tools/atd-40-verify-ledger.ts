@@ -149,7 +149,7 @@ for (const [index, rowText] of lines.entries()) {
 assert.deepEqual([...included].sort(), [...actual].sort(), "missing source paths");
 for (const [key, count] of [["Bun", 356], ["Flow", 2], ["Local", 18]] as const)
   assert.equal(families.get(key), count, "source family denominator changed: " + key);
-for (const [key, count] of [["CANDIDATE", 13], ["NO_CANDIDATE", 1], ["UNRESOLVED", 362]] as const)
+for (const [key, count] of [["CANDIDATE", 339], ["NO_CANDIDATE", 31], ["UNRESOLVED", 6]] as const)
   assert.equal(dispositions.get(key), count, "disposition count changed: " + key);
 
 // A vendor lock validates whole-source bytes, independently of per-file blobs.
@@ -166,6 +166,6 @@ for (const item of lock.sources) {
 
 console.log(
   "ATD-40 source check verified: 376 YAML rule IDs + Git blobs; Bun 356 / Flow 2 / Local 18; " +
-  "CANDIDATE source files 13 / NO_CANDIDATE 1 / UNRESOLVED 362; 3 source SHA256 locks; 522 authored edges."
+  "CANDIDATE source files 339 / NO_CANDIDATE 31 / UNRESOLVED 6; 3 source SHA256 locks; 522 authored edges."
 );
 console.log("Semantic Pass A, independent O1–O8, T9 parity and authorization: NOT VERIFIED.");
