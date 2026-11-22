@@ -390,7 +390,7 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;e
       // Flow-native seats without a Pi-ATDD lease need Flow's exact launcher receipt.
       const trusted=trustedFlow(ctx);
       const result=observe(ctx.cwd,"task",trusted?"trusted-work-provider":"pi-event",
-        trusted?.provenance??"Pi before_agent_start",undefined,undefined,undefined,undefined,trusted);
+        trusted?.provenance??"Pi before_agent_start",undefined,undefined,undefined,trusted);
       const newRules=newlyRelevant(result);
       if(!newTask&&!newRules.length)return;
       const page=renderReasonedPage(result,newRules,trusted?.phase==="PLAN"?24_000:12_000);
@@ -413,7 +413,7 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;e
     const trusted=trustedFlow(ctx);
     if(!trusted)return undefined;
     const result=observe(ctx.cwd,"task","trusted-work-provider",trusted.provenance,
-      undefined,undefined,trusted);
+      undefined,undefined,undefined,trusted);
     const pending=newlyRelevant(result);
     if(!pending.length&&result.status!=="incomplete")return undefined;
     const page=renderReasonedPage(result,pending,20_000);
