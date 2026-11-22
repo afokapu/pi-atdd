@@ -8,7 +8,7 @@
  */
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { readYaml } from "../src/catalog.ts";
 
@@ -149,8 +149,14 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const args = process.argv.slice(2);
   assert.ok(args.length === 2 && args[0] === "--output" && !!args[1],
     "usage: atd-40-source-evidence.ts --output <jsonl-file>");
+  // Export only to a caller-chosen location *outside* the checkout. No CLI
+  // argument can overwrite canonical YAML, the ledger, tests or a PR source.
+  const destination = resolve(args[1]!);
+  const rel = relative(root, destination);
+  assert.ok((rel.startsWith("..") || isAbsolute(rel)) && destination.endsWith(".jsonl"),
+    "evidence output must be a .jsonl path outside this repository");
   const evidence = readPassASourceEvidence();
-  writeFileSync(resolve(args[1]!), evidence.map(entry => JSON.stringify(entry)).join("\n") + "\n", "utf8");
+  writeFileSync(destination, evidence.map(entry => JSON.stringify(entry)).join("\n") + "\n", "utf8");
   const counts = { candidate: evidence.filter(e => e.disposition === "CANDIDATE").length,
     negative: evidence.filter(e => e.disposition === "NO_CANDIDATE").length,
     unresolved: evidence.filter(e => e.disposition === "UNRESOLVED").length };
