@@ -80,3 +80,26 @@ test("ATD-29 batch 01: semantic candidate subjects stay direction-neutral and un
   assert.match(memo, /no O1–O8 PASS decision, source-rule change, actor authorization, direct actuation, or admitted engineering OoC/);
   assert.match(memo, /candidate file count is \*\*not\*\* a candidate identity count/i);
 });
+
+test("ATD-29 batch 02 records all 70 Bun coder sources with distinct negative boundaries", () => {
+  const memo2 = readFileSync(join(root, "research/atd-29/ATD-29-SEMANTIC-BATCH-02.md"), "utf8");
+  const pattern = /^\| \[\x60(coder\.[^\x60]+)\x60\]\([^)]+\) \| \x60(PA-B-[^\x60]+)\x60 \| ([^|]+) \| ([^|]+) \| ([^|]+) \|$/gm;
+  const entries = [...memo2.matchAll(pattern)];
+  assert.equal(entries.length, 70);
+  assert.equal(new Set(entries.map(x => x[1])).size, 70);
+  const data = new Map(readPassASourceEvidence().map(x => [x.ruleId, x]));
+  for (const match of entries) {
+    const ruleId = match[1]!;
+    const source = data.get(ruleId);
+    assert.ok(source, "source absent from original 376 files: " + ruleId);
+    assert.equal(source.family, "Bun");
+    assert.equal(source.disposition, "CANDIDATE");
+    assert.deepEqual(source.candidateLabels, [match[2]!]);
+    assert.match(match[3]!, /\w/);
+    assert.match(match[4]!, /\w/);
+    assert.match(match[5]!, /\w/);
+    assert.equal(source.admission, "NOT_ASSESSED_BY_THIS_EXPORT");
+  }
+  assert.match(memo2, /not admitted engineering OoCs/);
+  assert.match(memo2, /does not authorize owner admission/);
+});
