@@ -1,0 +1,35 @@
+name: ATD-39 original-issue acceptance intake
+
+on:
+  pull_request:
+    branches:
+      - integration/atd-39-ooc-activation
+    types: [opened, reopened, synchronize, edited, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  original-issue-acceptance:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out coordinator-controlled integration base
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify intake checker logic
+        run: node --test tests/integration-contract-check.test.mjs
+      - name: Verify branch descends from shared coordinator fork
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          git fetch --no-tags origin "$PR_HEAD_SHA"
+          git merge-base --is-ancestor 54edcf0cda4b435bb3b6dd1e9c4ea368baf3cc85 "$PR_HEAD_SHA"
+      - name: Inspect original-issue acceptance dispositions
+        env:
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: node scripts/check-integration-contract.mjs
