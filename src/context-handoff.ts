@@ -100,7 +100,9 @@ export function decideSettle(aborted: boolean): "handoff" | "drop" {
  */
 export function kickoffText(issue: string | undefined): string {
   return "Continue " + (issue ? issue + " " : "") +
-    "from the ATDD context handoff above. Re-verify any claimed completion before relying on it.";
+    "from the ATDD context handoff above. Continue from the record: do not repeat completed actions, " +
+    "and check pending attention items first (attention_list, attention_status) before raising anything new. " +
+    "Re-verify any claimed completion before relying on it.";
 }
 
 /** First PLT-style tracker identifier in the task text, if any. */

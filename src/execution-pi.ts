@@ -57,7 +57,8 @@ export function registerSeatExecution(pi: ExtensionAPI, env: NodeJS.ProcessEnv =
     return " Recovered after a crash from a verified checkpoint. Pending attention IDs (re-checked now): " +
       ids(recovery.pendingIds) + "; closed since checkpoint: " + ids(recovery.closedSinceCheckpoint) +
       ". Acceptance " + recovery.acceptance.toUpperCase() + "; grant " + recovery.grant.toUpperCase() +
-      " (a reference is not a grant; ask the owner before privileged actions). Re-check pending decisions before acting.";
+      " (a reference is not a grant; ask the owner before privileged actions). Continue from the record: " +
+      "do not repeat completed actions, and check pending attention items first before raising anything new.";
   };
   const snapshotAttention = (): ExecutionCheckpoint["attention"] => {
     const attention = readLaunchConfig(env);
@@ -160,6 +161,17 @@ export function registerSeatExecution(pi: ExtensionAPI, env: NodeJS.ProcessEnv =
     if (!owed?.length || !isContext(ctx)) return;
     try { acknowledgeRecovery(current, ctx.sessionManager.getSessionId(), owed); }
     catch (e) { ctx.ui.notify("ATDD recovery acknowledgement failed; closures will be replayed: " + String(e), "error"); }
+  });
+  // PLT-125: the PLT-117 checkpoint is refreshed at each settled turn, so a SIGKILL mid-run leaves
+  // a verifiable one. Same record and same ownership checks as handoff; unowned, unknown or
+  // unmeasurable state writes nothing and the earlier checkpoint (or none) stays authoritative.
+  api.on("turn_end", (_event, ctx) => {
+    if (!isContext(ctx) || !owns(ctx)) return;
+    try {
+      const attention = snapshotAttention();
+      if (attention.state !== "verified") return;
+      recordSeatCheckpoint(current, ctx.sessionManager.getSessionId(), ctx.cwd, attention);
+    } catch (e) { ctx.ui.notify("ATDD seat checkpoint not written: " + String(e), "warning"); }
   });
   api.on("tool_call", (_event, ctx) => {
     if (!owns(ctx)) return { block: true,

@@ -122,6 +122,27 @@ export function registerAttentionStrip(pi: ExtensionAPI, options: StripOptions =
   return registerCoach(api, cfg, now, options);
 }
 
+const LIST_LIMIT = 25;
+const squash = (t: string) => t.toLowerCase().replace(/\s+/g, " ").trim();
+
+/** Model-visible attention list: bounded details a Coach can read and resolve from (PLT-125). */
+function listText(items: ReadonlyArray<AttentionItem>, at: Date): string {
+  if (!items.length) return "0 current attention item(s)";
+  const lines = items.slice(0, LIST_LIMIT).map(it => `- ${it.id} [${it.type}] ${effectiveState(it, at)}` +
+    (it.issue ? ` ${it.issue}` : "") + ` from ${it.from}: ${it.summary.slice(0, 280)}`);
+  const more = items.length > LIST_LIMIT ? `\n${items.length - LIST_LIMIT} more item(s) not shown.` : "";
+  return `${items.length} current attention item(s):\n${lines.join("\n")}${more}\n` +
+    "Resolve with attention_resolve (id, scope, note); acknowledge with attention_ack.";
+}
+
+/** A still-live item from the same task (or sender) with the same type, issue and summary. */
+function findOpenDuplicate(raised: AttentionItem, events: ReadonlyArray<SignedEvent>, at: Date): AttentionItem | undefined {
+  return [...fold(events, at).values()].find(it => it.type === raised.type && it.issue === raised.issue &&
+    squash(it.summary) === squash(raised.summary) &&
+    (raised.route ? it.route?.taskId === raised.route.taskId && it.route.coachAddress === raised.route.coachAddress
+      : it.from === raised.from));
+}
+
 function registerWorker(api: Api, cfg: LaunchConfig, now: () => Date, opts: StripOptions): void {
   const key = () => ensureKey(cfg.keyPath);
   const pending = new Map<string, number>();
@@ -138,13 +159,19 @@ function registerWorker(api: Api, cfg: LaunchConfig, now: () => Date, opts: Stri
     execute: async (_id: string, params: Record<string, unknown>, _signal: unknown, _update: unknown, ctx: unknown) => {
       requireTrusted(ctx);
       // Ownership is decided inside the seat fence and the spool lock, in the same step as the write.
-      const item = fenced(ctx, opts, () => withAttentionLock(cfg.spool, () => {
+      const outcome = fenced(ctx, opts, () => withAttentionLock(cfg.spool, () => {
         const current = requireAuthorized(ctx, cfg, opts);
         const raised = newItem(params, current, now());
+        // A successor replays work from the record: an equal item still open is not raised twice (PLT-125).
+        const existing = findOpenDuplicate(raised, readSpool(current.spool, current, key()).events, now());
+        if (existing) return { item: existing, duplicate: true };
         appendSpool(cfg.spool, signEvent({ event: "raised", item: raised }, key()));
-        return raised;
+        return { item: raised, duplicate: false };
       }));
-      return textResult(`Raised ${item.id} (${item.type}). The Coach sees it on its next refresh.`, { id: item.id, item });
+      const item = outcome.item;
+      return outcome.duplicate
+        ? textResult(`${item.id} (${item.type}) is already open with the same summary; not raised again. The Coach sees it on its next refresh.`, { id: item.id, item, duplicate: true })
+        : textResult(`Raised ${item.id} (${item.type}). The Coach sees it on its next refresh.`, { id: item.id, item });
     },
   });
   api.registerTool({
@@ -454,7 +481,7 @@ function registerCoach(api: Api, cfg: LaunchConfig, now: () => Date, options: St
     execute: async (_id: string, _params: Record<string, unknown>, _signal: unknown, _update: unknown, ctx: unknown) => {
       requireAuthorized(ctx, cfg, options);
       const items = visible(now()).slice(0, 100);
-      return textResult(`${items.length} current attention item(s)`, { items });
+      return textResult(listText(items, now()), { items });
     },
   });
   api.registerTool({

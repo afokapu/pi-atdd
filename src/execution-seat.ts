@@ -236,8 +236,13 @@ export function recordSeatCheckpoint(config: SeatRuntimeConfig, sessionId: strin
     sourceExecutionId: b.executionId, sourceSessionId: b.sessionId,
     revision: vcsHead(cwd), acceptance: "unknown", grant, attention,
   };
-  atomicJson(join(config.checkpointDir, b.executionId + ".json"), checkpoint);
-  return checkpoint;
+  // A refresh must not drop closures a successor has not yet acknowledged.
+  const path = join(config.checkpointDir, b.executionId + ".json");
+  let owed: string[] | undefined;
+  try { owed = readSeatCheckpoint(config.checkpointDir, b.executionId).undeliveredClosed; } catch { /* first checkpoint */ }
+  const written: ExecutionCheckpoint = owed?.length ? { ...checkpoint, undeliveredClosed: owed } : checkpoint;
+  atomicJson(path, written);
+  return written;
 }
 
 /**
