@@ -17,6 +17,8 @@ export type SourceWitness = {
 };
 const OLD="export const value=1;\n";
 const outbound=(layer:string)=>'import {Service} from "../'+layer+'/Service";\n'+OLD;
+// These are independently written executable programs keyed to exact case
+// indices. Descriptive sidecar prose is never interpreted as source syntax.
 const WITNESSES: readonly SourceWitness[] = [
   {sourceId:"coder.architecture.hierarchy-import",kind:"fires",index:0,
     path:"src/orders/domain/price.ts",proposed:outbound("integration"),prior:OLD,
@@ -51,6 +53,8 @@ const WITNESSES: readonly SourceWitness[] = [
     path:"src/orders/helpers.ts",proposed:outbound("integration"),prior:OLD,
     operation:"create",expected:false,structuralBasis:"unlayered file excluded"},
 ];
+// Split conventions share a parent source ID. The *effective variant* is the
+// unique replay identity; keying by the parent silently drops split examples.
 const key=(sourceId:string,kind:string,index:number)=>sourceId+"\0"+kind+"\0"+index;
 export type WitnessOutcome = {
   sourceId:string;kind:"fires"|"doesNotFire";index:number;
@@ -71,6 +75,8 @@ export type WitnessReport = {
 export function replayQualifiedSidecarWitnesses():WitnessReport {
   const manifest=enumerateSidecarExamples();
   if(manifest.lockFailures.length)throw Error("sidecar source lock drift");
+  // Check source and sidecar digest locks *before* any observed case is used.
+  // Missing or duplicated source identities are failures, not skipped cases.
   const lookup=new Map(manifest.examples.map(x=>[key(x.effectiveRuleId,x.kind,x.index),x]));
   const cwd=mkdtempSync(join(tmpdir(),"pi-atdd-obs002-structural-"));
   const cases:WitnessOutcome[]=[];
@@ -92,6 +98,8 @@ export function replayQualifiedSidecarWitnesses():WitnessReport {
       const result=reasoner.observe(input);
       const target=result.activations.find(x=>x.id===rule);
       const proof=JSON.stringify(target?.proof??null);
+      // A lexical/path selector may deliver contextual guidance without a
+      // witnessed dependency. Record it separately from source-backed proof.
       const structuralProof=/pi-atdd.typed-(?:domain-integration|outward-layer-import)/.test(proof);
       const activated=!!target;
       const structuralPass=sample.expected?structuralProof:!structuralProof;
@@ -124,6 +132,8 @@ export function fullWitnessGapSummary() {
   const full=replayAllSidecarExamples();
   const qualified=replayQualifiedSidecarWitnesses();
   const seen=new Set(qualified.cases.map(x=>key(x.sourceId,x.kind,x.index)));
+  // Full-corpus text replay is still diagnostic-only: every other case lacks
+  // an independently witnessed file, delta, phase or detector situation.
   const unqualified=full.outcomes.filter(x=>!seen.has(key(x.effectiveRuleId,x.kind,x.index)));
   return {total:full.totalCases,qualified:qualified.verified,
     pass:qualified.passed,fail:qualified.failed,
