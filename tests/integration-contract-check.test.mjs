@@ -49,3 +49,10 @@ test("a source-locked main sync has its own ATD-39 contract, not unrelated work 
   const result=inspectIntegrationPR({base,head:"sync/atd-39-main-3007c139",body:"ATD-39: sync main@3007c13958def5879106c4612f10bef8d524e9db into integration without closing ATD-22 or ATD-29"});
   assert.equal(result.status,"SCOPE_REVIEW_ONLY");
 });
+
+test("ATD-42 PLAN/RED code guard is admitted only on its named integration branch", () => {
+  const body = "ATD-42 ATD-39: Pi write-boundary checkpoint only. Flow owner delegation and final review remain separate.";
+  assert.equal(inspectIntegrationPR({base,head:"feature/atd-42-plan-red-code-guard",body}).status,"SCOPE_REVIEW_ONLY");
+  assert.equal(inspectIntegrationPR({base:"main",head:"feature/atd-42-plan-red-code-guard",body}).status,"INCOMPLETE");
+  assert.equal(inspectIntegrationPR({base,head:"feature/atd-42-plan-red-code-guard",body:"ATD-42 only"}).status,"INCOMPLETE");
+});
