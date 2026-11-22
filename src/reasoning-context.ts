@@ -16,6 +16,7 @@ import { PositiveReasoner, groundKey, type Fact, type Proof, type Rule, type Del
 import { discoverSourceEvidence } from "./structural-evidence.ts";
 import { classifyFileKind, observeDomainImports, sourceSyntaxEvidence } from "./operational-observers.ts";
 import { observeOutwardImports } from "./layer-import-observer.ts";
+import ts from "typescript";
 
 export type Phase = "PLAN" | "RED" | "GREEN" | "REFACTOR" | "SMOKE";
 export type Operation = "task" | "create" | "edit" | "review";
@@ -102,6 +103,8 @@ function hierarchyObservationRules(catalog: Catalog): Rule[] {
     head: { predicate: "active", terms: [DATALOG_SUBJECT, "coder.architecture.hierarchy-import"] },
     body: [
       { predicate: "file_layer", terms: [DATALOG_SUBJECT, "domain"] },
+      // The path-only legacy guidance must not fire on test/vendor files.
+      { predicate: "file_kind", terms: [DATALOG_SUBJECT, "source"] },
       { predicate: "operation", terms: [DATALOG_SUBJECT, "edit"] },
     ],
   });
@@ -326,6 +329,28 @@ function validateObservation(ob: ContextObservation): void {
  * broad compatibility path/term selector. No canonical YAML is changed:
  * the selector remains available for missing/incomplete source situations.
  */
+/** Source-backed exclusions outrank an over-broad architecture selector,
+ * while no-import domain edits retain the PLT-78 construction guidance.
+ * Unparsed and aliased imports stay UNKNOWN, never a silent exemption.
+ */
+function architectureExcludedBySource(ob: ContextObservation): boolean {
+  if(!ob.path)return false;
+  const kind=classifyFileKind(ob.path,ob.sourceText);
+  if(kind.status!=="observed")return false;
+  if(["test","e2e","vendor","declaration"].includes(kind.kind))return true;
+  if(kind.kind!=="source" || ob.sourceText===undefined)return false;
+  const outward=observeOutwardImports(ob.path,ob.sourceText);
+  if(!outward.sourceObserved||outward.present ||
+    outward.unknownReasons.some(reason=>reason!=="prior_source_unavailable"))return false;
+  if(sourceSyntaxEvidence(ob.path,ob.sourceText).status!=="observed")return false;
+  const ast=ts.createSourceFile(ob.path,ob.sourceText,ts.ScriptTarget.Latest,true,
+    /\\.[jt]sx$/i.test(ob.path)?ts.ScriptKind.TSX:ts.ScriptKind.TS);
+  // A known local/external import can establish a negative; no-import source
+  // continues to receive domain-edit construction guidance (PLT-78).
+  return ast.statements.some(statement=>
+    ts.isImportDeclaration(statement)||ts.isExportDeclaration(statement));
+}
+
 const SOURCE_GAP_REASONS = new Set([
   "invalid_path", "unsupported_file_kind", "proposed_source_unavailable",
   "partial_source_parse", "source_too_large",
@@ -453,6 +478,9 @@ export class ReasoningSession {
     // not equivalent to AST, before/after, provider or detector observation.
     for (const selector of this.selectors) {
       if (selector.operations?.length && !selector.operations.includes(ob.operation)) continue;
+      const onlyArchitecture=selector.rules.length>0 &&
+        selector.rules.every(id=>canonicalRuleId(this.catalog,id)==="coder.architecture.hierarchy-import");
+      if(onlyArchitecture&&architectureExcludedBySource(ob))continue;
       const matches = [
         ...(selector.terms ?? []).filter(term => termMatches(ob.task, term))
           .map(term => "term:" + term),

@@ -126,6 +126,24 @@ test("detector findings are revision-bound reviewer evidence and independent sup
   }finally{x.finish();}
 });
 
+test("source-scoped architecture excludes tests, vendor and known external imports",()=>{
+  const x=setup();
+  try{
+    const cases=[
+      ["src/orders/domain/price.test.ts",IMPORT],
+      ["vendor/src/orders/domain/price.ts",IMPORT],
+      [DOMAIN,'import ts from "typescript";\\n'+BASE],
+    ] as const;
+    for(const [path,code] of cases){
+      const result=x.session.observe({
+        ...event("scope:"+path,path,code,BASE),operation:"create",
+      });
+      assert.equal(has(result,ARCH),false,
+        "a verified source exception cannot activate hierarchy guidance: "+path);
+    }
+  }finally{x.finish();}
+});
+
 test("path-only architecture guidance remains distinct from a structural finding",()=>{
   const x=setup();
   try {
