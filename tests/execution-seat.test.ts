@@ -407,3 +407,38 @@ test("PLT-117 A02: the real Pi model_select event persists an in-place model swi
     w.cleanup();
   }
 });
+
+/** The launcher relaunches a successor from the lease it finds on disk, not from the first launch. */
+function envFromLease(w: ReturnType<typeof attentionWorld>): NodeJS.ProcessEnv {
+  const b = readSeatLease(w.config.leasePath)!;
+  return { ...w.env, PI_ATDD_EXECUTION_EXECUTION_ID: b.executionId, PI_ATDD_EXECUTION_SESSION_ID: b.sessionId,
+    PI_ATDD_EXECUTION_MODEL_ID: b.modelId, PI_ATDD_EXECUTION_GENERATION: String(b.generation),
+    PI_ATDD_EXECUTION_OWNER_TOKEN: b.ownerToken, PI_ATDD_EXECUTION_RESUME: "1" };
+}
+/** A relaunched successor that is SIGKILLed after its resume CAS and before any prompt. */
+function resumeThenCrash(w: ReturnType<typeof attentionWorld>, sessionId: string): void {
+  const args = [join(here, "fixtures", "seat-resume-child.ts"), w.repo, sessionId];
+  const r = spawnSync(process.execPath, ["--experimental-strip-types", ...args],
+    { env: { ...w.env, PI_ATDD_EXECUTION_RESUME: "1" }, encoding: "utf8" });
+  assert.equal(r.signal, "SIGKILL", "the successor must resume and then crash: " + r.stderr);
+}
+
+test("PLT-117 A04 P2: a decision closed while down is still reported after a second crash before any prompt", () => {
+  const w = attentionWorld();
+  try {
+    bootstrapSeat(w.config);
+    raisePending(w);
+    crashAt(w, "after-checkpoint", PENDING); // generation 1 dies with PENDING open
+    resolvePending(w); // the owner answers while nothing is running
+    resumeThenCrash(w, "session-b"); // generation 2 recovers, records the closure, dies before any prompt
+    const gen3 = piHooks(envFromLease(w));
+    gen3.call("session_start", ctxFor(w.repo, "session-c"));
+    const [started] = gen3.call("before_agent_start", ctxFor(w.repo, "session-c"));
+    assert.match(started.message.content, /closed since checkpoint: ati_123456789abc/,
+      "the undelivered closure must survive the second crash");
+    assert.equal(gen3.call("tool_call", ctxFor(w.repo, "session-c"))[0], undefined);
+    // Delivery is acknowledged: a later generation does not repeat an already delivered closure.
+    const delivered = readSeatCheckpoint(w.config.checkpointDir, readSeatLease(w.config.leasePath)!.executionId);
+    assert.deepEqual(delivered.undeliveredClosed ?? [], []);
+  } finally { w.cleanup(); }
+});

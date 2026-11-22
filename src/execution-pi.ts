@@ -7,7 +7,7 @@
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
-  claimSeatHolder, executionConfigFromEnv, ownsExecution, recordSeatCheckpoint,
+  acknowledgeRecovery, claimSeatHolder, executionConfigFromEnv, ownsExecution, recordSeatCheckpoint,
   recordSeatModel, replaceSeat, resumeSeatFromCheckpoint, vcsHead, type SeatRuntimeConfig,
 } from "./execution-seat.ts";
 import type { ExecutionCheckpoint } from "./execution-lifecycle.ts";
@@ -132,13 +132,20 @@ export function registerSeatExecution(pi: ExtensionAPI, env: NodeJS.ProcessEnv =
       content: "ATDD execution seat authorization failed. Do not claim task completion or call tools until ownership is restored.",
     } };
     const b = current.binding;
+    const owed = recovery && !recovery.delivered ? recovery.closedSinceCheckpoint : undefined;
+    const notice = recoveryNotice();
+    // The closures are now in front of the model: acknowledge them so a later generation does not replay them.
+    if (owed?.length) {
+      try { acknowledgeRecovery(current, ctx.sessionManager.getSessionId(), owed); }
+      catch (e) { ctx.ui.notify("ATDD recovery acknowledgement failed; closures will be replayed: " + String(e), "error"); }
+    }
     return { message: {
       customType: "pi-atdd-execution-context", display: false,
       content: "ATDD verified execution scope: project " + b.projectId + "; task " + b.taskId +
         "; accountable coach " + b.coachAddress + "; seat " + b.seatAddress +
         "; execution " + b.executionId + "; lease generation " + b.generation +
         ". Revalidate acceptance and repository evidence before completion. Model or session identity is not a waiver." +
-        recoveryNotice(),
+        notice,
     } };
   });
   api.on("tool_call", (_event, ctx) => {

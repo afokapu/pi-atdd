@@ -274,6 +274,23 @@ export function replaceSeat(config: SeatRuntimeConfig, input: {
   return locked(config.leasePath, () => transitionSeatLocked(config, input));
 }
 
+/**
+ * Delivery acknowledgement: a successor that has put these closures in front of the model clears
+ * them from its checkpoint. Until then a further crash replays them (at-least-once).
+ */
+export function acknowledgeRecovery(config: SeatRuntimeConfig, sessionId: string, delivered: string[]): void {
+  if (config.mode !== "standalone" || delivered.length === 0) return;
+  locked(config.leasePath, () => {
+    if (!ownsExecution(config, sessionId)) throw new Error("cannot acknowledge recovery for a stale seat");
+    const cp = readSeatCheckpoint(config.checkpointDir, config.binding.executionId);
+    const owed = cp.undeliveredClosed ?? [];
+    const remaining = owed.filter(id => !delivered.includes(id));
+    if (remaining.length === owed.length) return;
+    atomicJson(join(config.checkpointDir, config.binding.executionId + ".json"),
+      { ...cp, undeliveredClosed: remaining } satisfies ExecutionCheckpoint);
+  });
+}
+
 /** What a relaunched successor inherits: the carried-forward checkpoint and what changed since. */
 export type RecoveredSeat = {
   config: SeatRuntimeConfig;
@@ -309,17 +326,19 @@ export function resumeSeatFromCheckpoint(config: SeatRuntimeConfig, input: {
     if (recheck.state !== "verified")
       throw new Error("pending attention cannot be re-checked; recovery refused");
     const pendingIds = [...recheck.pendingIds];
-    const closedSinceCheckpoint = checkpoint.attention.pendingIds.filter(id => !pendingIds.includes(id));
+    // Closures not yet delivered by an earlier generation stay owed until a successor acknowledges them.
+    const closedSinceCheckpoint = [...new Set([...(checkpoint.undeliveredClosed ?? []),
+      ...checkpoint.attention.pendingIds])].filter(id => !pendingIds.includes(id));
+    const carried: ExecutionCheckpoint = { ...checkpoint, attention: { state: "verified", pendingIds },
+      undeliveredClosed: closedSinceCheckpoint };
     const next = transitionSeatLocked({ ...config, binding: lease.binding }, {
       nextSessionId: input.nextSessionId, modelId: input.modelId, checkpoint,
       observedHead: vcsHead(input.cwd).head, sourceSettled: false, recoveryAuthorized: true,
     }, nextBinding => atomicJson(join(config.checkpointDir, nextBinding.executionId + ".json"), {
-      ...checkpoint, sourceExecutionId: nextBinding.executionId, sourceSessionId: nextBinding.sessionId,
-      attention: { state: "verified", pendingIds },
+      ...carried, sourceExecutionId: nextBinding.executionId, sourceSessionId: nextBinding.sessionId,
     } satisfies ExecutionCheckpoint));
     return { config: next, closedSinceCheckpoint, checkpoint: {
-      ...checkpoint, sourceExecutionId: next.binding.executionId, sourceSessionId: next.binding.sessionId,
-      attention: { state: "verified", pendingIds },
+      ...carried, sourceExecutionId: next.binding.executionId, sourceSessionId: next.binding.sessionId,
     } };
   });
 }

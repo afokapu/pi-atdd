@@ -35,6 +35,8 @@ export type ExecutionCheckpoint = Readonly<{
   /** A reference is not a grant: unknown remains ask-owner for privileged actions. */
   grant: { state: "verified" | "unknown"; reference: string | null };
   attention: { state: "verified" | "unknown"; pendingIds: string[] };
+  /** Recovery only: attention IDs closed since the original checkpoint and not yet delivered to a successor. */
+  undeliveredClosed?: string[];
 }>;
 
 export type TransitionInput =
