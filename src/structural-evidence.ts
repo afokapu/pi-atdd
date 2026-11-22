@@ -1,130 +1,64 @@
-/** Conservative TypeScript syntax facts, not policy verdicts. Canonical YAML is unchanged. */
+/**
+ * Source-grounded Pi facts, never a compliance verdict.
+ * The narrow Bun observer is shared with the missing-auth source selector,
+ * preventing a second, contradictory implementation of route detection.
+ */
 import ts from "typescript";
 import { createHash } from "node:crypto";
 import { inspectBunRouteAuth } from "./bun-route-auth.ts";
 
-export type StructuralFact = "bun_mutating_route" | "bun_mutating_route_missing_auth" |
+export type StructuralFact =
+  "bun_mutating_route" | "bun_mutating_route_missing_auth" |
   "bun_mutating_route_guarded" | "bun_mutating_route_unresolved" |
   "test_urn_header" | "test_urn_missing_binding";
-const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const IGNORE = /(^|\/)(?:vendor|dist|build|node_modules|\.cache-sources)(\/|$)/;
-const SOURCE = /\.(?:[mc]?[jt]sx?)$/i;
-const TEST = /(?:\.test|\.spec)\.(?:[mc]?[jt]sx?)$/i;
+const SOURCE = /\.[mc]?[jt]sx?$/i;
+const TEST = /(?:\.test|\.spec)\.[mc]?[jt]sx?$/i;
 const cache = new Map<string, readonly StructuralFact[]>();
 const MAX_CACHE = 128;
 
-function nameOf(node: ts.PropertyName | undefined): string | undefined {
-  if (!node) return undefined;
-  if (ts.isIdentifier(node) || ts.isStringLiteral(node) || ts.isNumericLiteral(node)) return node.text;
-  return undefined;
+/** A header is evidence only when it precedes executable code. */
+function testHeaderFacts(path:string,source:string,ast:ts.SourceFile):StructuralFact[]{
+  const leading=source.slice(0,ast.statements[0]?.getStart(ast)??source.length);
+  if(!/^\s*\/\/\s*URN:\s*test:[a-z0-9][a-z0-9:._-]*/im.test(leading))return [];
+  const acceptance=/^\s*\/\/\s*Acceptance:\s*acc:[a-z0-9][a-z0-9:._-]*/im.test(leading);
+  const train=/^\s*\/\/\s*Train:\s*\S+/im.test(leading);
+  const journey=/(^|\/)(?:e2e|end-to-end|journeys?)(\/|$)|\.e2e\.|\.journey\./i.test(path);
+  // Truthfulness of a declared binding is a separate reviewer obligation.
+  return !acceptance&&(!train||!journey)
+    ? ["test_urn_header","test_urn_missing_binding"]:["test_urn_header"];
 }
-
-/** Recognize only Bun.serve route registrations, not arbitrary DELETE properties. */
-export function discoverSourceEvidence(file: string, source: string): readonly StructuralFact[] {
-  const path = file.replaceAll("\\", "/");
-  if (!SOURCE.test(path) || IGNORE.test(path) || /\.d\.ts$/.test(path) || source.length > 1_000_000) return [];
-  const digest = createHash("sha256").update(path).update("\0").update(source).digest("hex");
-  const cached = cache.get(digest);
-  if (cached) return cached;
-  const syntax = /\.tsx$|\.jsx$/i.test(path) ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
-  const sf = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, syntax);
-  const facts = new Set<StructuralFact>();
-  if ((sf as ts.SourceFile & {parseDiagnostics?: readonly ts.Diagnostic[]}).parseDiagnostics?.length) return []; // incomplete syntax is UNKNOWN, not negative proof
-
-  const test = TEST.test(path);
-  if (test) {
-    const leading = source.slice(0, sf.statements[0]?.getStart(sf) ?? source.length);
-    // A URN header is evidence of a candidate; a missing binding is a
-    // different, stricter fact. Train-only bindings are for journeys/E2E.
-    if (/^\s*\/\/\s*URN:\s*test:[a-z0-9][a-z0-9:._-]*/im.test(leading)) {
-      facts.add("test_urn_header");
-      const acceptance = /^\s*\/\/\s*Acceptance:\s*acc:[a-z0-9][a-z0-9:._-]*/im.test(leading);
-      const train = /^\s*\/\/\s*Train:\s*\S+/im.test(leading);
-      const journey = /(^|\/)(?:e2e|end-to-end|journeys?)(\/|$)|\.e2e\.|\.journey\./i.test(path);
-      if (!acceptance && (!train || !journey)) facts.add("test_urn_missing_binding");
-    }
-  } else {
-    const bindings = new Map<string, ts.Expression>();
-    for (const statement of sf.statements) {
-      if (!ts.isVariableStatement(statement)) continue;
-      for (const declaration of statement.declarationList.declarations) {
-        if (ts.isIdentifier(declaration.name) && declaration.initializer) bindings.set(declaration.name.text, declaration.initializer);
-      }
-    }
-    function objectOf(expression: ts.Expression | undefined, depth = 0): ts.ObjectLiteralExpression | undefined {
-      if (!expression || depth > 4) return undefined;
-      if (ts.isParenthesizedExpression(expression)) return objectOf(expression.expression, depth + 1);
-      if (ts.isObjectLiteralExpression(expression)) return expression;
-      if (ts.isIdentifier(expression)) return objectOf(bindings.get(expression.text), depth + 1);
-      return undefined;
-    }
-    function member(object: ts.ObjectLiteralExpression, key: string): ts.Node | undefined {
-      for (const property of object.properties) {
-        if (ts.isPropertyAssignment(property) && nameOf(property.name) === key) return property.initializer;
-        if (ts.isMethodDeclaration(property) && nameOf(property.name) === key) return property;
-        if (ts.isShorthandPropertyAssignment(property) && property.name.text === key) return bindings.get(key);
-      }
-      return undefined;
-    }
-    function hasMutatingRoute(routes: ts.ObjectLiteralExpression): boolean {
-      for (const route of routes.properties) {
-        if (!ts.isPropertyAssignment(route)) continue;
-        const handlers = objectOf(route.initializer);
-        if (handlers && handlers.properties.some(p =>
-          (ts.isPropertyAssignment(p) || ts.isMethodDeclaration(p)) && MUTATING.has(nameOf(p.name) ?? ""))) return true;
-      }
-      return false;
-    }
-    function mutatesInFetch(fetch: ts.Node): boolean {
-      const aliases = new Set<string>();
-      const walkAliases = (n: ts.Node): void => {
-        if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.initializer
-          && ts.isPropertyAccessExpression(n.initializer) && n.initializer.name.text === "method")
-          aliases.add(n.name.text);
-        ts.forEachChild(n, walkAliases);
-      };
-      walkAliases(fetch);
-      let found = false;
-      const visit = (n: ts.Node): void => {
-        if (ts.isBinaryExpression(n) &&
-          (n.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken || n.operatorToken.kind === ts.SyntaxKind.EqualsEqualsToken)) {
-          const pair = [n.left, n.right];
-          const method = pair.find(x => ts.isStringLiteral(x) && MUTATING.has(x.text.toUpperCase()));
-          const access = pair.find(x =>
-            (ts.isPropertyAccessExpression(x) && x.name.text === "method") ||
-            (ts.isIdentifier(x) && aliases.has(x.text)));
-          if (method && access) found = true;
-        }
-        if (!found) ts.forEachChild(n, visit);
-      };
-      visit(fetch);
-      return found;
-    }
-    const visit = (n: ts.Node): void => {
-      if (ts.isCallExpression(n) && ts.isPropertyAccessExpression(n.expression) &&
-        n.expression.name.text === "serve" && ts.isIdentifier(n.expression.expression) &&
-        n.expression.expression.text === "Bun") {
-        const config = objectOf(n.arguments[0]);
-        if (config) {
-          const routes = objectOf(member(config, "routes") as ts.Expression | undefined);
-          const fetch = member(config, "fetch");
-          if ((routes && hasMutatingRoute(routes)) || (fetch && mutatesInFetch(fetch)))
-            facts.add("bun_mutating_route");
-        }
-      }
-      ts.forEachChild(n, visit);
-    };
-    visit(sf);
-  }
-  if (!test) {
-    const authorization=inspectBunRouteAuth(path,source);
-    if(authorization.status==="unguarded")facts.add("bun_mutating_route_missing_auth");
-    if(authorization.status==="guarded")facts.add("bun_mutating_route_guarded");
-    if(authorization.status==="unknown"&&facts.has("bun_mutating_route"))
-      facts.add("bun_mutating_route_unresolved");
-  }
-  const result = [...facts].sort();
-  cache.set(digest, result);
-  if (cache.size > MAX_CACHE) cache.delete(cache.keys().next().value!);
+/** The source observer only asserts a security concern when the handler body
+ * is available and the recognized inline guard is absent. Unresolved is not
+ * a clean no-rule proof.
+ */
+function bunAuthFacts(path:string,source:string):StructuralFact[]{
+  const result=inspectBunRouteAuth(path,source);
+  if(result.status==="unguarded")return [
+    "bun_mutating_route","bun_mutating_route_missing_auth"];
+  if(result.status==="guarded")return [
+    "bun_mutating_route","bun_mutating_route_guarded"];
+  if(result.status==="unknown"&&/\bBun\.serve\s*\(/.test(source))
+    return ["bun_mutating_route_unresolved"];
+  return [];
+}
+/** Deterministic, bounded TypeScript syntax facts with a content-hash cache.
+ * Path, full source and comments stay in memory; telemetry records only fact IDs.
+ */
+export function discoverSourceEvidence(file:string,source:string):readonly StructuralFact[]{
+  const path=file.replaceAll("\\","/");
+  if(!SOURCE.test(path)||IGNORE.test(path)||/\.d\.ts$/.test(path)||source.length>1_000_000)
+    return [];
+  const digest=createHash("sha256").update(path).update("\0").update(source).digest("hex");
+  const hit=cache.get(digest);
+  if(hit)return hit;
+  const syntax=/\.tsx$|\.jsx$/i.test(path)?ts.ScriptKind.TSX:ts.ScriptKind.TS;
+  const ast=ts.createSourceFile(path,source,ts.ScriptTarget.Latest,true,syntax);
+  if((ast as ts.SourceFile&{parseDiagnostics?:readonly ts.Diagnostic[]}).parseDiagnostics?.length)
+    return []; // the caller marks incomplete syntax UNKNOWN; do not cache false negatives.
+  const result=(TEST.test(path)?testHeaderFacts(path,source,ast):
+    bunAuthFacts(path,source)).sort();
+  cache.set(digest,result);
+  if(cache.size>MAX_CACHE)cache.delete(cache.keys().next().value!);
   return result;
 }
