@@ -14,6 +14,10 @@ const STREAMS = {
     wrapper: "ATD-41", source: "ATD-22", other: ["ATD-25", "ATD-30", "ATD-39"],
     criteria: ["OBS-001", "OBS-002", "OBS-003", "OBS-004"],
   },
+  "feature/atd-39-reconcile-trusted-phase": {
+    wrapper: "ATD-39", source: "ATD-42", other: ["ATD-41"],
+    criteria: [], // Coordinator-only conflict resolution; not an original issue completion.
+  },
   "feature/atd-42-trusted-phase-activation": {
     wrapper: "ATD-42", source: "ATD-42", other: ["ATD-39"],
     criteria: [], // Pi-only phase slice; the broad cross-repo Coach gate remains separately pending.
