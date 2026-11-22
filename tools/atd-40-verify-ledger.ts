@@ -140,8 +140,8 @@ for (const [index, rowText] of lines.entries()) {
   // mentioned by an incomplete ledger. External endpoints remain source refs,
   // not invented convention IDs or admitted OoC identities.
   const expected = (expectedWitnesses.get(id!) ?? []).sort();
-  const actual = witnesses ? witnesses.split(";").sort() : [];
-  assert.deepEqual(actual, expected, "authored graph witness mismatch: " + id);
+  const actualWitnesses = witnesses ? witnesses.split(";").sort() : [];
+  assert.deepEqual(actualWitnesses, expected, "authored graph witness mismatch: " + id);
 
   dispositions.set(status!, (dispositions.get(status!) ?? 0) + 1);
   families.set(family!, (families.get(family!) ?? 0) + 1);
