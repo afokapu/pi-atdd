@@ -37,6 +37,15 @@ test("unresolved handler, dynamic config and incomplete syntax are UNKNOWN, not 
   assert.equal(inspectBunRouteAuth("src/server.ts",undefined).status,"unknown");
   assert.equal(inspectBunRouteAuth("src/server.test.ts",route("POST",handler)).status,"unrelated");
 });
+test("foreign method properties do not fabricate a request mutation",()=>{
+  const foreign='Bun.serve({fetch(req){const other={method:"POST"};if(other.method==="POST")return 1;}});';
+  assert.equal(inspectBunRouteAuth("src/server.ts",foreign).status,"unknown");
+  const alias='Bun.serve({fetch(req){const other={method:"POST"};const method=other.method;if(method==="POST")return 1;}});';
+  assert.equal(inspectBunRouteAuth("src/server.ts",alias).status,"unknown");
+  const real='Bun.serve({fetch(request){const method=request.method;if(method==="POST")return 1;}});';
+  assert.equal(inspectBunRouteAuth("src/server.ts",real).status,"unguarded");
+});
+
 test("fetch method checks are branch-sensitive, including a method alias",()=>{
   const plain='Bun.serve({fetch(req){const method=req.method;if(method==="PATCH"){return new Response("ok")}}});';
   assert.equal(inspectBunRouteAuth("src/server.ts",plain).status,"unguarded");
