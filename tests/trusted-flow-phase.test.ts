@@ -15,6 +15,38 @@ import type { SeatRuntimeConfig } from "../src/execution-seat.ts";
 const session = "pi-session-atd-42";
 const seatAddress = "driver.delivery@demo";
 
+/** Keep the Desk seat's runtime binding separate from test behavior setup.
+ * This reproduces the real Flow record shape used by both authenticated paths. */
+function makeSeatFixture(root:string,cwd:string,receiptFile:string,piPath:string) {
+  const seatFile=join(root,"work","demo","seats","driver.delivery","seat.yaml");
+  mkdirSync(join(root,"work","demo","seats","driver.delivery"),{recursive:true});
+  const record={
+    schema:"atdd-workflow/seat/v2",address:seatAddress,role:"driver",
+    project:"demo",worktree:cwd,branch:"delivery/test",
+    runtime:{
+      application:"herdr",wake:"native",
+      addresses:{herdr:{session:"forge",pane:"w1:p2"}},
+      pi_session:session,pi_session_path:piPath,launch_receipt:receiptFile,
+    },
+  };
+  const writeSeat=(next=record)=>writeFileSync(seatFile,stringify(next));
+  writeSeat();
+  return {seatFile,record,writeSeat};
+}
+
+/** External execution authority is a separate lease, not a native Flow receipt. */
+function makeBoundSeat(root:string):SeatRuntimeConfig {
+  return {
+    mode:"external",flowRoot:root,
+    leasePath:join(root,"lease"),checkpointDir:join(root,"checkpoints"),
+    binding:{
+      projectId:"demo",taskId:"delivery",coachAddress:"coordinator@demo",
+      seatAddress,executionId:"execution-1",sessionId:session,
+      generation:1,ownerToken:"token",modelId:"fixture-low",
+    },
+  };
+}
+
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), "pi-atdd-flow-phase-"));
   const cwd = join(root, "delivery-worktree");
@@ -44,29 +76,8 @@ function fixture() {
     herdr_session: "forge", pane: "w1:p2",
   };
   writeFileSync(receiptFile, stringify(receipt));
-  const seatFile = join(root, "work", "demo", "seats", "driver.delivery", "seat.yaml");
-  mkdirSync(join(root, "work", "demo", "seats", "driver.delivery"), { recursive: true });
-  const record = {
-    schema: "atdd-workflow/seat/v2", address: seatAddress, role: "driver",
-    project: "demo", worktree: cwd, branch: "delivery/test",
-    runtime: {
-      application: "herdr", wake: "native",
-      addresses: { herdr: { session: "forge", pane: "w1:p2" } },
-      pi_session: session, pi_session_path: receipt.pi_session_path,
-      launch_receipt: receiptFile,
-    },
-  };
-  const writeSeat = (next=record) => writeFileSync(seatFile, stringify(next));
-  writeSeat();
-  const bound: SeatRuntimeConfig = {
-    mode: "external", flowRoot: root,
-    leasePath: join(root, "lease"), checkpointDir: join(root, "checkpoints"),
-    binding: {
-      projectId: "demo", taskId: "delivery", coachAddress: "coordinator@demo",
-      seatAddress, executionId: "execution-1", sessionId: session,
-      generation: 1, ownerToken: "token", modelId: "fixture-low",
-    },
-  };
+  const {seatFile,record,writeSeat}=makeSeatFixture(root,cwd,receiptFile,receipt.pi_session_path);
+  const bound=makeBoundSeat(root);
   const env = {
     ATDD_WORKFLOW_ROOT: root, ATDD_WORKFLOW_SEAT: seatAddress,
     ATDD_FLOW_PI_SESSION: session, ATDD_FLOW_HERDR_SESSION: "forge",
