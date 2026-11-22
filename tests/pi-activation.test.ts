@@ -214,7 +214,7 @@ test("Pi pre-edit structural evidence and local telemetry work without task keyw
     assert.ok(entries.some(item=>item.point==="task_start" &&
       (item.ruleIds??[]).every((id:string)=>id.startsWith("shared."))));
     assert.ok(entries.some(item=>item.point==="pre_edit" && item.outcome==="matched" &&
-      item.evidenceIds.includes("ast:bun_mutating_route")));
+      item.evidenceIds.includes("ast:bun_mutating_route_missing_auth")));
     assert.ok(entries.some(item=>item.point==="pre_edit" && item.deduplicated>=1));
   }finally{x.cleanup();}
 });
