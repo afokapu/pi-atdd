@@ -47,7 +47,7 @@ const revision=spawnSync("git",["rev-parse","HEAD"],{cwd:upstream,encoding:"utf8
 if(revision.status!==0||revision.stdout.trim()!==pin)
   throw Error("ATDD-Bun metrics source pin mismatch: "+revision.stdout.trim());
 const m=await import(pathToFileURL(metricFile).href);
-const records=[], findings=[];
+const records=[], findings=[], measuredFunctions=new Set();
 for(const file of sourceFiles){
   const source=readFileSync(resolve(file),"utf8");
   const ast=ts.createSourceFile(file,source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TS);
@@ -61,11 +61,17 @@ for(const file of sourceFiles){
   // Official checker implementation does not recognize class methods.
   // Also test specifically changed methods with identical numeric functions.
   const visit=(node,className="")=>{
-    let name=null;
+    let name=null,bodyNode=node.body;
     if(ts.isFunctionDeclaration(node)&&node.name)name=node.name.text;
     if(ts.isMethodDeclaration(node)&&node.name)name=(className?className+".":"")+node.name.getText(ast);
-    if(name&&reviewFunctions.has(name)&&node.body){
-      const body=node.getText(ast);
+    if(ts.isVariableDeclaration(node)&&ts.isIdentifier(node.name)&&node.initializer&&
+      (ts.isArrowFunction(node.initializer)||ts.isFunctionExpression(node.initializer))){
+      name=node.name.text;
+      bodyNode=node.initializer.body;
+    }
+    if(name&&reviewFunctions.has(name)&&bodyNode){
+      measuredFunctions.add(name);
+      const body=bodyNode.getText(ast);
       const line=m.countCodeLines(body);
       const cc=m.cyclomatic(body);
       const depth=m.nestingDepth(body);
@@ -137,7 +143,11 @@ for(const file of testFiles){
   visit(ast);
 }
 
+// Fail closed if a refactor renamed a tracked function without updating the audit.
+const missed=[...reviewFunctions].filter(name=>!measuredFunctions.has(name));
+if(missed.length)throw Error("source metric coverage lost for "+missed.join(", "));
 const totals={files:sourceFiles.length,checks:records.length,findings:findings.length,
+  namedFunctionsCovered:measuredFunctions.size,
   testFiles:testFiles.length,testSyntaxChecks:isolationChecks,
   algorithmSource:pin,nonAutomated:[
     "semantic_behavioral_review","complete_sidecar_acceptance","real_validator_result_ingestion",
