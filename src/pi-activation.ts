@@ -5,7 +5,7 @@
  */
 import { createHash } from "node:crypto";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { existsSync, lstatSync, mkdirSync, realpathSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadCatalog, loadConfig, type Catalog, type Selector } from "./catalog.ts";
 import type { StructureProfile } from "./profile.ts";
@@ -24,7 +24,7 @@ import { MODE_FILE, guardsAtdd, modeFromText, recordMode, repositoryRoot, resolv
 import {
   buildHandoff, clampToCompaction, decideContextAction, decideSettle, extractIssueId, INITIAL_HANDOFF_STATE, kickoffText,
   parseHop, resolveCompactionReserve, DEFAULT_COMPACTION_RESERVE, resolveMaxHops, resolveThresholds,
-  type HandoffInput, type HandoffState,
+  RECORD_HEADER, type HandoffInput, type HandoffState, type CoachState, resolveTask, isKickoff, extractIssueIds, extractPullRequests,
 } from "./context-handoff.ts";
 
 /** Text of a user message entry in the session branch; empty for anything else. */
@@ -84,7 +84,7 @@ const MODE_CHOICES=["ATDD — remember for this repo","Plain — remember for th
 export default function atdd(pi:ExtensionAPI):void {
   const executionSeat = registerSeatExecution(pi); // PLT-117: inert unless launch-bound
   // PLT-118: a scoped attention route follows the live seat binding and its writes are fenced against seat transfer.
-  registerAttentionStrip(pi, attentionSeatOptions(executionSeat));
+  const attentionStrip=registerAttentionStrip(pi, attentionSeatOptions(executionSeat)); // PLT-101
   registerBusyState(pi); // PLT-121: busy/idle state file for the relaunch script; inert without an identity
   let cwdKey="", task="", serial=0;
   let catalog:Catalog|undefined,selectors:Selector[]=[],profile:StructureProfile|undefined;
@@ -216,14 +216,7 @@ export default function atdd(pi:ExtensionAPI):void {
     handoffState=INITIAL_HANDOFF_STATE;requestedHandoff=undefined;readyHandoff=undefined;
     const entries=ctx.sessionManager.getBranch();
     handoffHop=Math.max(0,...entries.map(value=>parseHop(userText(value))));
-    const last=[...entries].reverse().find(value=>{
-      const entry=value as {type?:string;message?:{role?:string}};
-      return entry.type==="message"&&entry.message?.role==="user";
-    }) as {message?:{content?:unknown}}|undefined;
-    const content=last?.message?.content;
-    const text=typeof content==="string"?content:Array.isArray(content)?
-      content.filter(x=>x?.type==="text"&&typeof x.text==="string").map(x=>x.text).join("\n"):"";
-    task=text||"unknown task (session resume requires authoritative task lookup)";
+    task=resolveTask(entries.map(userText));
     observedRepo=observeRepository(ctx.cwd).snapshot;
   }
   // Branch changes and session replacements invalidate a predecessor's
@@ -276,7 +269,10 @@ export default function atdd(pi:ExtensionAPI):void {
   function startRun(event:{messageType:string;prompt?:string},ctx:{cwd:string}){
     const newTask=event.messageType==="user";
     if(newTask){
-      serial++;task=event.prompt||"unknown task";reset();
+      serial++;
+      // The kickoff this extension generated points at the record; it is not a new task.
+      if(!(event.prompt&&isKickoff(event.prompt)&&task))task=event.prompt||"unknown task";
+      reset();
       if(active(ctx.cwd))observedRepo=observeRepository(ctx.cwd).snapshot;
     }
     if(!active(ctx.cwd))return;
@@ -319,6 +315,12 @@ export default function atdd(pi:ExtensionAPI):void {
     }
     return undefined;
   }
+  /** PLT-122: a Coach's record carries what only the Coach knows; unknown fields stay UNKNOWN. */
+  function coachState(text:string):{coach?:CoachState}{
+    if(process.env.PI_ATDD_ATTENTION_ROLE!=="coach")return {};
+    return {coach:{role:"coach",identity:process.env.PI_ATDD_ATTENTION_IDENTITY,profile:process.env.PI_ATDD_ATTENTION_PROFILE,
+      issues:extractIssueIds(text),prs:extractPullRequests(text),attention:attentionStrip.liveItems()}};
+  }
   pi.on("turn_end",(_event,ctx)=>{
     if(!ctx.isProjectTrusted())return;
     let thresholds,maxHops;
@@ -334,7 +336,7 @@ export default function atdd(pi:ExtensionAPI):void {
       ctx.ui.notify("ATDD handoff chain limit ("+maxHops+" hops) reached; continue manually or raise PI_ATDD_HANDOFF_MAX_HOPS","warning");
     if(decision.action==="handoff")
       requestedHandoff={task,cwd:ctx.cwd,percent:usage!.percent!,contextWindow:usage!.contextWindow,
-        revision:currentRevision(),hop:handoffHop+1};
+        revision:currentRevision(),hop:handoffHop+1,...coachState(task)};
   });
   // agent_settled is the idle boundary. The request was latched at turn_end with the
   // usage that crossed the threshold; Pi may compact before the run settles and must not
@@ -370,9 +372,45 @@ export default function atdd(pi:ExtensionAPI):void {
     }
   });
   pi.registerCommand("atdd-handoff",{
-    description:"Start a fresh session seeded with the pending ATDD context handoff",
-    handler:async(_args,ctx)=>{
-      const ready=readyHandoff;
+    description:"Start a fresh session seeded with the pending ATDD context handoff, or with a kept record: /atdd-handoff latest or a file name",
+    handler:async(args,ctx)=>{
+      let ready=readyHandoff;
+      const arg=typeof args==="string"?args.trim():"";
+      if(arg){
+        // Manual relaunch (crashed or closed tab): seed from a record kept on disk. Only a file
+        // directly inside this workspace's handoffs directory is accepted.
+        const dir=join(ctx.cwd,".atdd-pi","handoffs");
+        // The whole chain must stay inside the canonical workspace: a redirected .atdd-pi or
+        // handoffs directory is refused before anything is listed or read.
+        let realDir:string;
+        try{
+          const realRoot=realpathSync(ctx.cwd);
+          realDir=realpathSync(dir);
+          if(relative(realRoot,realDir)!==join(".atdd-pi","handoffs"))throw new Error("redirected");
+        }catch(e){
+          const redirected=String(e).includes("redirected");
+          ctx.ui.notify(redirected?"Handoff directory resolves outside the workspace; refusing to read it: "+dir:"No ATDD context handoff record found in "+dir,redirected?"error":"info");
+          return;
+        }
+        let name=arg;
+        if(arg==="latest"){
+          try{name=readdirSync(realDir).filter(f=>f.endsWith(".md")&&lstatSync(join(realDir,f)).isFile()).sort().at(-1)??"";}catch{name="";}
+          if(!name){ctx.ui.notify("No ATDD context handoff record found in "+dir,"info");return;}
+        }
+        const file=join(dir,name);
+        let text="";
+        try{
+          if(!/^[\w.-]+\.md$/.test(name))throw new Error("bad name");
+          // Regular file directly in the real handoffs directory, never a link.
+          const realFile=realpathSync(join(realDir,name));
+          if(dirname(realFile)!==realDir||lstatSync(join(realDir,name)).isSymbolicLink()||!lstatSync(realFile).isFile())throw new Error("not a regular file in the handoff dir");
+          text=readFileSync(realFile,"utf8");
+        }catch{ctx.ui.notify(arg+" is not a handoff record in "+dir,"error");return;}
+        if(!text.includes(RECORD_HEADER)){ctx.ui.notify(arg+" is not a handoff record in "+dir,"error");return;}
+        if(!text.includes("\n<<<TASK\n"))
+          ctx.ui.notify("Legacy handoff record (written before task markers): its task is UNKNOWN. Restate and verify the task before relying on it.","warning");
+        ready={text,path:file,kickoff:kickoffText(extractIssueId(resolveTask([text])))};
+      }
       if(!ready){ctx.ui.notify("No ATDD context handoff is pending","info");return;}
       // The record stays pending until the switch succeeds, so a cancelled or failed
       // switch can be retried by hand. Nothing retries automatically.
@@ -393,7 +431,7 @@ export default function atdd(pi:ExtensionAPI):void {
           ctx.ui.notify("ATDD context handoff cancelled; record kept at "+ready.path+". Run /atdd-handoff to retry.","warning");
           return;
         }
-        readyHandoff=undefined;
+        if(ready===readyHandoff)readyHandoff=undefined;
       }catch(e){
         ctx.ui.notify("ATDD context handoff failed: "+String(e)+". Record kept at "+ready.path+".","error");
       }
