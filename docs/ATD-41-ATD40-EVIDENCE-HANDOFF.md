@@ -20,7 +20,7 @@ Before this correction, tools/atd-41-observation-envelope.ts was a standalone re
 | --- | --- | --- |
 | eventId, scope, factType, factArgs | Event ID/scope + full typed observed fact arguments | Original evidence identity, not task keywords |
 | origin and provenance | Separate event and fact assertion origins | Pi event, repository source and detector finding never become provider authority |
-| sourceRevision, sourcePath, sourceDigest | Repository revision, target hint, exact source-byte digest and proposal/repository status | Proposed bytes are marked PROPOSED, never mislabeled committed or observed HEAD |
+| sourceRevision, sourcePath, sourceDigest | Repository revision, target hint, exact source-byte digest and proposal/repository status | Explicit proposed edit bytes are PROPOSED; target-only preflight reads are EXISTING (not proposals); post-tool reads are OBSERVED. No pre-edit HEAD attribution is invented |
 | evidenceState | OBSERVED, RETRACTED, missing reasons and unknownFacts | Unobserved never means rule does not apply |
 | rule applicability and normative edges | Authored convention ID/source digest, Datalog proof, explicitly typed supportKinds and traversed mandatory requires edges | LEGACY_SELECTOR stays visible and distinct from STRUCTURAL_SOURCE, DETECTOR_FINDING, TRUSTED_PHASE and mandatory closure. No word or path match becomes OoC authority |
 | Resource or Situation | Source path hint and file-kind/layer evidence | Neither is an admitted OoC or authoritative Resource identity |
