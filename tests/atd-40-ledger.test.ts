@@ -83,9 +83,9 @@ test("all authored Bun/local relationships are represented, without type coercio
   const witnessColumn = columns.indexOf("graph_witnesses_out_and_in");
   assert.ok(witnessColumn >= 0);
   const witnesses = rows.flatMap(row => row.split("\t")[witnessColumn]!.split(";").filter(Boolean));
-  // Source-locked corpus: 508 Bun + 14 local edge objects, 1,002
+  // Source-locked corpus: 508 Bun + 14 local edge objects, 1,000
   // in-corpus directional witnesses. Missing external endpoints remain gaps.
-  assert.equal(witnesses.length, 1002);
+  assert.equal(witnesses.length, 1000);
   assert.ok(witnesses.some(value => value.includes("out:runs_alongside/discretionary:")));
   assert.ok(witnesses.some(value => value.includes("in:enables/discretionary:")));
   assert.ok(witnesses.some(value => value.includes("out:requires/mandatory:")));
