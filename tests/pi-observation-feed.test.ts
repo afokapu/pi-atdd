@@ -89,6 +89,19 @@ test("same typed fact with revised source bytes retracts obsolete source support
       f.sourceDigest===after.event.sourceDigest));
   }finally{x.cleanup();}
 });
+test("existing on-disk source is not silently classified as a proposed source delta",()=>{
+  const x=setup(),feed=new PiObservationFeed();
+  try{
+    const existing=revise("shell:target-only",newSource);
+    const frame=feed.capture("shell:1",existing,x.session.observe(existing),"EXISTING");
+    assert.equal(frame.event.sourceState,"EXISTING");
+    assert.ok(frame.observed.some(f=>f.factType==="code_construct"&&
+      f.factArgs[1]==="domain_to_integration_import"));
+    assert.equal(frame.observed.some(f=>f.factType==="change"&&
+      f.factArgs[1]==="domain_to_integration_import_added"),false);
+    assert.ok(frame.missing.some(m=>m.reason==="prior_source_unavailable"));
+  }finally{x.cleanup();}
+});
 test("detector evidence carries independent supports and a later retraction",()=>{
   const x=setup(),feed=new PiObservationFeed();
   const base:ContextObservation={
