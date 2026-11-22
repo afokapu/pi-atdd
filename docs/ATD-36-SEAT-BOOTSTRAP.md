@@ -50,6 +50,7 @@ atdd launch --role coach|worker|reviewer --label LABEL --profile PROFILE --proje
 - Session id: a fresh UUID passed to Pi as `--session-id`. With `--session FILE`, the id is read from the session file header, and Pi receives `--session FILE`.
 - Owner token: a fresh random value per launch, never printed.
 - `MODEL_ID` is `provider/model` (for example `pi-claude-cli/claude-haiku-5-5`).
+- `--label` becomes the session's attention identity (`PI_ATDD_ATTENTION_IDENTITY`).
 
 ### Starting workers and reviewers from a coach
 
