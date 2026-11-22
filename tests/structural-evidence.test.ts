@@ -33,20 +33,20 @@ test("test header URN recognized irrespective of directory; not below imports or
     'import { strict as assert } from "node:assert";\n// URN: test:orders:checkout:E001-SMOKE-001'), []);
 });
 test("URN binding observer distinguishes evidence from actual missing-binding conditions", () => {
-  const header="// URN: test:orders:checkout:E001-SMOKE-001\\n";
+  const header="// URN: test:orders:checkout:E001-SMOKE-001\n";
   const code='import { strict as assert } from "node:assert";';
   assert.deepEqual(discoverSourceEvidence("src/order-check.test.ts",
-    header+"// Acceptance: acc:checkout:ATDD-001\\n"+code), [URN]);
+    header+"// Acceptance: acc:checkout:ATDD-001\n"+code), [URN]);
   assert.deepEqual(discoverSourceEvidence("src/order-check.test.ts",
-    header+"// Train: checkout\\n"+code), [URN, MISSING_BINDING],
+    header+"// Train: checkout\n"+code), [URN, MISSING_BINDING],
     "Train-only unit test remains unbound");
   assert.deepEqual(discoverSourceEvidence("e2e/checkout.test.ts",
-    header+"// Train: checkout\\n"+code), [URN],
+    header+"// Train: checkout\n"+code), [URN],
     "Train is permitted only on a journey/E2E test");
   assert.deepEqual(discoverSourceEvidence("src/order-check.test.ts",
     header+code), [URN, MISSING_BINDING]);
   assert.deepEqual(discoverSourceEvidence("src/order-check.test.ts",
-    code+"\\n"+header), []);
+    code+"\n"+header), []);
 });
 test("tests, vendors and malformed code are not classified as Bun route source", () => {
   const source = 'Bun.serve({routes:{"/x":{DELETE:()=>new Response("ok")}}});';
