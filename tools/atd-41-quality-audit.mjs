@@ -40,7 +40,7 @@ const reviewFunctions=new Set([
   "validateProviderEvidence","validateDetectorEvidence","validateObservation",
   "ReasoningSession.sourceInputs","ReasoningSession.syntaxInputs","ReasoningSession.changeInputs",
   "ReasoningSession.findingInputs","ReasoningSession.selectorInputs","ReasoningSession.inputs",
-  "sourceExcludesArchitecture",
+  "architectureExcludedBySource",
   // ATD-22 follow-up: the live validator, generic layer scan and witness replay.
   "validRevision","validateImportBoundary","roleInPath","specifierOf",
   "collect","dynamicUnknowns","scan","observeOutwardImports",
