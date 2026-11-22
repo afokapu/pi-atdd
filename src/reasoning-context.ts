@@ -58,27 +58,27 @@ const selectorRules: Rule[] = [
   {
     id: "pi-atdd.match-selector",
     source: "pi-atdd/adapters/selectors-v1",
-    head: { predicate: "active", terms: ["?subject", "?rule"] },
+    head: { predicate: "active", terms: [DATALOG_SUBJECT, "?rule"] },
     body: [
-      { predicate: "selector_hit", terms: ["?subject", "?selector"] },
+      { predicate: "selector_hit", terms: [DATALOG_SUBJECT, "?selector"] },
       { predicate: "selector_rule", terms: ["?selector", "?rule"] },
     ],
   },
   {
     id: "pi-atdd.mandatory-prerequisites",
     source: "pi-atdd/bridge/typed-bun-relationships",
-    head: { predicate: "active", terms: ["?subject", "?dependency"] },
+    head: { predicate: "active", terms: [DATALOG_SUBJECT, "?dependency"] },
     body: [
-      { predicate: "active", terms: ["?subject", "?rule"] },
+      { predicate: "active", terms: [DATALOG_SUBJECT, "?rule"] },
       { predicate: "requires", terms: ["?rule", "?dependency"] },
     ],
   },
   {
     id: "pi-atdd.unresolved-mandatory-dependency",
     source: "pi-atdd/bridge/typed-bun-relationships",
-    head: { predicate: "missing_requirement", terms: ["?subject", "?missing"] },
+    head: { predicate: "missing_requirement", terms: [DATALOG_SUBJECT, "?missing"] },
     body: [
-      { predicate: "active", terms: ["?subject", "?rule"] },
+      { predicate: "active", terms: [DATALOG_SUBJECT, "?rule"] },
       { predicate: "requires_missing", terms: ["?rule", "?missing"] },
     ],
   },
@@ -96,10 +96,10 @@ function hierarchyObservationRules(catalog: Catalog): Rule[] {
   if (catalog.rules.has("coder.architecture.hierarchy-import")) hierarchy.push({
     id: "pi-atdd.typed-domain-dependency-flow",
     source: "pi-atdd/adapters/typed-path-facts-v1",
-    head: { predicate: "active", terms: ["?subject", "coder.architecture.hierarchy-import"] },
+    head: { predicate: "active", terms: [DATALOG_SUBJECT, "coder.architecture.hierarchy-import"] },
     body: [
-      { predicate: "file_layer", terms: ["?subject", "domain"] },
-      { predicate: "operation", terms: ["?subject", "edit"] },
+      { predicate: "file_layer", terms: [DATALOG_SUBJECT, "domain"] },
+      { predicate: "operation", terms: [DATALOG_SUBJECT, "edit"] },
     ],
   });
   // The historical path+operation rule above remains for compatibility. It is
@@ -109,18 +109,18 @@ function hierarchyObservationRules(catalog: Catalog): Rule[] {
       hierarchy.push({
         id: "pi-atdd.typed-domain-integration-change-" + operation,
         source: "pi-atdd/adapters/observed-source-delta-v1",
-        head: { predicate: "active", terms: ["?subject", "coder.architecture.hierarchy-import"] },
+        head: { predicate: "active", terms: [DATALOG_SUBJECT, "coder.architecture.hierarchy-import"] },
         body: [
-          { predicate: "change", terms: ["?subject", "domain_to_integration_import_added"] },
-          { predicate: "operation", terms: ["?subject", operation] },
+          { predicate: "change", terms: [DATALOG_SUBJECT, "domain_to_integration_import_added"] },
+          { predicate: "operation", terms: [DATALOG_SUBJECT, operation] },
         ],
       }, {
         id: "pi-atdd.typed-domain-integration-present-" + operation,
         source: "pi-atdd/adapters/observed-source-delta-v1",
-        head: { predicate: "active", terms: ["?subject", "coder.architecture.hierarchy-import"] },
+        head: { predicate: "active", terms: [DATALOG_SUBJECT, "coder.architecture.hierarchy-import"] },
         body: [
-          { predicate: "code_construct", terms: ["?subject", "domain_to_integration_import"] },
-          { predicate: "operation", terms: ["?subject", operation] },
+          { predicate: "code_construct", terms: [DATALOG_SUBJECT, "domain_to_integration_import"] },
+          { predicate: "operation", terms: [DATALOG_SUBJECT, operation] },
         ],
       });
     }
@@ -128,10 +128,10 @@ function hierarchyObservationRules(catalog: Catalog): Rule[] {
   if (catalog.rules.has("coder.architecture.hierarchy-import")) hierarchy.push({
     id: "pi-atdd.typed-detector-architecture-review",
     source: "pi-atdd/adapters/detector-finding-v1",
-    head: { predicate: "active", terms: ["?subject", "coder.architecture.hierarchy-import"] },
+    head: { predicate: "active", terms: [DATALOG_SUBJECT, "coder.architecture.hierarchy-import"] },
     body: [
-      { predicate: "finding", terms: ["?subject", "domain_to_integration_import"] },
-      { predicate: "operation", terms: ["?subject", "review"] },
+      { predicate: "finding", terms: [DATALOG_SUBJECT, "domain_to_integration_import"] },
+      { predicate: "operation", terms: [DATALOG_SUBJECT, "review"] },
     ],
   });
   return hierarchy;
@@ -142,29 +142,29 @@ function typedRules(catalog: Catalog): Rule[] {
   if (catalog.rules.has("coder.phase.discipline")) typed.push({
     id: "pi-atdd.typed-green-phase-discipline",
     source: "pi-atdd/adapters/trusted-phase-facts-v1",
-    head: { predicate: "active", terms: ["?subject", "coder.phase.discipline"] },
+    head: { predicate: "active", terms: [DATALOG_SUBJECT, "coder.phase.discipline"] },
     body: [
-      { predicate: "phase", terms: ["?subject", "GREEN"] },
-      { predicate: "operation", terms: ["?subject", "edit"] },
+      { predicate: "phase", terms: [DATALOG_SUBJECT, "GREEN"] },
+      { predicate: "operation", terms: [DATALOG_SUBJECT, "edit"] },
     ],
   });
   for (const operation of ["edit", "create"] as const) {
     if (catalog.rules.has("coder.security.missing-auth")) typed.push({
       id: "pi-atdd.typed-bun-mutating-route-" + operation,
       source: "pi-atdd/adapters/structural-evidence-v1",
-      head: { predicate: "active", terms: ["?subject", "coder.security.missing-auth"] },
+      head: { predicate: "active", terms: [DATALOG_SUBJECT, "coder.security.missing-auth"] },
       body: [
-        { predicate: "code_construct", terms: ["?subject", "bun_mutating_route"] },
-        { predicate: "operation", terms: ["?subject", operation] },
+        { predicate: "code_construct", terms: [DATALOG_SUBJECT, "bun_mutating_route"] },
+        { predicate: "operation", terms: [DATALOG_SUBJECT, operation] },
       ],
     });
     if (catalog.rules.has("tester.acceptance.binding-declared")) typed.push({
       id: "pi-atdd.typed-test-urn-" + operation,
       source: "pi-atdd/adapters/structural-evidence-v1",
-      head: { predicate: "active", terms: ["?subject", "tester.acceptance.binding-declared"] },
+      head: { predicate: "active", terms: [DATALOG_SUBJECT, "tester.acceptance.binding-declared"] },
       body: [
-        { predicate: "code_construct", terms: ["?subject", "test_urn_header"] },
-        { predicate: "operation", terms: ["?subject", operation] },
+        { predicate: "code_construct", terms: [DATALOG_SUBJECT, "test_urn_header"] },
+        { predicate: "operation", terms: [DATALOG_SUBJECT, operation] },
       ],
     });
   }
@@ -215,28 +215,47 @@ function fact(id: string, predicate: string, args: string[], source: string, pro
 /** Refuse ambiguous origin, revision or source pair before replacing session facts.
  * This is an evidence trust check, not a claim that a detector has run.
  */
-function validateObservation(ob: ContextObservation): void {
+function validateIdentity(ob: ContextObservation): void {
   if (!ob.scope || !ob.provenance || !ob.task || !["task","create","edit","review"].includes(ob.operation))
     throw new Error("observation requires stable scope, task, provenance and valid operation");
-  if (!["pi-event", "repository-observation", "trusted-work-provider", "detector-result"].includes(ob.origin))
+  if (!["pi-event","repository-observation","trusted-work-provider","detector-result"].includes(ob.origin))
     throw new Error("unsupported observation provenance");
+}
+function validateSourcePair(ob: ContextObservation): void {
   if (ob.sourceText !== undefined && (!ob.path || typeof ob.sourceText !== "string"))
     throw new Error("source evidence requires an observed file path");
   if (ob.priorSourceText !== undefined &&
     (!ob.path || ob.sourceText === undefined || typeof ob.priorSourceText !== "string"))
     throw new Error("source delta requires an observed before/after pair");
-  if (ob.origin !== "trusted-work-provider" &&
-    (ob.actorRole !== undefined || ob.phase !== undefined || ob.acceptance !== undefined))
+}
+function validateProviderEvidence(ob: ContextObservation): void {
+  const asserted = ob.actorRole !== undefined || ob.phase !== undefined || ob.acceptance !== undefined;
+  if (asserted && ob.origin !== "trusted-work-provider")
     throw new Error("authority, phase and acceptance require trusted provider evidence");
-  if (ob.phase && !["RED", "GREEN", "REFACTOR", "SMOKE"].includes(ob.phase))
+  if (ob.phase && !["RED","GREEN","REFACTOR","SMOKE"].includes(ob.phase))
     throw new Error("unrecognized provider phase");
-  if (ob.origin === "trusted-work-provider" && (ob.actorRole || ob.phase || ob.acceptance) && !ob.revision)
+  if (asserted && !ob.revision)
     throw new Error("trusted provider assertions require a pinned revision");
+}
+function validateDetectorEvidence(ob: ContextObservation): void {
   if (ob.findings !== undefined && ob.origin !== "detector-result")
     throw new Error("detector findings require explicit detector-result provenance");
-  if (ob.origin === "detector-result" && (ob.operation !== "review" || !ob.revision || !ob.findings?.length || ob.sourceText !== undefined))
+  if (ob.origin === "detector-result" && (
+    ob.operation !== "review" || !ob.revision || !ob.findings?.length || ob.sourceText !== undefined))
     throw new Error("detector results require a revision-bound review observation");
 }
+function validateObservation(ob: ContextObservation): void {
+  validateIdentity(ob);
+  validateSourcePair(ob);
+  validateProviderEvidence(ob);
+  validateDetectorEvidence(ob);
+}
+
+const SOURCE_GAP_REASONS = new Set([
+  "invalid_path", "unsupported_file_kind", "proposed_source_unavailable",
+  "partial_source_parse", "source_too_large",
+]);
+const DATALOG_SUBJECT = "?subject"; // shared variable for every applicable predicate
 type AddObserved = (predicate: string, args: string[], detail?: string) => void;
 type NoteMissing = (fact: string, reason: string) => void;
 
@@ -273,41 +292,72 @@ export class ReasoningSession {
   /** Classify path/source evidence separately from trusted provider assertions.
    * Missing syntax or unresolved module resolution never yields a false-negative change.
    */
+  /** Keep path roles, source constructs and import deltas as separate witnesses. */
   private sourceInputs(ob: ContextObservation, add: AddObserved, missing: NoteMissing): void {
-    if (ob.path) {
-      add("file", [ob.scope, ob.path], "path:" + ob.path + " observed by " + ob.provenance);
-      const layer = roleOfPath(this.profile, ob.path); // role-level fact: the stack's local layer names never reach the rules
-      if (layer) add("file_layer", [ob.scope, layer], "layer:" + layer + " from " + ob.path);
-      const kind = classifyFileKind(ob.path, ob.sourceText);
-      if (kind.status === "observed")
-        add("file_kind", [ob.scope, kind.kind], "file_kind:" + kind.basis + " @ " + ob.provenance);
-      else missing("file_kind", kind.reason);
-      if (ob.origin !== "detector-result") {
-        if (kind.status === "observed" && !["generated", "vendor", "declaration"].includes(kind.kind)) {
-          const syntax = sourceSyntaxEvidence(ob.path, ob.sourceText);
-          if (syntax.status === "unknown") missing("code_construct", syntax.reason);
-          else for (const construct of discoverSourceEvidence(ob.path, ob.sourceText!))
-            add("code_construct", [ob.scope, construct], "ast:" + construct + " @ " + ob.provenance);
-        }
-        const imports = observeDomainImports(ob.path, ob.sourceText, ob.priorSourceText);
-        if (imports.present) add("code_construct", [ob.scope, "domain_to_integration_import"],
-          "ast:domain_to_integration_import @ " + ob.provenance);
-        if (imports.added) add("change", [ob.scope, "domain_to_integration_import_added"],
-          "before_after:domain_to_integration_import_added @ " + ob.provenance);
-        // An inspected file with an unresolved dependency form is missing a
-        // trustworthy change fact, not the source text we already read.
-        const missingSource = new Set([
-          "invalid_path", "unsupported_file_kind", "proposed_source_unavailable",
-          "partial_source_parse", "source_too_large",
-        ]);
-        for (const reason of imports.unknownReasons)
-          missing(missingSource.has(reason) ? "source" : "change", reason);
-        if (!imports.deltaObserved && !imports.unknownReasons.length) missing("change", "delta_not_observable");
+    if (!ob.path) {
+      if (ob.operation === "edit" || ob.operation === "create") {
+        missing("file_kind", "path_unavailable");
+        missing("change", "target_unavailable");
       }
-    } else if (ob.operation === "edit" || ob.operation === "create") {
-      missing("file_kind", "path_unavailable");
-      missing("change", "target_unavailable");
+      return;
     }
+    add("file", [ob.scope, ob.path], "path:" + ob.path + " observed by " + ob.provenance);
+    const layer = roleOfPath(this.profile, ob.path);
+    if (layer) add("file_layer", [ob.scope, layer], "layer:" + layer + " from " + ob.path);
+    const kind = classifyFileKind(ob.path, ob.sourceText);
+    if (kind.status === "observed")
+      add("file_kind", [ob.scope, kind.kind], "file_kind:" + kind.basis + " @ " + ob.provenance);
+    else missing("file_kind", kind.reason);
+    if (ob.origin === "detector-result") return;
+    this.syntaxInputs(ob, kind, add, missing);
+    this.changeInputs(ob, add, missing);
+  }
+
+  /** A source AST construct requires parsed syntax; path evidence alone cannot supply it. */
+  private syntaxInputs(ob: ContextObservation, kind: ReturnType<typeof classifyFileKind>,
+    add: AddObserved, missing: NoteMissing): void {
+    if (kind.status !== "observed") return;
+    if (["generated", "vendor", "declaration"].includes(kind.kind)) return;
+    const syntax = sourceSyntaxEvidence(ob.path!, ob.sourceText);
+    if (syntax.status === "unknown") {
+      missing("code_construct", syntax.reason);
+      return;
+    }
+    for (const construct of discoverSourceEvidence(ob.path!, ob.sourceText!))
+      add("code_construct", [ob.scope, construct], "ast:" + construct + " @ " + ob.provenance);
+  }
+
+  /** Present imports and added imports have different evidence requirements. */
+  private changeInputs(ob: ContextObservation, add: AddObserved, missing: NoteMissing): void {
+    const imports = observeDomainImports(ob.path!, ob.sourceText, ob.priorSourceText);
+    if (imports.present) add("code_construct", [ob.scope, "domain_to_integration_import"],
+      "ast:domain_to_integration_import @ " + ob.provenance);
+    if (imports.added) add("change", [ob.scope, "domain_to_integration_import_added"],
+      "before_after:domain_to_integration_import_added @ " + ob.provenance);
+    // An inspected but unresolved dependency is missing a change witness, not source text.
+    for (const reason of imports.unknownReasons)
+      missing(SOURCE_GAP_REASONS.has(reason) ? "source" : "change", reason);
+    if (!imports.deltaObserved && !imports.unknownReasons.length)
+      missing("change", "delta_not_observable");
+  }
+
+  /** Detector supports keep their own evidence identities for precise retraction. */
+  private findingInputs(ob: ContextObservation, entries: Map<string, Fact>, missing: NoteMissing): void {
+    if (ob.findings) {
+      const safeId = /^[a-z][a-z0-9._:-]{0,127}$/i;
+      for (const finding of ob.findings) {
+        if (finding.code !== "domain_to_integration_import" ||
+            !safeId.test(finding.detectorId) || !safeId.test(finding.evidenceId) ||
+            finding.file !== ob.path || finding.revision !== ob.revision)
+          throw new Error("unverified or mismatched detector finding");
+        // Independent detectors asserting the same ground finding retain distinct
+        // assertion identities; losing one proof must not revoke the other.
+        const evidenceKey = ob.scope + ":finding:" + finding.detectorId + ":" + finding.evidenceId;
+        entries.set(evidenceKey, fact(evidenceKey, "finding", [ob.scope, finding.code],
+          ob.origin, "detector:" + finding.detectorId + "/evidence:" + finding.evidenceId +
+          " @ revision:" + finding.revision));
+      }
+    } else if (ob.operation === "review") missing("finding", "detector_result_unavailable");
   }
 
   /** Compatibility path/term supports stay distinguishable from structural proofs.
@@ -349,21 +399,7 @@ export class ReasoningSession {
     add("task", [ob.scope, ob.task.slice(0, 1000)]);
     add("operation", [ob.scope, ob.operation]);
     this.sourceInputs(ob, add, missing);
-    if (ob.findings) {
-      const safeId = /^[a-z][a-z0-9._:-]{0,127}$/i;
-      for (const finding of ob.findings) {
-        if (finding.code !== "domain_to_integration_import" ||
-            !safeId.test(finding.detectorId) || !safeId.test(finding.evidenceId) ||
-            finding.file !== ob.path || finding.revision !== ob.revision)
-          throw new Error("unverified or mismatched detector finding");
-        // Independent detectors asserting the same ground finding retain distinct
-        // assertion identities; losing one proof must not revoke the other.
-        const evidenceKey = ob.scope + ":finding:" + finding.detectorId + ":" + finding.evidenceId;
-        entries.set(evidenceKey, fact(evidenceKey, "finding", [ob.scope, finding.code],
-          ob.origin, "detector:" + finding.detectorId + "/evidence:" + finding.evidenceId +
-          " @ revision:" + finding.revision));
-      }
-    } else if (ob.operation === "review") missing("finding", "detector_result_unavailable");
+    this.findingInputs(ob, entries, missing);
     if (ob.phase) add("phase", [ob.scope, ob.phase]);
     if (ob.actorRole) add("actor_role", [ob.scope, ob.actorRole]);
     if (ob.acceptance) add("acceptance", [ob.scope, ob.acceptance]);
