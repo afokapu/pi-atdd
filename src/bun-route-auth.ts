@@ -177,6 +177,17 @@ function routeObject(node:ts.Node|undefined,
     return objectOf(bindings.get(node.name.text),bindings);
   return undefined;
 }
+/** An aliased route map or config can be mutated after declaration.
+ * It may support a witnessed violation, never a proof of a clean handler.
+ */
+function aliasMayChange(call:ts.CallExpression,routes:ts.Node|undefined):boolean{
+  const cfg=call.arguments[0];
+  if(!cfg||!ts.isObjectLiteralExpression(cfg))return true;
+  if(!routes)return false;
+  if(ts.isShorthandPropertyAssignment(routes))return true;
+  if(ts.isPropertyAssignment(routes))return !ts.isObjectLiteralExpression(routes.initializer);
+  return true;
+}
 function serveStates(call:ts.CallExpression,bindings:Map<string,ts.Expression>):State[]{
   const cfg=objectOf(call.arguments[0],bindings);
   if(!cfg)return ["unknown"];
@@ -187,6 +198,7 @@ function serveStates(call:ts.CallExpression,bindings:Map<string,ts.Expression>):
     states.push(...(resolved?routeStates(resolved,bindings):(["unknown"]as State[])));
   }
   if(fetch)states.push(...fetchStates(fetch));
+  if(aliasMayChange(call,routes)&&!states.includes("unguarded"))return ["unknown"];
   return states.length?states:["unknown"];
 }
 /** A Bun.serve call must be an actual syntax node, not a task keyword. */
