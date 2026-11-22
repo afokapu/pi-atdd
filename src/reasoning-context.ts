@@ -16,7 +16,7 @@ import { PositiveReasoner, groundKey, type Fact, type Proof, type Rule, type Del
 import { discoverSourceEvidence } from "./structural-evidence.ts";
 import { classifyFileKind, observeDomainImports, sourceSyntaxEvidence } from "./operational-observers.ts";
 
-export type Phase = "RED" | "GREEN" | "REFACTOR" | "SMOKE";
+export type Phase = "PLAN" | "RED" | "GREEN" | "REFACTOR" | "SMOKE";
 export type Operation = "task" | "create" | "edit" | "review";
 export type Origin = "pi-event" | "repository-observation" | "trusted-work-provider" | "detector-result";
 /** Only a named, revision-bound detector adapter may submit this structured evidence. */
@@ -170,7 +170,56 @@ function typedRules(catalog: Catalog): Rule[] {
       ],
     });
   }
-  return typed;
+  return [...typed, ...trustedPhaseRules(catalog)];
+}
+
+/** A phase is an observed workflow fact, not a word guessed from the prompt.
+ * This table activates existing pinned rules without altering the source graph. */
+const guidanceByPhase: Record<Phase, readonly string[]> = {
+  PLAN: [
+    "planner.decomposition.local-scope",
+    "planner.steps.jtbd-taxonomy",
+    "planner.decomposition.jtbd-vs-odi-grammar",
+    "planner.decomposition.user-system-flow-journey",
+    "planner.decomposition.keep-pivot-kill",
+    "planner.plan.confirm-before-author",
+    "planner.acceptance.well-formed",
+    "planner.plan.granularity-completeness",
+    "planner.plan.session-lifecycle",
+    "planner.acceptance.extraction-no-inference",
+    "planner.user-system-flow.route-category-assessment",
+  ],
+  RED: [
+    "tester.red.behavioral-assertion", "tester.red.fails-first",
+    "tester.test.carries-urn-identity", "tester.test.phase-declared",
+    "tester.acceptance.binding-declared", "tester.acceptance.resolves-to-declared",
+  ],
+  GREEN: ["coder.phase.discipline"],
+  // Bun's graph links seven refactor sensors via runs_alongside, not requires.
+  // Explicit phase selection preserves that semantic distinction for weak models.
+  REFACTOR: [
+    "coder.phase.discipline", "coder.complexity.cyclomatic",
+    "coder.complexity.length", "coder.complexity.nesting",
+    "coder.dead-code.reachability", "coder.duplication.intra-layer",
+    "coder.quality.comments", "coder.quality.mi",
+  ],
+  SMOKE: ["planner.desired-outcome.must-have-smoke-acceptance"],
+};
+
+/** Missing phase guidance is INCOMPLETE, not a silently dropped rule.
+ * A weaker model must not need to recognize the missing convention. */
+function trustedPhaseRules(catalog: Catalog): Rule[] {
+  const result: Rule[] = [];
+  for (const [phase, ids] of Object.entries(guidanceByPhase)) for (const id of ids) {
+    const available = catalog.rules.has(id);
+    result.push({
+      id: "pi-atdd.trusted-phase-" + phase.toLowerCase() + "-" + id,
+      source: "pi-atdd/adapters/trusted-work-phase-v1",
+      head: { predicate: available ? "active" : "missing_requirement", terms: ["?subject", id] },
+      body: [{ predicate: "phase", terms: ["?subject", phase] }],
+    });
+  }
+  return result;
 }
 // Reasons are collected from the complete derivation tree, not merely the
 // final rule head. Multiple independent observations must remain inspectable.
