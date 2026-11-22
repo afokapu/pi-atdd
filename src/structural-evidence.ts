@@ -1,8 +1,11 @@
 /** Conservative TypeScript syntax facts, not policy verdicts. Canonical YAML is unchanged. */
 import ts from "typescript";
 import { createHash } from "node:crypto";
+import { inspectBunRouteAuth } from "./bun-route-auth.ts";
 
-export type StructuralFact = "bun_mutating_route" | "test_urn_header" | "test_urn_missing_binding";
+export type StructuralFact = "bun_mutating_route" | "bun_mutating_route_missing_auth" |
+  "bun_mutating_route_guarded" | "bun_mutating_route_unresolved" |
+  "test_urn_header" | "test_urn_missing_binding";
 const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const IGNORE = /(^|\/)(?:vendor|dist|build|node_modules|\.cache-sources)(\/|$)/;
 const SOURCE = /\.(?:[mc]?[jt]sx?)$/i;
@@ -112,6 +115,13 @@ export function discoverSourceEvidence(file: string, source: string): readonly S
       ts.forEachChild(n, visit);
     };
     visit(sf);
+  }
+  if (!test) {
+    const authorization=inspectBunRouteAuth(path,source);
+    if(authorization.status==="unguarded")facts.add("bun_mutating_route_missing_auth");
+    if(authorization.status==="guarded")facts.add("bun_mutating_route_guarded");
+    if(authorization.status==="unknown"&&facts.has("bun_mutating_route"))
+      facts.add("bun_mutating_route_unresolved");
   }
   const result = [...facts].sort();
   cache.set(digest, result);
