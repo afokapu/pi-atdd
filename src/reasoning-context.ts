@@ -105,7 +105,7 @@ function typedRules(catalog: Catalog): Rule[] {
       ],
     });
   }
-  // PLT-128: only trusted work-provider phase facts trigger these bundles.
+  // ATD-42: only trusted work-provider phase facts trigger these bundles.
   // This is activation of existing canonical rules, not new inferred graph edges.
   const byPhase: Record<Phase, readonly string[]> = {
     PLAN: [
