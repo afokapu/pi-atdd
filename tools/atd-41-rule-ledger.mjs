@@ -62,6 +62,99 @@ const knownNonTargets=new Map(Object.entries({
   "tester.security":"No live HTTP request/authorization test is authored",
   "tester.routing":"No Bun routing-stack test is authored",
 }));
+
+// This is an authored scope decision, NOT a semantic compliance result.
+// Each rule below has been compared to the actual ATD-41 Node/Pi delivery
+// artifacts, the source rule's Given/exception, and the source issue scope.
+// Any remaining unclassified rule MUST stay unresolved rather than default-pass.
+const explicitScope=new Map();
+function scope(ids, disposition, explanation){
+  for(const id of ids.split(" ").filter(Boolean)){
+    if(explicitScope.has(id)||scoped.has(id))throw Error("duplicate or conflicting scope decision "+id);
+    explicitScope.set(id,{disposition,explanation});
+  }
+}
+scope(
+  "coder.architecture.capabilities-import coder.architecture.connected coder.architecture.dependency-flow coder.architecture.orphan-export",
+  "SOURCE_EXCEPTION_NOT_APPLICABLE",
+  "Changed Node/Pi TypeScript modules contain no design-system root, design-layer UI or JSX product components; rule Given requires those artifacts"
+);
+scope(
+  "coder.architecture.hierarchy-import coder.boundaries.http-client coder.commons.application-no-integration coder.commons.cross-feature-imports-in coder.commons.domain-no-framework-import coder.commons.domain-no-outbound coder.composition.consumer coder.composition.root coder.layer.naming",
+  "SOURCE_EXCEPTION_NOT_APPLICABLE",
+  "Changed runtime modules are package-root src files, not application/domain/integration/presentation/commons feature-layer modules; source rule explicitly skips absent layer roles; code strings inside tests are fixtures"
+);
+scope(
+  "coder.capability.honours-its-contract coder.runtime.executes-the-declaration",
+  "PRODUCT_CONTRACT_NOT_DECLARED",
+  "ATD-41 changes Pi observation machinery, not a declared Bun product capability flow-data contract or FlowRouterRunner declaration"
+);
+scope(
+  "coder.error-response.bare-string coder.error-response.code-format coder.security.missing-auth",
+  "HTTP_RUNTIME_NOT_IN_DELTA",
+  "Changed production code does not implement mutating Bun HTTP routes or 4xx/5xx Response payloads; matching Bun.serve and DELETE text exists only as test fixture strings"
+);
+scope(
+  "coder.runtime.server-is-bun-serve coder.runtime.single-lockfile",
+  "NODE_PACKAGE_NOT_BUN_APPLICATION",
+  "pi-atdd is an npm/Node Pi-extension package with a Node test runner, not a full-stack Bun.serve application or Bun-package-manager repository"
+);
+scope(
+  "coder.runtime.typecheck-enforced",
+  "STACK_EQUIVALENT_EVIDENCE",
+  "Bun-only input is not met; the cross-stack purpose is independently covered by npm run check invoking tsc --noEmit under strict TypeScript, verified at exact CI SHA"
+);
+scope(
+  "coder.telemetry.forbidden-properties coder.telemetry.implementation-binding coder.telemetry.raw-string-emit coder.telemetry.source-binding coder.telemetry.vendor-sdk",
+  "TRACKING_PLAN_NOT_ADOPTED",
+  "Local sanitized Pi activation JSONL is not the Bun tracking-plan TelemetryPort; no telemetry/ tracking-plan root or declared telemetry-item contract was introduced"
+);
+scope(
+  "shared.profiles.presets",
+  "BUN_ADOPTION_NOT_REQUESTED",
+  "This task develops the Pi extension, not an ATDD-Bun consumer's activated profile preset; no atdd-bun.yaml was changed"
+);
+scope(
+  "shared.topology.feature-source-coverage shared.topology.plan-location shared.topology.source-location shared.traceability.source-tested-by-present shared.traceability.source-tested-by-resolves",
+  "PRODUCT_PLAN_TOPOLOGY_NOT_MODELED",
+  "No product capability/feature/DESIRED OUTCOME tree or component URN source is introduced; plan/acceptances contains package test acceptances, not a modeled Bun product flow"
+);
+scope(
+  "tester.acceptance.binding-declared tester.acceptance.covers-tag-well-formed tester.acceptance.resolves-to-declared tester.test.carries-urn-identity tester.test.imports-bun-test tester.test.phase-declared",
+  "BUN_TEST_HARNESS_NOT_APPLICABLE",
+  "Changed tests use the declared node:test harness; Bun test URN header, bun:test and phase-file conventions are for adopted Bun test topology; original ATD-22 evidence is separately verified and remains partial"
+);
+scope(
+  "tester.smoke.presentation-smoke-coverage tester.topology.e2e-location tester.topology.feature-test-coverage tester.topology.test-location tester.traceability.plan-executable-acceptance-has-test tester.traceability.test-binding-resolves",
+  "PRODUCT_FLOW_TEST_TOPOLOGY_NOT_MODELED",
+  "No presentation/ TSX, Bun flow router, product capability test URN or DESIRED OUTCOME acceptance is introduced; real Pi RPC smoke is checked separately"
+);
+scope(
+  "coach.collaboration.accountable-delegation coach.naming.instance-label coach.policy.action-tiers coach.policy.decision-log coach.policy.trivial-request coach.policy.unclear-risk-higher-tier coach.role.orchestrate-not-build",
+  "COACH_ROLE_NOT_ASSUMED",
+  "ATD-41 is an owner-assigned worker implementation branch, not a Coach window, Coach decision/delegation, or Coach-authored code PR; no independent Coach authority is claimed"
+);
+scope(
+  "coach.workflow.lifecycle",
+  "EXTERNAL_COORDINATION_GATE_OPEN",
+  "ATD-39/ATD-22 govern intake; no authenticated local atdd-flow Desk/seat evidence is supplied by this isolated GitHub work session; do not infer that a Flow seat was validated"
+);
+scope(
+  "shared.model.escalate-after-two-failures shared.model.names-only-tiers shared.model.subscription-providers shared.model.tier-by-role",
+  "MODEL_DELEGATION_NOT_TRIGGERED",
+  "No child agent, model tier, provider-family switch or escalation was launched in this feature change"
+);
+scope(
+  "shared.tracker.unconfigured-notice",
+  "TRACKER_IS_CONFIGURED",
+  "atdd-pi.yaml names the Linear tracker; branch and PR carry ATD-41 and the tracker job passed"
+);
+scope(
+  "shared.vocabulary.legacy-terms",
+  "VOCABULARY_MIGRATION_NOT_REQUESTED",
+  "No authoritative convention IDs, legacy term-mapping table or identifier/URN migration is part of this branch; frozen source records stay unchanged"
+);
+
 function filesUnder(dir){
   const all=[];
   for(const d of readdirSync(dir,{withFileTypes:true})){
@@ -85,13 +178,20 @@ for(const [source,root,count] of sources){
     const area=ruleId.split(".")[0];
     const reason=scoped.get(ruleId);
     const notTriggered=knownNonTargets.get(prefix) || knownNonTargets.get(area);
-    const disposition=reason?"SCOPED_CHECK_REQUIRED":notTriggered?"NOT_TRIGGERED_IN_CODE_DELTA":"APPLICABILITY_REVIEW_REQUIRED";
+    const explicit=explicitScope.get(ruleId);
+    const disposition=reason?"SCOPED_CHECK_REQUIRED":explicit?.disposition ??
+      (notTriggered?"NOT_TRIGGERED_IN_CODE_DELTA":"APPLICABILITY_REVIEW_REQUIRED");
     out.push({ruleId,source,path,sha256:createHash("sha256").update(raw).digest("hex"),
-      disposition,reason:reason||notTriggered||"Need a rule-specific applicability and source-evidence decision",
+      disposition,reason:reason||explicit?.explanation||notTriggered||
+        "Need a rule-specific applicability and source-evidence decision",
       humanReviewed:false});
   }
 }
 if(out.length!==376||ids.size!==376)throw Error("canonical source inventory is incomplete");
+for(const id of explicitScope.keys())if(!ids.has(id))throw Error("scope decision references unknown rule "+id);
+const stillUnresolved=out.filter(x=>x.disposition==="APPLICABILITY_REVIEW_REQUIRED");
+if(stillUnresolved.length)
+  throw Error("unresolved scope decisions must stay explicit: "+stillUnresolved.map(x=>x.ruleId).join(", "));
 const statuses=out.reduce((s,x)=>(s[x.disposition]=(s[x.disposition]||0)+1,s),{});
 for(const x of out)process.stdout.write("ATD41_CONVENTION_SCOPE "+JSON.stringify(x)+"\n");
 const result={total:out.length,uniqueIds:ids.size,sourceCounts:Object.fromEntries(sources.map(x=>[x[0],x[2]])),
