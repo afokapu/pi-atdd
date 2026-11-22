@@ -390,6 +390,23 @@ function bindingExcludedBySource(ob:ContextObservation):boolean {
   return !discoverSourceEvidence(ob.path,ob.sourceText).includes("test_urn_missing_binding");
 }
 
+/** A legacy selector is suppressed only by a complete, source-observed
+ * contrary witness for its exact canonical rule; no blanket selector waiver.
+ */
+function oneRuleSelector(selector:Selector,catalog:Catalog,target:string):boolean{
+  if(!selector.rules.length)return false;
+  return selector.rules.every(id=>canonicalRuleId(catalog,id)===target);
+}
+function selectorExcludedBySource(ob:ContextObservation,selector:Selector,catalog:Catalog):boolean{
+  if(oneRuleSelector(selector,catalog,"coder.architecture.hierarchy-import"))
+    return architectureExcludedBySource(ob);
+  if(oneRuleSelector(selector,catalog,"tester.acceptance.binding-declared"))
+    return bindingExcludedBySource(ob);
+  if(oneRuleSelector(selector,catalog,"coder.security.missing-auth"))
+    return securityExcludedBySource(ob);
+  return false;
+}
+
 const SOURCE_GAP_REASONS = new Set([
   "invalid_path", "unsupported_file_kind", "proposed_source_unavailable",
   "partial_source_parse", "source_too_large",
@@ -531,15 +548,7 @@ export class ReasoningSession {
     // not equivalent to AST, before/after, provider or detector observation.
     for (const selector of this.selectors) {
       if (selector.operations?.length && !selector.operations.includes(ob.operation)) continue;
-      const onlyArchitecture=selector.rules.length>0 &&
-        selector.rules.every(id=>canonicalRuleId(this.catalog,id)==="coder.architecture.hierarchy-import");
-      if(onlyArchitecture&&architectureExcludedBySource(ob))continue;
-      const onlyBinding=selector.rules.length>0 &&
-        selector.rules.every(id=>canonicalRuleId(this.catalog,id)==="tester.acceptance.binding-declared");
-      if(onlyBinding&&bindingExcludedBySource(ob))continue;
-      const onlySecurity=selector.rules.length>0 &&
-        selector.rules.every(id=>canonicalRuleId(this.catalog,id)==="coder.security.missing-auth");
-      if(onlySecurity&&securityExcludedBySource(ob))continue;
+      if(selectorExcludedBySource(ob,selector,this.catalog))continue;
       const matches = [
         ...(selector.terms ?? []).filter(term => termMatches(ob.task, term))
           .map(term => "term:" + term),
