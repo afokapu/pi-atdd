@@ -20,6 +20,15 @@ test("only a guard inside the affected handler exempts that handler",()=>{
   const mixed='Bun.serve({routes:{"/x":{POST:'+guarded+',DELETE:()=>2}}});';
   assert.equal(inspectBunRouteAuth("src/server.ts",mixed).status,"unguarded");
 });
+test("a guard after an observable write or inside a nested callback is not a safe negative",()=>{
+  const late='Bun.serve({routes:{"/x":{PUT:()=>{persist();requireAuth();return 2}}}});';
+  assert.equal(inspectBunRouteAuth("src/server.ts",late).status,"unknown");
+  const nested='Bun.serve({routes:{"/x":{PUT:()=>{queue(()=>requireAuth());return 2}}}});';
+  assert.equal(inspectBunRouteAuth("src/server.ts",nested).status,"unguarded");
+  const branch='Bun.serve({fetch(req){if(req.method==="POST"){persist();requireAuth();return 2}}});';
+  assert.equal(inspectBunRouteAuth("src/server.ts",branch).status,"unknown");
+});
+
 test("unresolved handler, dynamic config and incomplete syntax are UNKNOWN, not safe",()=>{
   assert.deepEqual(inspectBunRouteAuth("src/server.ts",route("POST","handler")),
     {status:"unknown",reasons:["route_or_handler_unresolved"]});
