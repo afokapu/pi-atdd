@@ -1,7 +1,8 @@
-// Acceptance: acc:pi-atdd:E003-UNIT-201
-// Acceptance: acc:pi-atdd:E003-UNIT-204
+// URN: test:pi-atdd:incremental-inference:E002-INTEGRATION-006-hook
 // Acceptance: acc:pi-atdd:E002-INTEGRATION-006
 // Acceptance: acc:pi-atdd:E002-UNIT-001
+// Phase: UNIT
+// Layer: application
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { execFileSync } from "node:child_process";
