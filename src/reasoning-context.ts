@@ -88,9 +88,12 @@ const selectorRules: Rule[] = [
  * A path-only domain edit does not prove a new forbidden import was observed.
  * Rules are installed only when the referenced canonical ID exists in the catalog.
  */
-function typedRules(catalog: Catalog): Rule[] {
-  const typed: Rule[] = [];
-  if (catalog.rules.has("coder.architecture.hierarchy-import")) typed.push({
+/** Preserve legacy path guidance and independent observed import supports.
+ * These are adapter applicability rules; they do not add normative graph edges.
+ */
+function hierarchyObservationRules(catalog: Catalog): Rule[] {
+  const hierarchy: Rule[] = [];
+  if (catalog.rules.has("coder.architecture.hierarchy-import")) hierarchy.push({
     id: "pi-atdd.typed-domain-dependency-flow",
     source: "pi-atdd/adapters/typed-path-facts-v1",
     head: { predicate: "active", terms: ["?subject", "coder.architecture.hierarchy-import"] },
@@ -103,7 +106,7 @@ function typedRules(catalog: Catalog): Rule[] {
   // NOT evidence that an import was added. Structural supports are separate.
   for (const operation of ["edit", "create"] as const) {
     if (catalog.rules.has("coder.architecture.hierarchy-import")) {
-      typed.push({
+      hierarchy.push({
         id: "pi-atdd.typed-domain-integration-change-" + operation,
         source: "pi-atdd/adapters/observed-source-delta-v1",
         head: { predicate: "active", terms: ["?subject", "coder.architecture.hierarchy-import"] },
@@ -122,7 +125,7 @@ function typedRules(catalog: Catalog): Rule[] {
       });
     }
   }
-  if (catalog.rules.has("coder.architecture.hierarchy-import")) typed.push({
+  if (catalog.rules.has("coder.architecture.hierarchy-import")) hierarchy.push({
     id: "pi-atdd.typed-detector-architecture-review",
     source: "pi-atdd/adapters/detector-finding-v1",
     head: { predicate: "active", terms: ["?subject", "coder.architecture.hierarchy-import"] },
@@ -131,6 +134,11 @@ function typedRules(catalog: Catalog): Rule[] {
       { predicate: "operation", terms: ["?subject", "review"] },
     ],
   });
+  return hierarchy;
+}
+
+function typedRules(catalog: Catalog): Rule[] {
+  const typed: Rule[] = hierarchyObservationRules(catalog);
   if (catalog.rules.has("coder.phase.discipline")) typed.push({
     id: "pi-atdd.typed-green-phase-discipline",
     source: "pi-atdd/adapters/trusted-phase-facts-v1",
@@ -204,6 +212,34 @@ function fact(id: string, predicate: string, args: string[], source: string, pro
 // Each subject's input fact set is replaced on observation, so changing a
 // file or losing a detector result retracts its obsolete proof contributions.
 // Catalog relationships and selector definitions remain stable base facts.
+/** Refuse ambiguous origin, revision or source pair before replacing session facts.
+ * This is an evidence trust check, not a claim that a detector has run.
+ */
+function validateObservation(ob: ContextObservation): void {
+  if (!ob.scope || !ob.provenance || !ob.task || !["task","create","edit","review"].includes(ob.operation))
+    throw new Error("observation requires stable scope, task, provenance and valid operation");
+  if (!["pi-event", "repository-observation", "trusted-work-provider", "detector-result"].includes(ob.origin))
+    throw new Error("unsupported observation provenance");
+  if (ob.sourceText !== undefined && (!ob.path || typeof ob.sourceText !== "string"))
+    throw new Error("source evidence requires an observed file path");
+  if (ob.priorSourceText !== undefined &&
+    (!ob.path || ob.sourceText === undefined || typeof ob.priorSourceText !== "string"))
+    throw new Error("source delta requires an observed before/after pair");
+  if (ob.origin !== "trusted-work-provider" &&
+    (ob.actorRole !== undefined || ob.phase !== undefined || ob.acceptance !== undefined))
+    throw new Error("authority, phase and acceptance require trusted provider evidence");
+  if (ob.phase && !["RED", "GREEN", "REFACTOR", "SMOKE"].includes(ob.phase))
+    throw new Error("unrecognized provider phase");
+  if (ob.origin === "trusted-work-provider" && (ob.actorRole || ob.phase || ob.acceptance) && !ob.revision)
+    throw new Error("trusted provider assertions require a pinned revision");
+  if (ob.findings !== undefined && ob.origin !== "detector-result")
+    throw new Error("detector findings require explicit detector-result provenance");
+  if (ob.origin === "detector-result" && (ob.operation !== "review" || !ob.revision || !ob.findings?.length || ob.sourceText !== undefined))
+    throw new Error("detector results require a revision-bound review observation");
+}
+type AddObserved = (predicate: string, args: string[], detail?: string) => void;
+type NoteMissing = (fact: string, reason: string) => void;
+
 export class ReasoningSession {
   readonly engine: PositiveReasoner;
   private readonly observations = new Map<string, Map<string, Fact>>();
@@ -234,41 +270,10 @@ export class ReasoningSession {
   // Origin is a trust boundary: a Pi event cannot assert a provider phase,
   // and an ordinary tool output cannot fabricate a detector finding.
   // A revision-bearing fact is useful only when its origin is also explicit.
-  private inputs(ob: ContextObservation): { entries: Map<string, Fact>; missingReasons: MissingFact[] } {
-    if (!ob.scope || !ob.provenance || !ob.task || !["task","create","edit","review"].includes(ob.operation))
-      throw new Error("observation requires stable scope, task, provenance and valid operation");
-    if (!["pi-event", "repository-observation", "trusted-work-provider", "detector-result"].includes(ob.origin))
-      throw new Error("unsupported observation provenance");
-    if (ob.sourceText !== undefined && (!ob.path || typeof ob.sourceText !== "string"))
-      throw new Error("source evidence requires an observed file path");
-    if (ob.priorSourceText !== undefined &&
-      (!ob.path || ob.sourceText === undefined || typeof ob.priorSourceText !== "string"))
-      throw new Error("source delta requires an observed before/after pair");
-    if (ob.origin !== "trusted-work-provider" &&
-      (ob.actorRole !== undefined || ob.phase !== undefined || ob.acceptance !== undefined))
-      throw new Error("authority, phase and acceptance require trusted provider evidence");
-    if (ob.phase && !["RED", "GREEN", "REFACTOR", "SMOKE"].includes(ob.phase))
-      throw new Error("unrecognized provider phase");
-    if (ob.origin === "trusted-work-provider" && (ob.actorRole || ob.phase || ob.acceptance) && !ob.revision)
-      throw new Error("trusted provider assertions require a pinned revision");
-    if (ob.findings !== undefined && ob.origin !== "detector-result")
-      throw new Error("detector findings require explicit detector-result provenance");
-    if (ob.origin === "detector-result" && (ob.operation !== "review" || !ob.revision || !ob.findings?.length || ob.sourceText !== undefined))
-      throw new Error("detector results require a revision-bound review observation");
-    const entries = new Map<string, Fact>();
-    const missingReasons: MissingFact[] = [];
-    const missing = (fact: string, reason: string) => {
-      if (!missingReasons.some(x => x.fact === fact && x.reason === reason))
-        missingReasons.push({ fact, reason });
-    };
-    // Stable IDs within a scope permit idempotent re-observation and
-    // precise retraction instead of accumulating duplicate assertions.
-    const add = (predicate: string, args: string[], detail = ob.provenance) => {
-      const id = ob.scope + ":" + groundKey(predicate, args);
-      entries.set(id, fact(id, predicate, args, ob.origin, detail));
-    };
-    add("task", [ob.scope, ob.task.slice(0, 1000)]);
-    add("operation", [ob.scope, ob.operation]);
+  /** Classify path/source evidence separately from trusted provider assertions.
+   * Missing syntax or unresolved module resolution never yields a false-negative change.
+   */
+  private sourceInputs(ob: ContextObservation, add: AddObserved, missing: NoteMissing): void {
     if (ob.path) {
       add("file", [ob.scope, ob.path], "path:" + ob.path + " observed by " + ob.provenance);
       const layer = roleOfPath(this.profile, ob.path); // role-level fact: the stack's local layer names never reach the rules
@@ -303,6 +308,47 @@ export class ReasoningSession {
       missing("file_kind", "path_unavailable");
       missing("change", "target_unavailable");
     }
+  }
+
+  /** Compatibility path/term supports stay distinguishable from structural proofs.
+   * Their presence alone cannot establish that an edit obeys a convention.
+   */
+  private selectorInputs(ob: ContextObservation, entries: Map<string, Fact>): void {
+    // Preserve the legacy lexical evidence explicitly; a keyword match is
+    // not equivalent to AST, before/after, provider or detector observation.
+    for (const selector of this.selectors) {
+      if (selector.operations?.length && !selector.operations.includes(ob.operation)) continue;
+      const matches = [
+        ...(selector.terms ?? []).filter(term => termMatches(ob.task, term))
+          .map(term => "term:" + term),
+        ...(ob.path ? (selector.paths ?? []).filter(pattern => matchesGlob(ob.path!, pattern))
+          .map(pattern => "path:" + pattern) : []),
+        ...(selector.always ? ["always"] : []),
+      ];
+      for (const evidence of matches) {
+        const id = ob.scope + ":selector:" + selector.id + ":" + evidence;
+        entries.set(id, fact(id, "selector_hit", [ob.scope, selector.id],
+          "pi-atdd/selector-registry", evidence + " @ " + ob.provenance));
+      }
+    }
+  }
+
+  private inputs(ob: ContextObservation): { entries: Map<string, Fact>; missingReasons: MissingFact[] } {
+    validateObservation(ob);
+    const entries = new Map<string, Fact>();
+    const missingReasons: MissingFact[] = [];
+    const missing: NoteMissing = (name, reason) => {
+      if (!missingReasons.some(x => x.fact === name && x.reason === reason))
+        missingReasons.push({ fact: name, reason });
+    };
+    // Stable IDs within a scope permit re-observation without duplicate facts.
+    const add: AddObserved = (predicate, args, detail = ob.provenance) => {
+      const id = ob.scope + ":" + groundKey(predicate, args);
+      entries.set(id, fact(id, predicate, args, ob.origin, detail));
+    };
+    add("task", [ob.scope, ob.task.slice(0, 1000)]);
+    add("operation", [ob.scope, ob.operation]);
+    this.sourceInputs(ob, add, missing);
     if (ob.findings) {
       const safeId = /^[a-z][a-z0-9._:-]{0,127}$/i;
       for (const finding of ob.findings) {
@@ -323,23 +369,7 @@ export class ReasoningSession {
     if (ob.acceptance) add("acceptance", [ob.scope, ob.acceptance]);
     if (ob.revision) add("revision", [ob.scope, ob.revision], "revision:" + ob.revision);
 
-    // Preserve the legacy lexical evidence explicitly; a keyword match is
-    // not equivalent to AST, before/after, provider or detector observation.
-    for (const selector of this.selectors) {
-      if (selector.operations?.length && !selector.operations.includes(ob.operation)) continue;
-      const matches = [
-        ...(selector.terms ?? []).filter(term => termMatches(ob.task, term))
-          .map(term => "term:" + term),
-        ...(ob.path ? (selector.paths ?? []).filter(pattern => matchesGlob(ob.path!, pattern))
-          .map(pattern => "path:" + pattern) : []),
-        ...(selector.always ? ["always"] : []),
-      ];
-      for (const evidence of matches) {
-        const id = ob.scope + ":selector:" + selector.id + ":" + evidence;
-        entries.set(id, fact(id, "selector_hit", [ob.scope, selector.id],
-          "pi-atdd/selector-registry", evidence + " @ " + ob.provenance));
-      }
-    }
+    this.selectorInputs(ob, entries);
     return { entries, missingReasons };
   }
 

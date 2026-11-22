@@ -142,6 +142,6 @@ if (process.argv[1] && fileURLToPath(import.meta.url)===fileURLToPath(new URL("f
   const output=process.argv.find(arg=>arg.startsWith("--output="))?.slice("--output=".length);
   if(output)writeFileSync(output,report.outcomes.map(x=>JSON.stringify(x)).join("\n")+"\n");
   const {outcomes,...summary}=report;
-  console.log("ATD41_OBS002_TASK_ONLY_FULL_MATRIX "+JSON.stringify(summary));
-  console.log("ATD41_OBS002_VERDICT PARTIAL: every example replayed as text but ALL lack independently observed structural situations; read per-case JSONL for complete gap inventory.");
+  process.stdout.write("ATD41_OBS002_TASK_ONLY_FULL_MATRIX "+JSON.stringify(summary)+"\n");
+  process.stdout.write("ATD41_OBS002_VERDICT PARTIAL: every example replayed as text but ALL lack independently observed structural situations; read per-case JSONL for complete gap inventory.\n");
 }
