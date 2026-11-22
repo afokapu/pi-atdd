@@ -2,7 +2,7 @@
 import ts from "typescript";
 import { createHash } from "node:crypto";
 
-export type StructuralFact = "bun_mutating_route" | "test_urn_header";
+export type StructuralFact = "bun_mutating_route" | "test_urn_header" | "test_urn_missing_binding";
 const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const IGNORE = /(^|\/)(?:vendor|dist|build|node_modules|\.cache-sources)(\/|$)/;
 const SOURCE = /\.(?:[mc]?[jt]sx?)$/i;
@@ -31,7 +31,15 @@ export function discoverSourceEvidence(file: string, source: string): readonly S
   const test = TEST.test(path);
   if (test) {
     const leading = source.slice(0, sf.statements[0]?.getStart(sf) ?? source.length);
-    if (/^\s*\/\/\s*URN:\s*test:[a-z0-9][a-z0-9:._-]*/im.test(leading)) facts.add("test_urn_header");
+    // A URN header is evidence of a candidate; a missing binding is a
+    // different, stricter fact. Train-only bindings are for journeys/E2E.
+    if (/^\s*\/\/\s*URN:\s*test:[a-z0-9][a-z0-9:._-]*/im.test(leading)) {
+      facts.add("test_urn_header");
+      const acceptance = /^\s*\/\/\s*Acceptance:\s*acc:[a-z0-9][a-z0-9:._-]*/im.test(leading);
+      const train = /^\s*\/\/\s*Train:\s*\S+/im.test(leading);
+      const journey = /(^|\/)(?:e2e|end-to-end|journeys?)(\/|$)|\.e2e\.|\.journey\./i.test(path);
+      if (!acceptance && (!train || !journey)) facts.add("test_urn_missing_binding");
+    }
   } else {
     const bindings = new Map<string, ts.Expression>();
     for (const statement of sf.statements) {
