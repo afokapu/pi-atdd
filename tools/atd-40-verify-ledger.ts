@@ -1,0 +1,171 @@
+/**
+ * ATD-40 Pass A source lock / inventory check. Read-only: no OoC admission or T9 logic.
+ *
+ * Usage: node --experimental-strip-types tools/atd-40-verify-ledger.ts
+ *
+ * This checks corpus membership, YAML source IDs, immutable Git blob IDs, and
+ * bundled digestSource locks. It does NOT judge semantic candidates or O1–O8.
+ */
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { parseDocument } from "yaml";
+import { digestSource, readYaml, type SourceKind } from "../src/catalog.ts";
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const fileAt = (name: string): string => join(root, name);
+// A research evidence artifact is kept outside docs/: the bundled Bun docs rule
+// applies AsciiDoc-only constraints to authored docs/, while this package's
+// existing docs/ migration is not authorized by a source-level ATD-40 review.
+const ledgerPath = "research/atd-40/ATD-40-PASS-A-LEDGER.tsv";
+// Test-only override permits mutation tests without touching canonical sources.
+const args = process.argv.slice(2);
+assert.ok(args.length === 0 || (args.length === 2 && args[0] === "--ledger-file" && !!args[1]),
+  "usage: atd-40-verify-ledger.ts [--ledger-file <path>]");
+const ledger = readFileSync(args.length ? resolve(args[1]!) : fileAt(ledgerPath), "utf8");
+const lines = ledger.trimEnd().split("\n").filter(line => line && !line.startsWith("#"));
+const columns = [
+  "rule_id_filename_derived", "source_family", "path", "git_blob_sha",
+  "pass_a_disposition", "proposed_candidate_refs", "inspected_rule_spans",
+  "graph_witnesses_out_and_in", "reason_or_open_question", "source_id_verification",
+];
+assert.deepEqual(lines.shift()?.split("\t"), columns, "unexpected ledger schema");
+assert.equal(lines.length, 376, "exact source inventory denominator changed");
+
+const roots = [
+  { path: "vendor/atdd-bun/conventions", family: "Bun" },
+  { path: "vendor/atdd-flow/conventions", family: "Flow" },
+  { path: "catalog/pi-atdd/conventions", family: "Local" },
+] as const;
+
+function walk(dir: string): string[] {
+  return readdirSync(fileAt(dir), { withFileTypes: true })
+    .flatMap(entry => {
+      const name = (dir + "/" + entry.name).replaceAll("\\", "/");
+      if (entry.isSymbolicLink()) throw new Error("symlink in convention corpus: " + name);
+      return entry.isDirectory()
+        ? walk(name)
+        : entry.isFile() && name.endsWith(".convention.yaml") ? [name] : [];
+    });
+}
+// Count the actual pinned corpus, not the older 375-file estimate in ATD-29.
+// Fixture files are excluded by selecting only these three authoritative roots.
+const actual = new Set(roots.flatMap(item => walk(item.path)));
+assert.equal(actual.size, 376, "actual non-fixture file count changed");
+/**
+ * Rebuild *every* edge witness from the authored YAML graphs. The Bun graph
+ * places source_ref in the middle of a block, not on its "- confidence" line;
+ * a first-line-only parser had silently missed 429 of the 508 Bun edges.
+ * The catalog defaults omitted constraint to mandatory; annotate that as
+ * "default:mandatory" without pretending it was explicitly authored.
+ */
+const graphPaths = ["vendor/atdd-bun/relationships.yaml", "catalog/pi-atdd/relationships.yaml"];
+const expectedWitnesses = new Map<string, string[]>();
+let edgeCount = 0;
+for (const graphPath of graphPaths) {
+  const text = readFileSync(fileAt(graphPath), "utf8");
+  const graph = readYaml(fileAt(graphPath));
+  const edges = graph.edges;
+  assert.ok(Array.isArray(edges), "missing graph edges in " + graphPath);
+  const graphLines = text.split("\n");
+  const sourceLines = graphLines
+    .map((line, index) => /^\s*(?:-\s*)?source_ref:\s*\S/.test(line) ? index + 1 : 0)
+    .filter(line => line !== 0);
+  assert.equal(sourceLines.length, edges.length, "graph source anchors differ from edges: " + graphPath);
+  edges.forEach((value, index) => {
+    const edge = value as Record<string, unknown>;
+    const from = edge.source_ref, to = edge.target_ref, kind = edge.type;
+    assert.ok(typeof from === "string" && typeof to === "string" && typeof kind === "string",
+      "malformed authored graph edge: " + graphPath + ":" + index);
+    const constraint = edge.constraint === undefined ? "default:mandatory" : edge.constraint;
+    assert.ok(typeof constraint === "string", "malformed graph constraint: " + graphPath + ":" + index);
+    const line = sourceLines[index]!;
+    const add = (rule: string, direction: "out" | "in", other: string) => {
+      const witness = direction + ":" + kind + "/" + constraint + ":" + other + "@" + graphPath + "#L" + line;
+      expectedWitnesses.set(rule, [...(expectedWitnesses.get(rule) ?? []), witness]);
+    };
+    // A relationship type is never silently converted to "requires".
+    add(from, "out", to);
+    if (from !== to) add(to, "in", from);
+    edgeCount++;
+  });
+}
+assert.equal(edgeCount, 522, "source-locked Bun/local graph size changed");
+
+const included = new Set<string>();
+const ids = new Set<string>();
+const dispositions = new Map<string, number>();
+const families = new Map<string, number>();
+
+for (const [index, rowText] of lines.entries()) {
+  const values = rowText.split("\t");
+  assert.equal(values.length, columns.length, "malformed ledger TSV row " + (index + 1));
+  const [id, family, path, blobSha, status, candidates, spans, witnesses, reason, verification] = values;
+  assert.ok(id && family && path && blobSha && status, "missing required row data");
+  assert.ok(reason, "missing resolution rationale at row " + (index + 1));
+  assert.equal(verification, "YAML_HEADER_CHECKED_BY_VERIFIER", "stale rule-id verification: " + id);
+  assert.ok(actual.has(path!), "ledger path absent from canonical sources: " + path);
+  assert.ok(!included.has(path!), "duplicate file: " + path);
+  included.add(path!);
+  const expectedFamily = roots.find(item => path!.startsWith(item.path + "/"))?.family;
+  assert.equal(family, expectedFamily, "incorrect source family for " + path);
+  assert.ok(!ids.has(id!), "duplicate convention ID: " + id);
+  ids.add(id!);
+
+  // A row's SHA-1 names a Git blob exactly; catalog SHA256 is checked below.
+  // A matching filename alone is insufficient: the YAML rule_id must agree.
+  const bytes = readFileSync(fileAt(path!));
+  const header = Buffer.from("blob " + bytes.length + "\0", "utf8");
+  const actualSha = createHash("sha1").update(header).update(bytes).digest("hex");
+  assert.equal(actualSha, blobSha, "Git blob SHA mismatch at " + path);
+
+  const doc = parseDocument(bytes.toString("utf8"), { strict: true, uniqueKeys: true });
+  assert.equal(doc.errors.length, 0, "invalid YAML " + path + " " + doc.errors.join("; "));
+  const parsed: unknown = doc.toJS({ maxAliasCount: 100 });
+  assert.ok(parsed !== null && typeof parsed === "object" && !Array.isArray(parsed),
+    "expected YAML object " + path);
+  const ruleId = (parsed as Record<string, unknown>).rule_id;
+  assert.equal(ruleId, id, "filename-derived rule ID is not the authored YAML rule_id: " + path);
+  assert.ok(typeof (parsed as Record<string, unknown>).statement === "string",
+    "missing authored statement: " + path);
+
+  assert.ok(["CANDIDATE", "NO_CANDIDATE", "UNRESOLVED"].includes(status!),
+    "unknown Pass A disposition " + status);
+  if (status === "CANDIDATE") assert.ok(candidates, "missing provisional candidate ref " + id);
+  if (status === "UNRESOLVED") assert.equal(candidates, "", "unverified candidate " + id);
+  if (status !== "UNRESOLVED") assert.ok(spans, "missing inspected source span " + id);
+  // Compare the complete authored graph, not merely the validity of a line
+  // mentioned by an incomplete ledger. External endpoints remain source refs,
+  // not invented convention IDs or admitted OoC identities.
+  const expected = (expectedWitnesses.get(id!) ?? []).sort();
+  const actualWitnesses = witnesses ? witnesses.split(";").sort() : [];
+  assert.deepEqual(actualWitnesses, expected, "authored graph witness mismatch: " + id);
+
+  dispositions.set(status!, (dispositions.get(status!) ?? 0) + 1);
+  families.set(family!, (families.get(family!) ?? 0) + 1);
+}
+assert.deepEqual([...included].sort(), [...actual].sort(), "missing source paths");
+for (const [key, count] of [["Bun", 356], ["Flow", 2], ["Local", 18]] as const)
+  assert.equal(families.get(key), count, "source family denominator changed: " + key);
+for (const [key, count] of [["CANDIDATE", 13], ["NO_CANDIDATE", 1], ["UNRESOLVED", 362]] as const)
+  assert.equal(dispositions.get(key), count, "disposition count changed: " + key);
+
+// A vendor lock validates whole-source bytes, independently of per-file blobs.
+// Passing the lock verifies fidelity, NOT completeness of OoC extraction.
+const lock = JSON.parse(readFileSync(fileAt("vendor/catalog.lock.json"), "utf8")) as {
+  sources: Array<{ id: string; kind: SourceKind; path: string; sha256: string }>;
+};
+assert.equal(lock.sources.length, 3, "source-lock sources changed");
+for (const item of lock.sources) {
+  assert.ok(existsSync(fileAt(item.path)), "missing source lock root: " + item.path);
+  const digest = digestSource(fileAt(item.path), item.kind);
+  assert.equal(digest, item.sha256, "source-lock digest mismatch: " + item.id);
+}
+
+console.log(
+  "ATD-40 source check verified: 376 YAML rule IDs + Git blobs; Bun 356 / Flow 2 / Local 18; " +
+  "CANDIDATE source files 13 / NO_CANDIDATE 1 / UNRESOLVED 362; 3 source SHA256 locks; 522 authored edges."
+);
+console.log("Semantic Pass A, independent O1–O8, T9 parity and authorization: NOT VERIFIED.");
