@@ -173,6 +173,15 @@ export function verifyEvent(raw: unknown, cfg: LaunchConfig, key: Buffer): Signe
   return undefined;
 }
 
+/**
+ * Authentic for this profile (shape, profile, MAC). A reader that must tell a verified row from a
+ * corrupt one uses this; it never shows or copies the record. This branch has no routing, so no
+ * recipient filter applies.
+ */
+export function verifyAuthentic(raw: unknown, cfg: LaunchConfig, key: Buffer): SignedEvent | undefined {
+  return verifyEvent(raw, cfg, key);
+}
+
 /** Worker raise. `from` and `profile` come from launch config; any such fields in the input are ignored. */
 export function newItem(input: Record<string, unknown>, cfg: LaunchConfig, now: Date): AttentionItem {
   const type = input.type;

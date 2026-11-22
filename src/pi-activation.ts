@@ -14,6 +14,8 @@ import { renderReasonedPage, type RenderedPage } from "./render-reasoning.ts";
 import { observeRepository, type RepositorySnapshot } from "./repository-observer.ts";
 import { shellWriteTargetModes } from "./shell-targets.ts";
 import { registerAttentionStrip } from "./attention-strip.ts";
+import { registerSeatExecution } from "./execution-pi.ts";
+import type { ExecutionCheckpoint } from "./execution-lifecycle.ts";
 import { Type } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { MODE_FILE, guardsAtdd, modeFromText, recordMode, repositoryRoot, resolveMode, type Mode, type Resolution } from "./mode.ts";
@@ -78,6 +80,7 @@ const oneLine=(s:string)=>s.replace(/\s+/g," ").trim().slice(0,160);
 const MODE_CHOICES=["ATDD — remember for this repo","Plain — remember for this repo",
   "ATDD — this session only","Plain — this session only"];
 export default function atdd(pi:ExtensionAPI):void {
+  const executionSeat = registerSeatExecution(pi); // PLT-117: inert unless launch-bound
   registerAttentionStrip(pi); // PLT-101: inert unless PI_ATDD_ATTENTION_ROLE is set
   let cwdKey="", task="", serial=0;
   let catalog:Catalog|undefined,selectors:Selector[]=[],profile:StructureProfile|undefined;
@@ -90,7 +93,7 @@ export default function atdd(pi:ExtensionAPI):void {
   // from a registered command because ctx.newSession is available only to commands.
   let handoffState:HandoffState=INITIAL_HANDOFF_STATE;
   let requestedHandoff:HandoffInput|undefined;
-  let readyHandoff:{text:string;path:string;kickoff:string}|undefined;
+  let readyHandoff:{text:string;path:string;kickoff:string;seatCheckpoint?:ExecutionCheckpoint}|undefined;
   /** Hop index of this session in its chain, read back from the record that seeded it. */
   let handoffHop=0;
   /** Post-tool pages whose budget omitted rules; delivered on the next tool result. */
@@ -342,10 +345,21 @@ export default function atdd(pi:ExtensionAPI):void {
         return;
       }
       const path=join(ctx.cwd,".atdd-pi","handoffs",new Date().toISOString().replace(/[:.]/g,"-")+".md");
-      const text=buildHandoff({...request,handoffPath:path});
+      // If a task seat is launch-bound, checkpoint its authoritative revision and
+      // task-scoped attention before starting a successor. Unknown items fail closed.
+      const seatCheckpoint=executionSeat?.checkpoint(ctx,executionSeat.snapshotAttention());
+      const record=buildHandoff({...request,handoffPath:path});
+      const text=seatCheckpoint ? record+"\n\nVerified seat checkpoint: task "+
+        seatCheckpoint.taskId+"; source session "+seatCheckpoint.sourceSessionId+
+        "; exact "+seatCheckpoint.revision.vcs+" revision "+seatCheckpoint.revision.head+
+        "; attention IDs "+seatCheckpoint.attention.pendingIds.join(", ")+
+        "; acceptance remains "+seatCheckpoint.acceptance+
+        "; grant "+seatCheckpoint.grant.state+
+        (seatCheckpoint.grant.reference ? " (reference "+seatCheckpoint.grant.reference+")" : "")+"." : record;
       mkdirSync(dirname(path),{recursive:true});
       writeFileSync(path,text,{flag:"wx"});
-      readyHandoff={text,path,kickoff:kickoffText(extractIssueId(request.task))};
+      readyHandoff={text,path,kickoff:kickoffText(extractIssueId(request.task)),
+        ...(seatCheckpoint?{seatCheckpoint}:{})};
       pi.sendUserMessage("/atdd-handoff",{expandPromptTemplates:true});
     }catch(e){
       ctx.ui.notify("ATDD context handoff failed: "+String(e)+"; no handoff was written.","error");
@@ -365,6 +379,9 @@ export default function atdd(pi:ExtensionAPI):void {
             sm.appendMessage({role:"user",content:[{type:"text",text:ready.text}],timestamp:Date.now()});
           },
           withSession:async(next)=>{
+            // Ownership is fenced at the exact successor session boundary.
+            // Never begin LLM work in a new session with the predecessor's lease.
+            if(ready.seatCheckpoint)executionSeat?.activateSuccessor(next,ready.seatCheckpoint);
             await next.sendUserMessage(ready.kickoff);
           },
         });
