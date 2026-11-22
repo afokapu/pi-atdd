@@ -12,7 +12,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseDocument } from "yaml";
-import { digestSource, type SourceKind } from "../src/catalog.ts";
+import { digestSource, readYaml, type SourceKind } from "../src/catalog.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const fileAt = (name: string): string => join(root, name);
@@ -54,6 +54,46 @@ function walk(dir: string): string[] {
 // Fixture files are excluded by selecting only these three authoritative roots.
 const actual = new Set(roots.flatMap(item => walk(item.path)));
 assert.equal(actual.size, 376, "actual non-fixture file count changed");
+/**
+ * Rebuild *every* edge witness from the authored YAML graphs. The Bun graph
+ * places source_ref in the middle of a block, not on its "- confidence" line;
+ * a first-line-only parser had silently missed 429 of the 508 Bun edges.
+ * The catalog defaults omitted constraint to mandatory; annotate that as
+ * "default:mandatory" without pretending it was explicitly authored.
+ */
+const graphPaths = ["vendor/atdd-bun/relationships.yaml", "catalog/pi-atdd/relationships.yaml"];
+const expectedWitnesses = new Map<string, string[]>();
+let edgeCount = 0;
+for (const graphPath of graphPaths) {
+  const text = readFileSync(fileAt(graphPath), "utf8");
+  const graph = readYaml(fileAt(graphPath));
+  const edges = graph.edges;
+  assert.ok(Array.isArray(edges), "missing graph edges in " + graphPath);
+  const graphLines = text.split("\n");
+  const sourceLines = graphLines
+    .map((line, index) => /^\s*(?:-\s*)?source_ref:\s*\S/.test(line) ? index + 1 : 0)
+    .filter(line => line !== 0);
+  assert.equal(sourceLines.length, edges.length, "graph source anchors differ from edges: " + graphPath);
+  edges.forEach((value, index) => {
+    const edge = value as Record<string, unknown>;
+    const from = edge.source_ref, to = edge.target_ref, kind = edge.type;
+    assert.ok(typeof from === "string" && typeof to === "string" && typeof kind === "string",
+      "malformed authored graph edge: " + graphPath + ":" + index);
+    const constraint = edge.constraint === undefined ? "default:mandatory" : edge.constraint;
+    assert.ok(typeof constraint === "string", "malformed graph constraint: " + graphPath + ":" + index);
+    const line = sourceLines[index]!;
+    const add = (rule: string, direction: "out" | "in", other: string) => {
+      const witness = direction + ":" + kind + "/" + constraint + ":" + other + "@" + graphPath + "#L" + line;
+      expectedWitnesses.set(rule, [...(expectedWitnesses.get(rule) ?? []), witness]);
+    };
+    // A relationship type is never silently converted to "requires".
+    add(from, "out", to);
+    if (from !== to) add(to, "in", from);
+    edgeCount++;
+  });
+}
+assert.equal(edgeCount, 522, "source-locked Bun/local graph size changed");
+
 const included = new Set<string>();
 const ids = new Set<string>();
 const dispositions = new Map<string, number>();
@@ -62,9 +102,10 @@ const families = new Map<string, number>();
 for (const [index, rowText] of lines.entries()) {
   const values = rowText.split("\t");
   assert.equal(values.length, columns.length, "malformed ledger TSV row " + (index + 1));
-  const [id, family, path, blobSha, status, candidates, spans, witnesses, reason] = values;
+  const [id, family, path, blobSha, status, candidates, spans, witnesses, reason, verification] = values;
   assert.ok(id && family && path && blobSha && status, "missing required row data");
   assert.ok(reason, "missing resolution rationale at row " + (index + 1));
+  assert.equal(verification, "YAML_HEADER_CHECKED_BY_VERIFIER", "stale rule-id verification: " + id);
   assert.ok(actual.has(path!), "ledger path absent from canonical sources: " + path);
   assert.ok(!included.has(path!), "duplicate file: " + path);
   included.add(path!);
@@ -95,17 +136,13 @@ for (const [index, rowText] of lines.entries()) {
   if (status === "CANDIDATE") assert.ok(candidates, "missing provisional candidate ref " + id);
   if (status === "UNRESOLVED") assert.equal(candidates, "", "unverified candidate " + id);
   if (status !== "UNRESOLVED") assert.ok(spans, "missing inspected source span " + id);
-  // Witness line anchors preserve authored provenance, not causal standing or
-  // automatic applicability; deeper graph semantics need independent review.
-  if (witnesses) {
-    for (const witness of witnesses.split(";")) {
-      const loc = witness.match(/@(vendor\/atdd-bun\/relationships\.yaml|catalog\/pi-atdd\/relationships\.yaml)#L(\d+)$/);
-      assert.ok(loc, "malformed graph witness " + witness);
-      const graph = readFileSync(fileAt(loc![1]!), "utf8").split("\n");
-      const sourceLine = graph[Number(loc![2]!) - 1];
-      assert.ok(sourceLine?.includes("source_ref:"), "bad graph edge anchor " + witness);
-    }
-  }
+  // Compare the complete authored graph, not merely the validity of a line
+  // mentioned by an incomplete ledger. External endpoints remain source refs,
+  // not invented convention IDs or admitted OoC identities.
+  const expected = (expectedWitnesses.get(id!) ?? []).sort();
+  const actual = witnesses ? witnesses.split(";").sort() : [];
+  assert.deepEqual(actual, expected, "authored graph witness mismatch: " + id);
+
   dispositions.set(status!, (dispositions.get(status!) ?? 0) + 1);
   families.set(family!, (families.get(family!) ?? 0) + 1);
 }
@@ -129,6 +166,6 @@ for (const item of lock.sources) {
 
 console.log(
   "ATD-40 source check verified: 376 YAML rule IDs + Git blobs; Bun 356 / Flow 2 / Local 18; " +
-  "CANDIDATE source files 13 / NO_CANDIDATE 1 / UNRESOLVED 362; 3 source SHA256 locks."
+  "CANDIDATE source files 13 / NO_CANDIDATE 1 / UNRESOLVED 362; 3 source SHA256 locks; 522 authored edges."
 );
 console.log("Semantic Pass A, independent O1–O8, T9 parity and authorization: NOT VERIFIED.");
