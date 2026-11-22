@@ -10,6 +10,23 @@ const STREAMS = {
     wrapper: "ATD-40", source: "ATD-29", other: ["ATD-26", "ATD-39"],
     criteria: ["Acceptance-01", "Acceptance-02", "Acceptance-03", "Acceptance-04"],
   },
+  "feature/atd-29-pass-a-semantic-completion": {
+    wrapper: "ATD-26", source: "ATD-26", other: ["ATD-29", "ATD-28", "ATD-27", "ATD-39"],
+    criteria: [], // Original 4+4+4+8 gate rows are required below, not just the Pass A wrapper.
+    issueCriteria: {
+      "ATD-29": ["Acceptance-01", "Acceptance-02", "Acceptance-03", "Acceptance-04"],
+      "ATD-28": ["Acceptance-01", "Acceptance-02", "Acceptance-03", "Acceptance-04"],
+      "ATD-27": ["Acceptance-01", "Acceptance-02", "Acceptance-03", "Acceptance-04"],
+      "ATD-26": [
+        "Acceptance-01", "Acceptance-02", "Acceptance-03", "Acceptance-04",
+        "Acceptance-05", "Acceptance-06", "Acceptance-07", "Acceptance-08",
+      ],
+    },
+  },
+  "feature/atd-39-register-atd-26-review-intake": {
+    wrapper: "ATD-39", source: "ATD-39", other: ["ATD-26", "ATD-29"],
+    criteria: [], // Coordinator CI policy only; never an original-issue completion claim.
+  },
   "feature/atd-41-structural-activation": {
     wrapper: "ATD-41", source: "ATD-22", other: ["ATD-25", "ATD-30", "ATD-39"],
     criteria: ["OBS-001", "OBS-002", "OBS-003", "OBS-004"],
@@ -39,8 +56,14 @@ export function inspectIntegrationPR({base, head, body = ""}) {
     if (!new RegExp("\\b" + ref + "\\b", "i").test(body))
       problems.push("Missing issue reference " + ref);
   }
-  for (const acceptance of stream.criteria) {
-    const id = stream.source + "/" + acceptance;
+  // Multi-issue work must disclose every original acceptance, not only a
+  // delivery wrapper or just whichever issue makes the current PR look green.
+  // Existing single-issue streams keep their original strict source contract.
+  const required = stream.issueCriteria
+    ? Object.entries(stream.issueCriteria).flatMap(([issue, criteria]) =>
+      criteria.map(acceptance => issue + "/" + acceptance))
+    : stream.criteria.map(acceptance => stream.source + "/" + acceptance);
+  for (const id of required) {
     const prefix = new RegExp("^\\s*[-*]\\s+(?:\\[[ xX]\\]\\s*)?" + id + "\\s*:", "i");
     const row = body.split(/\r?\n/).find(line => prefix.test(line));
     if (!row) { problems.push("Missing original criterion " + id); continue; }
@@ -55,7 +78,7 @@ export function inspectIntegrationPR({base, head, body = ""}) {
     if (disposition !== "PASS") outstanding.push(id + " = " + disposition);
   }
   return {
-    status: problems.length ? "INCOMPLETE" : outstanding.length ? "DISCLOSED_PARTIAL" : stream.criteria.length ? "SELF_DECLARED_COMPLETE" : "SCOPE_REVIEW_ONLY",
+    status: problems.length ? "INCOMPLETE" : outstanding.length ? "DISCLOSED_PARTIAL" : required.length ? "SELF_DECLARED_COMPLETE" : "SCOPE_REVIEW_ONLY",
     problems, evidence, outstanding,
     caution: "An integration checkpoint can carry explicit partial criteria. This does NOT close the original issue or prove behavior. Only source-verified applicable conventions, independent tests, review, and owner authority can govern acceptance.",
   };
