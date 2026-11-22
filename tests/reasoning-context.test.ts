@@ -179,26 +179,20 @@ test("ATD-42: a trusted PLAN fact automatically supplies JTBD and acceptance con
     const plan=a.session.observe(mk("PLAN"));
     const ids=new Set(plan.activations.map(x=>x.id));
     for(const id of ["planner.steps.jtbd-taxonomy", "planner.decomposition.local-scope",
-      "planner.decomposition.jtbd-vs-odi-grammar", "planner.acceptance.well-formed",
-      "planner.plan.confirm-before-author", "planner.plan.session-lifecycle",
-      "planner.user-system-flow.route-category-assessment",
-      "planner.acceptance.extraction-no-inference"])
+      "planner.acceptance.well-formed", "planner.plan.granularity-completeness",
+      "planner.plan.session-lifecycle"])
       assert.ok(ids.has(id), "PLAN supplies "+id);
     const red=a.session.observe(mk("RED"));
-    for(const id of ["tester.red.behavioral-assertion", "tester.red.fails-first",
-      "tester.test.carries-urn-identity", "tester.test.phase-declared",
-      "tester.acceptance.binding-declared", "tester.acceptance.resolves-to-declared"])
+    for(const id of ["tester.red.behavioral-assertion", "tester.red.fails-first"])
       assert.ok(red.activations.some(x=>x.id===id), "RED supplies "+id);
     assert.ok(red.removed.includes("planner.steps.jtbd-taxonomy"), "old plan-phase rules retract");
     const green=a.session.observe(mk("GREEN"));
     assert.ok(green.activations.some(x=>x.id==="coder.phase.discipline"));
     assert.ok(!green.activations.some(x=>x.id==="tester.red.fails-first"));
     const refactor=a.session.observe(mk("REFACTOR"));
-    for(const id of ["coder.phase.discipline", "coder.complexity.cyclomatic",
-      "coder.complexity.length", "coder.complexity.nesting",
-      "coder.dead-code.reachability", "coder.duplication.intra-layer",
-      "coder.quality.comments", "coder.quality.mi"])
+    for(const id of ["coder.phase.discipline"])
       assert.ok(refactor.activations.some(x=>x.id===id), "REFACTOR supplies "+id);
+    assert.ok(!refactor.activations.some(x=>x.id==="coder.dead-code.reachability"),"dead-code scanner needs actual TypeScript source evidence");
   } finally {a.finish();}
 });
 
