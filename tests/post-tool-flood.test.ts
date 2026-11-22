@@ -69,3 +69,54 @@ test("read-only tools never receive pending redelivery and the queue drains",()=
     assert.equal(last,"","queue did not drain after bounded redeliveries");
   }finally{x.cleanup();}
 });
+
+test("nested build output (monorepo packages/web/dist) is not reconciled as source",()=>{
+  const x=sandbox();
+  try{
+    writeFileSync(join(x.cwd,".gitignore"),"dist/\nout/\n");
+    x.result("bash","0");
+    burst(x.cwd,100,"packages/web/dist/assets");
+    const out=x.result("bash","1");
+    assert.ok(!out.includes("packages/web/dist"),"nested dist output was reconciled");
+  }finally{x.cleanup();}
+});
+
+test("tracked files under dist/ and non-ignored files under out/ are still reconciled",()=>{
+  const x=sandbox();
+  try{
+    mkdirSync(join(x.cwd,"src/dist"),{recursive:true});
+    writeFileSync(join(x.cwd,"src/dist/t.ts"),"export const t = 1;\n");
+    execFileSync("git",["add","-f","src/dist/t.ts"],{cwd:x.cwd});
+    execFileSync("git",["commit","-qm","tracked dist"],{cwd:x.cwd});
+    x.result("bash","0");
+    writeFileSync(join(x.cwd,"src/dist/t.ts"),"export const t = 2;\n");
+    mkdirSync(join(x.cwd,"src/out"),{recursive:true});
+    writeFileSync(join(x.cwd,"src/out/o.ts"),"export const o = 1;\n");
+    const out=x.result("bash","1");
+    assert.match(out,/src\/dist\/t\.ts/);
+    assert.match(out,/src\/out\/o\.ts/);
+  }finally{x.cleanup();}
+});
+
+test("a reset clears redelivery counts so a later change gets full redelivery",()=>{
+  const continued=(s:string)=>(s.match(/reconciliation \(continued\)/g)??[]).length;
+  const scenario=(partial:boolean)=>{
+    const x=sandbox();
+    try{
+      x.result("bash","0");
+      burst(x.cwd,8);
+      x.result("bash","1");
+      if(partial)assert.ok(continued(x.result("bash","2"))>0,"first redelivery expected");
+      const resumed={...x.ctx,sessionManager:{getBranch:()=>[{type:"message",message:{role:"user",content:[{type:"text",text:"Implement authorization"}]}}]}};
+      x.handlers.get("session_tree")!({},resumed);
+      for(let i=0;i<8;i++)writeFileSync(join(x.cwd,"src/orders/routes/f"+i+".ts"),"export const w"+i+" = 9;\n");
+      x.result("bash","3");
+      let n=0;
+      for(let i=0;i<5;i++)n+=continued(x.result("bash","d"+i));
+      return n;
+    }finally{x.cleanup();}
+  };
+  const fresh=scenario(false);
+  assert.ok(fresh>0,"scenario must produce redeliveries");
+  assert.equal(scenario(true),fresh,"stale redelivery count survived reset");
+});

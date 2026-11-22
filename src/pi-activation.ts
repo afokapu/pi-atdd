@@ -180,7 +180,7 @@ export default function atdd(pi:ExtensionAPI):void {
   }
   function reset():void{
     reasoning=undefined;delivered.clear();unresolvedPaths.clear();observationWarning=false;
-    pendingPostTool.clear();
+    pendingPostTool.clear();redeliveries.clear();
   }
   function ensure(cwd:string):ReasoningSession{
     if(!catalog||cwdKey!==cwd){
@@ -499,7 +499,7 @@ export default function atdd(pi:ExtensionAPI):void {
   function postToolPage(cwd:string,item:Pending,budget:number):string|undefined{
     const result=observe(cwd,item.operation,"repository-observation",item.provenance,item.path);
     const fresh=newlyRelevant(result);
-    if(!fresh.length&&result.status==="matched"){pendingPostTool.delete(item.path);return undefined;}
+    if(!fresh.length&&result.status==="matched"){pendingPostTool.delete(item.path);redeliveries.delete(item.path);return undefined;}
     const page=renderReasonedPage(result,fresh,budget);
     recordActualDelivery(result,page);
     if(page.omittedIds.length&&(redeliveries.get(item.path)??0)<MAX_REDELIVERIES)pendingPostTool.set(item.path,item);
