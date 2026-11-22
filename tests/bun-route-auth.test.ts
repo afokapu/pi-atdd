@@ -1,0 +1,38 @@
+// ATD-22: security source witnesses are distinct from lexical task wording.
+import test from "node:test";
+import assert from "node:assert/strict";
+import {inspectBunRouteAuth} from "../src/bun-route-auth.ts";
+
+const route=(method:string,handler:string)=>
+  'Bun.serve({routes:{"/orders":{'+method+":"+handler+"}}});";
+const handler='()=>new Response("ok")';
+
+test("Bun auth observer reports positive unguarded and a source-backed GET-only negative",()=>{
+  assert.equal(inspectBunRouteAuth("src/server.ts",route("DELETE",handler)).status,"unguarded");
+  assert.equal(inspectBunRouteAuth("src/server.ts",route("GET",handler)).status,"read-only");
+  assert.equal(inspectBunRouteAuth("src/server.ts",'const other={DELETE:()=>1};').status,"unrelated");
+});
+test("only a guard inside the affected handler exempts that handler",()=>{
+  const guarded='()=>{requireAuth();return new Response("ok")}';
+  assert.equal(inspectBunRouteAuth("src/server.ts",route("POST",guarded)).status,"guarded");
+  const sibling='Bun.serve({routes:{"/x":{GET:()=>{requireAuth();return 1},DELETE:()=>2}}});';
+  assert.equal(inspectBunRouteAuth("src/server.ts",sibling).status,"unguarded");
+  const mixed='Bun.serve({routes:{"/x":{POST:'+guarded+',DELETE:()=>2}}});';
+  assert.equal(inspectBunRouteAuth("src/server.ts",mixed).status,"unguarded");
+});
+test("unresolved handler, dynamic config and incomplete syntax are UNKNOWN, not safe",()=>{
+  assert.deepEqual(inspectBunRouteAuth("src/server.ts",route("POST","handler")),
+    {status:"unknown",reasons:["route_or_handler_unresolved"]});
+  assert.equal(inspectBunRouteAuth("src/server.ts",'Bun.serve(buildConfig());').status,"unknown");
+  assert.equal(inspectBunRouteAuth("src/server.ts",'Bun.serve({routes:{').status,"unknown");
+  assert.equal(inspectBunRouteAuth("src/server.ts",undefined).status,"unknown");
+  assert.equal(inspectBunRouteAuth("src/server.test.ts",route("POST",handler)).status,"unrelated");
+});
+test("fetch method checks are branch-sensitive, including a method alias",()=>{
+  const plain='Bun.serve({fetch(req){const method=req.method;if(method==="PATCH"){return new Response("ok")}}});';
+  assert.equal(inspectBunRouteAuth("src/server.ts",plain).status,"unguarded");
+  const guarded='Bun.serve({fetch(req){if(req.method==="PATCH"){requireAuth();return new Response("ok")}}});';
+  assert.equal(inspectBunRouteAuth("src/server.ts",guarded).status,"guarded");
+  const sibling='Bun.serve({fetch(req){if(req.method==="GET"){requireAuth()} if(req.method==="POST"){return new Response("ok")}}});';
+  assert.equal(inspectBunRouteAuth("src/server.ts",sibling).status,"unguarded");
+});
