@@ -32,7 +32,8 @@ test("OBS-002 every fires and doesNotFire example is probed, but no task-only te
     o.missingEvidence.includes("source_or_diff_not_observed")));
   assert.equal(r.taskOnlyFireMatches+r.taskOnlyFireMisses,r.fireCases);
   assert.equal(r.taskOnlyNegativeMatches+r.taskOnlyNegativeNonMatches,r.doesNotFireCases);
-  assert.ok(outcomes.some(x=>x.effectiveRuleId.includes("design-hierarchy-import")));
+  assert.ok(outcomes.some(x=>x.sidecarPath.includes("design-hierarchy-import")),
+    "the frozen legacy path is retained even when the loaded rule was renamed");
   // Every case is individually addressable in the persisted GitHub Actions log,
   // even when the source prose cannot be turned into an authorized event.
   for(const o of outcomes)console.log("ATD41_OBS002_CASE "+JSON.stringify({
