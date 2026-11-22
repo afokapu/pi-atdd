@@ -22,17 +22,21 @@ function fixture() {
   const taskDir = join(root, "work", "demo", "tasks");
   mkdirSync(taskDir, { recursive: true });
   const file = join(taskDir, "delivery.yaml");
-  const task = (status: string, phase?: string, assignee=seatAddress) => {
+  const task = (status: string, phase?: string, assignee=seatAddress, blocker?:string) => {
     writeFileSync(file, stringify({
       schema: "atdd-workflow/task/v1", title: "Deliver feature", status,
       coordinator: "coordinator@demo", assignee,
       ...(phase ? { phase } : {}),
+      ...(blocker ? { blocker } : {}),
       done_when: [{ text: "Feature works" }],
     }));
   };
   task("in_progress");
 
-  const receiptFile = join(root, "receipt.yaml");
+  // Match Flow's real launch receipt location, not a fictional root file.
+  const receiptDir = join(root, ".atdd-flow", "runtime-launch");
+  mkdirSync(receiptDir,{recursive:true});
+  const receiptFile = join(receiptDir, session + "-receipt.yaml");
   const receipt = {
     schema: "atdd-flow/pi-runtime-launch-receipt/v1", seat: seatAddress,
     tasks: ["delivery"],
@@ -87,6 +91,9 @@ test("ATD-42: authenticated task supplies the current PLAN, RED, GREEN and REFAC
     assert.equal(readTrustedFlowPhase(x.bound)?.phase, "REFACTOR");
     x.task("review", "refactor");
     assert.equal(readTrustedFlowPhase(x.bound), undefined);
+    x.task("in_progress", "green", seatAddress, "waiting for a dependency");
+    assert.equal(readTrustedFlowPhase(x.bound), undefined, "blocked work has no executable phase");
+    assert.equal(readEnvFlowPhase(x.env, x.ctx), undefined, "native and leased paths agree");
   } finally { x.finish(); }
 });
 
@@ -132,6 +139,10 @@ test("ATD-42: stale or misbound Flow runtime never becomes an authoritative phas
     assert.throws(() => readEnvFlowPhase(x.env, x.ctx), /did not authorize the active task/);
     x.writeSeat({...x.record, runtime: {...x.record.runtime, launch_receipt: ""}});
     assert.equal(readEnvFlowPhase(x.env, x.ctx), undefined, "missing receipt means unknown");
+    const outside = join(x.root, "untrusted-receipt.yaml");
+    writeFileSync(outside, stringify(x.receipt));
+    x.writeSeat({...x.record, runtime: {...x.record.runtime, launch_receipt: outside}});
+    assert.throws(() => readEnvFlowPhase(x.env, x.ctx), /outside the runtime-launch directory/);
   } finally { x.finish(); }
 });
 
