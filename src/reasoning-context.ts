@@ -16,7 +16,7 @@ import { PositiveReasoner, groundKey, type Fact, type Proof, type Rule, type Del
 import { discoverSourceEvidence } from "./structural-evidence.ts";
 import { classifyFileKind, observeDomainImports, sourceSyntaxEvidence } from "./operational-observers.ts";
 
-export type Phase = "RED" | "GREEN" | "REFACTOR" | "SMOKE";
+export type Phase = "PLAN" | "RED" | "GREEN" | "REFACTOR" | "SMOKE";
 export type Operation = "task" | "create" | "edit" | "review";
 export type Origin = "pi-event" | "repository-observation" | "trusted-work-provider" | "detector-result";
 /** Only a named, revision-bound detector adapter may submit this structured evidence. */
@@ -170,7 +170,44 @@ function typedRules(catalog: Catalog): Rule[] {
       ],
     });
   }
-  return typed;
+  return [...typed, ...trustedPhaseRules(catalog)];
+}
+
+/** A phase is an observed workflow fact, not a word guessed from the prompt.
+ * This table activates existing pinned rules without altering the source graph. */
+/** A trusted phase is necessary context, not proof that every rule with that phase
+ * applies. Only workflow-wide obligations are phase-gated here. Test-file,
+ * route, authoring and validator-specific conventions require separate observed
+ * source/operation/finding evidence; do not infer them from the phase alone.
+ */
+const guidanceByPhase: Record<Phase, readonly string[]> = {
+  PLAN: [
+    "planner.decomposition.local-scope",
+    "planner.steps.jtbd-taxonomy",
+    "planner.acceptance.well-formed",
+    "planner.plan.granularity-completeness",
+    "planner.plan.session-lifecycle",
+  ],
+  RED: ["tester.red.behavioral-assertion", "tester.red.fails-first"],
+  GREEN: ["coder.phase.discipline"],
+  REFACTOR: ["coder.phase.discipline"],
+  SMOKE: [],
+};
+
+/** Missing phase guidance is INCOMPLETE, not a silently dropped rule.
+ * A weaker model must not need to recognize the missing convention. */
+function trustedPhaseRules(catalog: Catalog): Rule[] {
+  const result: Rule[] = [];
+  for (const [phase, ids] of Object.entries(guidanceByPhase)) for (const id of ids) {
+    const available = catalog.rules.has(id);
+    result.push({
+      id: "pi-atdd.trusted-phase-" + phase.toLowerCase() + "-" + id,
+      source: "pi-atdd/adapters/trusted-work-phase-v1",
+      head: { predicate: available ? "active" : "missing_requirement", terms: ["?subject", id] },
+      body: [{ predicate: "phase", terms: ["?subject", phase] }],
+    });
+  }
+  return result;
 }
 // Reasons are collected from the complete derivation tree, not merely the
 // final rule head. Multiple independent observations must remain inspectable.
@@ -234,7 +271,7 @@ function validateProviderEvidence(ob: ContextObservation): void {
   const asserted = ob.actorRole !== undefined || ob.phase !== undefined || ob.acceptance !== undefined;
   if (asserted && ob.origin !== "trusted-work-provider")
     throw new Error("authority, phase and acceptance require trusted provider evidence");
-  if (ob.phase && !["RED","GREEN","REFACTOR","SMOKE"].includes(ob.phase))
+  if (ob.phase && !["PLAN","RED","GREEN","REFACTOR","SMOKE"].includes(ob.phase))
     throw new Error("unrecognized provider phase");
   if (asserted && !ob.revision)
     throw new Error("trusted provider assertions require a pinned revision");

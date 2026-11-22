@@ -1,6 +1,9 @@
+// URN: test:pi-atdd:incremental-inference:E002-UNIT-001-reasoner
 // Acceptance: acc:pi-atdd:E002-UNIT-001
 // Acceptance: acc:pi-atdd:E002-UNIT-003
 // Acceptance: acc:pi-atdd:E002-UNIT-005
+// Phase: UNIT
+// Layer: application
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -160,5 +163,57 @@ test("co-located test URN source fact derives acceptance binding and is revoked 
     assert.match(JSON.stringify(first.activations.find(x=>x.id==="tester.acceptance.binding-declared")!.proof),/test_urn_header/);
     const second=a.session.observe({...input,sourceText:'import assert from "node:assert";'});
     assert.ok(second.removed.includes("tester.acceptance.binding-declared"));
+  }finally{a.finish();}
+});
+
+
+test("ATD-42: a trusted PLAN fact automatically supplies JTBD and acceptance conventions", () => {
+  const a=setup();
+  try {
+    const mk=(phase:"PLAN"|"RED"|"GREEN"|"REFACTOR")=>({
+      scope:"phase-128",task:"Implement the assigned delivery",operation:"task" as const,
+      phase,actorRole:"driver",
+      origin:"trusted-work-provider" as const,
+      provenance:"Flow-owned task and authenticated seat",revision:"verified-phase-test-revision",
+    });
+    const plan=a.session.observe(mk("PLAN"));
+    const ids=new Set(plan.activations.map(x=>x.id));
+    for(const id of ["planner.steps.jtbd-taxonomy", "planner.decomposition.local-scope",
+      "planner.acceptance.well-formed", "planner.plan.granularity-completeness",
+      "planner.plan.session-lifecycle"])
+      assert.ok(ids.has(id), "PLAN supplies "+id);
+    const red=a.session.observe(mk("RED"));
+    for(const id of ["tester.red.behavioral-assertion", "tester.red.fails-first"])
+      assert.ok(red.activations.some(x=>x.id===id), "RED supplies "+id);
+    assert.ok(red.removed.includes("planner.steps.jtbd-taxonomy"), "old plan-phase rules retract");
+    const green=a.session.observe(mk("GREEN"));
+    assert.ok(green.activations.some(x=>x.id==="coder.phase.discipline"));
+    assert.ok(!green.activations.some(x=>x.id==="tester.red.fails-first"));
+    const refactor=a.session.observe(mk("REFACTOR"));
+    for(const id of ["coder.phase.discipline"])
+      assert.ok(refactor.activations.some(x=>x.id===id), "REFACTOR supplies "+id);
+    assert.ok(!refactor.activations.some(x=>x.id==="coder.dead-code.reachability"),"dead-code scanner needs actual TypeScript source evidence");
+  } finally {a.finish();}
+});
+
+
+test("ATD-42: missing required PLAN guidance is INCOMPLETE, never falsely ready", () => {
+  const a=setup();
+  try {
+    // Simulate one unavailable canonical rule without modifying pinned source.
+    const sparse={...a.catalog,rules:new Map(a.catalog.rules)};
+    sparse.rules.delete("planner.steps.jtbd-taxonomy");
+    const session=new ReasoningSession(sparse,[]);
+    const observation={
+      scope:"missing-phase-rule",task:"Deliver a bounded task",operation:"task" as const,
+      phase:"PLAN" as const,origin:"trusted-work-provider" as const,
+      provenance:"verified Flow task and launch receipt",revision:"verified-phase-test-revision",
+    };
+    const result=session.observe(observation);
+    assert.equal(result.status,"incomplete");
+    assert.ok(result.gaps.some(g=>g.missingId==="planner.steps.jtbd-taxonomy"));
+    const cleared=session.observe({...observation,phase:undefined});
+    assert.ok(!cleared.gaps.some(g=>g.missingId==="planner.steps.jtbd-taxonomy"),
+      "the missing requirement is scoped to the trusted PLAN phase");
   }finally{a.finish();}
 });

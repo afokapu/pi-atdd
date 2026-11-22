@@ -1,7 +1,10 @@
+// URN: test:pi-atdd:incremental-inference:E002-INTEGRATION-006-hook
 // Acceptance: acc:pi-atdd:E003-UNIT-201
 // Acceptance: acc:pi-atdd:E003-UNIT-204
 // Acceptance: acc:pi-atdd:E002-INTEGRATION-006
 // Acceptance: acc:pi-atdd:E002-UNIT-001
+// Phase: UNIT
+// Layer: application
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { execFileSync } from "node:child_process";
@@ -11,8 +14,9 @@ import { join } from "node:path";
 import atdd from "../extensions/atdd.ts";
 import { digestSource } from "../src/catalog.ts";
 import { activationLogPath } from "../src/activation-telemetry.ts";
+import { stringify } from "yaml";
 
-function sandbox() {
+function sandbox(env:NodeJS.ProcessEnv=process.env) {
   const cwd=mkdtempSync(join(tmpdir(),"pi-atdd-pi-live-"));
   const telemetryRoot=mkdtempSync(join(tmpdir(),"pi-atdd-telemetry-isolated-"));
   const git=(...args:string[])=>execFileSync("git",args,{cwd,encoding:"utf8"});
@@ -28,7 +32,7 @@ function sandbox() {
     registerTool:()=>{},
     sendMessage:(message:{customType:string;content:string},options:unknown)=>messages.push({message,options}),
   };
-  atdd(p as any,{telemetryRoot});
+  atdd(p as any,{telemetryRoot,env});
   const ctx={cwd,isProjectTrusted:()=>true,ui:{notify:()=>{}}};
   return {cwd,handlers,messages,ctx,git,
     logPath:()=>activationLogPath(cwd,{root:telemetryRoot}),
@@ -288,4 +292,142 @@ test("ATD-41 literal shell heredoc preflight and runtime-computed bypass post-ob
     x.handlers.get("tool_execution_end")!({toolName:"bash",isError:false},x.ctx);
     assert.equal(x.messages.length,count,"unchanged bypass does not redeliver");
   }finally{x.cleanup();}
+});
+
+/** A real Flow launcher writes this Desk tuple and the runtime receipt before Pi starts.
+ * The environment is local to one extension instance, not shared process state. */
+function flowHookFixture(cwd:string,env:NodeJS.ProcessEnv) {
+  const root=mkdtempSync(join(tmpdir(),"pi-atdd-flow-hook-"));
+  const seat="driver.delivery@demo", session="atd-42-pi-session";
+  const taskFile=join(root,"work","demo","tasks","delivery.yaml");
+  const receiptFile=join(root,".atdd-flow","runtime-launch","launch-receipt.yaml");
+  const piSessionPath=join(root,"pi-session.jsonl");
+  mkdirSync(join(root,"work","demo","tasks"),{recursive:true});
+  mkdirSync(join(root,"work","demo","seats","driver.delivery"),{recursive:true});
+  mkdirSync(join(root,".atdd-flow","runtime-launch"),{recursive:true});
+  const writeTask=(phase:string)=>writeFileSync(taskFile,stringify({
+    schema:"atdd-workflow/task/v1",title:"Deliver a bounded task",status:"in_progress",
+    coordinator:"coordinator@demo",assignee:seat,phase,
+    done_when:[{text:"Demonstrate the intended behavior"}],
+  }));
+  writeTask("plan");
+  writeFileSync(receiptFile,stringify({
+    schema:"atdd-flow/pi-runtime-launch-receipt/v1",seat,tasks:["delivery"],
+    pi_session:session,pi_session_path:piSessionPath,herdr_session:"forge",pane:"w1:p2",
+  }));
+  writeFileSync(join(root,"work","demo","seats","driver.delivery","seat.yaml"),stringify({
+    schema:"atdd-workflow/seat/v2",address:seat,role:"driver",
+    project:"demo",worktree:cwd,branch:"delivery/demo",
+    runtime:{
+      application:"herdr",wake:"native",addresses:{herdr:{session:"forge",pane:"w1:p2"}},
+      pi_session:session,pi_session_path:piSessionPath,launch_receipt:receiptFile,
+    },
+  }));
+  Object.assign(env,{
+    ATDD_WORKFLOW_ROOT:root,ATDD_WORKFLOW_SEAT:seat,
+    ATDD_FLOW_PI_SESSION:session,ATDD_FLOW_HERDR_SESSION:"forge",
+    ATDD_FLOW_HERDR_PANE:"w1:p2",
+  });
+  return {root,session,seat,taskFile,receiptFile,piSessionPath,writeTask,
+    cleanup:()=>rmSync(root,{recursive:true,force:true})};
+}
+
+/** Pages are receipts, not implied model knowledge. Drain the existing Pi
+ * before_agent_start pages and assert that they terminate without duplication. */
+function drainHookPages(start:Function,ctx:unknown):string {
+  const pages:string[]=[];
+  for(let i=0;i<30;i++){
+    const next=start({messageType:"extension",prompt:""},ctx);
+    if(next===undefined)return pages.join("\n");
+    assert.equal(next?.message?.customType,"pi-atdd-inference");
+    pages.push(next.message.content);
+  }
+  assert.fail("trusted phase guidance must be delivered in bounded pages");
+}
+
+test("ATD-42: the Pi hook delivers phases from the verified Flow task without false green", () => {
+  const env:NodeJS.ProcessEnv={};
+  const x=sandbox(env), flow=flowHookFixture(x.cwd,env);
+  const ctx={...x.ctx,sessionManager:{getSessionId:()=>flow.session}};
+  const onStart=x.handlers.get("before_agent_start")!;
+  try {
+    const plan=onStart({messageType:"user",prompt:"Implement the assigned work"},ctx);
+    assert.equal(plan?.message?.customType,"pi-atdd-inference");
+    const planned=plan.message.content+"\n"+drainHookPages(onStart,ctx);
+    for(const id of ["planner.steps.jtbd-taxonomy", "planner.plan.session-lifecycle",
+      "planner.acceptance.well-formed"])
+      assert.ok(planned.includes(id), "PLAN guidance omitted "+id);
+    assert.match(planned,/Canonical source:/);
+    assert.match(planned,/Flow-owned task demo\/delivery/);
+    assert.equal(onStart({messageType:"extension",prompt:""},ctx),undefined,
+      "completed guidance must not be re-injected");
+    assert.match(readFileSync(flow.taskFile,"utf8"),/phase: plan/,"the hook must be read-only");
+
+    flow.writeTask("red");
+    const red=onStart({messageType:"extension",prompt:""},ctx);
+    assert.equal(red?.message?.customType,"pi-atdd-inference");
+    const redGuidance=red.message.content+"\n"+drainHookPages(onStart,ctx);
+    assert.match(redGuidance,/tester\.red\.behavioral-assertion/);
+    assert.match(redGuidance,/tester\.red\.fails-first/);
+    flow.writeTask("green");
+    const green=onStart({messageType:"extension",prompt:""},ctx);
+    assert.equal(green?.message?.customType,"pi-atdd-inference");
+    assert.match(green.message.content,/coder\.phase\.discipline/);
+    drainHookPages(onStart,ctx);
+    flow.writeTask("refactor");
+    const refactor=onStart({messageType:"extension",prompt:""},ctx);
+    assert.equal(refactor?.message?.customType,"pi-atdd-inference");
+    const refactorGuidance=refactor.message.content+"\n"+drainHookPages(onStart,ctx);
+    for(const id of ["coder.phase.discipline"])
+      assert.ok(refactorGuidance.includes(id), "REFACTOR guidance omitted "+id);
+    assert.ok(!refactorGuidance.includes("coder.dead-code.reachability"),
+      "a bare REFACTOR phase must not claim applicability of unobserved dead-code findings");
+
+    // A session swap invalidates the receipt; old phase guidance is withdrawn.
+    writeFileSync(flow.receiptFile,stringify({
+      schema:"atdd-flow/pi-runtime-launch-receipt/v1",
+      seat:flow.seat,tasks:["delivery"],pi_session:"a-superseded-session",
+      pi_session_path:flow.piSessionPath,herdr_session:"forge",pane:"w1:p2",
+    }));
+    const refused=onStart({messageType:"extension",prompt:""},ctx);
+    assert.equal(refused?.message?.customType,"pi-atdd-error");
+    assert.match(refused.message.content,/launch receipt does not match/);
+    assert.ok(!refused.message.content.includes("coder.phase.discipline"));
+  }finally{x.cleanup();flow.cleanup();}
+});
+
+
+test("ATD-42: edits cannot bypass phase conventions omitted from the first page", () => {
+  const env:NodeJS.ProcessEnv={}, x=sandbox(env), flow=flowHookFixture(x.cwd,env);
+  const ctx={...x.ctx,sessionManager:{getSessionId:()=>flow.session}};
+  const start=x.handlers.get("before_agent_start")!, edit=x.handlers.get("tool_call")!;
+  try {
+    const initial=start({messageType:"user",prompt:"Implement this delivery"},ctx);
+    assert.equal(initial?.message?.customType,"pi-atdd-inference");
+    const event={toolName:"edit",input:{path:"src/orders/routes/create.ts"}};
+    let sawStageGuard=false, sawFileGuard=false;
+    for(let i=0;i<35;i++){
+      const response=edit(event,ctx);
+      if(response?.reason?.includes("ATDD phase PLAN guidance")) {
+        sawStageGuard=true;
+        assert.equal(response.block,true);
+        continue;
+      }
+      // Once phase guidance is delivered, the normal file-specific preflight
+      // still applies rather than being bypassed by stage pagination.
+      assert.equal(response?.block,true);
+      assert.match(response.reason,/ATDD contextual preflight/);
+      sawFileGuard=true;
+      break;
+    }
+    assert.equal(sawStageGuard,initial.message.content.includes("omitted by budget"),
+      "stage preflight must exactly account for undelivered phase rules");
+    assert.equal(sawFileGuard,true,"the bounded stage pages must eventually drain");
+    // A phase transition during the same Pi turn still activates RED before
+    // the next edit; the model does not need to recognize the transition.
+    flow.writeTask("red");
+    const transitioned=edit(event,ctx);
+    assert.equal(transitioned?.block,true);
+    assert.match(transitioned.reason,/ATDD phase RED guidance/);
+  }finally{x.cleanup();flow.cleanup();}
 });
