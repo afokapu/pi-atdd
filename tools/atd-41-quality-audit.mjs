@@ -49,7 +49,7 @@ const reviewFunctions=new Set([
   // Auth and header observers must pass the same pinned Bun metric thresholds.
   "keyOf","objectOf","member","bodyOf","hasDirectGuard","handlerState",
   "routeStates","methodBranch","fetchStates","inspectBunRouteAuth",
-  "discoverSourceEvidence",
+  "testHeaderFacts","bunAuthFacts","discoverSourceEvidence",
   "validRevision","validateImportBoundary","roleInPath","specifierOf",
   "collect","dynamicUnknowns","scan","summarizedEdges","reconcileOutwardScans",
   "observeOutwardImports",
