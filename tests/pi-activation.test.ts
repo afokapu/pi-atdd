@@ -468,3 +468,26 @@ test("ATD-22 OBS-004: real post-tool findings reach authenticated REFACTOR, neve
       "reintroduction after retraction must deliver a new source-identified finding");
   }finally{x.cleanup();flow.cleanup();}
 });
+
+test("ATD-22 OBS-001: outward application dependency is intercepted by real Pi before mutation",()=>{
+  const x=sandbox();
+  const path="src/orders/application/checkout.ts";
+  const prior="export const checkout = 1;\n";
+  const proposal='import {Page} from "../presentation/Page";\n'+prior;
+  try{
+    mkdirSync(join(x.cwd,"src/orders/application"),{recursive:true});
+    writeFileSync(join(x.cwd,path),prior);
+    x.git("add",".");x.git("commit","-qm","application source baseline");
+    x.handlers.get("before_agent_start")!({messageType:"user",prompt:"Update checkout"},x.ctx);
+    const event={toolName:"write",input:{path,content:proposal}};
+    const result=x.handlers.get("tool_call")!(event,x.ctx);
+    assert.equal(result.block,true,"the pre-edit hook must deliver guidance before changing source");
+    assert.match(result.reason,/coder\\.architecture\\.hierarchy-import/);
+    assert.equal(readFileSync(join(x.cwd,path),"utf8"),prior,"preflight must never perform the edit");
+    const telemetry=readFileSync(x.logPath(),"utf8");
+    assert.ok(telemetry.includes("change:outward_layer_import_added"),
+      "newly observed outward dependency must be identified independently of task wording");
+    assert.equal(x.handlers.get("tool_call")!(event,x.ctx),undefined,
+      "an identical already-delivered proof must not trap a retry");
+  }finally{x.cleanup();}
+});
