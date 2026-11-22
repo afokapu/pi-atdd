@@ -67,7 +67,7 @@ export type WitnessReport = {
 export function replayQualifiedSidecarWitnesses():WitnessReport {
   const manifest=enumerateSidecarExamples();
   if(manifest.lockFailures.length)throw Error("sidecar source lock drift");
-  const lookup=new Map(manifest.examples.map(x=>[key(x.sourceId,x.kind,x.index),x]));
+  const lookup=new Map(manifest.examples.map(x=>[key(x.effectiveRuleId,x.kind,x.index),x]));
   const cwd=mkdtempSync(join(tmpdir(),"pi-atdd-obs002-structural-"));
   const cases:WitnessOutcome[]=[];
   try{
@@ -96,7 +96,7 @@ export function replayQualifiedSidecarWitnesses():WitnessReport {
         sourceLock:original.sourceSha256,basis:sample.structuralBasis});
     }
   }finally{rmSync(cwd,{recursive:true,force:true});}
-  const originalCases=new Set(manifest.examples.map(x=>key(x.sourceId,x.kind,x.index)));
+  const originalCases=new Set(manifest.examples.map(x=>key(x.effectiveRuleId,x.kind,x.index)));
   if(originalCases.size!==manifest.examples.length)throw Error("duplicate source case identity");
   const evaluated=new Set(cases.map(x=>key(x.sourceId,x.kind,x.index)));
   if(evaluated.size!==cases.length)throw Error("duplicate executable witness");
@@ -113,7 +113,7 @@ export function fullWitnessGapSummary() {
   const full=replayAllSidecarExamples();
   const qualified=replayQualifiedSidecarWitnesses();
   const seen=new Set(qualified.cases.map(x=>key(x.sourceId,x.kind,x.index)));
-  const unqualified=full.outcomes.filter(x=>!seen.has(key(x.sourceId,x.kind,x.index)));
+  const unqualified=full.outcomes.filter(x=>!seen.has(key(x.effectiveRuleId,x.kind,x.index)));
   return {total:full.totalCases,qualified:qualified.verified,
     pass:qualified.passed,fail:qualified.failed,
     unqualified:unqualified.length,
