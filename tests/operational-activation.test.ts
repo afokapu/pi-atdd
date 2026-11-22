@@ -132,7 +132,7 @@ test("source-scoped architecture excludes tests, vendor and known external impor
     const cases=[
       ["src/orders/domain/price.test.ts",IMPORT],
       ["vendor/src/orders/domain/price.ts",IMPORT],
-      [DOMAIN,'import ts from "typescript";\\n'+BASE],
+      [DOMAIN,'import ts from "typescript";\n'+BASE],
     ] as const;
     for(const [path,code] of cases){
       const result=x.session.observe({

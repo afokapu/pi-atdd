@@ -344,7 +344,7 @@ function architectureExcludedBySource(ob: ContextObservation): boolean {
     outward.unknownReasons.some(reason=>reason!=="prior_source_unavailable"))return false;
   if(sourceSyntaxEvidence(ob.path,ob.sourceText).status!=="observed")return false;
   const ast=ts.createSourceFile(ob.path,ob.sourceText,ts.ScriptTarget.Latest,true,
-    /\\.[jt]sx$/i.test(ob.path)?ts.ScriptKind.TSX:ts.ScriptKind.TS);
+    /\.[jt]sx$/i.test(ob.path)?ts.ScriptKind.TSX:ts.ScriptKind.TS);
   // A known local/external import can establish a negative; no-import source
   // continues to receive domain-edit construction guidance (PLT-78).
   return ast.statements.some(statement=>
