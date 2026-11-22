@@ -103,6 +103,9 @@ function hierarchyObservationRules(catalog: Catalog): Rule[] {
     body: [
       { predicate: "file_layer", terms: [DATALOG_SUBJECT, "domain"] },
       { predicate: "operation", terms: [DATALOG_SUBJECT, "edit"] },
+      // Legacy domain-edit guidance is only a fallback when source syntax
+      // cannot be inspected; a clean code witness takes precedence.
+      { predicate: "source_uninspected", terms: [DATALOG_SUBJECT, "architecture"] },
     ],
   });
   // The historical path+operation rule above remains for compatibility. It is
@@ -327,12 +330,13 @@ function validateObservation(ob: ContextObservation): void {
  * the selector remains available for missing/incomplete source situations.
  */
 function sourceExcludesArchitecture(ob: ContextObservation): boolean {
-  if (!ob.path || ob.sourceText === undefined) return false;
+  if (!ob.path) return false;
   const kind = classifyFileKind(ob.path, ob.sourceText);
   if (kind.status !== "observed") return false;
-  if (kind.kind !== "source") return true;
+  if (kind.kind !== "source") return true; // test/vendor/generated/declaration
   const role = roleInPath(ob.path);
   if (!role || role === "assembly") return true;
+  if (ob.sourceText === undefined) return false; // cannot inspect, keep guidance
   const outward = observeOutwardImports(ob.path, ob.sourceText);
   if (!outward.sourceObserved || outward.present) return false;
   // The validator can inspect PRESENT dependencies without a prior snapshot.
@@ -396,6 +400,10 @@ export class ReasoningSession {
     if (kind.status === "observed")
       add("file_kind", [ob.scope, kind.kind], "file_kind:" + kind.basis + " @ " + ob.provenance);
     else missing("file_kind", kind.reason);
+    if(kind.status === "observed" && kind.kind === "source" &&
+       roleInPath(ob.path)==="domain" && ob.sourceText === undefined)
+      add("source_uninspected",[ob.scope,"architecture"],
+        "source_missing_for_legacy_architecture_guidance @ "+ob.provenance);
     if (ob.origin === "detector-result") return;
     this.syntaxInputs(ob, kind, add, missing);
     this.changeInputs(ob, add, missing);
