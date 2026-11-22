@@ -440,6 +440,11 @@ test("ATD-42: governed PLAN and RED stop implementation edits before accepted ha
   const ctx={...x.ctx,sessionManager:{getSessionId:()=>flow.session}};
   const edit=x.handlers.get("tool_call")!;
   try {
+    // Pi establishes the governed run at before_agent_start, not on an inert
+    // tool event in a session that has never been launched.
+    const started=x.handlers.get("before_agent_start")!(
+      {messageType:"user",prompt:"Implement the assigned governed task"},ctx);
+    assert.equal(started?.message?.customType,"pi-atdd-inference");
     const source=edit({toolName:"edit",input:{path:"src/orders/routes/create.ts"}},ctx);
     assert.equal(source?.block,true);
     assert.match(source.reason,/ATDD PLAN: only scoped plan artifacts/);
