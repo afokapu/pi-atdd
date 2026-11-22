@@ -85,8 +85,9 @@ const INTENT_RULE="Use set_atdd_mode when the user signals, in any wording or la
 const oneLine=(s:string)=>s.replace(/\s+/g," ").trim().slice(0,160);
 const MODE_CHOICES=["ATDD — remember for this repo","Plain — remember for this repo",
   "ATDD — this session only","Plain — this session only"];
-export default function atdd(pi:ExtensionAPI):void {
-  const executionSeat = registerSeatExecution(pi); // PLT-117: inert unless launch-bound
+/** Pass explicit host settings in tests; never mutate global environment. */
+export default function atdd(pi:ExtensionAPI,env:NodeJS.ProcessEnv=process.env):void {
+  const executionSeat = registerSeatExecution(pi,env); // PLT-117: inert unless launch-bound
   // PLT-118: a scoped attention route follows the live seat binding and its writes are fenced against seat transfer.
   const attentionStrip=registerAttentionStrip(pi, attentionSeatOptions(executionSeat)); // PLT-101
   registerBusyState(pi); // PLT-121: busy/idle state file for the relaunch script; inert without an identity
@@ -301,7 +302,7 @@ export default function atdd(pi:ExtensionAPI):void {
       if(arg==="on"||arg==="off"){setMode(ctx,arg==="on"?"atdd":"plain","/atdd "+arg);return;}
       if(arg==="telemetry"){ctx.ui.notify(formatActivationSummary(ctx.cwd),"info");return;}
       if(arg&&arg!=="status"){ctx.ui.notify("Usage: /atdd on | off | status | telemetry","warning");return;}
-      const mode=current??resolveMode({cwd:ctx.cwd,env:process.env});
+      const mode=current??resolveMode({cwd:ctx.cwd,env:env});
       let line=mode.mode?"ATDD mode: "+mode.mode+" ("+mode.source+")":
         "ATDD mode: undecided (an interactive session asks at the first task; other runs use atdd)";
       if(!repositoryRoot(ctx.cwd))line+="; not in a repository, nothing is governed";
@@ -325,7 +326,7 @@ export default function atdd(pi:ExtensionAPI):void {
     const said=event.messageType==="user"?modeFromText(event.prompt??""):undefined;
     if(said)setMode(ctx,said,"your message");
     if(!current){
-      const resolved=resolveMode({cwd:ctx.cwd,env:process.env});
+      const resolved=resolveMode({cwd:ctx.cwd,env:env});
       if(resolved.mode)current=resolved;
       else if(ctx.mode==="tui"&&ctx.hasUI)return ask(ctx).then(()=>startRun(event,ctx));
       else current={mode:"atdd",source:"default, non-interactive"};
@@ -355,7 +356,7 @@ export default function atdd(pi:ExtensionAPI):void {
       // Flow-native seats without a Pi-ATDD lease need Flow's exact launcher receipt.
       const trusted=executionSeat
         ? (executionSeat.owns(ctx)?readTrustedFlowPhase(executionSeat.current()):undefined)
-        : readEnvFlowPhase(process.env,ctx);
+        : readEnvFlowPhase(env,ctx);
       const result=observe(ctx.cwd,"task",trusted?"trusted-work-provider":"pi-event",
         trusted?.provenance??"Pi before_agent_start",undefined,undefined,trusted);
       const newRules=newlyRelevant(result);
@@ -409,14 +410,14 @@ export default function atdd(pi:ExtensionAPI):void {
   }
   /** PLT-122: a Coach's record carries what only the Coach knows; unknown fields stay UNKNOWN. */
   function coachState(text:string):{coach?:CoachState}{
-    if(process.env.PI_ATDD_ATTENTION_ROLE!=="coach")return {};
-    return {coach:{role:"coach",identity:process.env.PI_ATDD_ATTENTION_IDENTITY,profile:process.env.PI_ATDD_ATTENTION_PROFILE,
+    if(env.PI_ATDD_ATTENTION_ROLE!=="coach")return {};
+    return {coach:{role:"coach",identity:env.PI_ATDD_ATTENTION_IDENTITY,profile:env.PI_ATDD_ATTENTION_PROFILE,
       taskRefs:[...extractIssueIds(text),...extractPullRequests(text)],attention:attentionStrip.liveItems()}};
   }
   pi.on("turn_end",(_event,ctx)=>{
     if(!ctx.isProjectTrusted())return;
     let thresholds,maxHops;
-    try{thresholds=resolveThresholds(process.env);maxHops=resolveMaxHops(process.env);}
+    try{thresholds=resolveThresholds(env);maxHops=resolveMaxHops(env);}
     catch(e){ctx.ui.notify("ATDD context handoff disabled: "+String(e),"error");return;}
     const usage=ctx.getContextUsage();
     const effective=usage?clampToCompaction(thresholds,usage.contextWindow,compactionReserve(ctx.model)):thresholds;
