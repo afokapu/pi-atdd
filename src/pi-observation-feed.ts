@@ -13,13 +13,13 @@ import type { Fact, Proof } from "./inference.ts";
 
 type Operation = ContextObservation["operation"];
 type Origin = ContextObservation["origin"];
-type Point = "task_start"|"pre_edit"|"post_tool"|"review"|"scope_reset";
+type Point = "task_start"|"pre_edit"|"post_tool"|"review"|"scope_reset"|"scope_retraction";
 export type ObservedReceipt = {
   factId:string;
   factType:string;
   factArgs:readonly string[];
   origin:string;
-  provenance:string;
+  provenance:string|null;
   evidenceState:"OBSERVED"|"RETRACTED";
 };
 export type RuleReceipt = {
@@ -34,7 +34,7 @@ export type RuleReceipt = {
 export type PiObservationFrame = {
   schema:"pi-atdd/observation-handoff/internal-v1";
   event:{
-    id:string;scope:string;origin:Origin|"pi-session-lifecycle";
+    id:string;scope:string;origin:Origin|"pi-session-lifecycle"|"pi-reconciliation";
     operation:Operation;point:Point;provenance:string;
     repositoryRevision:string|null;
     targetPathHint:string|null;
@@ -66,7 +66,7 @@ function allowedFacts(result:Reconciliation):Map<string,Fact>{
 }
 function receipt(f:Fact,state:ObservedReceipt["evidenceState"]):ObservedReceipt {
   return {factId:f.id,factType:f.predicate,factArgs:[...f.args],
-    origin:f.source,provenance:f.provenance,evidenceState:state};
+    origin:f.source,provenance:f.provenance??null,evidenceState:state};
 }
 /** Stable fact identity is not enough if source or provenance was replaced. */
 function sameSupport(a:Fact,b:Fact):boolean {
@@ -127,27 +127,35 @@ export class PiObservationFeed {
       disposition:"observation_only_no_authority",
     };
   }
-  /** Session/repository switches invalidate evidence but never claim that a
-   * mutation or validator run occurred. The consumer gets scoped tombstones.
+  /** An explicit source/reviewer retraction is never an observed negative.
+   * It removes one scope's supports without affecting independent scopes.
    */
-  invalidate(idPrefix:string):PiObservationFrame[]{
-    const frames=[...this.scopes].map(([scope,snapshot],index)=>({
-      schema:"pi-atdd/observation-handoff/internal-v1" as const,
-      event:{id:idPrefix+"."+index,scope,origin:"pi-session-lifecycle" as const,
-        operation:snapshot.input.operation,point:"scope_reset" as const,
-        provenance:"Pi session/repository evidence invalidated",
+  retractScope(id:string,scope:string,reason:string):PiObservationFrame|null{
+    if(!eventIdValid(id))throw new Error("invalid observation retraction event");
+    const snapshot=this.scopes.get(scope);
+    if(!snapshot)return null;
+    this.scopes.delete(scope);
+    return {
+      schema:"pi-atdd/observation-handoff/internal-v1",
+      event:{id,scope,origin:"pi-reconciliation",operation:snapshot.input.operation,
+        point:"scope_retraction",provenance:reason,
         repositoryRevision:snapshot.input.revision??null,
         targetPathHint:snapshot.input.path??null},
       resourceHints:{fileKind:null,layer:null},
-      observed:[] as ObservedReceipt[],
-      retracted:[...snapshot.facts.values()].map(f=>receipt(f,"RETRACTED")),
-      missing:[{fact:"observation",reason:"scope_invalidated"}],
-      unknownFacts:["observation"],receipts:[] as RuleReceipt[],
-      removedRuleIds:[...snapshot.ruleIds],changedRuleIds:[],
-      graphGaps:[],status:"unknown" as const,
-      disposition:"observation_only_no_authority" as const,
+      observed:[],retracted:[...snapshot.facts.values()].map(f=>receipt(f,"RETRACTED")),
+      missing:[{fact:"observation",reason}],unknownFacts:["observation"],
+      receipts:[],removedRuleIds:[...snapshot.ruleIds],changedRuleIds:[],
+      graphGaps:[],status:"unknown",disposition:"observation_only_no_authority",
+    };
+  }
+  /** Session/repository switches invalidate facts without asserting a new
+   * code mutation or an invented provider/validator identity.
+   */
+  invalidate(idPrefix:string):PiObservationFrame[]{
+    const frames=[...this.scopes.keys()].map((scope,index)=>
+      this.retractScope(idPrefix+"."+index,scope,"scope_invalidated")!);
+    return frames.map(frame=>({
+      ...frame,event:{...frame.event,origin:"pi-session-lifecycle",point:"scope_reset"},
     }));
-    this.scopes.clear();
-    return frames;
   }
 }
