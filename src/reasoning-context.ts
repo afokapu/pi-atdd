@@ -15,7 +15,7 @@ import { canonicalRuleId, matchesGlob, termMatches, validateSelectors, type Cata
 import { PositiveReasoner, groundKey, type Fact, type Proof, type Rule, type Delta } from "./inference.ts";
 import { discoverSourceEvidence } from "./structural-evidence.ts";
 import { classifyFileKind, observeDomainImports, sourceSyntaxEvidence } from "./operational-observers.ts";
-import { observeOutwardImports, roleInPath } from "./layer-import-observer.ts";
+import { observeOutwardImports } from "./layer-import-observer.ts";
 
 export type Phase = "PLAN" | "RED" | "GREEN" | "REFACTOR" | "SMOKE";
 export type Operation = "task" | "create" | "edit" | "review";
@@ -103,9 +103,6 @@ function hierarchyObservationRules(catalog: Catalog): Rule[] {
     body: [
       { predicate: "file_layer", terms: [DATALOG_SUBJECT, "domain"] },
       { predicate: "operation", terms: [DATALOG_SUBJECT, "edit"] },
-      // Legacy domain-edit guidance is only a fallback when source syntax
-      // cannot be inspected; a clean code witness takes precedence.
-      { predicate: "source_uninspected", terms: [DATALOG_SUBJECT, "architecture"] },
     ],
   });
   // The historical path+operation rule above remains for compatibility. It is
@@ -329,21 +326,6 @@ function validateObservation(ob: ContextObservation): void {
  * broad compatibility path/term selector. No canonical YAML is changed:
  * the selector remains available for missing/incomplete source situations.
  */
-function sourceExcludesArchitecture(ob: ContextObservation): boolean {
-  if (!ob.path) return false;
-  const kind = classifyFileKind(ob.path, ob.sourceText);
-  if (kind.status !== "observed") return false;
-  if (kind.kind !== "source") return true; // test/vendor/generated/declaration
-  const role = roleInPath(ob.path);
-  if (!role || role === "assembly") return true;
-  if (ob.sourceText === undefined) return false; // cannot inspect, keep guidance
-  const outward = observeOutwardImports(ob.path, ob.sourceText);
-  if (!outward.sourceObserved || outward.present) return false;
-  // The validator can inspect PRESENT dependencies without a prior snapshot.
-  // Every other unresolved code shape forbids a negative applicability verdict.
-  return outward.unknownReasons.every(x => x === "prior_source_unavailable");
-}
-
 const SOURCE_GAP_REASONS = new Set([
   "invalid_path", "unsupported_file_kind", "proposed_source_unavailable",
   "partial_source_parse", "source_too_large",
@@ -400,10 +382,6 @@ export class ReasoningSession {
     if (kind.status === "observed")
       add("file_kind", [ob.scope, kind.kind], "file_kind:" + kind.basis + " @ " + ob.provenance);
     else missing("file_kind", kind.reason);
-    if(kind.status === "observed" && kind.kind === "source" &&
-       roleInPath(ob.path)==="domain" && ob.sourceText === undefined)
-      add("source_uninspected",[ob.scope,"architecture"],
-        "source_missing_for_legacy_architecture_guidance @ "+ob.provenance);
     if (ob.origin === "detector-result") return;
     this.syntaxInputs(ob, kind, add, missing);
     this.changeInputs(ob, add, missing);
@@ -475,13 +453,6 @@ export class ReasoningSession {
     // not equivalent to AST, before/after, provider or detector observation.
     for (const selector of this.selectors) {
       if (selector.operations?.length && !selector.operations.includes(ob.operation)) continue;
-      // The one-rule architecture selector previously over-fired on tests,
-      // vendored files and inspected bare-package imports. Keep its legacy
-      // fallback for UNKNOWN source, but honor explicit source exclusions.
-      const architectureOnly = selector.rules.length > 0 &&
-        selector.rules.every(x => canonicalRuleId(this.catalog, x) ===
-          "coder.architecture.hierarchy-import");
-      if (architectureOnly && sourceExcludesArchitecture(ob)) continue;
       const matches = [
         ...(selector.terms ?? []).filter(term => termMatches(ob.task, term))
           .map(term => "term:" + term),

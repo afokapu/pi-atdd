@@ -55,11 +55,14 @@ const key=(sourceId:string,kind:string,index:number)=>sourceId+"\0"+kind+"\0"+in
 export type WitnessOutcome = {
   sourceId:string;kind:"fires"|"doesNotFire";index:number;
   expected:boolean;activated:boolean;qualified:boolean;pass:boolean;
-  structuralProof:boolean;sourceLock:string;basis:string;
+  /** Independent code witness, distinct from backward-compatible path guidance. */
+  structuralProof:boolean;structuralPass:boolean;legacyOveractivation:boolean;
+  sourceLock:string;basis:string;
   unexpectedSupport?:string[];
 };
 export type WitnessReport = {
   allCases:number;verified:number;passed:number;failed:number;unqualified:number;
+  structuralPassed:number;legacyOveractivations:number;
   cases:readonly WitnessOutcome[];
   failures:readonly WitnessOutcome[];
 };
@@ -91,9 +94,12 @@ export function replayQualifiedSidecarWitnesses():WitnessReport {
       const proof=JSON.stringify(target?.proof??null);
       const structuralProof=/pi-atdd.typed-(?:domain-integration|outward-layer-import)/.test(proof);
       const activated=!!target;
-      const pass=activated===sample.expected&&(!sample.expected||structuralProof);
+      const structuralPass=sample.expected?structuralProof:!structuralProof;
+      const pass=activated===sample.expected&&structuralPass;
+      const legacyOveractivation=!sample.expected&&activated&&!structuralProof;
       cases.push({sourceId:sample.sourceId,kind:sample.kind,index:sample.index,
         expected:sample.expected,activated,qualified:true,pass,structuralProof,
+        structuralPass,legacyOveractivation,
         sourceLock:original.sourceSha256,basis:sample.structuralBasis,
         ...(!pass ? {unexpectedSupport:target?.reasons ?? []}:{}),
       });
@@ -106,6 +112,8 @@ export function replayQualifiedSidecarWitnesses():WitnessReport {
   const failures=cases.filter(x=>!x.pass);
   return {allCases:manifest.examples.length,verified:cases.length,
     passed:cases.length-failures.length,failed:failures.length,
+    structuralPassed:cases.filter(x=>x.structuralPass).length,
+    legacyOveractivations:cases.filter(x=>x.legacyOveractivation).length,
     unqualified:originalCases.size-evaluated.size,cases,failures};
 }
 
@@ -119,6 +127,8 @@ export function fullWitnessGapSummary() {
   const unqualified=full.outcomes.filter(x=>!seen.has(key(x.effectiveRuleId,x.kind,x.index)));
   return {total:full.totalCases,qualified:qualified.verified,
     pass:qualified.passed,fail:qualified.failed,
+    structuralPassed:qualified.structuralPassed,
+    legacyOveractivations:qualified.legacyOveractivations,
     unqualified:unqualified.length,
     gaps:unqualified.map(x=>({rule:x.effectiveRuleId,kind:x.kind,index:x.index,
       sourceSha256:x.sourceSha256,reason:"no independent executable source/provider/detector witness"})),

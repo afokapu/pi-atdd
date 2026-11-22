@@ -126,19 +126,18 @@ test("detector findings are revision-bound reviewer evidence and independent sup
   }finally{x.finish();}
 });
 
-test("source-backed architecture applicability suppresses known negatives, not UNKNOWN fallback",()=>{
+test("path-only architecture guidance remains distinct from a structural finding",()=>{
   const x=setup();
-  try{
-    const negative=x.session.observe(event("known-clean",DOMAIN,BASE,BASE));
-    assert.equal(has(negative,ARCH),false,
-      "a fully parsed, unchanged domain source with no outward import must not activate hierarchy guidance");
-    const unknown=x.session.observe(event("missing-architecture-source",DOMAIN));
-    assert.equal(has(unknown,ARCH),true,
-      "absent source retains conservative legacy guidance, never a false compliance verdict");
-    assert.ok(unknown.unknownFacts.includes("source"));
-    assert.match(proof(unknown,ARCH),/source_uninspected/);
-    const excluded=x.session.observe(event("excluded-test","src/orders/domain/price.test.ts"));
-    assert.equal(has(excluded,ARCH),false,"test file is out of scope even without source content");
+  try {
+    const contextual=x.session.observe(event("known-clean",DOMAIN,BASE,BASE));
+    assert.equal(has(contextual,ARCH),true,
+      "existing PLT-78 domain-edit guidance is retained for compatibility");
+    assert.doesNotMatch(proof(contextual,ARCH),
+      /pi-atdd.typed-(?:domain-integration|outward-layer-import)/,
+      "contextual guidance must not masquerade as a witnessed forbidden dependency");
+    const missing=x.session.observe(event("missing-architecture-source",DOMAIN));
+    assert.equal(has(missing,ARCH),true);
+    assert.ok(missing.unknownFacts.includes("source"));
   }finally{x.finish();}
 });
 
