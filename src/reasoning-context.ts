@@ -4,6 +4,11 @@
  * Canonical relationships remain unchanged: only mandatory "requires" means
  * prerequisite; no inferred Flow↔Bun edges. Legacy text/path selectors emit
  * explicit evidence facts rather than acting as an undocumented oracle.
+ *
+ * This module evaluates applicability, not implementation compliance.
+ * A lexical selector may activate a rule even without structural evidence.
+ * A missing source, phase, detector result or graph endpoint is not a waiver.
+ * Proofs retain their origin so later reviewers can distinguish each support.
  */
 import { DEFAULT_PROFILE, profileByName, roleOfPath, type StructureProfile } from "./profile.ts";
 import { canonicalRuleId, matchesGlob, termMatches, validateSelectors, type Catalog, type Convention, type Relation, type Selector } from "./catalog.ts";
@@ -46,6 +51,9 @@ export type Reconciliation = {
   stats: { scans: number; supports: number; affected: number; materialized: number };
 };
 
+// Selector hits are separate inputs; they remain visible even when they
+// over-activate due to negated task language or broad path matching.
+// No selector result grants permission or discharges the canonical rule.
 const selectorRules: Rule[] = [
   {
     id: "pi-atdd.match-selector",
@@ -75,7 +83,11 @@ const selectorRules: Rule[] = [
     ],
   },
 ];
-/** These are explicitly adapter-authored applicability rules, not new canonical relationships. */
+/** These are explicitly adapter-authored applicability rules, not new canonical relationships.
+ * Structural facts may supply an independent support alongside legacy selectors.
+ * A path-only domain edit does not prove a new forbidden import was observed.
+ * Rules are installed only when the referenced canonical ID exists in the catalog.
+ */
 function typedRules(catalog: Catalog): Rule[] {
   const typed: Rule[] = [];
   if (catalog.rules.has("coder.architecture.hierarchy-import")) typed.push({
@@ -150,6 +162,8 @@ function typedRules(catalog: Catalog): Rule[] {
   }
   return typed;
 }
+// Reasons are collected from the complete derivation tree, not merely the
+// final rule head. Multiple independent observations must remain inspectable.
 function collectReasons(proof: Proof): string[] {
   const reasons = new Set<string>();
   const visit = (p: Proof): void => {
@@ -165,6 +179,9 @@ function collectReasons(proof: Proof): string[] {
   visit(proof);
   return [...reasons].sort();
 }
+// Only an actually traversed, authored mandatory requires edge is a dependency.
+// Potential Driver influence, advisory relationships and unobserved graph
+// edges must not be silently promoted into a mandatory prerequisite.
 function linkedEdges(proof: Proof, graph: Catalog): Relation[] {
   const pairs = new Set<string>();
   const visit = (p: Proof): void => {
@@ -184,6 +201,9 @@ function fact(id: string, predicate: string, args: string[], source: string, pro
   return { id, predicate, args, source, provenance };
 }
 
+// Each subject's input fact set is replaced on observation, so changing a
+// file or losing a detector result retracts its obsolete proof contributions.
+// Catalog relationships and selector definitions remain stable base facts.
 export class ReasoningSession {
   readonly engine: PositiveReasoner;
   private readonly observations = new Map<string, Map<string, Fact>>();
@@ -211,6 +231,9 @@ export class ReasoningSession {
     });
   }
 
+  // Origin is a trust boundary: a Pi event cannot assert a provider phase,
+  // and an ordinary tool output cannot fabricate a detector finding.
+  // A revision-bearing fact is useful only when its origin is also explicit.
   private inputs(ob: ContextObservation): { entries: Map<string, Fact>; missingReasons: MissingFact[] } {
     if (!ob.scope || !ob.provenance || !ob.task || !["task","create","edit","review"].includes(ob.operation))
       throw new Error("observation requires stable scope, task, provenance and valid operation");
@@ -238,6 +261,8 @@ export class ReasoningSession {
       if (!missingReasons.some(x => x.fact === fact && x.reason === reason))
         missingReasons.push({ fact, reason });
     };
+    // Stable IDs within a scope permit idempotent re-observation and
+    // precise retraction instead of accumulating duplicate assertions.
     const add = (predicate: string, args: string[], detail = ob.provenance) => {
       const id = ob.scope + ":" + groundKey(predicate, args);
       entries.set(id, fact(id, predicate, args, ob.origin, detail));
@@ -292,6 +317,8 @@ export class ReasoningSession {
     if (ob.acceptance) add("acceptance", [ob.scope, ob.acceptance]);
     if (ob.revision) add("revision", [ob.scope, ob.revision], "revision:" + ob.revision);
 
+    // Preserve the legacy lexical evidence explicitly; a keyword match is
+    // not equivalent to AST, before/after, provider or detector observation.
     for (const selector of this.selectors) {
       if (selector.operations?.length && !selector.operations.includes(ob.operation)) continue;
       const matches = [
@@ -311,6 +338,8 @@ export class ReasoningSession {
   }
 
   observe(ob: ContextObservation): Reconciliation {
+    // Reconcile source facts first, then compare proof signatures. Losing one
+    // support changes an explanation even if another still activates the rule.
     const before = this.current(ob.scope);
     const { entries: wanted, missingReasons } = this.inputs(ob);
     const existing = this.observations.get(ob.scope) ?? new Map();
@@ -342,6 +371,8 @@ export class ReasoningSession {
       .filter(item => item.args[0] === ob.scope)
       .map(item => ({ missingId: item.args[1]!,
         proof: this.engine.query("missing_requirement", item.args).proof! }));
+    // An activated rule and an unknown fact may coexist: "matched" must
+    // never be interpreted as full observation or a compliance verdict.
     const unknownFacts = [...new Set([
       ...["phase", "actor_role", "acceptance", "revision"].filter(name =>
         this.engine.facts(name).every(item => item.args[0] !== ob.scope)),

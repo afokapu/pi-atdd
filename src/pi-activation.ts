@@ -155,7 +155,10 @@ export default function atdd(pi:ExtensionAPI):void {
       delivered:page?.emittedIds.length??0,deduplicated:Math.max(0,result.activations.length-fresh.length),
       omitted:page?.omittedIds.length??0,durationMs:performance.now()-started});
   }
-  /** Pi tool proposals are observed before execution; changed file content is observed afterward. */
+  /** Pi tool proposals are observed before execution; changed file content is observed afterward.
+   * An ambiguous edit cannot be treated as the unchanged on-disk source:
+   * that would fabricate a "before/after" comparison without a valid proposal.
+   */
   function sourceFor(cwd:string,path:string,input?:{content?:unknown;oldText?:unknown;newText?:unknown}):string|undefined{
     if(scopedPath(cwd,path)===null)return undefined; // avoid reading an untrusted symlink during post-tool inspection
     if(typeof input?.content==="string")return input.content.length<=1_000_000?input.content:undefined;
@@ -172,7 +175,10 @@ export default function atdd(pi:ExtensionAPI):void {
     }
     return current;
   }
-  /** Read the actual old content before a mutation; absent new files have a known empty baseline. */
+  /** Read the actual old content before a mutation; absent new files have a known empty baseline.
+   * Failed reads, oversized input and unsafe paths remain UNKNOWN, never empty.
+   * This is evidence collection, not a filesystem authorization boundary.
+   */
   function beforeSource(cwd:string,path:string):string|undefined{
     if(scopedPath(cwd,path)===null)return undefined;
     try{
@@ -376,7 +382,10 @@ export default function atdd(pi:ExtensionAPI):void {
           ". Unknown obligations are not waivers; repair graph before governed completion.",display:true}};
     }
   }
-  /** Same preflight for a governed path whether it is edited via edit/write or the shell. */
+  /** Same preflight for a governed path whether it is edited via edit/write or the shell.
+   * A blocked retry delivers missed reasoning, not a waiver or permission grant.
+   * Independent tests and reviewer evidence still govern final correctness.
+   */
   function preflightPath(cwd:string,path:string,operation:"edit"|"create",provenance:string,
     budget:number,blockUnknown:boolean,sourceText?:string,
     priorSourceText?:string):{block:true;reason:string}|undefined{
