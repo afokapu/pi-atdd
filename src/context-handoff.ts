@@ -209,6 +209,8 @@ export type HandoffInput = {
   percent: number;
   contextWindow: number;
   revision?: string;
+  /** Issue verified independently of the chat text (launch or branch binding). Absent: the header says unknown. */
+  issue?: string;
   handoffPath?: string;
   /** Hop number this record opens (1 for the first successor). */
   hop?: number;
@@ -222,7 +224,8 @@ export type HandoffInput = {
  * (it is unverified and may contain secrets); the task and workspace are redacted and bounded.
  */
 export function buildHandoff(input: HandoffInput): string {
-  const issue = extractIssueId(input.task) ?? "unknown (no tracker id in task)";
+  // Only an independently verified issue (supplied by the caller) is named; an id in the task text is not evidence.
+  const issue = input.issue ?? "unknown (no verified issue binding; ids in the task text are unverified)";
   const hop = input.hop ?? 1;
   const lines = [
     RECORD_HEADER,

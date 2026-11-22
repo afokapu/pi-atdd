@@ -95,6 +95,8 @@ test("PLT-123 P2: a task mentioning an unknown id and PR fills no Issues/PRs fie
     await handlers.get("agent_settled")!({ aborted: false }, ctx);
     const d = join(cwd, ".atdd-pi", "handoffs");
     const rec = readFileSync(join(d, readdirSync(d)[0]!), "utf8");
+    assert.match(rec, /^Issue: unknown/m, "header issue is not taken from chat text");
+    assert.doesNotMatch(rec.split("Task (")[0]!, /ZZTEST-999999/, "no header line carries the chat id");
     assert.match(rec, /^Issues: UNKNOWN$/m);
     assert.match(rec, /^PRs: UNKNOWN$/m);
     assert.match(rec, /^Task references \(unverified, mentioned in the task text\): .*ZZTEST-999999.*#999999/m);
@@ -109,4 +111,10 @@ test("PLT-123 P2: the rule no longer calls ids or PR links in chat text authorit
   const n = flat(rule.content.normative_text);
   assert.doesNotMatch(n, /tracker ids and pull request links in the task text/);
   assert.match(n, /unverified task references/);
+});
+
+test("PLT-123 P2: a verified issue passed by the caller is the only source of the header issue", () => {
+  const base = { cwd: "/w", percent: 90, contextWindow: 1000 };
+  assert.match(buildHandoff({ ...base, task: "do ZZTEST-999999" }), /^Issue: unknown/m);
+  assert.match(buildHandoff({ ...base, task: "do ZZTEST-999999", issue: "PLT-5" }), /^Issue: PLT-5$/m);
 });
