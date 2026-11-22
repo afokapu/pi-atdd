@@ -355,7 +355,7 @@ export default function atdd(pi:ExtensionAPI,env:NodeJS.ProcessEnv=process.env):
       // variables: that would launder a stale/superseded session into trusted facts.
       // Flow-native seats without a Pi-ATDD lease need Flow's exact launcher receipt.
       const trusted=executionSeat
-        ? (executionSeat.owns(ctx)?readTrustedFlowPhase(executionSeat.current()):undefined)
+        ? (executionSeat.owns(ctx)?readTrustedFlowPhase(executionSeat.current(),ctx.cwd):undefined)
         : readEnvFlowPhase(env,ctx);
       const result=observe(ctx.cwd,"task",trusted?"trusted-work-provider":"pi-event",
         trusted?.provenance??"Pi before_agent_start",undefined,undefined,trusted);
