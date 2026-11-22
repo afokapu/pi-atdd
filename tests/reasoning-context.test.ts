@@ -166,7 +166,7 @@ test("co-located test URN source fact derives acceptance binding and is revoked 
 });
 
 
-test("PLT-128: a trusted PLAN fact automatically supplies JTBD and acceptance conventions", () => {
+test("ATD-42: a trusted PLAN fact automatically supplies JTBD and acceptance conventions", () => {
   const a=setup();
   try {
     const mk=(phase:"PLAN"|"RED"|"GREEN"|"REFACTOR")=>({
