@@ -561,6 +561,30 @@ test("ATD-41 actual Pi hooks publish typed pre-edit and post-tool receipts with 
   }finally{x.cleanup();}
 });
 
+test("ATD-41 target-only shell preflight reports EXISTING, never fabricated PROPOSED source",()=>{
+  const frames:PiObservationFrame[]=[];
+  const x=sandbox({},frame=>frames.push(frame));
+  const path="src/orders/domain/price.ts",initial="export const price=1;\n";
+  try{
+    mkdirSync(join(x.cwd,"src/orders/domain"),{recursive:true});
+    writeFileSync(join(x.cwd,path),initial);
+    x.git("add",".");x.git("commit","-qm","existing source snapshot");
+    x.handlers.get("before_agent_start")!({messageType:"user",prompt:"Make a small change"},x.ctx);
+    x.handlers.get("tool_call")!({toolName:"bash",
+      input:{command:'printf "later" >> src/orders/domain/price.ts'}},x.ctx);
+    const observed=frames.find(f=>f.event.point==="pre_edit"&&
+      f.event.targetPathHint===path);
+    assert.ok(observed);
+    assert.equal(observed.event.sourceState,"EXISTING",
+      "reading current bytes before a dynamic shell write is not a proposed source");
+    assert.equal(observed.event.sourceDigest?.length,64);
+    assert.ok(!observed.observed.some(f=>f.factType==="change"&&
+      f.factArgs[1]?.endsWith("_added")));
+    assert.equal(readFileSync(join(x.cwd,path),"utf8"),initial,
+      "the source observer must not perform a shell mutation");
+  }finally{x.cleanup();}
+});
+
 test("ATD-41 runtime evidence feed observes real detector findings and clean retraction",()=>{
   const env:NodeJS.ProcessEnv={},frames:PiObservationFrame[]=[];
   const x=sandbox(env,frame=>frames.push(frame)),flow=flowHookFixture(x.cwd,env);
