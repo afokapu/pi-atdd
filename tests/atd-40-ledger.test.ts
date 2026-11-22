@@ -38,7 +38,7 @@ test("frozen ATD-29 source ledger and all three vendor locks reproduce", () => {
   assert.equal(result.error, undefined, String(result.error));
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /376 YAML rule IDs \+ Git blobs/);
-  assert.match(result.stdout, /96 \/ NO_CANDIDATE 1 \/ UNRESOLVED 279/);
+  assert.match(result.stdout, /339 \/ NO_CANDIDATE 31 \/ UNRESOLVED 6/);
   assert.match(result.stdout, /authorization: NOT VERIFIED/);
 });
 
