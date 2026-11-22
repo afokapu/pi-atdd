@@ -31,7 +31,7 @@ export function validateImportBoundary(file: string, sourceText?: string,
   const base = {
     detectorId: IMPORT_BOUNDARY_DETECTOR, file,
     revision: validRevision(revision) ? revision : null, sourceDigest,
-  };
+  } as const;
   const unknown = (reasons: string[]): ImportValidation =>
     ({...base, status:"unknown", findings:[], missingReasons:reasons});
   if (!validRevision(revision)) return unknown(["revision_unavailable_or_unverified"]);
