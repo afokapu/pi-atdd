@@ -3,9 +3,10 @@
  * case IDs. Never turn the case's natural-language prose into a fake source,
  * detector output, provider phase or success label.
  */
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { loadCatalog, loadConfig, canonicalRuleId } from "../src/catalog.ts";
 import { ReasoningSession, type ContextObservation } from "../src/reasoning-context.ts";
 import { enumerateSidecarExamples, replayAllSidecarExamples } from "./sidecar-activation-matrix.ts";
@@ -143,4 +144,42 @@ export function fullWitnessGapSummary() {
     gaps:unqualified.map(x=>({rule:x.effectiveRuleId,kind:x.kind,index:x.index,
       sourceSha256:x.sourceSha256,reason:"no independent executable source/provider/detector witness"})),
   };
+}
+
+/** Reviewer-facing complete JSONL report. A source-locked case may have both a
+ * text-only diagnostic and a qualified executable result; the latter is only
+ * present when a real independent source witness exists for this exact case.
+ */
+export function qualifiedCaseRows() {
+  const full=replayAllSidecarExamples();
+  const witnessed=replayQualifiedSidecarWitnesses();
+  const lookup=new Map(witnessed.cases.map(x=>[key(x.sourceId,x.kind,x.index),x]));
+  return full.outcomes.map(item=>{
+    const witness=lookup.get(key(item.effectiveRuleId,item.kind,item.index));
+    return {
+      ruleId:item.effectiveRuleId,kind:item.kind,index:item.index,
+      sourceSha256:item.sourceSha256,sidecarSha256:item.sidecarSha256,
+      qualification:witness?(witness.pass?"EXECUTABLE_PASS":"EXECUTABLE_FAIL"):
+        "UNQUALIFIED_NO_INDEPENDENT_OBSERVATION",
+      expected:item.kind==="fires",
+      ...(witness?{activated:witness.activated,structuralProof:witness.structuralProof,
+        structuralPass:witness.structuralPass,legacyOveractivation:witness.legacyOveractivation,
+        basis:witness.basis,unexpectedSupport:witness.unexpectedSupport??[]}:
+        {missingEvidence:item.missingEvidence,taskOnlyActivated:item.taskTextActivated}),
+    };
+  });
+}
+if(process.argv[1] && fileURLToPath(import.meta.url)===fileURLToPath(new URL("file://"+process.argv[1]))) {
+  const rows=qualifiedCaseRows();
+  const path=process.argv.find(x=>x.startsWith("--output="))?.slice("--output=".length);
+  if(path)writeFileSync(path,rows.map(x=>JSON.stringify(x)).join("\n")+"\n");
+  const qualified=rows.filter(x=>x.qualification!=="UNQUALIFIED_NO_INDEPENDENT_OBSERVATION");
+  const status={
+    total:rows.length,qualified:qualified.length,
+    passed:qualified.filter(x=>x.qualification==="EXECUTABLE_PASS").length,
+    failed:qualified.filter(x=>x.qualification==="EXECUTABLE_FAIL").length,
+    unqualified:rows.length-qualified.length,
+    acceptance:"PARTIAL_NOT_FULL_CORPUS",
+  };
+  process.stdout.write("ATD22_OBS002_SOURCE_REPLAY_SUMMARY "+JSON.stringify(status)+"\n");
 }
