@@ -109,13 +109,17 @@ const sessionEvents = (ctx: Ctx, cfg: LaunchConfig, key: Buffer): SignedEvent[] 
 const keyOf = (ev: SignedEvent) =>
   ev.event === "raised" ? "raised:" + ev.item.id : "state:" + ev.rec.id + ":" + ev.rec.revision;
 
-export function registerAttentionStrip(pi: ExtensionAPI, options: StripOptions = {}): void {
+/** `liveItems` is the Coach's last rendered open items (PLT-122 coach-state); undefined when not a Coach or never rendered. */
+export type StripHandle = { liveItems: () => string[] | undefined };
+
+export function registerAttentionStrip(pi: ExtensionAPI, options: StripOptions = {}): StripHandle {
   const cfg = readLaunchConfig(options.env ?? process.env);
-  if (!cfg) return;
+  const none: StripHandle = { liveItems: () => undefined };
+  if (!cfg) return none;
   const now = options.now ?? (() => new Date());
   const api = pi as unknown as Api;
-  if (cfg.role === "worker" || cfg.role === "reviewer") registerWorker(api, cfg, now, options);
-  else registerCoach(api, cfg, now, options);
+  if (cfg.role === "worker" || cfg.role === "reviewer") { registerWorker(api, cfg, now, options); return none; }
+  return registerCoach(api, cfg, now, options);
 }
 
 function registerWorker(api: Api, cfg: LaunchConfig, now: () => Date, opts: StripOptions): void {
@@ -228,7 +232,7 @@ function deliverResolutions(api: Api, ctx: Ctx, cfg: LaunchConfig, k: Buffer,
   };
 }
 
-function registerCoach(api: Api, cfg: LaunchConfig, now: () => Date, options: StripOptions): void {
+function registerCoach(api: Api, cfg: LaunchConfig, now: () => Date, options: StripOptions): StripHandle {
   const pollMs = options.pollMs ?? 5000;
   const setTimer = options.setInterval ?? ((fn: () => void, ms: number) => setInterval(fn, ms));
   const clearTimer = options.clearInterval ?? ((h: unknown) => clearInterval(h as ReturnType<typeof setInterval>));
@@ -248,6 +252,7 @@ function registerCoach(api: Api, cfg: LaunchConfig, now: () => Date, options: St
     if (count > 0) ctx.ui.notify(count + " legacy attention item(s) lack recipient routing and are quarantined. "
       + "Use the original unscoped coach or an owner-reviewed migration; no coach will receive them automatically.", "warning");
   };
+  let items: string[] | undefined;
 
   /** Ingest verified spool records into the session, then return every verified record. */
   const ingest = (ctx: Ctx): SignedEvent[] => {
@@ -291,6 +296,7 @@ function registerCoach(api: Api, cfg: LaunchConfig, now: () => Date, options: St
   const render = (ctx: Ctx, all: Map<string, AttentionItem>, at: Date) => {
     const visible = [...operational(all, at).values()]
       .sort((a, b) => a.type.localeCompare(b.type) || a.createdAt.localeCompare(b.createdAt));
+    items = visible.map(it => `${it.id} ${it.type}${it.issue ? " " + it.issue : ""} ${effectiveState(it, at)}`);
     if (visible.length === 0) return ctx.ui.setWidget(WIDGET_KEY, undefined);
     const lines = [`Attention · ${visible.length} live`, ...visible.map(it => {
       const state = effectiveState(it, at);
@@ -507,4 +513,5 @@ function registerCoach(api: Api, cfg: LaunchConfig, now: () => Date, options: St
       }
     },
   });
+  return { liveItems: () => items };
 }
