@@ -77,6 +77,6 @@ test("ATD-29 batch 01: semantic candidate subjects stay direction-neutral and un
   assert.match(memo, /PA-V01b.*Legacy alias resolution continuity/);
   assert.match(memo, /PA-F03.*Seat binding and checkpoint continuity state/);
   assert.match(memo, /no O1–O8 PASS decision/);
-  assert.match(memo, /not a.*admitted engineering OoC/i);
-  assert.match(memo, /cannot.*count.*candidate identity/i);
+  assert.match(memo, /no O1–O8 PASS decision, source-rule change, actor authorization, direct actuation, or admitted engineering OoC/);
+  assert.match(memo, /candidate file count is \*\*not\*\* a candidate identity count/i);
 });
