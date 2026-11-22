@@ -8,6 +8,7 @@ import {
 import { verifyTargets } from "./verify.ts";
 import { checkTrackerIssue, readTrackerConfig } from "./tracker-issue.ts";
 import { bootstrapSeatFromEnv } from "./seat-bootstrap.ts";
+import { runLaunch } from "./launcher.ts";
 
 function parse(argv: string[]): { options: Map<string, string[]>; args: string[] } {
   const options = new Map<string, string[]>(), args: string[] = [];
@@ -79,6 +80,8 @@ export function execute(argv: string[], catalogOptions: CatalogOptions = {}): Ex
 }
 
 export function main(argv = process.argv.slice(2), catalogOptions: CatalogOptions = {}): number {
+  // ATD-36: the canonical launch of a governed pi session (never bare pi).
+  if (argv[0] === "launch") return runLaunch(argv.slice(1));
   try {
     const { output, status } = execute(argv, catalogOptions);
     console.log(JSON.stringify(output));
