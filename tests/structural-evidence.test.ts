@@ -26,7 +26,7 @@ test("Bun auth facts distinguish unguarded handlers from inline guards and unres
     [AUTH,"bun_mutating_route_guarded"]);
   assert.deepEqual(discoverSourceEvidence("src/server.ts",
     'Bun.serve({routes:{"/x":{POST:postHandler}}});'),
-    [AUTH,"bun_mutating_route_unresolved"]);
+    ["bun_mutating_route_unresolved"]);
   assert.deepEqual(discoverSourceEvidence("src/server.ts",
     'Bun.serve({routes:{"/x":{GET:()=>{requireAuth();return new Response("ok")},DELETE:()=>new Response("ok")}}});'),
     [AUTH, MISSING_AUTH],
