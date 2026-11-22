@@ -467,3 +467,43 @@ test("ATD-42: governed PLAN and RED stop implementation edits before accepted ha
     old.cleanup();
   }finally{x.cleanup();flow.cleanup();}
 });
+
+test("ATD-42: governed PLAN refuses computed shell destinations before execution",()=>{
+  const env:NodeJS.ProcessEnv={};
+  const x=sandbox(env), flow=flowHookFixture(x.cwd,env,true);
+  const ctx={...x.ctx,sessionManager:{getSessionId:()=>flow.session}};
+  const start=x.handlers.get("before_agent_start")!;
+  const edit=x.handlers.get("tool_call")!;
+  try {
+    start({messageType:"user",prompt:"Deliver the plan"},ctx);
+    for(const command of [
+      "dest=src/orders/routes/create.ts; printf code > \"$dest\"",
+      "node -e 'const f=process.env.TARGET;require(\"fs\").writeFileSync(f,\"code\")'",
+    ]) {
+      const result=edit({toolName:"bash",input:{command}},ctx);
+      assert.equal(result?.block,true);
+      assert.match(result.reason,/computed shell mutations/);
+    }
+    // An explicitly scoped literal PLAN write is still eligible for the
+    // ordinary ATDD contextual preflight; the dynamic bypass is what fails.
+    const safe=edit({toolName:"bash",input:{command:"cat <<'EOF' > plan/phase.yaml\nurn: acc:pi-atdd:E002-UNIT-001\nEOF"}},ctx);
+    assert.ok(!safe?.reason?.includes("computed shell mutations"));
+  }finally{x.cleanup();flow.cleanup();}
+});
+
+test("ATD-42: a configured Flow seat with missing launch proof cannot bypass the write gate",()=>{
+  const env:NodeJS.ProcessEnv={};
+  const x=sandbox(env), flow=flowHookFixture(x.cwd,env,true);
+  const ctx={...x.ctx,sessionManager:{getSessionId:()=>flow.session}};
+  const edit=x.handlers.get("tool_call")!;
+  try {
+    x.handlers.get("before_agent_start")!({messageType:"user",prompt:"Plan the delivery"},ctx);
+    const seatFile=join(flow.root,"work","demo","seats","driver.delivery","seat.yaml");
+    const src=readFileSync(seatFile,"utf8");
+    // Removing the exact launcher receipt binding leaves no trusted phase.
+    writeFileSync(seatFile,src.replace(/\s+launch_receipt:.*\n/, "\n"));
+    const refusal=edit({toolName:"write",input:{path:"src/orders/routes/create.ts",content:"code"}},ctx);
+    assert.equal(refusal?.block,true);
+    assert.match(refusal.reason,/Flow phase UNKNOWN/);
+  }finally{x.cleanup();flow.cleanup();}
+});
