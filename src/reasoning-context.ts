@@ -175,35 +175,23 @@ function typedRules(catalog: Catalog): Rule[] {
 
 /** A phase is an observed workflow fact, not a word guessed from the prompt.
  * This table activates existing pinned rules without altering the source graph. */
+/** A trusted phase is necessary context, not proof that every rule with that phase
+ * applies. Only workflow-wide obligations are phase-gated here. Test-file,
+ * route, authoring and validator-specific conventions require separate observed
+ * source/operation/finding evidence; do not infer them from the phase alone.
+ */
 const guidanceByPhase: Record<Phase, readonly string[]> = {
   PLAN: [
     "planner.decomposition.local-scope",
     "planner.steps.jtbd-taxonomy",
-    "planner.decomposition.jtbd-vs-odi-grammar",
-    "planner.decomposition.user-system-flow-journey",
-    "planner.decomposition.keep-pivot-kill",
-    "planner.plan.confirm-before-author",
     "planner.acceptance.well-formed",
     "planner.plan.granularity-completeness",
     "planner.plan.session-lifecycle",
-    "planner.acceptance.extraction-no-inference",
-    "planner.user-system-flow.route-category-assessment",
   ],
-  RED: [
-    "tester.red.behavioral-assertion", "tester.red.fails-first",
-    "tester.test.carries-urn-identity", "tester.test.phase-declared",
-    "tester.acceptance.binding-declared", "tester.acceptance.resolves-to-declared",
-  ],
+  RED: ["tester.red.behavioral-assertion", "tester.red.fails-first"],
   GREEN: ["coder.phase.discipline"],
-  // Bun's graph links seven refactor sensors via runs_alongside, not requires.
-  // Explicit phase selection preserves that semantic distinction for weak models.
-  REFACTOR: [
-    "coder.phase.discipline", "coder.complexity.cyclomatic",
-    "coder.complexity.length", "coder.complexity.nesting",
-    "coder.dead-code.reachability", "coder.duplication.intra-layer",
-    "coder.quality.comments", "coder.quality.mi",
-  ],
-  SMOKE: ["planner.desired-outcome.must-have-smoke-acceptance"],
+  REFACTOR: ["coder.phase.discipline"],
+  SMOKE: [],
 };
 
 /** Missing phase guidance is INCOMPLETE, not a silently dropped rule.
