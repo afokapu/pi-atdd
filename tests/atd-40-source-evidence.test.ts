@@ -20,9 +20,9 @@ test("all 376 convention bodies are available without fabricated OoC standing", 
   const entries = readPassASourceEvidence();
   assert.equal(entries.length, 376);
   assert.equal(new Set(entries.map(x => x.ruleId)).size, 376);
-  assert.equal(entries.filter(x => x.disposition === "CANDIDATE").length, 96);
-  assert.equal(entries.filter(x => x.disposition === "NO_CANDIDATE").length, 1);
-  assert.equal(entries.filter(x => x.disposition === "UNRESOLVED").length, 279);
+  assert.equal(entries.filter(x => x.disposition === "CANDIDATE").length, 339);
+  assert.equal(entries.filter(x => x.disposition === "NO_CANDIDATE").length, 31);
+  assert.equal(entries.filter(x => x.disposition === "UNRESOLVED").length, 6);
   assert.equal(entries.reduce((n, x) => n + x.authoredGraphWitnesses.length, 0), 1000);
 
   // Every source's actual authored statement and line span is available
