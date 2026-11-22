@@ -161,3 +161,30 @@ test("co-located test URN source fact derives acceptance binding and is revoked 
     assert.ok(second.removed.includes("tester.acceptance.binding-declared"));
   }finally{a.finish();}
 });
+
+
+test("PLT-128: a trusted PLAN fact automatically supplies JTBD and acceptance conventions", () => {
+  const a=setup();
+  try {
+    const mk=(phase:"PLAN"|"RED"|"GREEN"|"REFACTOR")=>({
+      scope:"phase-128",task:"Implement the assigned delivery",operation:"task" as const,
+      phase,actorRole:"driver",
+      origin:"trusted-work-provider" as const,
+      provenance:"Flow-owned task and authenticated seat",
+    });
+    const plan=a.session.observe(mk("PLAN"));
+    const ids=new Set(plan.activations.map(x=>x.id));
+    for(const id of ["planner.steps.jtbd-taxonomy", "planner.decomposition.local-scope",
+      "planner.decomposition.jtbd-vs-odi-grammar", "planner.acceptance.well-formed",
+      "planner.plan.confirm-before-author"])
+      assert.ok(ids.has(id), "PLAN supplies "+id);
+    const red=a.session.observe(mk("RED"));
+    assert.ok(red.activations.some(x=>x.id==="tester.red.behavioral-assertion"));
+    assert.ok(red.removed.includes("planner.steps.jtbd-taxonomy"), "old plan-phase rules retract");
+    const green=a.session.observe(mk("GREEN"));
+    assert.ok(green.activations.some(x=>x.id==="coder.phase.discipline"));
+    assert.ok(!green.activations.some(x=>x.id==="tester.red.fails-first"));
+    const refactor=a.session.observe(mk("REFACTOR"));
+    assert.ok(refactor.activations.some(x=>x.id==="coder.phase.discipline"));
+  } finally {a.finish();}
+});
