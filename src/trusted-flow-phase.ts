@@ -10,6 +10,8 @@ import type { Phase } from "./reasoning-context.ts";
 
 export type TrustedFlowPhase = {
   phase: Phase; task: string; provenance: string; actorRole: "driver";
+  /** Only newly governed tasks opt into write barriers; legacy phase hints stay advisory. */
+  planRequired: boolean;
 };
 export type FlowPhaseContext = {
   cwd: string;
@@ -36,7 +38,8 @@ function phaseFor(task: Record<string, unknown>, taskId: string, provenance: str
   const phase = task.phase ?? "plan";
   if (!["plan", "red", "green", "refactor"].includes(String(phase)))
     throw new Error("Unknown authoritative Flow task phase");
-  return { task: taskId, phase: String(phase).toUpperCase() as Phase, actorRole: "driver", provenance };
+  return { task: taskId, phase: String(phase).toUpperCase() as Phase, actorRole: "driver",
+    planRequired: task.plan_required === true, provenance };
 }
 
 /** The Pi-ATDD execution lease was already fenced by executionSeat.owns(ctx).
