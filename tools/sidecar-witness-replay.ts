@@ -56,6 +56,7 @@ export type WitnessOutcome = {
   sourceId:string;kind:"fires"|"doesNotFire";index:number;
   expected:boolean;activated:boolean;qualified:boolean;pass:boolean;
   structuralProof:boolean;sourceLock:string;basis:string;
+  unexpectedSupport?:string[];
 };
 export type WitnessReport = {
   allCases:number;verified:number;passed:number;failed:number;unqualified:number;
@@ -93,7 +94,9 @@ export function replayQualifiedSidecarWitnesses():WitnessReport {
       const pass=activated===sample.expected&&(!sample.expected||structuralProof);
       cases.push({sourceId:sample.sourceId,kind:sample.kind,index:sample.index,
         expected:sample.expected,activated,qualified:true,pass,structuralProof,
-        sourceLock:original.sourceSha256,basis:sample.structuralBasis});
+        sourceLock:original.sourceSha256,basis:sample.structuralBasis,
+        ...(!pass ? {unexpectedSupport:target?.reasons ?? []}:{}),
+      });
     }
   }finally{rmSync(cwd,{recursive:true,force:true});}
   const originalCases=new Set(manifest.examples.map(x=>key(x.effectiveRuleId,x.kind,x.index)));

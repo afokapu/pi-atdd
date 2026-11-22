@@ -61,7 +61,7 @@ test("real validator receipts independently activate the source-locked reviewer 
     const session=new ReasoningSession(catalog,config.selectors);
     for(const [file,source,expectedRule] of [
       [path,bad,"pi-atdd.typed-detector-architecture-review"],
-      ["src/orders/application/use.ts",'import {Card} from "../presentation/Card";\\n',
+      ["src/orders/application/use.ts",'import {Card} from "../presentation/Card";\n',
         "pi-atdd.typed-detector-outward-review"],
     ] as const){
       const run=validateImportBoundary(file,source,revision);
