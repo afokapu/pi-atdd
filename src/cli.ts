@@ -7,6 +7,7 @@ import {
 } from "./catalog.ts";
 import { verifyTargets } from "./verify.ts";
 import { checkTrackerIssue, readTrackerConfig } from "./tracker-issue.ts";
+import { bootstrapSeatFromEnv } from "./seat-bootstrap.ts";
 
 function parse(argv: string[]): { options: Map<string, string[]>; args: string[] } {
   const options = new Map<string, string[]>(), args: string[] = [];
@@ -67,8 +68,12 @@ export function execute(argv: string[], catalogOptions: CatalogOptions = {}): Ex
     output = { status: check.verdict, ...check };
     if (check.verdict === "fail") status = 1;
     if (check.verdict === "notice") status = 3;
+  } else if (command === "seat") {
+    // ATD-36: the launcher runs this with the PI_ATDD_EXECUTION_* it will give Pi, before Pi starts.
+    if (args[1] !== "bootstrap") throw new Error("expected seat bootstrap");
+    output = bootstrapSeatFromEnv(process.env);
   } else {
-    throw new Error("expected digest | context | resolve | verify | tracker");
+    throw new Error("expected digest | context | resolve | verify | tracker | seat");
   }
   return { output, status };
 }

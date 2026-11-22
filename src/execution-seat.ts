@@ -42,6 +42,27 @@ const same = (a: ExecutionBinding, b: ExecutionBinding) =>
   a.coachAddress === b.coachAddress && a.seatAddress === b.seatAddress;
 const serialize = (x: unknown) => JSON.stringify(x, null, 2) + "\n";
 
+/** Every PI_ATDD_EXECUTION_* variable a standalone seat needs; none may be blank (ATD-36). */
+export const REQUIRED_EXECUTION_VARIABLES = ["MODE", "PROJECT_ID", "TASK_ID", "COACH_ADDRESS", "SEAT_ADDRESS",
+  "EXECUTION_ID", "SESSION_ID", "MODEL_ID", "GENERATION", "OWNER_TOKEN"].map(k => "PI_ATDD_EXECUTION_" + k);
+
+/** The required execution variables that are unset or blank. Never includes values. */
+export function missingExecutionVariables(env: NodeJS.ProcessEnv): string[] {
+  return REQUIRED_EXECUTION_VARIABLES.filter(name => !env[name]?.trim());
+}
+
+/**
+ * The refusal shown to attention tools. Names the missing variables when no seat is bound; otherwise the
+ * seat is bound but does not belong to this session (stale, foreign or not bootstrapped). Never authorizes.
+ */
+export function seatAuthorizationRefusal(env: NodeJS.ProcessEnv): string {
+  const missing = missingExecutionVariables(env);
+  return "ATDD attention seat is not authorized: " + (missing.length
+    ? "no execution seat is bound; set " + missing.join(", ") +
+      " (the launcher bootstraps it with `atdd seat bootstrap`)"
+    : "the execution seat is not owned by this session (stale, foreign or not bootstrapped)");
+}
+
 /** A scoped launch is all-or-nothing. No fields means that existing Pi is unaffected. */
 export function executionConfigFromEnv(env: NodeJS.ProcessEnv): SeatRuntimeConfig | undefined {
   const prefix = "PI_ATDD_EXECUTION_";
@@ -52,7 +73,11 @@ export function executionConfigFromEnv(env: NodeJS.ProcessEnv): SeatRuntimeConfi
   const get = (key: typeof values[number]) => env[prefix + key]?.trim() ?? "";
   const generation = Number(get("GENERATION"));
   if (!values.filter(v => v !== "GENERATION").every(v => text(get(v))) || !number(generation))
-    throw new Error("incomplete ATDD execution binding");
+  {
+    const missing = missingExecutionVariables(env);
+    throw new Error("incomplete ATDD execution binding: " + (missing.length
+      ? "missing " + missing.join(", ") : "GENERATION must be a positive integer"));
+  }
   const binding: ExecutionBinding = {
     projectId: get("PROJECT_ID"), taskId: get("TASK_ID"), coachAddress: get("COACH_ADDRESS"),
     seatAddress: get("SEAT_ADDRESS"), executionId: get("EXECUTION_ID"), sessionId: get("SESSION_ID"),
