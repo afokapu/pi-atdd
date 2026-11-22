@@ -6,7 +6,7 @@
 // Source material is evidence, not an automatic Object-of-Control admission.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -75,4 +75,16 @@ test("source evidence may be exported read-only and never asserts admission", ()
     assert.ok(lines.every(line => JSON.parse(line).admission === "NOT_ASSESSED_BY_THIS_EXPORT"));
     assert.match(job.stdout, /376 sources/);
   } finally { rmSync(temp, { recursive: true, force: true }); }
+});
+
+test("export must not overwrite repository files or its evidence ledger", () => {
+  const forbidden = join(root, "research/atd-40/unsafe-output.jsonl");
+  assert.ok(!existsSync(forbidden));
+  const job = spawnSync(process.execPath, [
+    "--experimental-strip-types", join(root, "tools/atd-40-source-evidence.ts"),
+    "--output", forbidden,
+  ], { cwd: root, encoding: "utf8", timeout: 60_000, maxBuffer: 1024 * 1024 });
+  assert.notEqual(job.status, 0);
+  assert.match(job.stderr, /outside this repository/);
+  assert.ok(!existsSync(forbidden));
 });
