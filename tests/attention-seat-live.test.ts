@@ -133,3 +133,21 @@ test("PLT-118 fix P1 A02/A05/A06: a seat transfer cannot land between the owners
     assert.equal(readFileSync(w.spool, "utf8").includes("after transfer"), false);
   } finally { w.cleanup(); }
 });
+
+test("PLT-118 fix2: a new runtime adopts the rotated lease only for the session the lease names", async () => {
+  const w = world();
+  try {
+    const entries: Entry[] = [];
+    const old = strip(w.attention("worker"), entries, {}, w.seatEnv);
+    const a = session(w.repo, "session-a", entries);
+    const cp = old.seat!.checkpoint(a, { state: "verified", pendingIds: [] });
+    old.seat!.activateSuccessor(session(w.repo, "session-b", entries), cp);
+    // Pi rebuilds the runtime from the ORIGINAL launch env.
+    const rebuilt = strip(w.attention("worker"), entries, {}, w.seatEnv);
+    assert.equal(rebuilt.seat!.owns(session(w.repo, "session-a", entries)), false, "the predecessor session is not adopted");
+    assert.equal(rebuilt.seat!.owns(session(w.repo, "session-other", entries)), false, "a foreign session is not adopted");
+    assert.equal(rebuilt.seat!.current().binding.generation, 1);
+    assert.equal(rebuilt.seat!.owns(session(w.repo, "session-b", entries)), true);
+    assert.equal(rebuilt.seat!.current().binding.generation, 2);
+  } finally { w.cleanup(); }
+});

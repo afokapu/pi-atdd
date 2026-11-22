@@ -139,6 +139,21 @@ export function withSeatFence<T>(config: SeatRuntimeConfig, work: () => T): T {
   return config.mode === "standalone" ? locked(config.leasePath, work) : work();
 }
 
+/**
+ * Pi rebuilds the extension runtime on session replacement, so the successor's new runtime starts from the
+ * launch binding while the lease has rotated (PLT-118 return 2). It may adopt the lease's binding only when the
+ * lease is a later generation of this exact seat AND names this very session as its owner; a stale or foreign
+ * session matches neither, and a lease is never created or changed here.
+ */
+export function adoptSuccessorLease(config: SeatRuntimeConfig, sessionId: string): SeatRuntimeConfig {
+  if (config.mode !== "standalone" || !text(sessionId)) return config;
+  let lease: ExecutionBinding | undefined;
+  try { lease = readSeatLease(config.leasePath); } catch { return config; }
+  if (!lease || !same(config.binding, lease) || lease.generation <= config.binding.generation ||
+    lease.sessionId !== sessionId) return config;
+  return { ...config, binding: lease };
+}
+
 export function ownsExecution(config: SeatRuntimeConfig, sessionId: string): boolean {
   if (!text(sessionId)) return false;
   if (config.mode === "external") return ownsFlowExecution(config, sessionId);
