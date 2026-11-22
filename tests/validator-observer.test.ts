@@ -35,6 +35,13 @@ test("valid source negatives and unknowns never manufacture findings",()=>{
   assert.equal(validateImportBoundary(path,bad).status,"unknown","without trusted revision no finding exists");
   assert.equal(validateImportBoundary(path,bad,"user-claimed-revision").findings.length,0);
 });
+test("real validator sees application to presentation without inventing domain import",()=>{
+  const invalid='import {Card} from "../presentation/Card";\n';
+  const input=validateImportBoundary("src/orders/application/use.ts",invalid,revision);
+  assert.equal(input.status,"finding");
+  assert.equal(input.findings[0]?.code,"outward_layer_import");
+  assert.equal(input.findings[0]?.detectorId,IMPORT_BOUNDARY_DETECTOR);
+});
 test("non-source files do not receive source-architecture findings",()=>{
   const testFile=validateImportBoundary("tests/price.test.ts",bad,revision);
   assert.equal(testFile.status,"clean");assert.equal(testFile.findings.length,0);

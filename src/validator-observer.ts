@@ -6,6 +6,7 @@
 import { createHash } from "node:crypto";
 import type { DetectorFinding } from "./reasoning-context.ts";
 import { classifyFileKind, observeDomainImports } from "./operational-observers.ts";
+import { observeOutwardImports } from "./layer-import-observer.ts";
 
 export const IMPORT_BOUNDARY_DETECTOR = "pi-atdd.ts-import-boundary.v1";
 export type ImportValidation = {
@@ -41,12 +42,15 @@ export function validateImportBoundary(file: string, sourceText?: string,
   if (kind.kind !== "source")
     return {...base,status:"clean",findings:[],missingReasons:[]};
   const observation = observeDomainImports(file,sourceText);
-  // A post-tool validator knows it read the current file. The absence of the
-  // pre-edit source is not an unknown for this source-level validation.
-  const missingReasons = observation.unknownReasons.filter(x=>x!=="prior_source_unavailable");
-  if (!observation.sourceObserved) return unknown(["source_not_observed",...missingReasons]);
-  const findings: DetectorFinding[] = observation.present ? [{
-    code:"domain_to_integration_import",
+  const outward = observeOutwardImports(file,sourceText);
+  // Both validators read the same source. A missing prior snapshot is valid
+  // for source-level validation, but an unresolved alias is not a clean pass.
+  const missingReasons = [...new Set([...observation.unknownReasons,
+    ...outward.unknownReasons].filter(x=>x!=="prior_source_unavailable"))];
+  if (!observation.sourceObserved || !outward.sourceObserved)
+    return unknown(["source_not_observed",...missingReasons]);
+  const findings: DetectorFinding[] = observation.present || outward.present ? [{
+    code:observation.present?"domain_to_integration_import":"outward_layer_import",
     detectorId:IMPORT_BOUNDARY_DETECTOR,
     evidenceId:"sha:"+createHash("sha256").update(file).update("\0")
       .update(sourceText).update("\0").update(revision).digest("hex"),

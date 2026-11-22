@@ -15,13 +15,14 @@ import { canonicalRuleId, matchesGlob, termMatches, validateSelectors, type Cata
 import { PositiveReasoner, groundKey, type Fact, type Proof, type Rule, type Delta } from "./inference.ts";
 import { discoverSourceEvidence } from "./structural-evidence.ts";
 import { classifyFileKind, observeDomainImports, sourceSyntaxEvidence } from "./operational-observers.ts";
+import { observeOutwardImports } from "./layer-import-observer.ts";
 
 export type Phase = "PLAN" | "RED" | "GREEN" | "REFACTOR" | "SMOKE";
 export type Operation = "task" | "create" | "edit" | "review";
 export type Origin = "pi-event" | "repository-observation" | "trusted-work-provider" | "detector-result";
 /** Only a named, revision-bound detector adapter may submit this structured evidence. */
 export type DetectorFinding = {
-  code: "domain_to_integration_import";
+  code: "domain_to_integration_import" | "outward_layer_import";
   detectorId: string; evidenceId: string; file: string; revision: string;
 };
 export type MissingFact = { fact: string; reason: string };
@@ -127,6 +128,28 @@ function hierarchyObservationRules(catalog: Catalog): Rule[] {
       });
     }
   }
+  // Authoritative outward dependencies include application/presentation and
+  // integration/presentation, not only the initial domain/integration example.
+  for(const operation of ["edit","create"] as const){
+    if(!catalog.rules.has("coder.architecture.hierarchy-import"))continue;
+    hierarchy.push({
+      id:"pi-atdd.typed-outward-layer-import-present-"+operation,
+      source:"pi-atdd/adapters/observed-layer-import-v1",
+      head:{predicate:"active",terms:[DATALOG_SUBJECT,"coder.architecture.hierarchy-import"]},
+      body:[
+        {predicate:"code_construct",terms:[DATALOG_SUBJECT,"outward_layer_import"]},
+        {predicate:"operation",terms:[DATALOG_SUBJECT,operation]},
+      ],
+    },{
+      id:"pi-atdd.typed-outward-layer-import-change-"+operation,
+      source:"pi-atdd/adapters/observed-layer-import-v1",
+      head:{predicate:"active",terms:[DATALOG_SUBJECT,"coder.architecture.hierarchy-import"]},
+      body:[
+        {predicate:"change",terms:[DATALOG_SUBJECT,"outward_layer_import_added"]},
+        {predicate:"operation",terms:[DATALOG_SUBJECT,operation]},
+      ],
+    });
+  }
   if (catalog.rules.has("coder.architecture.hierarchy-import")) hierarchy.push({
     id: "pi-atdd.typed-detector-architecture-review",
     source: "pi-atdd/adapters/detector-finding-v1",
@@ -134,6 +157,15 @@ function hierarchyObservationRules(catalog: Catalog): Rule[] {
     body: [
       { predicate: "finding", terms: [DATALOG_SUBJECT, "domain_to_integration_import"] },
       { predicate: "operation", terms: [DATALOG_SUBJECT, "review"] },
+    ],
+  });
+  if (catalog.rules.has("coder.architecture.hierarchy-import")) hierarchy.push({
+    id:"pi-atdd.typed-detector-outward-review",
+    source:"pi-atdd/adapters/detector-finding-v1",
+    head:{predicate:"active",terms:[DATALOG_SUBJECT,"coder.architecture.hierarchy-import"]},
+    body:[
+      {predicate:"finding",terms:[DATALOG_SUBJECT,"outward_layer_import"]},
+      {predicate:"operation",terms:[DATALOG_SUBJECT,"review"]},
     ],
   });
   return hierarchy;
@@ -377,6 +409,17 @@ export class ReasoningSession {
       missing(SOURCE_GAP_REASONS.has(reason) ? "source" : "change", reason);
     if (!imports.deltaObserved && !imports.unknownReasons.length)
       missing("change", "delta_not_observable");
+    // Keep generic architecture evidence independent from the narrow legacy
+    // domain→integration code. Unsupported resolution remains UNKNOWN.
+    const outward=observeOutwardImports(ob.path!,ob.sourceText,ob.priorSourceText);
+    if(outward.present)add("code_construct",[ob.scope,"outward_layer_import"],
+      "ast:outward_layer_import:"+outward.edges.join(",")+" @ "+ob.provenance);
+    if(outward.added)add("change",[ob.scope,"outward_layer_import_added"],
+      "before_after:outward_layer_import_added:"+outward.addedEdges.join(",")+" @ "+ob.provenance);
+    for(const edge of outward.edges)
+      add("layer_dependency",[ob.scope,edge],"observed_architecture_edge:"+edge+" @ "+ob.provenance);
+    for(const reason of outward.unknownReasons)
+      missing(SOURCE_GAP_REASONS.has(reason)?"source":"change",reason);
   }
 
   /** Detector supports keep their own evidence identities for precise retraction. */
@@ -384,7 +427,7 @@ export class ReasoningSession {
     if (ob.findings) {
       const safeId = /^[a-z][a-z0-9._:-]{0,127}$/i;
       for (const finding of ob.findings) {
-        if (finding.code !== "domain_to_integration_import" ||
+        if (!["domain_to_integration_import","outward_layer_import"].includes(finding.code) ||
             !safeId.test(finding.detectorId) || !safeId.test(finding.evidenceId) ||
             finding.file !== ob.path || finding.revision !== ob.revision)
           throw new Error("unverified or mismatched detector finding");
@@ -493,7 +536,7 @@ export class ReasoningSession {
       scope: ob.scope, activations, gaps, added, removed, changed,
       unknownFacts, missingReasons,
       observedFacts: [...wanted.values()].filter(f =>
-        ["change", "file_kind", "code_construct", "finding", "phase", "file_layer"].includes(f.predicate)),
+        ["change", "file_kind", "code_construct", "finding", "phase", "file_layer", "layer_dependency"].includes(f.predicate)),
       unresolvedGraphEdges: this.catalog.unresolvedEdges,
       provenance: this.catalog.provenance,
       stats: { ...mergedStats, materialized: this.engine.materializedCount },
