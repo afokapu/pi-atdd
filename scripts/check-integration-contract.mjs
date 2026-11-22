@@ -18,6 +18,10 @@ const STREAMS = {
     wrapper: "ATD-39", source: "ATD-42", other: ["ATD-41"],
     criteria: [], // Coordinator-only conflict resolution; not an original issue completion.
   },
+  "sync/atd-39-main-3007c139": {
+    wrapper: "ATD-39", source: "ATD-39", other: [],
+    criteria: [], // Exact-main-revision sync: review applicable changes, not ATD-22/29 criteria.
+  },
   "feature/atd-42-trusted-phase-activation": {
     wrapper: "ATD-42", source: "ATD-42", other: ["ATD-39"],
     criteria: [], // Pi-only phase slice; the broad cross-repo Coach gate remains separately pending.
