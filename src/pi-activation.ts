@@ -10,6 +10,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadCatalog, loadConfig, type Catalog, type Selector } from "./catalog.ts";
 import type { StructureProfile } from "./profile.ts";
 import { ReasoningSession, type ContextObservation } from "./reasoning-context.ts";
+import { readTrustedFlowPhase, readEnvFlowPhase, type TrustedFlowPhase } from "./trusted-flow-phase.ts";
 import { renderReasonedPage, type RenderedPage } from "./render-reasoning.ts";
 import { observeRepository, type RepositorySnapshot } from "./repository-observer.ts";
 import { shellWriteTargetModes, shellStaticWriteContents } from "./shell-targets.ts";
@@ -87,8 +88,9 @@ const MODE_CHOICES=["ATDD — remember for this repo","Plain — remember for th
 /** Pi supplies only the ExtensionAPI. A test harness may inject an isolated
  * telemetry sink; no external provider or task text can select this path.
  */
-export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string} = {}):void {
-  const executionSeat = registerSeatExecution(pi); // PLT-117: inert unless launch-bound
+export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;env?:NodeJS.ProcessEnv} = {}):void {
+  const env=runtime.env??process.env;
+  const executionSeat = registerSeatExecution(pi,env); // PLT-117: inert unless launch-bound
   // PLT-118: a scoped attention route follows the live seat binding and its writes are fenced against seat transfer.
   const attentionStrip=registerAttentionStrip(pi, attentionSeatOptions(executionSeat)); // PLT-101
   registerBusyState(pi); // PLT-121: busy/idle state file for the relaunch script; inert without an identity
@@ -276,9 +278,11 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string} 
   const currentRevision=()=>observedRepo?.revision??undefined;
   function observe(cwd:string,operation:"task"|"edit"|"create"|"review",
     origin:ContextObservation["origin"],provenance:string,path?:string,sourceText?:string,
-    priorSourceText?:string){
+    priorSourceText?:string,trusted?:TrustedFlowPhase){
     return ensure(cwd).observe({
       scope:scopeFor(path),task:task||"unknown task",path,sourceText,priorSourceText,operation,origin,provenance,
+      ...(trusted?{phase:trusted.phase,actorRole:trusted.actorRole}:{}),
+      ...(trusted?{phase:trusted.phase,actorRole:trusted.actorRole}:{}),
       ...(currentRevision()?{revision:currentRevision()}:{}),
     });
   }
@@ -325,7 +329,7 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string} 
       if(arg==="on"||arg==="off"){setMode(ctx,arg==="on"?"atdd":"plain","/atdd "+arg);return;}
       if(arg==="telemetry"){ctx.ui.notify(formatActivationSummary(ctx.cwd,{root:runtime.telemetryRoot}),"info");return;}
       if(arg&&arg!=="status"){ctx.ui.notify("Usage: /atdd on | off | status | telemetry","warning");return;}
-      const mode=current??resolveMode({cwd:ctx.cwd,env:process.env});
+      const mode=current??resolveMode({cwd:ctx.cwd,env:env});
       let line=mode.mode?"ATDD mode: "+mode.mode+" ("+mode.source+")":
         "ATDD mode: undecided (an interactive session asks at the first task; other runs use atdd)";
       if(!repositoryRoot(ctx.cwd))line+="; not in a repository, nothing is governed";
@@ -349,14 +353,22 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string} 
     const said=event.messageType==="user"?modeFromText(event.prompt??""):undefined;
     if(said)setMode(ctx,said,"your message");
     if(!current){
-      const resolved=resolveMode({cwd:ctx.cwd,env:process.env});
+      const resolved=resolveMode({cwd:ctx.cwd,env:env});
       if(resolved.mode)current=resolved;
       else if(ctx.mode==="tui"&&ctx.hasUI)return ask(ctx).then(()=>startRun(event,ctx));
       else current={mode:"atdd",source:"default, non-interactive"};
     }
     return startRun(event,ctx);
   });
-  function startRun(event:{messageType:string;prompt?:string},ctx:{cwd:string}){
+  /** The Flow seat lease and launch receipt are authoritative; prompt claims are not.
+   * Re-check before a write so a superseded task cannot retain stage guidance. */
+  function trustedFlow(ctx:{cwd:string;sessionManager?:{getSessionId:()=>string}}){
+    return executionSeat
+      ? (executionSeat.owns(ctx)?readTrustedFlowPhase(executionSeat.current(),ctx.cwd):undefined)
+      : readEnvFlowPhase(env,ctx);
+  }
+  function startRun(event:{messageType:string;prompt?:string},
+    ctx:{cwd:string;sessionManager?:{getSessionId:()=>string}}){
     const newTask=event.messageType==="user";
     if(newTask){
       serial++;
@@ -371,10 +383,17 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string} 
     }
     const started=performance.now();
     try{
-      const result=observe(ctx.cwd,"task","pi-event","Pi before_agent_start");
+      // The authenticated seat lease and Flow task record—not task wording—own phase.
+      // Other setups remain UNKNOWN rather than pretending the model's prompt is authority.
+      // A configured but unowned execution seat must not fall back to environment
+      // variables: that would launder a stale/superseded session into trusted facts.
+      // Flow-native seats without a Pi-ATDD lease need Flow's exact launcher receipt.
+      const trusted=trustedFlow(ctx);
+      const result=observe(ctx.cwd,"task",trusted?"trusted-work-provider":"pi-event",
+        trusted?.provenance??"Pi before_agent_start",undefined,undefined,undefined,undefined,trusted);
       const newRules=newlyRelevant(result);
       if(!newTask&&!newRules.length)return;
-      const page=renderReasonedPage(result,newRules,12_000);
+      const page=renderReasonedPage(result,newRules,trusted?.phase==="PLAN"?24_000:12_000);
       recordActualDelivery(result,page);
       if(newTask)recordReasoned(ctx.cwd,"task_start","task",undefined,result,newRules,page,started);
       return {message:{customType:"pi-atdd-inference",
@@ -386,6 +405,22 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string} 
         content:"ATDD reasoning failed: "+String(e)+
           ". Unknown obligations are not waivers; repair graph before governed completion.",display:true}};
     }
+  }
+  /** Do not start editing with only the first page of a phase's conventions.
+   * Reuse the bounded page receipts; missing mandatory rules block rather than waive. */
+  function phasePreflight(ctx:{cwd:string;sessionManager?:{getSessionId:()=>string}}):
+    {block:true;reason:string}|undefined {
+    const trusted=trustedFlow(ctx);
+    if(!trusted)return undefined;
+    const result=observe(ctx.cwd,"task","trusted-work-provider",trusted.provenance,
+      undefined,undefined,trusted);
+    const pending=newlyRelevant(result);
+    if(!pending.length&&result.status!=="incomplete")return undefined;
+    const page=renderReasonedPage(result,pending,20_000);
+    recordActualDelivery(result,page);
+    return {block:true,reason:"ATDD phase "+trusted.phase+
+      " guidance must be delivered before editing. Read this page and retry:\n\n"+page.text+
+      (result.status==="incomplete"?"\nRequired phase conventions are missing; repair the pinned catalog.":"")};
   }
   /** Same preflight for a governed path whether it is edited via edit/write or the shell.
    * A blocked retry delivers missed reasoning, not a waiver or permission grant.
@@ -427,14 +462,14 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string} 
   }
   /** PLT-122: a Coach's record carries what only the Coach knows; unknown fields stay UNKNOWN. */
   function coachState(text:string):{coach?:CoachState}{
-    if(process.env.PI_ATDD_ATTENTION_ROLE!=="coach")return {};
-    return {coach:{role:"coach",identity:process.env.PI_ATDD_ATTENTION_IDENTITY,profile:process.env.PI_ATDD_ATTENTION_PROFILE,
+    if(env.PI_ATDD_ATTENTION_ROLE!=="coach")return {};
+    return {coach:{role:"coach",identity:env.PI_ATDD_ATTENTION_IDENTITY,profile:env.PI_ATDD_ATTENTION_PROFILE,
       taskRefs:[...extractIssueIds(text),...extractPullRequests(text)],attention:attentionStrip.liveItems()}};
   }
   pi.on("turn_end",(_event,ctx)=>{
     if(!ctx.isProjectTrusted())return;
     let thresholds,maxHops;
-    try{thresholds=resolveThresholds(process.env);maxHops=resolveMaxHops(process.env);}
+    try{thresholds=resolveThresholds(env);maxHops=resolveMaxHops(env);}
     catch(e){ctx.ui.notify("ATDD context handoff disabled: "+String(e),"error");return;}
     const usage=ctx.getContextUsage();
     const effective=usage?clampToCompaction(thresholds,usage.contextWindow,compactionReserve(ctx.model)):thresholds;
@@ -569,6 +604,12 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string} 
         if(byPath.get(p)!=="create")byPath.set(p,op);
       }
       const targets=[...byPath.keys()];
+      if(targets.length) {
+        try {
+          const stage=phasePreflight(ctx);
+          if(stage)return stage;
+        }catch(e){reset();return {block:true,reason:"ATDD phase verification failed: "+String(e)};}
+      }
       const proposed=new Map<string,string>();
       for(const [candidate,content] of shellStaticWriteContents(command)){
         const path=scopedPath(ctx.cwd,candidate);
@@ -604,6 +645,10 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string} 
       record(ctx.cwd,{point:"pre_edit",outcome:"error",reasonCode:"unsafe_path"});
       return {block:true,reason:"ATDD cannot govern edits outside the repository."};
     }
+    try {
+      const stage=phasePreflight(ctx);
+      if(stage)return stage;
+    }catch(e){reset();return {block:true,reason:"ATDD phase verification failed: "+String(e)};}
     try{
       const source=sourceFor(ctx.cwd,path,input);
       // Only a fully proposed write or a uniquely applied oldText/newText edit
