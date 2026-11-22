@@ -44,3 +44,8 @@ test("coordinator merge-resolution PR is scoped separately from worker acceptanc
   const result=inspectIntegrationPR({base,head:"feature/atd-39-reconcile-trusted-phase",body:"ATD-39 ATD-42 ATD-41: merge-conflict reconciliation, no full issue completion claimed"});
   assert.equal(result.status,"SCOPE_REVIEW_ONLY");
 });
+
+test("a source-locked main sync has its own ATD-39 contract, not unrelated work criteria", () => {
+  const result=inspectIntegrationPR({base,head:"sync/atd-39-main-3007c139",body:"ATD-39: sync main@3007c13958def5879106c4612f10bef8d524e9db into integration without closing ATD-22 or ATD-29"});
+  assert.equal(result.status,"SCOPE_REVIEW_ONLY");
+});
