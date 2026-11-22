@@ -233,7 +233,7 @@ test("labeled fires/doesNotFire replays distinguish structural coverage from leg
         origin:"pi-event",provenance:"ATD-41 fixture "+c.id});
       const actual=has(out,c.target);
       const p=proof(out,c.target);
-      const structure=/(domain_to_integration_import|bun_mutating_route|test_urn_header)/.test(p);
+      const structure=/(domain_to_integration_import|bun_mutating_route_missing_auth|test_urn_missing_binding)/.test(p);
       if(c.shouldFire && actual)hits++;
       if(c.shouldFire && !actual)misses++;
       if(!c.shouldFire && actual)spurious++;
