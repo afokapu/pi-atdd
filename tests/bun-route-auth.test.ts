@@ -37,6 +37,13 @@ test("unresolved handler, dynamic config and incomplete syntax are UNKNOWN, not 
   assert.equal(inspectBunRouteAuth("src/server.ts",undefined).status,"unknown");
   assert.equal(inspectBunRouteAuth("src/server.test.ts",route("POST",handler)).status,"unrelated");
 });
+test("nested callbacks cannot masquerade as the Bun fetch request handler",()=>{
+  const nested='Bun.serve({fetch(req){const helper=()=>{if(req.method==="PATCH")return 1;};return new Response("ok")}});';
+  assert.equal(inspectBunRouteAuth("src/server.ts",nested).status,"unknown");
+  const sameName='Bun.serve({fetch(req){const helper=()=>{const method=req.method;if(method==="POST")return 1;};return new Response("ok")}});';
+  assert.equal(inspectBunRouteAuth("src/server.ts",sameName).status,"unknown");
+});
+
 test("foreign method properties do not fabricate a request mutation",()=>{
   const foreign='Bun.serve({fetch(req){const other={method:"POST"};if(other.method==="POST")return 1;}});';
   assert.equal(inspectBunRouteAuth("src/server.ts",foreign).status,"unknown");
