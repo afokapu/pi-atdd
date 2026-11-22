@@ -54,7 +54,7 @@ These six are genuine source conflicts, not 6 missing inspections. None grants a
 
 **C. Telemetry plan → implementation → test.** Planner disposition/registry/ownership `PA-P-TEL01..04`, code emission/name/source `PA-B-TEL01..05`, tester event exactness and temporal order `PA-B-TMT01..05` are separately variable, with adoption-dependent scope. An emitted-looking string cannot satisfy post-commit/rollback acceptance proof.
 
-**D. Artifact name → contract location → data-bearing behavior.** `PA-P-ART01/02/03/05`, `PA-P-IF02/03/04/05`, `PA-P-CAP07/08` and code-side DTO `PA-B-DTO01/02/03` are distinct. Spelling equality, source path, resource instance, registry membership, version and runtime transport need independent evidence; there is a six-row source conflict on the schema `$id` spelling.
+**D. Artifact name → contract location → data-bearing behavior.** `PA-P-ART01/02/03/05`, `PA-P-IF02/03/04/05`, `PA-P-CAP07/08` and code-side DTO `PA-B-DTO01/02/03` are distinct. Spelling equality, source path, resource instance, registry membership, version and runtime transport need independent evidence; there is a specific authored source conflict concerning the schema `$id` spelling.
 
 **E. Two different tracker obligations.** The original local `C-06a` external tracker issue/branch PR references and `PA-P-PLAN02` internally bound local ATDD plan issue are different bearers. Do not collapse into one “issue present” state, and do not let a passing GitHub tracker check silently ratify a PLAN.
 
