@@ -416,8 +416,9 @@ function envFromLease(w: ReturnType<typeof attentionWorld>): NodeJS.ProcessEnv {
     PI_ATDD_EXECUTION_OWNER_TOKEN: b.ownerToken, PI_ATDD_EXECUTION_RESUME: "1" };
 }
 /** A relaunched successor that is SIGKILLed after its resume CAS and before any prompt. */
-function resumeThenCrash(w: ReturnType<typeof attentionWorld>, sessionId: string): void {
-  const args = [join(here, "fixtures", "seat-resume-child.ts"), w.repo, sessionId];
+function resumeThenCrash(w: ReturnType<typeof attentionWorld>, sessionId: string,
+  killAt: "before-prompt" | "after-injection" = "before-prompt"): void {
+  const args = [join(here, "fixtures", "seat-resume-child.ts"), w.repo, sessionId, killAt];
   const r = spawnSync(process.execPath, ["--experimental-strip-types", ...args],
     { env: { ...w.env, PI_ATDD_EXECUTION_RESUME: "1" }, encoding: "utf8" });
   assert.equal(r.signal, "SIGKILL", "the successor must resume and then crash: " + r.stderr);
@@ -437,8 +438,28 @@ test("PLT-117 A04 P2: a decision closed while down is still reported after a sec
     assert.match(started.message.content, /closed since checkpoint: ati_123456789abc/,
       "the undelivered closure must survive the second crash");
     assert.equal(gen3.call("tool_call", ctxFor(w.repo, "session-c"))[0], undefined);
-    // Delivery is acknowledged: a later generation does not repeat an already delivered closure.
+    gen3.call("turn_end", ctxFor(w.repo, "session-c")); // the turn completes: delivery is now acknowledged
+    // A later generation does not repeat an already delivered closure.
     const delivered = readSeatCheckpoint(w.config.checkpointDir, readSeatLease(w.config.leasePath)!.executionId);
     assert.deepEqual(delivered.undeliveredClosed ?? [], []);
+  } finally { w.cleanup(); }
+});
+
+test("PLT-117 A04 P2: a SIGKILL after the notice is injected and before the turn ends replays the closure", () => {
+  const w = attentionWorld();
+  try {
+    bootstrapSeat(w.config);
+    raisePending(w);
+    crashAt(w, "after-checkpoint", PENDING); // generation 1 dies with PENDING open
+    resolvePending(w); // the owner answers while nothing is running
+    resumeThenCrash(w, "session-b", "after-injection"); // generation 2 injects the notice, then dies mid-turn
+    const gen3 = piHooks(envFromLease(w));
+    gen3.call("session_start", ctxFor(w.repo, "session-c"));
+    const [started] = gen3.call("before_agent_start", ctxFor(w.repo, "session-c"));
+    assert.match(started.message.content, /closed since checkpoint: ati_123456789abc/,
+      "an injected but unfinished turn must not lose the closure");
+    gen3.call("turn_end", ctxFor(w.repo, "session-c"));
+    assert.deepEqual(readSeatCheckpoint(w.config.checkpointDir,
+      readSeatLease(w.config.leasePath)!.executionId).undeliveredClosed ?? [], []);
   } finally { w.cleanup(); }
 });

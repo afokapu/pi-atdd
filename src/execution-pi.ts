@@ -45,6 +45,7 @@ export function registerSeatExecution(pi: ExtensionAPI, env: NodeJS.ProcessEnv =
   const api = pi as unknown as Api;
   let current = configured;
   // Set only by a launcher-requested recovery. Tools stay blocked until the next prompt delivers it.
+  let awaitingTurnEnd: string[] | undefined;
   let recovery: { pendingIds: string[]; closedSinceCheckpoint: string[]; acceptance: string;
     grant: string; delivered: boolean } | undefined;
   const recoveryNotice = (): string => {
@@ -134,11 +135,8 @@ export function registerSeatExecution(pi: ExtensionAPI, env: NodeJS.ProcessEnv =
     const b = current.binding;
     const owed = recovery && !recovery.delivered ? recovery.closedSinceCheckpoint : undefined;
     const notice = recoveryNotice();
-    // The closures are now in front of the model: acknowledge them so a later generation does not replay them.
-    if (owed?.length) {
-      try { acknowledgeRecovery(current, ctx.sessionManager.getSessionId(), owed); }
-      catch (e) { ctx.ui.notify("ATDD recovery acknowledgement failed; closures will be replayed: " + String(e), "error"); }
-    }
+    // Handed to the prompt now; acknowledged only at turn_end, once Pi has persisted the turn.
+    if (owed?.length) awaitingTurnEnd = owed;
     return { message: {
       customType: "pi-atdd-execution-context", display: false,
       content: "ATDD verified execution scope: project " + b.projectId + "; task " + b.taskId +
@@ -147,6 +145,14 @@ export function registerSeatExecution(pi: ExtensionAPI, env: NodeJS.ProcessEnv =
         ". Revalidate acceptance and repository evidence before completion. Model or session identity is not a waiver." +
         notice,
     } };
+  });
+  // Acknowledge at the turn boundary. A crash before it replays the closure (at-least-once), never loses it.
+  api.on("turn_end", (_event, ctx) => {
+    const owed = awaitingTurnEnd;
+    awaitingTurnEnd = undefined;
+    if (!owed?.length || !isContext(ctx)) return;
+    try { acknowledgeRecovery(current, ctx.sessionManager.getSessionId(), owed); }
+    catch (e) { ctx.ui.notify("ATDD recovery acknowledgement failed; closures will be replayed: " + String(e), "error"); }
   });
   api.on("tool_call", (_event, ctx) => {
     if (!owns(ctx)) return { block: true,
