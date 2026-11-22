@@ -104,14 +104,14 @@ test("detector findings are revision-bound reviewer evidence and independent sup
     const first=x.session.observe(input);
     assert.ok(has(first,ARCH));
     const node=first.activations.find(a=>a.id===ARCH)!;
-    assert.match(JSON.stringify(node.proof),/detector.a/);
-    assert.match(JSON.stringify(node.proof),/detector.b/);
+    assert.match(JSON.stringify(node.proof),/detector:detector\.a/);
+    assert.match(JSON.stringify(node.proof),/detector:detector\.b/);
     assert.ok(first.observedFacts.filter(f=>f.predicate==="finding").length===2);
     const second=x.session.observe({...input,findings:input.findings!.slice(1)});
     assert.ok(has(second,ARCH));
     assert.ok(second.changed.includes(ARCH));
-    assert.doesNotMatch(proof(second,ARCH),/detector.a/);
-    assert.match(proof(second,ARCH),/detector.b/);
+    assert.doesNotMatch(proof(second,ARCH),/detector:detector\.a/);
+    assert.match(proof(second,ARCH),/detector:detector\.b/);
     const none=x.session.observe({scope:"review",task:"Inspect boundary",path:"src/other.ts",
       operation:"review",origin:"pi-event",provenance:"Pi final review"});
     assert.ok(none.removed.includes(ARCH));

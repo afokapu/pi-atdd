@@ -33,7 +33,10 @@ export function probe(cwd: string): Record<string, { context: string[]; reasonin
   scenarios.forEach((s, i) => {
     const session = new ReasoningSession(catalog, config.selectors);
     const r = session.observe({ ...s, scope: "probe-" + i,
-      origin: s.phase ? "trusted-work-provider" : "pi-event", provenance: "plt-87-probe" });
+      origin: s.phase ? "trusted-work-provider" : "pi-event", provenance: "plt-87-probe",
+      // Fixed synthetic fixture revision, NOT inferred work-provider authority.
+      ...(s.phase ? {revision:"fixture:plt-87-profile-probe"} : {}),
+    });
     const ctx = resolveContext(catalog, config.selectors, s.task, s.path ? [s.path] : [], s.operation, 100);
     out[String(i).padStart(2, "0") + " " + s.task] = {
       context: [...ctx.matchingIds].sort(),
