@@ -87,6 +87,7 @@ for(const file of sourceFiles){
 }
 
 const testFiles=[
+  "tests/activation-telemetry.test.ts",
   "tests/operational-activation.test.ts",
   "tests/operational-observers.test.ts",
   "tests/pi-activation.test.ts",

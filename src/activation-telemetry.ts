@@ -34,7 +34,13 @@ export function activationPathCategory(file?: string): NonNullable<ActivationEve
   if (/\.[cm]?[jt]sx?$/i.test(path)) return "source";
   return "other";
 }
-type TelemetryLocation = {root?: string};
+type TelemetryLocation = {root?: string; disabled?: boolean};
+/** An explicit test setting is local to the call. Ordinary Pi use still
+ * honors the user's PI_ATDD_TELEMETRY environment switch.
+ */
+function isDisabled(options: TelemetryLocation): boolean {
+  return options.disabled ?? (process.env.PI_ATDD_TELEMETRY === "off");
+}
 /** An explicitly supplied sink remains scoped to the caller; the Pi host uses
  * the original user-state default. Tests no longer need to mutate process.env.
  */
@@ -60,9 +66,10 @@ function count(value: number | undefined): number {
 /** Persist sanitized counters only. A write failure is an observability gap,
  * not grounds to approve, waive, block or falsely claim code compliance.
  */
-export function appendActivation(cwd: string, event: ActivationEvent, options: {maxBytes?: number; root?: string} = {}):
+export function appendActivation(cwd: string, event: ActivationEvent,
+  options: TelemetryLocation & {maxBytes?: number} = {}):
   {ok: true; path: string} | {ok: false; reason: string} {
-  if (process.env.PI_ATDD_TELEMETRY === "off") return {ok: true, path: "disabled"};
+  if (isDisabled(options)) return {ok: true, path: "disabled"};
   try {
     const path = activationLogPath(cwd, options);
     // Build a closed schema: ignore unknown event keys even when supplied by
@@ -111,7 +118,7 @@ export type TelemetrySummary = {
 export function activationSummary(cwd: string, options: TelemetryLocation = {}): TelemetrySummary {
   const groups = {task_start: emptyCounts(), pre_edit: emptyCounts(), post_tool: emptyCounts()};
   let malformed = 0, unreadable = 0, total = 0;
-  if (process.env.PI_ATDD_TELEMETRY === "off") return {groups, malformed, unreadable, total};
+  if (isDisabled(options)) return {groups, malformed, unreadable, total};
   const path = activationLogPath(cwd, options);
   for (const file of [path + ".1", path]) {
     if (!existsSync(file)) continue;
@@ -136,7 +143,7 @@ export function activationSummary(cwd: string, options: TelemetryLocation = {}):
  * alone cannot measure false activations, recall or agent implementation quality.
  */
 export function formatActivationSummary(cwd: string, options: TelemetryLocation = {}): string {
-  if (process.env.PI_ATDD_TELEMETRY === "off") return "ATDD local activation telemetry disabled (PI_ATDD_TELEMETRY=off)";
+  if (isDisabled(options)) return "ATDD local activation telemetry disabled (PI_ATDD_TELEMETRY=off)";
   const s = activationSummary(cwd, options);
   const lines = ["ATDD local activation log: " + activationLogPath(cwd, options),
     "Recent bounded events only; rate = matched / eligible observed attempts. Not correctness or recall."];
