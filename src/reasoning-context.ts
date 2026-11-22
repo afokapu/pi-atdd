@@ -283,7 +283,7 @@ function validateProviderEvidence(ob: ContextObservation): void {
   const asserted = ob.actorRole !== undefined || ob.phase !== undefined || ob.acceptance !== undefined;
   if (asserted && ob.origin !== "trusted-work-provider")
     throw new Error("authority, phase and acceptance require trusted provider evidence");
-  if (ob.phase && !["RED","GREEN","REFACTOR","SMOKE"].includes(ob.phase))
+  if (ob.phase && !["PLAN","RED","GREEN","REFACTOR","SMOKE"].includes(ob.phase))
     throw new Error("unrecognized provider phase");
   if (asserted && !ob.revision)
     throw new Error("trusted provider assertions require a pinned revision");
