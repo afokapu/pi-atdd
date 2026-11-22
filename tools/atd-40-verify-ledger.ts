@@ -9,15 +9,22 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseDocument } from "yaml";
 import { digestSource, type SourceKind } from "../src/catalog.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const fileAt = (name: string): string => join(root, name);
-const ledgerPath = "docs/ATD-40-PASS-A-LEDGER.tsv";
-const ledger = readFileSync(fileAt(ledgerPath), "utf8");
+// A research evidence artifact is kept outside docs/: the bundled Bun docs rule
+// applies AsciiDoc-only constraints to authored docs/, while this package's
+// existing docs/ migration is not authorized by a source-level ATD-40 review.
+const ledgerPath = "research/atd-40/ATD-40-PASS-A-LEDGER.tsv";
+// Test-only override permits mutation tests without touching canonical sources.
+const args = process.argv.slice(2);
+assert.ok(args.length === 0 || (args.length === 2 && args[0] === "--ledger-file" && !!args[1]),
+  "usage: atd-40-verify-ledger.ts [--ledger-file <path>]");
+const ledger = readFileSync(args.length ? resolve(args[1]!) : fileAt(ledgerPath), "utf8");
 const lines = ledger.trimEnd().split("\n").filter(line => line && !line.startsWith("#"));
 const columns = [
   "rule_id_filename_derived", "source_family", "path", "git_blob_sha",
@@ -43,6 +50,8 @@ function walk(dir: string): string[] {
         : entry.isFile() && name.endsWith(".convention.yaml") ? [name] : [];
     });
 }
+// Count the actual pinned corpus, not the older 375-file estimate in ATD-29.
+// Fixture files are excluded by selecting only these three authoritative roots.
 const actual = new Set(roots.flatMap(item => walk(item.path)));
 assert.equal(actual.size, 376, "actual non-fixture file count changed");
 const included = new Set<string>();
@@ -64,6 +73,8 @@ for (const [index, rowText] of lines.entries()) {
   assert.ok(!ids.has(id!), "duplicate convention ID: " + id);
   ids.add(id!);
 
+  // A row's SHA-1 names a Git blob exactly; catalog SHA256 is checked below.
+  // A matching filename alone is insufficient: the YAML rule_id must agree.
   const bytes = readFileSync(fileAt(path!));
   const header = Buffer.from("blob " + bytes.length + "\0", "utf8");
   const actualSha = createHash("sha1").update(header).update(bytes).digest("hex");
@@ -84,6 +95,8 @@ for (const [index, rowText] of lines.entries()) {
   if (status === "CANDIDATE") assert.ok(candidates, "missing provisional candidate ref " + id);
   if (status === "UNRESOLVED") assert.equal(candidates, "", "unverified candidate " + id);
   if (status !== "UNRESOLVED") assert.ok(spans, "missing inspected source span " + id);
+  // Witness line anchors preserve authored provenance, not causal standing or
+  // automatic applicability; deeper graph semantics need independent review.
   if (witnesses) {
     for (const witness of witnesses.split(";")) {
       const loc = witness.match(/@(vendor\/atdd-bun\/relationships\.yaml|catalog\/pi-atdd\/relationships\.yaml)#L(\d+)$/);
@@ -102,6 +115,8 @@ for (const [key, count] of [["Bun", 356], ["Flow", 2], ["Local", 18]] as const)
 for (const [key, count] of [["CANDIDATE", 13], ["NO_CANDIDATE", 1], ["UNRESOLVED", 362]] as const)
   assert.equal(dispositions.get(key), count, "disposition count changed: " + key);
 
+// A vendor lock validates whole-source bytes, independently of per-file blobs.
+// Passing the lock verifies fidelity, NOT completeness of OoC extraction.
 const lock = JSON.parse(readFileSync(fileAt("vendor/catalog.lock.json"), "utf8")) as {
   sources: Array<{ id: string; kind: SourceKind; path: string; sha256: string }>;
 };
