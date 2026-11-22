@@ -39,7 +39,7 @@ test("frozen ATD-29 source ledger and all three vendor locks reproduce", () => {
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /376 YAML rule IDs \+ Git blobs/);
   assert.match(result.stdout, /13 \/ NO_CANDIDATE 1 \/ UNRESOLVED 362/);
-  assert.match(result.stdout, /admission: NOT VERIFIED/);
+  assert.match(result.stdout, /authorization: NOT VERIFIED/);
 });
 
 test("a missing ledger row fails closed instead of claiming corpus completeness", () => {
