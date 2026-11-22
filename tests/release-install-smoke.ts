@@ -1,6 +1,9 @@
-// ATD-20 acceptance 1 and 2, proven with real Pi in an isolated PI_CODING_AGENT_DIR:
-// 1 a clean profile installs a tagged git source, the extension loads and /atdd is registered;
-// 2 a newer tag with a changelog entry, after the pin is bumped and Pi starts, shows "Extension Updates".
+// URN: test:pi-atdd:release:ATD-20-ACC-1
+// Acceptance: acc:pi-atdd:ATD-20-ACC-1
+// Proves ATD-20 acceptance 1 with real Pi in an isolated PI_CODING_AGENT_DIR: a clean profile installs a
+// tagged git source, the extension loads and /atdd is registered.
+// Acceptance 2 (a pin bump shows "Extension Updates") is PENDING and NOT proven here. This file only asserts
+// that Pi stays silent after a plain bump (Pi 1.5.2 keys notices by source incl. @ref).
 // The git source is the spec a profile would use (git:github.com/afokapu/pi-atdd@vX.Y.Z). GitHub is
 // redirected to a local bare-style copy of HEAD with a git URL rewrite in an isolated gitconfig. Tags
 // are local to that copy. Nothing is pushed, and no profile or real Pi settings file is read or written.
