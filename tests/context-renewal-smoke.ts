@@ -27,7 +27,7 @@ export default function (pi: any) {
 const TASK = "Coordinate PLT-122 and PLT-117 for the Coach; review PR #28. " + "detail ".repeat(400);
 const ENV = { ...process.env, PI_CODING_AGENT_DIR: agentDir, PI_OFFLINE: "1", PI_TELEMETRY: "0", PI_SKIP_VERSION_CHECK: "1",
   PI_ATDD_ATTENTION_ROLE: "coach", PI_ATDD_ATTENTION_IDENTITY: "main@pi-atdd", PI_ATDD_ATTENTION_PROFILE: "forge",
-  PI_ATDD_HANDOFF_AT: "12", PI_ATDD_HANDOFF_NOTIFY_AT: "8", PI_ATDD_HANDOFF_MAX_HOPS: "1" };
+  PI_ATDD_HANDOFF_AT: "12", PI_ATDD_HANDOFF_NOTIFY_AT: "8", PI_ATDD_HANDOFF_MAX_HOPS: "2" };
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 const failures: string[] = [];
 const check = (ok: boolean, what: string) => { console.log((ok ? "ok   " : "FAIL ") + what); if (!ok) failures.push(what); };
@@ -49,12 +49,14 @@ const state = async (send: (o: object) => void, events: any[], id: string) => {
 await session(async (send, events) => {
   const before = await state(send, events, "a");
   send({ type: "prompt", message: TASK });
-  await sleep(12000);
+  await sleep(16000);
   const after = await state(send, events, "b");
   check(!!before?.sessionId && before.sessionId !== after?.sessionId, "A01 successor session started automatically");
   check(before?.model?.id === "tier-med" && after?.model?.id === "tier-med", "A01 model tier unchanged (tier-med)");
   const records = (() => { try { return readdirSync(join(cwd, ".atdd-pi", "handoffs")).map(f => readFileSync(join(cwd, ".atdd-pi", "handoffs", f), "utf8")); } catch { return []; } })();
-  check(records.length === 1, "one record written (hop limit 1 stops further hops)");
+  check(records.length === 2, "two records written (hop limit 2 stops a third)");
+  check(/Hop: 2/.test(records[1] ?? "") && (records[1] ?? "").includes("Coordinate PLT-122 and PLT-117 for the Coach"), "review P1: the original task survives hop 2 in a real session");
+  check(!/Task[^\n]*\n<<<TASK\nContinue /.test(records[1] ?? ""), "review P1: the kickoff did not replace the task");
   check(/Coach state:/.test(records[0] ?? "") && /Role: coach \(main@pi-atdd, profile forge\)/.test(records[0] ?? ""), "A04 coach-state section with role/identity/profile");
   check(/Workers: UNKNOWN/.test(records[0] ?? "") && /PLT-122, PLT-117/.test(records[0] ?? ""), "A04 unknowns say UNKNOWN; issues listed");
   const tool = events.find(e => e.type === "tool_execution_end" && e.toolName === "attention_ack");

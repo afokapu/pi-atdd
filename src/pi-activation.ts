@@ -24,7 +24,7 @@ import { MODE_FILE, guardsAtdd, modeFromText, recordMode, repositoryRoot, resolv
 import {
   buildHandoff, clampToCompaction, decideContextAction, decideSettle, extractIssueId, INITIAL_HANDOFF_STATE, kickoffText,
   parseHop, resolveCompactionReserve, DEFAULT_COMPACTION_RESERVE, resolveMaxHops, resolveThresholds,
-  RECORD_HEADER, type HandoffInput, type HandoffState, type CoachState, resolveTask, extractIssueIds, extractPullRequests,
+  RECORD_HEADER, type HandoffInput, type HandoffState, type CoachState, resolveTask, isKickoff, extractIssueIds, extractPullRequests,
 } from "./context-handoff.ts";
 
 /** Text of a user message entry in the session branch; empty for anything else. */
@@ -269,7 +269,10 @@ export default function atdd(pi:ExtensionAPI):void {
   function startRun(event:{messageType:string;prompt?:string},ctx:{cwd:string}){
     const newTask=event.messageType==="user";
     if(newTask){
-      serial++;task=event.prompt||"unknown task";reset();
+      serial++;
+      // The kickoff this extension generated points at the record; it is not a new task.
+      if(!(event.prompt&&isKickoff(event.prompt)&&task))task=event.prompt||"unknown task";
+      reset();
       if(active(ctx.cwd))observedRepo=observeRepository(ctx.cwd).snapshot;
     }
     if(!active(ctx.cwd))return;
@@ -379,14 +382,17 @@ export default function atdd(pi:ExtensionAPI):void {
         const dir=join(ctx.cwd,".atdd-pi","handoffs");
         let name=arg;
         if(arg==="latest"){
-          try{name=readdirSync(dir).filter(f=>f.endsWith(".md")).sort().at(-1)??"";}catch{name="";}
+          try{name=readdirSync(dir).filter(f=>f.endsWith(".md")&&lstatSync(join(dir,f)).isFile()).sort().at(-1)??"";}catch{name="";}
           if(!name){ctx.ui.notify("No ATDD context handoff record found in "+dir,"info");return;}
         }
         const file=join(dir,name);
         let text="";
         try{
           if(!/^[\w.-]+\.md$/.test(name))throw new Error("bad name");
-          text=readFileSync(file,"utf8");
+          // Confine to the real handoffs directory and require a regular file, never a link.
+          const realDir=realpathSync(dir),realFile=realpathSync(file);
+          if(dirname(realFile)!==realDir||lstatSync(file).isSymbolicLink()||!lstatSync(realFile).isFile())throw new Error("not a regular file in the handoff dir");
+          text=readFileSync(realFile,"utf8");
         }catch{ctx.ui.notify(arg+" is not a handoff record in "+dir,"error");return;}
         if(!text.includes(RECORD_HEADER)){ctx.ui.notify(arg+" is not a handoff record in "+dir,"error");return;}
         ready={text,path:file,kickoff:kickoffText(extractIssueId(resolveTask([text])))};

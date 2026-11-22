@@ -157,6 +157,13 @@ export function extractPullRequests(text: string): string[] {
 }
 
 const KICKOFF_PATTERN = /^Continue (\S+ )?from the ATDD context handoff above\./;
+/** True for the kickoff this module generates; it points at the record and is never a task. */
+export function isKickoff(text: string): boolean { return KICKOFF_PATTERN.test(text.trim()); }
+
+const TASK_START = "<<<TASK";
+const TASK_END = "<<<END TASK>>>";
+/** A task must not be able to carry its own delimiters. */
+const neutralise = (t: string) => t.split(TASK_START).join("<<TASK").split(TASK_END).join("<<END TASK>>");
 const UNKNOWN_TASK = "unknown task (session resume requires authoritative task lookup)";
 
 /**
@@ -171,8 +178,11 @@ export function resolveTask(userTexts: string[]): string {
   if (recordAt < 0) return texts.at(-1) ?? UNKNOWN_TASK;
   const later = texts.slice(recordAt + 1).filter(t => !KICKOFF_PATTERN.test(t.trim()) && !t.includes(RECORD_HEADER));
   if (later.length > 0) return later.at(-1)!;
-  const match = /^Task \([^)\n]*\): ([\s\S]*?)\nDone \/ last state:/m.exec(texts[recordAt]!);
-  return match?.[1]?.trim() || UNKNOWN_TASK;
+  const rec = texts[recordAt]!;
+  const start = rec.indexOf("\n" + TASK_START + "\n");
+  const end = start < 0 ? -1 : rec.indexOf("\n" + TASK_END, start + TASK_START.length + 2);
+  if (start < 0 || end < 0) return UNKNOWN_TASK;
+  return rec.slice(start + TASK_START.length + 2, end).trim() || UNKNOWN_TASK;
 }
 
 /** Coach-state section of a Coach's record. A field that is not known is written UNKNOWN. */
@@ -221,7 +231,10 @@ export function buildHandoff(input: HandoffInput): string {
     "Revision: " + (input.revision ?? "UNKNOWN"),
     "Context at handoff: " + input.percent.toFixed(1) + "% of " + input.contextWindow +
       " tokens (measured at the turn that crossed the threshold)",
-    "Task (user's words, best-effort redaction of listed credential labels and token shapes): " + clip(redact(input.task.trim()), MAX_TASK_CHARS),
+    "Task (user's words, best-effort redaction of listed credential labels and token shapes), between the markers:",
+    TASK_START,
+    neutralise(clip(redact(input.task.trim()), MAX_TASK_CHARS)),
+    TASK_END,
     "Done / last state: not recorded. The predecessor's own output is never copied into a handoff; re-derive the state from the repository and the task.",
     "Next: continue from the task above; verify the repository state before relying on any claim of completion.",
     "Open items: UNKNOWN. The predecessor did not record them; reconstruct from the task and repository.",
