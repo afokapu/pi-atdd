@@ -50,7 +50,7 @@ Checked on 2026-11-22 against the revisions pinned in `vendor/catalog.lock.json`
 | Vendored source | Pinned revision | Licence found | Evidence |
 |---|---|---|---|
 | `vendor/atdd-bun` (356 conventions, `relationships.yaml`) | `5945d97e18310e7c862c08e73985400935d21346` | **None.** No LICENSE, COPYING or NOTICE file at that revision; GitHub reports no licence. | `git ls-tree` at the revision; `gh api repos/afokapu/atdd-bun/license` returns 404. The owner owns this repository and approved shipping `vendor/atdd-bun` inside the package. |
-| `vendor/atdd-flow` (2 conventions) | `2a66019a5ecf2b7a9f999ebfa04d04c9f548f19a` | MIT License, Copyright (c) 2026 Alec Fokapu | LICENSE file at the revision; GitHub reports `MIT` (SPDX). MIT asks that the copyright and permission notice travel with copies; the vendored folder has no LICENSE file. |
+| `vendor/atdd-flow` (2 conventions) | `2a66019a5ecf2b7a9f999ebfa04d04c9f548f19a` | MIT License, Copyright (c) 2026 Alec Fokapu | LICENSE file at the revision; GitHub reports `MIT` (SPDX). The notice is now shipped as `vendor/atdd-flow/LICENSE`, a byte-identical copy of the pinned upstream file (added after reviewer R2; checked by `tests/release-package.test.ts`). |
 | pi-atdd itself (this repo) | this release | No `license` field in `package.json`; no LICENSE file | `git ls-files` |
 
 ## Install proof (ATD-20 acceptance 1 and 2)
@@ -68,7 +68,6 @@ The git source is the spec profiles would use. GitHub is redirected to a local c
 - **Acceptance 2** (pin bump notice): pending follow-up issue, opened by the Coach. No workaround.
 - **Independent review** of PR #37 by the Reviewer tab (ATD-20) before any merge decision.
 - **Profiles**: Forge, AF8 and Pluggy still load the local folder. Switching each profile to `git:github.com/afokapu/pi-atdd@v0.4.0` needs owner approval per profile.
-- **atdd-flow LICENSE**: its MIT notice is not yet shipped alongside `vendor/atdd-flow`.
 
 ## Checks
 

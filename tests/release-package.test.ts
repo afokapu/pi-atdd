@@ -53,3 +53,11 @@ test("the licence status of the vendored ATDD-Bun and ATDD-Flow content is recor
   assert.match(section, /5945d97/, "licence section pins the atdd-bun revision it checked");
   assert.match(section, /2a66019/, "licence section pins the atdd-flow revision it checked");
 });
+
+test("vendor/atdd-flow ships the MIT licence notice of its upstream", () => {
+  const path = resolve(root, "vendor/atdd-flow/LICENSE");
+  assert.ok(existsSync(path), "vendor/atdd-flow/LICENSE is required by the MIT licence (notice must travel with copies)");
+  const text = readFileSync(path, "utf8");
+  assert.match(text, /^MIT License$/m);
+  assert.match(text, /Copyright \(c\) 2026 Alec Fokapu/);
+});
