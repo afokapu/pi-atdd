@@ -229,7 +229,7 @@ test("ATD-42: the Pi before_agent_start hook delivers phase-specific conventions
   const seatAddress="driver.delivery@demo", session="atd-42-pi-session";
   const taskFile=join(desk,"work","demo","tasks","delivery.yaml");
   const seatFile=join(desk,"work","demo","seats","driver.delivery","seat.yaml");
-  const receiptFile=join(desk,"launch-receipt.yaml");
+  const receiptFile=join(desk,".atdd-flow","runtime-launch","launch-receipt.yaml");
   const piSessionPath=join(desk,"pi-session.jsonl");
   const writeTask=(phase:string)=>writeFileSync(taskFile,stringify({
     schema:"atdd-workflow/task/v1",title:"Deliver a bounded task",status:"in_progress",
@@ -239,6 +239,7 @@ test("ATD-42: the Pi before_agent_start hook delivers phase-specific conventions
   try {
     mkdirSync(join(desk,"work","demo","tasks"),{recursive:true});
     mkdirSync(join(desk,"work","demo","seats","driver.delivery"),{recursive:true});
+    mkdirSync(join(desk,".atdd-flow","runtime-launch"),{recursive:true});
     writeTask("plan");
     writeFileSync(receiptFile,stringify({
       schema:"atdd-flow/pi-runtime-launch-receipt/v1",
