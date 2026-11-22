@@ -51,7 +51,7 @@ const reviewFunctions=new Set([
   "hasDirectGuard","guardCall","guardAtEntry","handlerState","methodState",
   "routeStates","isRequestMethod","methodBranch","methodAliases","fetchBranchStates",
   "fetchRequestName","fetchStates",
-  "routeObject","serveStates","isBunServe","topLevelBindings","collectStates",
+  "routeObject","aliasMayChange","serveStates","isBunServe","topLevelBindings","collectStates",
   "summarize","sourceGap","inspectBunRouteAuth",
   "testHeaderFacts","bunAuthFacts","eligibleSource","discoverSourceEvidence",
   "oneRuleSelector","selectorExcludedBySource",
