@@ -15,7 +15,7 @@ test("real source validator emits detector/file/revision and exact-content ident
   assert.equal(hit.file,path);
   assert.equal(hit.revision,revision);
   assert.equal(hit.detectorId,IMPORT_BOUNDARY_DETECTOR);
-  assert.match(hit.evidenceId,/^[0-9a-f]{64}$/);
+  assert.match(hit.evidenceId,/^sha:[0-9a-f]{64}$/);
   assert.equal(validateImportBoundary(path,bad,revision).findings[0]?.evidenceId,hit.evidenceId);
   assert.notEqual(validateImportBoundary(path,bad+"// changed\n",revision).findings[0]?.evidenceId,
     hit.evidenceId,"same HEAD with changed worktree bytes cannot reuse a stale detector receipt");

@@ -33,7 +33,7 @@ export function validateImportBoundary(file: string, sourceText?: string,
     revision: validRevision(revision) ? revision : null, sourceDigest,
   };
   const unknown = (reasons: string[]): ImportValidation =>
-    {...base, status:"unknown", findings:[], missingReasons:reasons};
+    ({...base, status:"unknown", findings:[], missingReasons:reasons});
   if (!validRevision(revision)) return unknown(["revision_unavailable_or_unverified"]);
   if (sourceText === undefined) return unknown(["source_unavailable"]);
   const kind = classifyFileKind(file,sourceText);
@@ -48,7 +48,7 @@ export function validateImportBoundary(file: string, sourceText?: string,
   const findings: DetectorFinding[] = observation.present ? [{
     code:"domain_to_integration_import",
     detectorId:IMPORT_BOUNDARY_DETECTOR,
-    evidenceId:createHash("sha256").update(file).update("\0")
+    evidenceId:"sha:"+createHash("sha256").update(file).update("\0")
       .update(sourceText).update("\0").update(revision).digest("hex"),
     file,revision,
   }] : [];
