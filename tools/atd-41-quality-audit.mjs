@@ -47,7 +47,7 @@ const reviewFunctions=new Set([
   "validRevision","validateImportBoundary","roleInPath","specifierOf",
   "collect","dynamicUnknowns","scan","summarizedEdges","reconcileOutwardScans",
   "observeOutwardImports",
-  "evaluateWitness","replayQualifiedSidecarWitnesses","fullWitnessGapSummary",
+  "witnessVerdict","evaluateWitness","replayQualifiedSidecarWitnesses","fullWitnessGapSummary",
   "qualifiedCaseRows",
   // Existing Pi and telemetry functions touched by Stream B.
   "sourceFor","beforeSource","preflightPath","observe","recordReasoned","evidenceIds",

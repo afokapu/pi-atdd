@@ -77,6 +77,22 @@ type PinnedExample=ReturnType<typeof enumerateSidecarExamples>["examples"][numbe
 /** Execute one independently authored file/diff witness. The natural-language
  * case text is used only to pin its identity, never as source or trusted phase.
  */
+/** Compare independent AST derivations with the source-backed expectation.
+ * Contextual path guidance is kept separately; it cannot stand in for a
+ * witnessed forbidden import or turn a sidecar negative into a source positive.
+ */
+function witnessVerdict(sample:SourceWitness,
+  target:ReturnType<ReasoningSession["observe"]>["activations"][number]|undefined) {
+  const proof=JSON.stringify(target?.proof??null);
+  const structuralProof=/pi-atdd.typed-(?:domain-integration|outward-layer-import)/.test(proof);
+  const activated=!!target;
+  const structuralPass=sample.expected?structuralProof:!structuralProof;
+  const pass=activated===sample.expected&&structuralPass;
+  const legacyOveractivation=!sample.expected&&activated&&!structuralProof;
+  return {activated,structuralProof,structuralPass,pass,legacyOveractivation,
+    ...(!pass?{unexpectedSupport:target?.reasons??[]}:{}),
+  };
+}
 function evaluateWitness(sample:SourceWitness,lookup:ReadonlyMap<string,PinnedExample>,
   catalog:ReturnType<typeof loadCatalog>,reasoner:ReasoningSession):WitnessOutcome {
   const original=lookup.get(key(sample.sourceId,sample.kind,sample.index));
@@ -91,19 +107,10 @@ function evaluateWitness(sample:SourceWitness,lookup:ReadonlyMap<string,PinnedEx
   };
   const result=reasoner.observe(input);
   const target=result.activations.find(x=>x.id===rule);
-  const proof=JSON.stringify(target?.proof??null);
-  // Guidance may activate for a path without proving a forbidden dependency.
-  // Keep the contextual activation and independent structural proof separate.
-  const structuralProof=/pi-atdd.typed-(?:domain-integration|outward-layer-import)/.test(proof);
-  const activated=!!target;
-  const structuralPass=sample.expected?structuralProof:!structuralProof;
-  const pass=activated===sample.expected&&structuralPass;
-  const legacyOveractivation=!sample.expected&&activated&&!structuralProof;
   return {sourceId:sample.sourceId,kind:sample.kind,index:sample.index,
-    expected:sample.expected,activated,qualified:true,pass,structuralProof,
-    structuralPass,legacyOveractivation,
+    expected:sample.expected,qualified:true,
     sourceLock:original.sourceSha256,basis:sample.structuralBasis,
-    ...(!pass?{unexpectedSupport:target?.reasons??[]}:{}),
+    ...witnessVerdict(sample,target),
   };
 }
 /** Qualify only evidence with an independently inspectable AST/source change.
