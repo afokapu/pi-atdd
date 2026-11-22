@@ -16,12 +16,15 @@ const sourceFiles=[
   "src/activation-telemetry.ts",
   "tools/atd-41-observation-envelope.ts",
   "src/operational-observers.ts",
+  "src/layer-import-observer.ts",
+  "src/validator-observer.ts",
   "src/pi-activation.ts",
   "src/reasoning-context.ts",
   "src/render-reasoning.ts",
   "src/shell-targets.ts",
   "tools/profile-naming/probe.ts",
   "tools/sidecar-activation-matrix.ts",
+  "tools/sidecar-witness-replay.ts",
 ];
 // These functions are new or substantively expanded in the ATD-41 patch.
 // Metrics for legacy top-level Pi hosts are reported by the native checker but
@@ -37,6 +40,11 @@ const reviewFunctions=new Set([
   "validateProviderEvidence","validateDetectorEvidence","validateObservation",
   "ReasoningSession.sourceInputs","ReasoningSession.syntaxInputs","ReasoningSession.changeInputs",
   "ReasoningSession.findingInputs","ReasoningSession.selectorInputs","ReasoningSession.inputs",
+  "sourceExcludesArchitecture",
+  // ATD-22 follow-up: the live validator, generic layer scan and witness replay.
+  "validRevision","validateImportBoundary","roleInPath","specifierOf",
+  "collect","dynamicUnknowns","scan","observeOutwardImports",
+  "replayQualifiedSidecarWitnesses","fullWitnessGapSummary",
   // Existing Pi and telemetry functions touched by Stream B.
   "sourceFor","beforeSource","preflightPath","observe","recordReasoned","evidenceIds",
   "safeSessionId","safeReasonCode","safeCatalogDigest","safeDurationMs",
@@ -107,6 +115,9 @@ const testFiles=[
   "tests/activation-telemetry.test.ts",
   "tests/operational-activation.test.ts",
   "tests/operational-observers.test.ts",
+  "tests/layer-import-observer.test.ts",
+  "tests/sidecar-witness-replay.test.ts",
+  "tests/validator-observer.test.ts",
   "tests/pi-activation.test.ts",
   "tests/reasoning-context.test.ts",
   "tests/sidecar-activation-matrix.test.ts",
