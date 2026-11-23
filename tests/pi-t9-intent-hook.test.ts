@@ -103,6 +103,21 @@ test("Pi invalidates a declared action after an independent working-tree change"
       "the same Git HEAD cannot preserve approval across changed source bytes");
   }finally{x.close();}
 });
+test("strict T9 cannot be bypassed by switching to plain or losing project trust",()=>{
+  const x=sandbox(t9Authority);
+  try{
+    const untrusted={...x.ctx,isProjectTrusted:()=>false};
+    const denied=x.handlers.get("tool_call")!(action,untrusted);
+    assert.equal(denied.block,true);
+    assert.match(denied.reason,/untrusted/);
+    x.handlers.get("before_agent_start")!({messageType:"user",prompt:"plain mode"},x.ctx);
+    const plain=x.handlers.get("tool_call")!(action,x.ctx);
+    assert.equal(plain.block,true);
+    assert.match(plain.reason,/T9 declaration required/);
+    assert.equal(x.handlers.get("tool_call")!({toolName:"read",input:{path:action.input.path}},untrusted),
+      undefined);
+  }finally{x.close();}
+});
 test("Pi blocks opaque/mutating shell bypass even if action text claims to be a read",()=>{
   const x=sandbox(t9Authority);
   try{
