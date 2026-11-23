@@ -30,7 +30,7 @@ function sandbox(authority?:AuthenticatedT9Authority){
   git("init","-q");git("config","user.name","T9 gate test");git("config","user.email","test@example.invalid");
   mkdirSync(join(cwd,"src/orders/domain"),{recursive:true});
   writeFileSync(join(cwd,"src/orders/domain/price.ts"),"export const price=0;\n");
-  writeFileSync(join(cwd,"atdd-pi.yaml"),"mode: atdd\n");
+  writeFileSync(join(cwd,"atdd-pi.yaml"),"schema: pi-atdd/config/v2\n");
   git("add",".");git("commit","-qm","T9 fixture baseline");
   const handlers=new Map<string,Function>(),tools=new Map<string,any>();
   const p={on:(id:string,fn:Function)=>handlers.set(id,fn),
