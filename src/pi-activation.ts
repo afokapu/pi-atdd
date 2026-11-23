@@ -14,7 +14,7 @@ import { readTrustedFlowPhase, readEnvFlowPhase, type TrustedFlowPhase } from ".
 import { renderReasonedPage, type RenderedPage } from "./render-reasoning.ts";
 import { observeRepository, type RepositorySnapshot } from "./repository-observer.ts";
 import { shellWriteTargetModes, shellStaticWriteContents } from "./shell-targets.ts";
-import { T9IntentGate, type AuthenticatedT9Authority } from "./t9-intent-gate.ts";
+import { T9IntentGate, readOnlyAction, type AuthenticatedT9Authority } from "./t9-intent-gate.ts";
 import { registerAttentionStrip } from "./attention-strip.ts";
 import { attentionSeatOptions } from "./attention-seat.ts";
 import { registerSeatExecution } from "./execution-pi.ts";
@@ -278,7 +278,7 @@ export default function atdd(pi:ExtensionAPI, runtime: {
       toolName:Type.String({description:"The exact next tool name, e.g. write, edit, bash"}),
       toolInputJson:Type.String({description:"JSON of the exact next tool arguments"}),
     }),
-    defaultActive:true,executionMode:"sequential",
+    defaultActive:t9Required,executionMode:"sequential",
     execute:async(_id,params,_signal,_onUpdate,ctx)=>{
       if(!ctx.isProjectTrusted()||!repositoryRoot(ctx.cwd))
         return {content:[{type:"text" as const,text:"T9 declaration refused: untrusted/outside repository"}],
@@ -360,6 +360,7 @@ export default function atdd(pi:ExtensionAPI, runtime: {
   // ephemeral inference state. Reconstruct the last user task if available,
   // but never infer an authenticated role or revision from chat text.
   pi.on("session_start",(_event,ctx)=>{
+    t9Gate.reset();
     current=undefined;
     // PLT-94 MI-005: the tool and its instruction exist only in interactive, trusted sessions.
     const others=pi.getActiveTools().filter(name=>name!==INTENT_TOOL);
@@ -367,6 +368,7 @@ export default function atdd(pi:ExtensionAPI, runtime: {
     if(ctx.isProjectTrusted())restoreFromBranch(ctx);
   });
   pi.on("session_tree",(_event,ctx)=>{
+    t9Gate.reset();
     if(ctx.isProjectTrusted())restoreFromBranch(ctx);
   });
   pi.registerCommand("atdd",{
@@ -635,9 +637,10 @@ export default function atdd(pi:ExtensionAPI, runtime: {
   pi.on("tool_call",(event,ctx)=>{
     // Missing/invalid intent is refused before a governed action. An ATDD
     // repository cannot bypass an operator-enabled T9 gate by a chat assertion.
-    if(t9Required&&ctx.isProjectTrusted()&&repositoryRoot(ctx.cwd)&&
-      (active(ctx.cwd)||guardsAtdd(repositoryRoot(ctx.cwd)!))&&
+    if(t9Required&&repositoryRoot(ctx.cwd)&&
       event.toolName!==T9_DECL_TOOL&&event.toolName!==INTENT_TOOL){
+      if(!ctx.isProjectTrusted()&&!readOnlyAction(event.toolName,event.input))
+        return {block:true,reason:"T9 pre-action gate refuses governed tools in an untrusted project."};
       const {revision,workingTreeDigest}=t9RepositoryState(ctx.cwd);
       const refusal=t9Gate.check(event.toolName,event.input,revision,workingTreeDigest);
       if(refusal)return refusal;
