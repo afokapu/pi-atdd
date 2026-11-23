@@ -17,6 +17,7 @@ const sourceFiles=[
   "tools/atd-41-observation-envelope.ts",
   "src/operational-observers.ts",
   "src/pi-activation.ts",
+  "src/t9-intent-gate.ts",
   "src/reasoning-context.ts",
   "src/render-reasoning.ts",
   "src/shell-targets.ts",
@@ -39,6 +40,9 @@ const reviewFunctions=new Set([
   "ReasoningSession.findingInputs","ReasoningSession.selectorInputs","ReasoningSession.inputs",
   // Existing Pi and telemetry functions touched by Stream B.
   "sourceFor","beforeSource","preflightPath","observe","recordReasoned","evidenceIds",
+  "ordered","actionFingerprint","desiredDocument","documentFrom",
+  "compiledDesired","declaredAction","authenticatedPending","readOnlyAction",
+  "T9IntentGate.declare","T9IntentGate.check","T9IntentGate.consumed","T9IntentGate.reset",
   "safeSessionId","safeReasonCode","safeCatalogDigest","safeDurationMs",
   "sanitizedRecord","countLine","countFile",
   "isDisabled","root","activationLogPath","appendActivation","activationSummary",
@@ -108,6 +112,8 @@ const testFiles=[
   "tests/operational-activation.test.ts",
   "tests/operational-observers.test.ts",
   "tests/pi-activation.test.ts",
+  "tests/t9-intent-gate.test.ts",
+  "tests/pi-t9-intent-hook.test.ts",
   "tests/reasoning-context.test.ts",
   "tests/sidecar-activation-matrix.test.ts",
 ];
