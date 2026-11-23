@@ -392,6 +392,22 @@ export function loadCatalog(sources: SourceSpec[], cwd: string, options: Catalog
     const current = rules.has(named) ? named : parents.get(named) ?? named;
     if (old !== current && rules.has(current) && !rules.has(old)) aliases.set(old, current);
   }
+  // PLT-132 source-local alias, not another PLT-87 migration id. The frozen
+  // 358-entry profile re-keying map remains unchanged. Pin the supplier revision
+  // and confirm the alias witness in qualifyGraphReferences before publishing.
+  const referenceLedger = JSON.parse(readFileSync(join(packageRoot,
+    "conventions/relationship-reconciliation.json"), "utf8")) as {
+      source: { id: string; sha256: string };
+      alias: { legacy: string; canonical: string };
+    };
+  const ledgerSource = sources.find(src => src.id === referenceLedger.source.id);
+  if (ledgerSource?.sha256 === referenceLedger.source.sha256) {
+    if (!rules.has(referenceLedger.alias.canonical)
+        || rules.has(referenceLedger.alias.legacy)
+        || aliases.has(referenceLedger.alias.legacy))
+      throw new GraphError("source-locked acceptance alias conflicts with catalog identity");
+    aliases.set(referenceLedger.alias.legacy, referenceLedger.alias.canonical);
+  }
   const legacyAliasEdgeCount = edges.filter(e => e.source === "planner.acceptance.complete"
     || e.target === "planner.acceptance.complete").length;
   // Extension graphs may still name pre-rename ids; they resolve to the current rule.
