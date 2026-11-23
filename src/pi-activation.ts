@@ -14,6 +14,7 @@ import { readTrustedFlowPhase, readEnvFlowPhase, type TrustedFlowPhase } from ".
 import { renderReasonedPage, type RenderedPage } from "./render-reasoning.ts";
 import { observeRepository, type RepositorySnapshot } from "./repository-observer.ts";
 import { shellWriteTargetModes, shellStaticWriteContents } from "./shell-targets.ts";
+import { T9IntentGate, type AuthenticatedT9Authority } from "./t9-intent-gate.ts";
 import { registerAttentionStrip } from "./attention-strip.ts";
 import { attentionSeatOptions } from "./attention-seat.ts";
 import { registerSeatExecution } from "./execution-pi.ts";
@@ -79,6 +80,7 @@ function outsideRepository(cwd:string,supplied:string):boolean{
 }
 /** PLT-94: the model reads intent; the extension only exposes the switch, guarded. */
 const INTENT_TOOL="set_atdd_mode";
+const T9_DECL_TOOL="declare_t9_change";
 const INTENT_RULE="Use set_atdd_mode when the user signals, in any wording or language, that the work is exploratory, "+
   "throwaway, a scratchpad, a spike or a prototype: propose plain mode (in a repository that declares ATDD, set_atdd_mode "+
   "asks the user to confirm and refuses without a yes); never switch to plain to avoid a convention.";
@@ -88,8 +90,14 @@ const MODE_CHOICES=["ATDD — remember for this repo","Plain — remember for th
 /** Pi supplies only the ExtensionAPI. A test harness may inject an isolated
  * telemetry sink; no external provider or task text can select this path.
  */
-export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;env?:NodeJS.ProcessEnv} = {}):void {
+export default function atdd(pi:ExtensionAPI, runtime: {
+  telemetryRoot?:string;env?:NodeJS.ProcessEnv;
+  /** Trusted host-only configuration; never from agent-written files. */
+  t9Authority?:AuthenticatedT9Authority;
+} = {}):void {
   const env=runtime.env??process.env;
+  const t9Required=env.PI_ATDD_REQUIRE_T9==="1";
+  const t9Gate=new T9IntentGate(runtime.t9Authority);
   const executionSeat = registerSeatExecution(pi,env); // PLT-117: inert unless launch-bound
   // PLT-118: a scoped attention route follows the live seat binding and its writes are fenced against seat transfer.
   const attentionStrip=registerAttentionStrip(pi, attentionSeatOptions(executionSeat)); // PLT-101
@@ -244,6 +252,33 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;e
     executionMode:"sequential",
     execute:async(_id,params,_signal,_onUpdate,ctx)=>switchByIntent(ctx as unknown as IntentCtx,params.mode as Mode,params.reason),
   });
+  pi.registerTool({
+    name:T9_DECL_TOOL,label:"Declare T9 desired change",
+    description:"Before a governed source mutation or action, supply one T9 expression/2 desired Change Path "+
+      "and the exact next tool name and JSON arguments. Pi invokes the installed T9 compiler and "+
+      "requires separate authenticated host attestation. A model-produced declaration alone "+
+      "never grants execution authority.",
+    promptSnippet:"Declare and validate the next governed operation as a T9 desired Change Path",
+    promptGuidelines:["When T9 pre-action declaration is required, call declare_t9_change "+
+      "with a T9 expression/2 desired change document and the exact JSON arguments of your next tool. "+
+      "Read-only exploration does not require a fictitious Change Path. Never invent an approved OoC."],
+    parameters:Type.Object({
+      documentJson:Type.String({description:"One T9 expression/2 desired Change Path JSON document"}),
+      toolName:Type.String({description:"The exact next tool name, e.g. write, edit, bash"}),
+      toolInputJson:Type.String({description:"JSON of the exact next tool arguments"}),
+    }),
+    defaultActive:true,executionMode:"sequential",
+    execute:async(_id,params,_signal,_onUpdate,ctx)=>{
+      if(!ctx.isProjectTrusted()||!repositoryRoot(ctx.cwd))
+        return {content:[{type:"text" as const,text:"T9 declaration refused: untrusted/outside repository"}],
+          details:{status:"REFUSED"},isError:true};
+      const revision=observeRepository(ctx.cwd).snapshot?.revision??null;
+      const outcome=await t9Gate.declare(params,revision);
+      return {content:[{type:"text" as const,text:outcome.reason}],
+        details:{status:outcome.status,attestationId:outcome.attestationId??null},
+        ...(outcome.status==="REFUSED"?{isError:true}: {})};
+    },
+  });
   async function ask(ctx:Notify&{ui:{select:(title:string,options:string[])=>Promise<string|undefined>}}):Promise<void>{
     const choice=await ctx.ui.select("ATDD or plain for this repository?",MODE_CHOICES);
     const mode:Mode=choice?.startsWith("Plain")?"plain":"atdd";
@@ -261,6 +296,7 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;e
     catch{return DEFAULT_COMPACTION_RESERVE;}
   }
   function reset():void{
+    t9Gate.reset();
     reasoning=undefined;delivered.clear();unresolvedPaths.clear();observationWarning=false;
     pendingPostTool.clear();redeliveries.clear();
   }
@@ -397,7 +433,10 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;e
       recordActualDelivery(result,page);
       if(newTask)recordReasoned(ctx.cwd,"task_start","task",undefined,result,newRules,page,started);
       return {message:{customType:"pi-atdd-inference",
-        content:page.text,display:false}};
+        content:(t9Required?"T9 required before governed changes: call declare_t9_change with "+
+          "one desired T9 Change Path and the exact next tool arguments. Pi invokes T9 0.4.1 "+
+          "and requires separate provider attestation. Read-only inspection is exempt.\n\n":"")+page.text,
+        display:false}};
     }catch(e){
       if(newTask)record(ctx.cwd,{point:"task_start",outcome:"error",reasonCode:"reasoner_error",durationMs:performance.now()-started});
       reset(); // no partially materialized conclusions survive a failed inference
@@ -583,6 +622,15 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;e
     },
   });
   pi.on("tool_call",(event,ctx)=>{
+    // Missing/invalid intent is refused before a governed action. An ATDD
+    // repository cannot bypass an operator-enabled T9 gate by a chat assertion.
+    if(t9Required&&ctx.isProjectTrusted()&&repositoryRoot(ctx.cwd)&&
+      (active(ctx.cwd)||guardsAtdd(repositoryRoot(ctx.cwd)!))&&
+      event.toolName!==T9_DECL_TOOL&&event.toolName!==INTENT_TOOL){
+      const revision=observeRepository(ctx.cwd).snapshot?.revision??null;
+      const refusal=t9Gate.check(event.toolName,event.input,revision);
+      if(refusal)return refusal;
+    }
     if(!ctx.isProjectTrusted()||!active(ctx.cwd)){
       if(["bash","edit","write"].includes(event.toolName))
         record(ctx.cwd,{point:"pre_edit",outcome:"excluded",reasonCode:"plain_or_untrusted"});
@@ -749,6 +797,7 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;e
   // Primary channel: attach reconciliation to the tool result itself, so the
   // model reads it before it continues (Pi: tool_result can modify the result).
   pi.on("tool_result",(event,ctx)=>{
+    if(t9Required)t9Gate.consumed(event.toolName);
     if(!ctx.isProjectTrusted()||!active(ctx.cwd))return;
     let texts:string[];
     // PLT-126: read-only tools never carry pending redelivery.
@@ -764,6 +813,7 @@ export default function atdd(pi:ExtensionAPI, runtime: {telemetryRoot?: string;e
   // Fallback: tools whose result was not reconciled above (e.g. ended without a
   // tool_result) are still observed and steered before the next model call.
   pi.on("tool_execution_end",(event,ctx)=>{
+    if(t9Required)t9Gate.consumed(event.toolName);
     if(!ctx.isProjectTrusted()||!active(ctx.cwd))return;
     if(READ_ONLY_TOOLS.has(event.toolName))return;
     if(event.toolCallId&&reconciledCalls.delete(event.toolCallId))return;
