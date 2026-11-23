@@ -110,7 +110,11 @@ test("external mandatory dependency is explicitly INCOMPLETE, never invented or 
     assert.equal(result.status,"incomplete");
     assert.ok(result.gaps.some(g=>g.missingId==="coder.design.hierarchy-import"));
     assert.equal(a.session.engine.query("active",["unknown","coder.design.hierarchy-import"]).status,"unknown");
-    assert.equal(a.catalog.unresolvedEdges.length,44);
+    assert.equal(a.catalog.unresolvedEdges.length,0,"no unclassified missing references");
+    assert.equal(a.catalog.externalEdges.length,32,"source-qualified external obligations remain unknown");
+    assert.equal(result.unresolvedGraphEdges.length,32);
+    assert.ok(result.gaps.some(g=>g.external?.provider==="atdd-extensions"
+      && g.external.providerRuleId==="coder.design.hierarchy-import"));
   }finally{a.finish()}
 });
 

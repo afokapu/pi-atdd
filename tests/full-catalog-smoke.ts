@@ -45,6 +45,13 @@ console.log(JSON.stringify({
     note: "informational: bundles are profile-first since PLT-87 and not byte-identical to upstream",
   },
   conventions: catalog.rules.size, relationships: catalog.edges.length,
-  unresolvedExternalReferences: catalog.unresolvedEdges.map(e => e.source + " -> " + e.target),
+  unexpectedUnresolvedReferences: catalog.unresolvedEdges.map(e => e.source + " -> " + e.target),
+  sourceQualifiedExternalReferences: catalog.externalEdges.map(e => ({
+    source: e.source, target: e.target, kind: e.kind, provider: e.provider,
+    providerRuleId: e.providerRuleId, providerRevision: e.providerRevision,
+  })),
+  projectedTermReferences: catalog.termEdges.map(e => ({
+    source: e.source, originalTarget: e.originalTarget, target: e.target, term: e.targetTerm,
+  })),
   provenance: catalog.provenance,
 }, null, 2));
