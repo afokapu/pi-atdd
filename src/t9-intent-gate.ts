@@ -72,12 +72,11 @@ export function readOnlyAction(toolName:string,input:unknown):boolean {
   const cmd=(input as {command?:unknown}|null)?.command;
   if(typeof cmd!=="string"||cmd.length>2048||/[;&|><\n\r\x60$\\]/.test(cmd))
     return false;
-  const words=cmd.trim().split(/\s+/);
-  if(words.some(w=>/["']/.test(w)))return false;
-  const safe=new Set(["pwd","ls","rg","grep","cat","head","tail","wc","stat"]);
-  if(safe.has(words[0]!))return true;
-  return words[0]==="git"&&new Set(["status","diff","log","show",
-    "rev-parse","ls-files"]).has(words[1]!);
+  // This is intentionally an exact allow-list, NOT a command-prefix test.
+  // e.g. rg --pre, find -exec, git show --output can execute or write.
+  return new Set(["pwd","ls","ls -la","git status","git status --short",
+    "git diff","git diff --stat","git rev-parse HEAD",
+    "git log -1 --oneline"]).has(cmd.trim());
 }
 export class T9IntentGate {
   private pending:Pending|null=null;
