@@ -22,7 +22,8 @@ const t9Authority:AuthenticatedT9Authority={snapshot,perimeter,
       (action.input as {path?:string}).path!=="src/orders/domain/price.ts")
       return {status:"REFUSED",reason:"No Resource and target approval"};
     return {status:"AUTHORIZED",attestationId:"fixture-authority-only",
-      repositoryRevision:action.repositoryRevision};
+      repositoryRevision:action.repositoryRevision,
+      workingTreeDigest:action.workingTreeDigest};
   }};
 function sandbox(authority?:AuthenticatedT9Authority){
   const cwd=mkdtempSync(join(tmpdir(),"pi-atdd-t9-hook-"));
@@ -87,6 +88,19 @@ test("Pi calls T9 compiler, requires provider attestation and matches exact next
       ...x.ctx,sessionManager:{getBranch:()=>[]},
     });
     assert.match(x.handlers.get("tool_call")!(action,x.ctx).reason,/T9 declaration required/);
+  }finally{x.close();}
+});
+test("Pi invalidates a declared action after an independent working-tree change",async()=>{
+  const x=sandbox(t9Authority);
+  try{
+    const submit=x.tools.get("declare_t9_change");
+    const accepted=await submit.execute("call:stale",declaration(),null,null,x.ctx);
+    assert.equal(accepted.details.status,"DECLARED");
+    writeFileSync(join(x.cwd,action.input.path),"export const price=7;\n");
+    const refused=x.handlers.get("tool_call")!(action,x.ctx);
+    assert.equal(refused.block,true);
+    assert.match(refused.reason,/does not match/,
+      "the same Git HEAD cannot preserve approval across changed source bytes");
   }finally{x.close();}
 });
 test("Pi blocks opaque/mutating shell bypass even if action text claims to be a read",()=>{
