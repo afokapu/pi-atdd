@@ -11,6 +11,7 @@ import { createT9, type ExpressionDocument, type OntologySnapshot,
 
 export type ProposedAction={
   toolName:string; input:unknown; repositoryRevision:string;
+  workingTreeDigest:string;
 };
 export type AuthenticatedT9Authority={
   /** Independently authenticated and owner-pinned, never model-provided. */
@@ -21,7 +22,8 @@ export type AuthenticatedT9Authority={
     document:ExpressionDocument;
     compiledChange:Extract<ExpressionDocument["expression"],{kind:"change"}>;
     action:ProposedAction;
-  })=>Promise<{status:"AUTHORIZED";attestationId:string;repositoryRevision:string}|
+  })=>Promise<{status:"AUTHORIZED";attestationId:string;repositoryRevision:string;
+    workingTreeDigest:string}|
     {status:"REFUSED";reason:string}>;
 };
 export type DeclarationRequest={
@@ -33,7 +35,8 @@ export type T9Verdict={
   attestationId?:string;
 };
 type Pending={
-  toolName:string; inputDigest:string;repositoryRevision:string;attestationId:string;
+  toolName:string; inputDigest:string;repositoryRevision:string;
+  workingTreeDigest:string;attestationId:string;
 };
 const hash=(v:string)=>createHash("sha256").update(v).digest("hex");
 const allowedKey=(k:string)=>k!=="__proto__"&&k!=="constructor"&&k!=="prototype";
@@ -83,9 +86,11 @@ export class T9IntentGate {
   constructor(private readonly authority?:AuthenticatedT9Authority){}
   reset():void{this.pending=null;}
   /** Every proposed governed tool action binds to a distinct declaration. */
-  async declare(request:DeclarationRequest,revision:string|null):Promise<T9Verdict>{
+  async declare(request:DeclarationRequest,revision:string|null,
+    workingTreeDigest:string|null):Promise<T9Verdict>{
     this.pending=null;
-    if(!revision)return {status:"REFUSED",reason:"No independently observed repository revision"};
+    if(!revision||!workingTreeDigest)
+      return {status:"REFUSED",reason:"No independently observed repository/worktree revision"};
     if(!this.authority)return {status:"REFUSED",reason:"No authenticated T9 perimeter and work-provider binding"};
     try{
       if(request.toolName==="declare_t9_change"||
@@ -101,28 +106,32 @@ export class T9IntentGate {
       if(compiled.status!=="RESOLVED"||compiled.ast?.kind!=="change"||
          !("intention" in compiled.ast))
         throw Error("T9 did not resolve a canonical desired Change Path");
-      const action={toolName:request.toolName,input,repositoryRevision:revision};
+      const action={toolName:request.toolName,input,repositoryRevision:revision,
+        workingTreeDigest};
       const authority=await this.authority.attest({
         document,
         compiledChange:compiled.ast as Extract<ExpressionDocument["expression"],{kind:"change"}>,
         action,
       });
       if(authority.status!=="AUTHORIZED"||!authority.attestationId||
-        authority.repositoryRevision!==revision)
+        authority.repositoryRevision!==revision||
+        authority.workingTreeDigest!==workingTreeDigest)
         throw Error(authority.status==="REFUSED"?authority.reason:
           "authenticated provider revision/attestation mismatch");
       this.pending={toolName:request.toolName,inputDigest:actionFingerprint(request.toolName,input),
-        repositoryRevision:revision,attestationId:authority.attestationId};
+        repositoryRevision:revision,workingTreeDigest,attestationId:authority.attestationId};
       return {status:"DECLARED",reason:"T9 desired change resolved and host-attested for one exact action",
         attestationId:authority.attestationId};
     }catch(e){return {status:"REFUSED",reason:String(e)};}
   }
   /** Pure preflight. A different operation, body or revision cannot inherit authority. */
-  check(toolName:string,input:unknown,revision:string|null):{block:true;reason:string}|undefined{
+  check(toolName:string,input:unknown,revision:string|null,
+    workingTreeDigest:string|null):{block:true;reason:string}|undefined{
     if(readOnlyAction(toolName,input))return undefined;
     if(!this.pending)return {block:true,reason:"T9 declaration required. Call declare_t9_change before this tool action; no authority is inferred from chat."};
     try{
       if(!revision||revision!==this.pending.repositoryRevision||
+        !workingTreeDigest||workingTreeDigest!==this.pending.workingTreeDigest||
         toolName!==this.pending.toolName||
         actionFingerprint(toolName,input)!==this.pending.inputDigest)
         return {block:true,reason:"T9 declared intent does not match the exact observed operation, arguments or revision. Declare again."};
