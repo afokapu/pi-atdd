@@ -6,7 +6,7 @@
  * explicit evidence facts rather than acting as an undocumented oracle.
  */
 import { DEFAULT_PROFILE, profileByName, roleOfPath, type StructureProfile } from "./profile.ts";
-import { canonicalRuleId, matchesGlob, termMatches, validateSelectors, type Catalog, type Convention, type Relation, type Selector } from "./catalog.ts";
+import { canonicalRuleId, matchesGlob, termMatches, validateSelectors, type Catalog, type Convention, type Relation, type Selector, type QualifiedExternalEdge } from "./catalog.ts";
 import { PositiveReasoner, groundKey, type Fact, type Proof, type Rule, type Delta } from "./inference.ts";
 import { discoverSourceEvidence } from "./structural-evidence.ts";
 
@@ -23,7 +23,7 @@ export type Activation = {
   id: string; convention: Convention; proof: Proof;
   reasons: string[]; requiredPath: Relation[];
 };
-export type Gap = { missingId: string; proof: Proof };
+export type Gap = { missingId: string; proof: Proof; external?: QualifiedExternalEdge };
 export type Reconciliation = {
   status: "matched" | "unknown" | "incomplete";
   scope: string;
@@ -246,13 +246,16 @@ export class ReasoningSession {
     const gaps = this.engine.facts("missing_requirement")
       .filter(item => item.args[0] === ob.scope)
       .map(item => ({ missingId: item.args[1]!,
-        proof: this.engine.query("missing_requirement", item.args).proof! }));
+        proof: this.engine.query("missing_requirement", item.args).proof!,
+        external: this.catalog.externalEdges.find(edge => edge.target === item.args[1]
+          && this.engine.facts("active").some(f => f.args[0] === ob.scope && f.args[1] === edge.source)),
+      }));
     const unknownFacts = ["phase", "actor_role", "acceptance", "revision"].filter(name =>
       this.engine.facts(name).every(item => item.args[0] !== ob.scope));
     return {
       status: gaps.length ? "incomplete" : activations.length ? "matched" : "unknown",
       scope: ob.scope, activations, gaps, added, removed, changed,
-      unknownFacts, unresolvedGraphEdges: this.catalog.unresolvedEdges,
+      unknownFacts, unresolvedGraphEdges: [...this.catalog.unresolvedEdges, ...this.catalog.externalEdges],
       provenance: this.catalog.provenance,
       stats: { ...mergedStats, materialized: this.engine.materializedCount },
     };
