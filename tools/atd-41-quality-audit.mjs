@@ -40,7 +40,8 @@ const reviewFunctions=new Set([
   "ReasoningSession.findingInputs","ReasoningSession.selectorInputs","ReasoningSession.inputs",
   // Existing Pi and telemetry functions touched by Stream B.
   "sourceFor","beforeSource","preflightPath","observe","recordReasoned","evidenceIds",
-  "ordered","actionFingerprint","documentFrom","readOnlyAction",
+  "ordered","actionFingerprint","desiredDocument","documentFrom",
+  "compiledDesired","declaredAction","authenticatedPending","readOnlyAction",
   "T9IntentGate.declare","T9IntentGate.check","T9IntentGate.consumed","T9IntentGate.reset",
   "safeSessionId","safeReasonCode","safeCatalogDigest","safeDurationMs",
   "sanitizedRecord","countLine","countFile",
