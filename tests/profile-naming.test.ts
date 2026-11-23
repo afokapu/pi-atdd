@@ -181,7 +181,9 @@ test("old ids in project selectors and challenges still resolve to the renamed r
     const session = new ReasoningSession(b.catalog, legacy);
     const r = session.observe({ scope: "s", task: "final review", operation: "review", origin: "pi-event", provenance: "t" });
     assert.deepEqual(r.activations.map(a => a.id).sort(), ["reviewer.inspectability.owner", "reviewer.reconciliation.behavioral"]);
-    assert.equal(b.catalog.unresolvedEdges.length, 44, "external upstream refs are not captured by renamed ids");
+    assert.equal(b.catalog.unresolvedEdges.length, 0, "no unclassified dangling references");
+    assert.equal(b.catalog.externalEdges.length, 32, "source-qualified external refs are not migration aliases");
+    assert.equal(b.catalog.termEdges.length, 2, "term-qualified references retain authored term grain");
   } finally { b.done(); }
 });
 
