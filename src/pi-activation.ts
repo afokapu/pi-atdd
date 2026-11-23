@@ -128,6 +128,17 @@ export default function atdd(pi:ExtensionAPI, runtime: {
   const POST_TOOL_CAP=20_000;
   const key=(scope:string,id:string)=>scope+"\u0000"+id;
   const digest=(value:unknown)=>createHash("sha256").update(JSON.stringify(value)).digest("hex");
+  /** Git HEAD alone cannot bind a declaration to mutable working-tree state.
+   * Hash source fingerprints and refuse when the repository is unobservable.
+   */
+  function t9RepositoryState(cwd:string){
+    const observed=observeRepository(cwd),snapshot=observed.snapshot;
+    if(observed.status!=="observed"||!snapshot?.revision||snapshot.gaps?.length)
+      return {revision:null,workingTreeDigest:null};
+    const dirty=[...snapshot.dirty.entries()].sort(([a],[b])=>a.localeCompare(b));
+    return {revision:snapshot.revision,
+      workingTreeDigest:digest({kind:snapshot.kind,revision:snapshot.revision,dirty})};
+  }
   /** PLT-93 working mode for this session; undefined until resolved. */
   let current:Resolution|undefined;
   const active=(cwd:string)=>current?.mode==="atdd"&&repositoryRoot(cwd)!==null;
@@ -272,8 +283,8 @@ export default function atdd(pi:ExtensionAPI, runtime: {
       if(!ctx.isProjectTrusted()||!repositoryRoot(ctx.cwd))
         return {content:[{type:"text" as const,text:"T9 declaration refused: untrusted/outside repository"}],
           details:{status:"REFUSED"},isError:true};
-      const revision=observeRepository(ctx.cwd).snapshot?.revision??null;
-      const outcome=await t9Gate.declare(params,revision);
+      const {revision,workingTreeDigest}=t9RepositoryState(ctx.cwd);
+      const outcome=await t9Gate.declare(params,revision,workingTreeDigest);
       return {content:[{type:"text" as const,text:outcome.reason}],
         details:{status:outcome.status,attestationId:outcome.attestationId??null},
         ...(outcome.status==="REFUSED"?{isError:true}: {})};
@@ -627,8 +638,8 @@ export default function atdd(pi:ExtensionAPI, runtime: {
     if(t9Required&&ctx.isProjectTrusted()&&repositoryRoot(ctx.cwd)&&
       (active(ctx.cwd)||guardsAtdd(repositoryRoot(ctx.cwd)!))&&
       event.toolName!==T9_DECL_TOOL&&event.toolName!==INTENT_TOOL){
-      const revision=observeRepository(ctx.cwd).snapshot?.revision??null;
-      const refusal=t9Gate.check(event.toolName,event.input,revision);
+      const {revision,workingTreeDigest}=t9RepositoryState(ctx.cwd);
+      const refusal=t9Gate.check(event.toolName,event.input,revision,workingTreeDigest);
       if(refusal)return refusal;
     }
     if(!ctx.isProjectTrusted()||!active(ctx.cwd)){
