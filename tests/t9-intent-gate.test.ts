@@ -95,7 +95,8 @@ test("read-only commands are exempt, but shell metacharacters and custom tools a
     assert.equal(readOnlyAction("bash",{command:cmd}),true,cmd);
   for(const cmd of [
     "git status; rm -rf src","git status && touch src/a","echo x > src/a",
-    "npm test","git status $(touch src/a)","git diff | tee src/x"
+    "npm test","git status $(touch src/a)","git diff | tee src/x",
+    "rg --pre=sh pattern src","find src -exec touch x +","git show --output=src/o"
   ])assert.equal(readOnlyAction("bash",{command:cmd}),false,cmd);
   assert.equal(readOnlyAction("my_custom_write",{x:1}),false);
   assert.equal(actionFingerprint("write",{a:1,b:2}),
