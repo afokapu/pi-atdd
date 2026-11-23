@@ -31,12 +31,25 @@ export type CatalogOptions = {
 };
 export type Relation = {
   source: string; target: string; type: string; constraint: string; control: string;
-  reason: string; sourceFile: string;
+  reason: string; sourceFile: string; origin?: string;
+  /** Original term-qualified target (before source-verified rule-level projection). */
+  originalTarget?: string;
+  /** The exact, validated term to which the original edge refers. */
+  targetTerm?: string;
+};
+export type QualifiedExternalEdge = Relation & {
+  kind: "external-normative-source" | "external-realization";
+  provider: string; providerRuleId: string; providerRevision: string;
+  providerPath: string; providerBlobSha: string;
 };
 export type Catalog = {
   rules: Map<string, Convention>; edges: Relation[];
   provenance: { id: string; digest: string; revision?: string; path: string }[];
   unresolvedEdges: Relation[];
+  /** Audited cross-provider references remain unsatisfied, not locally active rules. */
+  externalEdges: QualifiedExternalEdge[];
+  /** Term-specific edges projected onto their containing rule with exact term lineage. */
+  termEdges: Relation[];
   /** PLT-87: pre-rename id -> current id, for every renamed rule present in this catalog. */
   aliases: Map<string, string>;
 };
@@ -211,6 +224,110 @@ export function namingViolations(catalog: Pick<Catalog, "rules">): string[] {
   return out.sort();
 }
 
+/**
+ * PLT-132: source-pinned reference reconciliation over the *loaded* Bun catalog.
+ *
+ * The sidecar is an audited reference index, not a new rule source or a waiver.
+ * Only the exact vendored digest activates these mappings; project fixtures and
+ * future vendor revisions cannot silently inherit old cross-provider mappings.
+ *
+ * External references are deliberately NOT rewritten into local dependencies.
+ * Existing consumers still see the authored edge and report mandatory missing
+ * prerequisites as incomplete. A different convention kind/alias cannot replace it.
+ */
+function qualifyGraphReferences(
+  sources: SourceSpec[], cwd: string, rules: Map<string, Convention>,
+  edges: Relation[], aliases: Map<string, string>,
+  legacyAliasEdgeCount: number,
+): { externalEdges: QualifiedExternalEdge[]; termEdges: Relation[] } {
+  const registryPath = join(packageRoot, "conventions/relationship-reconciliation.json");
+  const registry = JSON.parse(readFileSync(registryPath, "utf8")) as {
+    schema: string; source: { id: string; revision: string; sha256: string; graphBlobSha: string };
+    baseline: { rawUnresolved: number; legacyAliasEdges: number; termEdges: number; externalEdges: number };
+    alias: { legacy: string; canonical: string; sourceWitness: string };
+    terms: Array<{ sourceRef: string; targetRef: string; type: string; constraint: string;
+      sourceFile: string; targetRule: string; sourceTerm: string; targetTerm: string }>;
+    external: Array<{ sourceRef: string; targetRef: string; type: string; constraint: string;
+      control: string; sourceFile: string; origin: string; kind: QualifiedExternalEdge["kind"];
+      provider: string; providerRevision: string; providerRuleId: string;
+      providerPath: string; providerBlobSha: string }>;
+  };
+  if (registry.schema !== "pi-atdd/relationship-reconciliation/v1")
+    throw new GraphError("unexpected graph-reconciliation schema");
+  const source = sources.find(s => s.id === registry.source.id);
+  if (!source || source.sha256 !== registry.source.sha256) return { externalEdges: [], termEdges: [] };
+  if (source.revision !== registry.source.revision)
+    throw new GraphError("graph-reconciliation source revision differs from pinned vendor");
+  if (registry.baseline.rawUnresolved !== registry.baseline.legacyAliasEdges
+      + registry.baseline.termEdges + registry.baseline.externalEdges)
+    throw new GraphError("graph-reconciliation baseline is inconsistent");
+  if (legacyAliasEdgeCount !== registry.baseline.legacyAliasEdges)
+    throw new GraphError("graph-reconciliation legacy alias edge count drift");
+  if (aliases.get(registry.alias.legacy) !== registry.alias.canonical)
+    throw new GraphError("missing source-governed legacy convention alias");
+  const sourceRoot = resolve(cwd, source.path);
+  const authoredFile = (ruleId: string): Record<string, unknown> => {
+    const rule = rules.get(ruleId);
+    if (!rule || !rule.file.startsWith(source.id + "/"))
+      throw new GraphError("term/alias references an unadmitted source rule " + ruleId);
+    return readYaml(join(sourceRoot, rule.file.slice(source.id.length + 1)));
+  };
+  const aliasYaml = authoredFile(registry.alias.canonical);
+  const aliasValues = obj(aliasYaml.metadata).aliases;
+  if (!Array.isArray(aliasValues) || !aliasValues.includes(registry.alias.legacy))
+    throw new GraphError("legacy alias missing from canonical rule source metadata");
+
+  const edgeFor = (entry: { sourceRef: string; targetRef: string; type: string; constraint: string;
+      sourceFile: string }): Relation => {
+    const matches = edges.filter(e => e.source === entry.sourceRef && e.target === entry.targetRef
+      && e.type === entry.type && e.constraint === entry.constraint && e.sourceFile === entry.sourceFile);
+    if (matches.length !== 1) throw new GraphError("stale or ambiguous graph reference: "
+      + entry.sourceRef + " -> " + entry.targetRef);
+    return matches[0]!;
+  };
+  const termEdges: Relation[] = [];
+  for (const entry of registry.terms) {
+    const edge = edgeFor(entry);
+    if (!entry.targetRef.startsWith(entry.targetRule + "#") || !rules.has(entry.targetRule))
+      throw new GraphError("invalid term binding scope " + entry.targetRef);
+    const termList = authoredFile(entry.targetRule).terms;
+    if (!Array.isArray(termList) || !termList.some(t =>
+      obj(t).term_id === entry.targetTerm))
+      throw new GraphError("term is not authored in the target rule " + entry.targetTerm);
+    edge.originalTarget = edge.target;
+    edge.target = entry.targetRule;
+    edge.targetTerm = entry.targetTerm;
+    termEdges.push(edge);
+  }
+  const externalEdges: QualifiedExternalEdge[] = [];
+  const matched = new Set<Relation>();
+  for (const entry of registry.external) {
+    const edge = edgeFor(entry);
+    if (matched.has(edge)) throw new GraphError("duplicate graph-reconciliation entry");
+    matched.add(edge);
+    if (rules.has(edge.source) && rules.has(edge.target))
+      throw new GraphError("external edge now points to two internal rules: " + edge.source);
+    if (edge.origin !== entry.origin || edge.control !== entry.control
+        || !["external-realization", "external-normative-source"].includes(entry.kind)
+        || !/^[a-f0-9]{40}$/.test(entry.providerBlobSha)
+        || !/^[a-f0-9]{40}$/.test(entry.providerRevision)
+        || !entry.providerPath.endsWith("/" + entry.providerRuleId + ".convention.yaml"))
+      throw new GraphError("unproven external convention reference " + entry.targetRef);
+    externalEdges.push({ ...edge, kind: entry.kind, provider: entry.provider,
+      providerRuleId: entry.providerRuleId, providerRevision: entry.providerRevision,
+      providerPath: entry.providerPath, providerBlobSha: entry.providerBlobSha });
+  }
+  if (termEdges.length !== registry.baseline.termEdges
+      || externalEdges.length !== registry.baseline.externalEdges)
+    throw new GraphError("graph-reconciliation inventory count drift");
+  const missing = edges.filter(e => !rules.has(e.source) || !rules.has(e.target));
+  if (missing.length !== externalEdges.length || missing.some(e => !matched.has(e)))
+    throw new GraphError("unclassified graph reference in pinned vendor; source review required");
+  if (edges.some(e => e.type === "requires" && e.constraint === "mandatory" && e.source === e.target))
+    throw new GraphError("self-requiring convention produced by graph normalization");
+  return { externalEdges, termEdges };
+}
+
 export function loadCatalog(sources: SourceSpec[], cwd: string, options: CatalogOptions = {}): Catalog {
   if (!sources.length) throw new GraphError("at least one locked source is required");
   const rules = new Map<string, Convention>();
@@ -257,7 +374,8 @@ export function loadCatalog(sources: SourceSpec[], cwd: string, options: Catalog
       if (!source || !target || !edgeTypes.has(type) || !["mandatory", "conditional", "discretionary"].includes(constraint)
           || !["internal", "external", "autonomous"].includes(control))
         throw new GraphError(path + ": invalid relationship");
-      edges.push({ source, target, type, constraint, control, reason: str(e.reason), sourceFile: src.id + "/relationships.yaml" });
+      edges.push({ source, target, type, constraint, control, reason: str(e.reason),
+        sourceFile: src.id + "/relationships.yaml", origin: str(e.origin) });
     }
   }
   // PLT-103 sunset: the advisory becomes strict 60 days after the release date in the mapping table. Only an
@@ -274,13 +392,21 @@ export function loadCatalog(sources: SourceSpec[], cwd: string, options: Catalog
     const current = rules.has(named) ? named : parents.get(named) ?? named;
     if (old !== current && rules.has(current) && !rules.has(old)) aliases.set(old, current);
   }
+  const legacyAliasEdgeCount = edges.filter(e => e.source === "planner.acceptance.complete"
+    || e.target === "planner.acceptance.complete").length;
   // Extension graphs may still name pre-rename ids; they resolve to the current rule.
   for (const e of edges) {
     e.source = canonicalRuleId({ rules, aliases }, e.source);
     e.target = canonicalRuleId({ rules, aliases }, e.target);
   }
-  const unresolvedEdges = edges.filter(e => !rules.has(e.source) || !rules.has(e.target));
-  return { rules, edges, provenance, unresolvedEdges, aliases };
+  const qualified = qualifyGraphReferences(sources, cwd, rules, edges, aliases, legacyAliasEdgeCount);
+  const external = new Set<Relation>(qualified.externalEdges.map(e =>
+    edges.find(raw => raw.source === e.source && raw.target === e.target
+      && raw.type === e.type && raw.sourceFile === e.sourceFile)!).filter(Boolean));
+  const unresolvedEdges = edges.filter(e => (!rules.has(e.source) || !rules.has(e.target))
+    && !external.has(e));
+  return { rules, edges, provenance, unresolvedEdges, aliases,
+    externalEdges: qualified.externalEdges, termEdges: qualified.termEdges };
 }
 const WORD_CHAR = /[a-z0-9_]/;
 const TOKEN_TRIM = /^[\s()[\]{}"'`,;:<>]+|[\s()[\]{}"'`,;:<>.?!]+$/g;
@@ -399,7 +525,7 @@ export function resolveContext(catalog: Catalog, selectors: Selector[], task: st
   return {
     status: matchingIds.length ? "matched" : "unresolved",
     matchingIds, truncated: matchingIds.length > limit, sourceLocks: catalog.provenance,
-    unresolvedReferences: catalog.unresolvedEdges,
+    unresolvedReferences: [...catalog.unresolvedEdges, ...catalog.externalEdges],
     relatedRelations: catalog.edges.filter(edge => selected.has(edge.source) && selected.has(edge.target)),
     rules: matchingIds.slice(0, limit).map(id => ({ ...catalog.rules.get(id)!, reasons: [...reasons.get(id)!].sort() })),
     note: matchingIds.length
