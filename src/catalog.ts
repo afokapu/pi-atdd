@@ -514,7 +514,11 @@ export function resolveContext(catalog: Catalog, selectors: Selector[], task: st
     const id = queue.pop()!;
     for (const e of catalog.edges) {
       if (e.source !== id || e.type !== "requires" || e.constraint !== "mandatory") continue;
-      if (!catalog.rules.has(e.target)) throw new GraphError(id + ": unresolved mandatory dependency " + e.target);
+      if (!catalog.rules.has(e.target)) {
+        const remote = catalog.externalEdges.find(ext => ext.source === id && ext.target === e.target);
+        throw new GraphError(id + ": unresolved mandatory dependency " + e.target
+          + (remote ? " (source-qualified external " + remote.provider + "@" + remote.providerRevision + ")" : ""));
+      }
       if (!selected.has(e.target)) { selected.add(e.target); queue.push(e.target); }
       const rs = reasons.get(e.target) || new Set<string>();
       rs.add("requires:" + id);
