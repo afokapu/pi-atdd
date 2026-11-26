@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { loadProfile, roleOfPath, expandRoleSelectors, profileProblems } from "../src/profile.ts";
 
 const ROOT = new URL("..", import.meta.url).pathname;
-const bun = loadProfile(join(ROOT, "profiles/stacks/atdd-bun.json"));
+const bun = loadProfile(join(ROOT, "profiles/stacks/default.json"));
 const hex = loadProfile(join(ROOT, "tests/fixtures/swap/ts-hexagon.profile.json"));
 
 test("vocabulary v3 is frozen: the file matches its pinned digest", () => {

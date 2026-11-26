@@ -8,7 +8,7 @@ import { loadProfile } from "../src/profile.ts";
 
 const ROOT = new URL("..", import.meta.url).pathname;
 const catalog = loadCatalog(loadConfig(ROOT).sources, ROOT);
-const bun = loadProfile(join(ROOT, "profiles/stacks/atdd-bun.json"));
+const bun = loadProfile(join(ROOT, "profiles/stacks/default.json"));
 const hex = loadProfile(join(ROOT, "tests/fixtures/swap/ts-hexagon.profile.json"));
 
 // Each situation is role-level. The path is the same situation written in each fixture's own layout.

@@ -8,7 +8,7 @@ import { loadProfile } from "../src/profile.ts";
 
 const ROOT = new URL("..", import.meta.url).pathname;
 const hex = loadProfile(join(ROOT, "tests/fixtures/swap/ts-hexagon.profile.json"));
-const bun = loadProfile(join(ROOT, "profiles/stacks/atdd-bun.json"));
+const bun = loadProfile(join(ROOT, "profiles/stacks/default.json"));
 const rec = (id: string) => loadNeutralRecords().find(r => r.rule_id === id)!;
 
 test("SN-004: another stack gets core + profile + labelled Bun reference, flagged agent-derived and unverified", () => {

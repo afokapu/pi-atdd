@@ -8,7 +8,7 @@ import { GraphError, matchesGlob, type Selector } from "./catalog.ts";
 
 export type StructureProfile = { schema: string; stack: string; vocabularyVersion: number; extends?: string; values: Record<string, unknown> };
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
-export const DEFAULT_PROFILE = "atdd-bun";
+export const DEFAULT_PROFILE = "default";
 /** Roles that name a layer of the code, in the order a path is assigned to one. */
 export const LAYER_ROLES = ["domain", "application", "integration", "presentation", "composition_root"] as const;
 
