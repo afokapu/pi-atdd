@@ -14,7 +14,7 @@ Owner rule (PLT-100 comment): the Coach orchestrates, grants, validates merges a
 
 | Rule id | Obligation | Kind of enforcement |
 |---|---|---|
-| `coach.naming.instance-label` | Label "Coach - <project or repo>" on window/tab, session title and first report line | Label check: `coachLabelViolation` (tested). Launch: text-only |
+| `coach.naming.instance-label` | Label "COACH - <project or repo>" on window/tab, session title and first report line | Label check: `coachLabelViolation` (tested). Launch: text-only |
 | `coach.policy.action-tiers` | Four tiers: act alone, act then report, ask the owner, never | Tier table: `CATEGORY_TIER` (tested). Run-time behaviour: text-only |
 | `coach.policy.unclear-risk-higher-tier` | Unclear risk takes the higher candidate tier; unclassified action = ask-owner | `classifyCoachAction` unknown → ask-owner (tested). Judgement: text-only |
 | `coach.policy.trivial-request` | Small + reversible + covered → handle without asking, log, one-line report | Text-only |

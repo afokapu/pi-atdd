@@ -65,12 +65,13 @@ export function mayProceed(tier: CoachTier, approval: Approval): { proceed: bool
 }
 
 /**
- * coach.naming.instance-label: the first line must start with "Coach - " and name a repository or project.
+ * coach.naming.instance-label: the first line must start with "COACH - " (upper case, easy to spot in a sidebar) and name a repository or project.
  * Returns null when the label is valid, otherwise the reason it is flagged.
  */
 export function coachLabelViolation(label: string): string | null {
   const first = label.split("\n")[0] ?? "";
-  if (first === "Coach") return "bare label \"Coach\": name the repo as \"Coach - <project or repo>\"";
-  if (!/^Coach - \S/.test(first)) return "label must start with \"Coach - \" followed by the project or repo name";
+  if (first === "COACH" || first === "Coach") return "bare label \"" + first + "\": name the repo as \"COACH - <project or repo>\"";
+  if (/^Coach - \S/.test(first)) return "mixed-case label: use upper-case \"COACH - \" so the sidebar shows it, e.g. \"COACH - " + first.slice(8) + "\"";
+  if (!/^COACH - \S/.test(first)) return "label must start with \"COACH - \" followed by the project or repo name";
   return null;
 }

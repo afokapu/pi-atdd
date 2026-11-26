@@ -21,13 +21,15 @@ const COACH_RULES = [
   "coach.role.orchestrate-not-build",
 ];
 
-test("C-001 every Coach instance is labelled \"Coach - <project or repo>\"; a bare \"Coach\" launch is flagged", () => {
+test("C-001 every Coach instance is labelled \"COACH - <project or repo>\"; a bare or mixed-case label is flagged", () => {
   assert.match(coachLabelViolation("Coach") ?? "", /bare label/);            // seeded failing case
-  assert.match(coachLabelViolation("Coach - ") ?? "", /must start/);
-  assert.match(coachLabelViolation("Coach-pi-atdd") ?? "", /must start/);
+  assert.match(coachLabelViolation("COACH") ?? "", /bare label/);
+  assert.match(coachLabelViolation("COACH - ") ?? "", /must start/);
+  assert.match(coachLabelViolation("COACH-pi-atdd") ?? "", /must start/);
   assert.match(coachLabelViolation("Worker - pi-atdd") ?? "", /must start/);
-  assert.equal(coachLabelViolation("Coach - pi-atdd"), null);
-  assert.equal(coachLabelViolation("Coach - pi-atdd\nreport line"), null, "only the first line is the label");
+  assert.match(coachLabelViolation("Coach - pi-atdd") ?? "", /upper-case/, "the older mixed-case label is flagged with the fix");
+  assert.equal(coachLabelViolation("COACH - pi-atdd"), null);
+  assert.equal(coachLabelViolation("COACH - pi-atdd\nreport line"), null, "only the first line is the label");
 });
 
 test("C-002 merge is ask-owner: blocked without a direct owner decision, an agent message does not count", () => {
