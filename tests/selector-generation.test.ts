@@ -38,6 +38,15 @@ test("an edit of a plan, source or test file activates its topology rule, with r
   assert.ok(ids("update", "src/capabilities/x/features/y/z.ts", "edit").includes("shared.topology.plan-location"));
 });
 
+test("e2e-location reaches e2e files at edit, and plan files only at review (a plan edit is not an e2e change)", () => {
+  const e2e = "tester.topology.e2e-location";
+  assert.ok(!ids("update", "plan/x/_x.yaml", "edit").includes(e2e), "a plan edit must not carry the e2e rule");
+  assert.ok(!ids("update", "plan/x/_x.yaml", "edit").includes("planner.journey.definition"));
+  assert.ok(ids("update", "e2e/journeys/checkout.journey.test.ts", "edit").includes(e2e));
+  assert.ok(ids("update", "e2e/journeys/checkout.journey.test.ts", "create").includes(e2e));
+  assert.ok(ids("update", "plan/x/_x.yaml", "review").includes(e2e), "the reviewer still receives it for a changed plan file");
+});
+
 test("the edit-time page stays small enough to deliver in one page", () => {
   for (const p of ["plan/x/_x.yaml", "src/capabilities/x/features/y/z.ts", "tests/x.test.ts"])
     assert.ok(ids("update", p, "edit").length <= 12, p + " must not flood the edit page");

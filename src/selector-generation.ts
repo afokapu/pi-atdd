@@ -8,8 +8,8 @@ import { stringify } from "yaml";
 import { bundledSources, GraphError, loadCatalog, packageRoot, readYaml, type Selector } from "./catalog.ts";
 import { DEFAULT_PROFILE, profileByName, type StructureProfile } from "./profile.ts";
 
-export type FileKindEntry = { values: string[]; prefixes?: string[]; paths?: string[]; roles?: string[]; roots?: string[] };
-export type Policy = { edit_rules: string[]; profile_observed_kinds: string[]; operations: Record<string, string>; file_kinds: FileKindEntry[] };
+export type FileKindEntry = { name?: string; values: string[]; prefixes?: string[]; paths?: string[]; roles?: string[]; roots?: string[] };
+export type Policy = { edit_rules: string[]; edit_kinds?: Record<string, string[]>; profile_observed_kinds: string[]; operations: Record<string, string>; file_kinds: FileKindEntry[] };
 export type GenerationReport = {
   /** Rules that declare at least one observable file_kind or role fact. */
   withObservableFileKind: string[];
@@ -73,30 +73,45 @@ export function generateSelectors(opts: { neutralRoot: string; policy: Policy; r
     else if (facts.some(f => f.fact === "task_term")) report.termOnly.push(id);
     if (!opts.ruleIds.has(id)) { if (kindFacts.length) report.notInCatalog.push(id); continue; }
     if (blocked.has(id)) { if (kindFacts.length) report.blockedByUnresolved.push(id); continue; }
-    const paths = new Set<string>(), roles = new Set<string>(), roots = new Set<string>();
+    type Acc = { paths: Set<string>; roles: Set<string>; roots: Set<string> };
+    const fresh = (): Acc => ({ paths: new Set(), roles: new Set(), roots: new Set() });
+    const every = fresh(), byName = new Map<string, Acc>();
     for (const fact of kindFacts) for (const value of fact.values ?? []) {
       const key = normal(value);
       const entry = policy.file_kinds.find(e => e.values.includes(key) || (e.prefixes ?? []).some(p => key.startsWith(p)));
       if (!entry) { count(report.unmappedValues, value.length > 60 ? value.slice(0, 60) : value); continue; }
-      (entry.paths ?? []).forEach(p => paths.add(p));
-      (entry.roles ?? []).forEach(r => roles.add(r));
-      (entry.roots ?? []).forEach(r => roots.add(r));
+      const own = byName.get(entry.name ?? "") ?? fresh(); byName.set(entry.name ?? "", own);
+      for (const acc of [every, own]) {
+        (entry.paths ?? []).forEach(p => acc.paths.add(p));
+        (entry.roles ?? []).forEach(r => acc.roles.add(r));
+        (entry.roots ?? []).forEach(r => acc.roots.add(r));
+      }
     }
-    if (!paths.size && !roles.size && !roots.size) { if (kindFacts.length) report.noMappableFact.push(id); continue; }
+    if (!every.paths.size && !every.roles.size && !every.roots.size) { if (kindFacts.length) report.noMappableFact.push(id); continue; }
     const mapped = new Set<string>();
     for (const fact of facts.filter(f => f.fact === "operation")) for (const value of fact.values ?? []) {
       const op = policy.operations[value];
       if (op) mapped.add(op); else count(report.unmappedOperations, value);
     }
     const editTier = policy.edit_rules.includes(id);
-    const operations = editTier
-      ? OPERATIONS.filter(op => !mapped.size || mapped.has(op) || op === "review")
-      : ["review"];
-    const selector: Selector = { id: "gen." + id, operations, rules: [id] };
-    if (paths.size) selector.paths = [...paths].sort();
-    if (roles.size) selector.roles = [...roles].sort();
-    if (roots.size) selector.roots = [...roots].sort();
-    selectors.push(selector); // roles and roots stay symbolic: the loader resolves them through the active profile
+    const editOps = OPERATIONS.filter(op => !mapped.size || mapped.has(op) || op === "review");
+    // roles and roots stay symbolic: the loader resolves them through the active profile
+    const make = (sid: string, operations: string[], acc: Acc): Selector => {
+      const selector: Selector = { id: sid, operations, rules: [id] };
+      if (acc.paths.size) selector.paths = [...acc.paths].sort();
+      if (acc.roles.size) selector.roles = [...acc.roles].sort();
+      if (acc.roots.size) selector.roots = [...acc.roots].sort();
+      return selector;
+    };
+    const editKinds = editTier ? policy.edit_kinds?.[id] : undefined;
+    if (editKinds) {
+      // A rule that names several kinds is delivered at edit only for the kinds listed; the reviewer gets them all.
+      const only = fresh();
+      for (const name of editKinds) for (const k of ["paths", "roles", "roots"] as const) byName.get(name)?.[k].forEach(v => only[k].add(v));
+      const editOnly = editOps.filter(op => op !== "review");
+      if (only.paths.size || only.roles.size || only.roots.size) selectors.push(make("gen." + id, editOnly, only));
+      selectors.push(make("gen." + id + ".review", ["review"], every));
+    } else selectors.push(make("gen." + id, editTier ? editOps : ["review"], every));
   }
   selectors.sort((a, b) => a.id.localeCompare(b.id));
   for (const list of [report.withObservableFileKind, report.notInCatalog, report.noMappableFact, report.blockedByUnresolved, report.termOnly]) list.sort();
