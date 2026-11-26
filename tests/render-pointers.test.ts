@@ -15,10 +15,10 @@ test("every pointer names a catalog rule, starts with an imperative verb and kee
   assert.deepEqual(Object.keys(pointers).sort(), ["planner.capability.features", "shared.topology.plan-location",
     "shared.topology.source-location", "tester.test.carries-urn-identity", "tester.topology.e2e-location", "tester.topology.test-location"]);
   const pattern: Record<string, RegExp> = {
-    "shared.topology.plan-location": /plan\/<capability>\/_<capability>\.yaml/,
+    "shared.topology.plan-location": /<plan_root>\/<capability>\/_<capability>\.yaml/,
     "shared.topology.source-location": /<source_root>\/<capability>\/features\/<feature>\//,
     "tester.topology.test-location": /<test_root>\/<capability>\/features\/<feature>\/\{unit,contract,integration\}\//,
-    "planner.capability.features": /_features\.yaml/,
+    "planner.capability.features": /<plan_root>\/<capability>\/_features\.yaml/,
     "tester.test.carries-urn-identity": /\/\/ URN: test:\{capability\}:\{feature\}:\{ACCEPTANCE-ID\}/,
     "tester.topology.e2e-location": /<e2e_root>\/flow-routers\/<flow-router>\/<route>\.routes\.test\.ts/,
   };

@@ -36,7 +36,7 @@ export function execute(argv: string[], catalogOptions: CatalogOptions = {}): Ex
   } else if (command === "context") {
     const config = loadConfig(cwd), catalog = loadCatalog(config.sources, cwd, catalogOptions);
     const result = resolveContext(catalog, config.selectors, first("task", "")!, options.get("path") || [],
-      first("operation", "task"), Number(first("limit", "12")));
+      first("operation", "task"), Number(first("limit", "12")), Number(first("offset", "0")));
     output = result;
     if (result.status === "unresolved") status = 3;
   } else if (command === "resolve") {

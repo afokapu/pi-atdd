@@ -50,7 +50,9 @@ export type Selector = {
 };
 export type Context = {
   status: "matched" | "unresolved"; rules: Array<Convention & { reasons: string[] }>;
-  matchingIds: string[]; truncated: boolean; sourceLocks: Catalog["provenance"];
+  matchingIds: string[]; truncated: boolean;
+  /** ATD-45: start of the next page of rule bodies (pass as offset), or null when every matched rule was delivered. */
+  nextOffset: number | null; sourceLocks: Catalog["provenance"];
   unresolvedReferences: Relation[]; relatedRelations: Relation[]; note: string;
 };
 const edgeTypes = new Set(["requires", "blocks", "enables", "follows", "awaits",
@@ -366,9 +368,10 @@ export function validateSelectors(catalog: Catalog, selectors: Selector[]): void
   }
 }
 export function resolveContext(catalog: Catalog, selectors: Selector[], task: string,
-    paths: string[], operation = "task", limit = 12): Context {
+    paths: string[], operation = "task", limit = 12, offset = 0): Context {
   validateSelectors(catalog, selectors);
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new GraphError("invalid limit");
+  if (!Number.isInteger(offset) || offset < 0) throw new GraphError("invalid offset");
   const reasons = new Map<string, Set<string>>(), selected = new Set<string>();
   for (const item of selectors) {
     if (item.operations?.length && !item.operations.includes(operation)) continue;
@@ -400,10 +403,11 @@ export function resolveContext(catalog: Catalog, selectors: Selector[], task: st
   const matchingIds = [...selected].sort();
   return {
     status: matchingIds.length ? "matched" : "unresolved",
-    matchingIds, truncated: matchingIds.length > limit, sourceLocks: catalog.provenance,
+    matchingIds, truncated: matchingIds.length > offset + limit,
+    nextOffset: matchingIds.length > offset + limit ? offset + limit : null, sourceLocks: catalog.provenance,
     unresolvedReferences: catalog.unresolvedEdges,
     relatedRelations: catalog.edges.filter(edge => selected.has(edge.source) && selected.has(edge.target)),
-    rules: matchingIds.slice(0, limit).map(id => ({ ...catalog.rules.get(id)!, reasons: [...reasons.get(id)!].sort() })),
+    rules: matchingIds.slice(offset, offset + limit).map(id => ({ ...catalog.rules.get(id)!, reasons: [...reasons.get(id)!].sort() })),
     note: matchingIds.length
       ? "Context is guidance, not proof of compliance; validate required checks independently."
       : "Unresolved applicability is a coverage gap; do not assume there are no obligations.",
