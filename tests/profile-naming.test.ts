@@ -158,65 +158,6 @@ test("N-004 the activation probe delivers the same rules (by alias) as v0.2.0", 
     // edit scenarios, and the review tier to the review scenario that names a path. Listed by scenario so any other
     // new activation still fails this test.
     const ATD45_ADDITIONS: Record<string, string[]> = {
-          "01 Review the integration branch before merge readiness": [
-                "coder.architecture.hierarchy-import",
-                "coder.boundaries.http-client",
-                "coder.commons.cross-feature-imports-in",
-                "coder.commons.domain-no-framework-import",
-                "coder.commons.domain-no-outbound",
-                "coder.complexity.cyclomatic",
-                "coder.complexity.length",
-                "coder.complexity.nesting",
-                "coder.composition.consumer",
-                "coder.composition.root",
-                "coder.dead-code.reachability",
-                "coder.dto.placement",
-                "coder.dto.purity",
-                "coder.error-response.bare-string",
-                "coder.green-urn.marker",
-                "coder.hypermedia.verb-endpoint-same-origin",
-                "coder.layer.naming",
-                "coder.quality.comments",
-                "coder.runtime.server-is-bun-serve",
-                "coder.security.hardcoded-secret",
-                "coder.security.missing-auth",
-                "planner.capability.features",
-                "planner.desired-outcome.step-code-vocabulary",
-                "planner.desired-outcome.urn-naming",
-                "planner.subject.invariants",
-                "planner.user-system-flow.naming",
-                "planner.user-system-flow.registry",
-                "planner.user-system-flow.theme-orchestrator-urn",
-                "shared.topology.plan-location",
-                "shared.topology.source-location",
-                "tester.topology.feature-test-coverage",
-                "tester.topology.test-location"
-          ],
-          "02 Implement acceptance for checkout, go green": [
-                "planner.capability.features",
-                "shared.topology.plan-location",
-                "shared.topology.source-location"
-          ],
-          "03 Update order model": [
-                "planner.capability.features",
-                "shared.topology.plan-location",
-                "shared.topology.source-location"
-          ],
-          "04 Make the green test pass": [
-                "planner.capability.features",
-                "shared.topology.plan-location",
-                "shared.topology.source-location"
-          ],
-          "05 Add authentication to the payment endpoint": [
-                "planner.capability.features",
-                "shared.topology.plan-location",
-                "shared.topology.source-location"
-          ],
-          "06 Fix layer boundary imports in integration": [
-                "planner.capability.features",
-                "shared.topology.plan-location",
-                "shared.topology.source-location"
-          ],
           "07 Add acceptance test binding and coverage": [
                 "planner.capability.features",
                 "shared.topology.plan-location",
@@ -225,16 +166,6 @@ test("N-004 the activation probe delivers the same rules (by alias) as v0.2.0", 
           "08 Write e2e journey": [
                 "planner.journey.definition",
                 "tester.topology.e2e-location"
-          ],
-          "11 Persist runtime state": [
-                "planner.capability.features",
-                "shared.topology.plan-location",
-                "shared.topology.source-location"
-          ],
-          "13 Refactor the presentation view": [
-                "planner.capability.features",
-                "shared.topology.plan-location",
-                "shared.topology.source-location"
           ]
     };
     const rekey = (ids: string[]) => ids.map(id => aliases[id] ?? id).sort();

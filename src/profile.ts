@@ -53,11 +53,19 @@ export function roleOfPath(p: StructureProfile, path: string): string | undefine
   return LAYER_ROLES.find(role => rolePatterns(p, role).some(g => matchesGlob(file, g)));
 }
 
+/** Replace `roots:` by `<profile root>/**`. A profile that declares none of the roots keeps the selector's other predicates. */
+function expandRoots(s: Selector, p: StructureProfile): Selector {
+  const globs = s.roots!.flatMap(r => { const v = p.values["roots." + r]; return typeof v === "string" && v ? [v.replace(/\/+$/, "") + "/**"] : []; });
+  const { roots: _roots, ...rest } = s;
+  return { ...rest, paths: [...new Set([...(s.paths ?? []), ...globs])] };
+}
+
 /** Replace `roles:` in selectors by the profile's path globs (restricted to source suffixes). Path selectors pass through. */
 export function expandRoleSelectors(selectors: Selector[], p: StructureProfile): Selector[] {
   const declared = new Set(loadVocabulary().groups.roles.params!.role);
   const suffixes = list(p.values["suffix.source"]);
   return selectors.map(s => {
+    if (s.roots?.length) s = expandRoots(s, p);
     if (!s.roles?.length) return s;
     const globs: string[] = [];
     for (const role of s.roles) {

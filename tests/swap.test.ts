@@ -13,10 +13,10 @@ const hex = loadProfile(join(ROOT, "tests/fixtures/swap/ts-hexagon.profile.json"
 
 // Each situation is role-level. The path is the same situation written in each fixture's own layout.
 const SITUATIONS: { role: string; bun: string; hex: string; fires: string[]; doesNotFire: string[] }[] = [
-  { role: "domain", bun: "src/pricing/domain/price.ts", hex: "app/core/price.ts", fires: ["coder.architecture.hierarchy-import", "coder.phase.discipline"], doesNotFire: ["tester.acceptance.binding-declared", "coder.security.missing-auth"] },
-  { role: "integration", bun: "src/pricing/integration/repo.ts", hex: "app/adapters/repo.ts", fires: ["coder.architecture.hierarchy-import"], doesNotFire: ["coder.phase.discipline"] },
-  { role: "application", bun: "src/pricing/application/quote.ts", hex: "app/usecases/quote.ts", fires: ["coder.phase.discipline"], doesNotFire: ["coder.architecture.hierarchy-import"] },
-  { role: "boundary", bun: "src/pricing/routes/quote.ts", hex: "app/http/quote.ts", fires: ["coder.security.missing-auth"], doesNotFire: ["coder.architecture.hierarchy-import"] },
+  { role: "domain", bun: "src/capabilities/pricing/domain/price.ts", hex: "app/core/price.ts", fires: ["coder.architecture.hierarchy-import", "coder.phase.discipline"], doesNotFire: ["tester.acceptance.binding-declared", "coder.security.missing-auth"] },
+  { role: "integration", bun: "src/capabilities/pricing/integration/repo.ts", hex: "app/adapters/repo.ts", fires: ["coder.architecture.hierarchy-import"], doesNotFire: ["coder.phase.discipline"] },
+  { role: "application", bun: "src/capabilities/pricing/application/quote.ts", hex: "app/usecases/quote.ts", fires: ["coder.phase.discipline"], doesNotFire: ["coder.architecture.hierarchy-import"] },
+  { role: "boundary", bun: "src/capabilities/pricing/routes/quote.ts", hex: "app/http/quote.ts", fires: ["coder.security.missing-auth"], doesNotFire: ["coder.architecture.hierarchy-import"] },
   { role: "unit_test", bun: "tests/price.test.ts", hex: "spec/price.test.ts", fires: ["tester.acceptance.binding-declared"], doesNotFire: ["coder.architecture.hierarchy-import"] },
   { role: "e2e_test", bun: "e2e/checkout.ts", hex: "journeys/checkout.ts", fires: ["tester.acceptance.binding-declared"], doesNotFire: ["coder.security.missing-auth"] },
 ];

@@ -30,16 +30,16 @@ test("every neutral rule with an observable file-kind fact is generated or repor
   assert.ok(r.withObservableFileKind.length > 200, "the generator must see the observable facts");
 });
 
-test("an edit of a plan, source or test file activates its topology rule", () => {
+test("an edit of a plan, source or test file activates its topology rule, with roots taken from the profile", () => {
   assert.ok(ids("update", "plan/x/_x.yaml", "edit").includes("shared.topology.plan-location"));
-  assert.ok(ids("update", "src/x.ts", "edit").includes("shared.topology.source-location"));
+  assert.ok(ids("update", "src/capabilities/x/features/y/z.ts", "edit").includes("shared.topology.source-location"));
   assert.ok(ids("update", "tests/x.test.ts", "edit").includes("tester.topology.test-location"));
   // the requires links pull plan-location in behind source and test location
-  assert.ok(ids("update", "src/x.ts", "edit").includes("shared.topology.plan-location"));
+  assert.ok(ids("update", "src/capabilities/x/features/y/z.ts", "edit").includes("shared.topology.plan-location"));
 });
 
 test("the edit-time page stays small enough to deliver in one page", () => {
-  for (const p of ["plan/x/_x.yaml", "src/x.ts", "tests/x.test.ts"])
+  for (const p of ["plan/x/_x.yaml", "src/capabilities/x/features/y/z.ts", "tests/x.test.ts"])
     assert.ok(ids("update", p, "edit").length <= 12, p + " must not flood the edit page");
 });
 

@@ -45,6 +45,8 @@ export type Selector = {
   paths?: string[]; terms?: string[]; always?: boolean;
   /** PLT-84: roles (domain, application, ...) resolved to path globs through the active structure profile. */
   roles?: string[];
+  /** ATD-45: profile roots (source, plan, test, e2e) resolved to `<root>/**` through the active structure profile. */
+  roots?: string[];
 };
 export type Context = {
   status: "matched" | "unresolved"; rules: Array<Convention & { reasons: string[] }>;

@@ -6,9 +6,9 @@ import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { stringify } from "yaml";
 import { bundledSources, GraphError, loadCatalog, packageRoot, readYaml, type Selector } from "./catalog.ts";
-import { DEFAULT_PROFILE, expandRoleSelectors, profileByName, type StructureProfile } from "./profile.ts";
+import { DEFAULT_PROFILE, profileByName, type StructureProfile } from "./profile.ts";
 
-export type FileKindEntry = { values: string[]; prefixes?: string[]; paths?: string[]; roles?: string[] };
+export type FileKindEntry = { values: string[]; prefixes?: string[]; paths?: string[]; roles?: string[]; roots?: string[] };
 export type Policy = { edit_rules: string[]; profile_observed_kinds: string[]; operations: Record<string, string>; file_kinds: FileKindEntry[] };
 export type GenerationReport = {
   /** Rules that declare at least one observable file_kind or role fact. */
@@ -73,15 +73,16 @@ export function generateSelectors(opts: { neutralRoot: string; policy: Policy; r
     else if (facts.some(f => f.fact === "task_term")) report.termOnly.push(id);
     if (!opts.ruleIds.has(id)) { if (kindFacts.length) report.notInCatalog.push(id); continue; }
     if (blocked.has(id)) { if (kindFacts.length) report.blockedByUnresolved.push(id); continue; }
-    const paths = new Set<string>(), roles = new Set<string>();
+    const paths = new Set<string>(), roles = new Set<string>(), roots = new Set<string>();
     for (const fact of kindFacts) for (const value of fact.values ?? []) {
       const key = normal(value);
       const entry = policy.file_kinds.find(e => e.values.includes(key) || (e.prefixes ?? []).some(p => key.startsWith(p)));
       if (!entry) { count(report.unmappedValues, value.length > 60 ? value.slice(0, 60) : value); continue; }
       (entry.paths ?? []).forEach(p => paths.add(p));
       (entry.roles ?? []).forEach(r => roles.add(r));
+      (entry.roots ?? []).forEach(r => roots.add(r));
     }
-    if (!paths.size && !roles.size) { if (kindFacts.length) report.noMappableFact.push(id); continue; }
+    if (!paths.size && !roles.size && !roots.size) { if (kindFacts.length) report.noMappableFact.push(id); continue; }
     const mapped = new Set<string>();
     for (const fact of facts.filter(f => f.fact === "operation")) for (const value of fact.values ?? []) {
       const op = policy.operations[value];
@@ -94,7 +95,8 @@ export function generateSelectors(opts: { neutralRoot: string; policy: Policy; r
     const selector: Selector = { id: "gen." + id, operations, rules: [id] };
     if (paths.size) selector.paths = [...paths].sort();
     if (roles.size) selector.roles = [...roles].sort();
-    selectors.push(expandRoleSelectors([selector], opts.profile)[0]!);
+    if (roots.size) selector.roots = [...roots].sort();
+    selectors.push(selector); // roles and roots stay symbolic: the loader resolves them through the active profile
   }
   selectors.sort((a, b) => a.id.localeCompare(b.id));
   for (const list of [report.withObservableFileKind, report.notInCatalog, report.noMappableFact, report.blockedByUnresolved, report.termOnly]) list.sort();
