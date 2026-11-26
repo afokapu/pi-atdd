@@ -1,3 +1,4 @@
+// URN: test:pi-atdd:neutral-render-stacks:plt-84-sn-004
 // Acceptance: acc:pi-atdd:plt-84-sn-004
 // Rendering for a stack without a curated realization: core + profile idioms + Bun reference example, labelled agent-derived.
 import assert from "node:assert/strict";

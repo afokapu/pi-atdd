@@ -1,3 +1,4 @@
+// URN: test:pi-atdd:coach-policy:plt-100-c-001
 // Acceptance: acc:pi-atdd:plt-100-c-001 (naming label, seeded "Coach" launch is flagged)
 // Acceptance: acc:pi-atdd:plt-100-c-002 (action tiers, seeded "merge without owner" is owner-only)
 // Acceptance: acc:pi-atdd:plt-100-c-003 (unclear risk takes the higher tier; decision log; trivial requests)

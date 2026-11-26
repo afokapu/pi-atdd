@@ -1,3 +1,4 @@
+// URN: test:pi-atdd:swap:plt-84-sn-003
 // Acceptance: acc:pi-atdd:plt-84-sn-003
 // Swap test: a differently structured fixture, only the profile changes, zero rule or selector edits.
 import assert from "node:assert/strict";

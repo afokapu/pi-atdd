@@ -1,3 +1,4 @@
+// URN: test:pi-atdd:repository-observer:E002-INTEGRATION-006
 // Acceptance: acc:pi-atdd:E002-INTEGRATION-006
 import assert from "node:assert/strict";
 import { test } from "node:test";

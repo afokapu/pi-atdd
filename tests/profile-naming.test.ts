@@ -1,3 +1,4 @@
+// URN: test:pi-atdd:profile-naming:plt-87-n-001
 // Acceptance: acc:pi-atdd:plt-87-n-001
 // Acceptance: acc:pi-atdd:plt-87-n-002
 // Acceptance: acc:pi-atdd:plt-87-n-003

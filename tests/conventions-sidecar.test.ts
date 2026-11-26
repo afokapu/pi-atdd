@@ -1,3 +1,4 @@
+// URN: test:pi-atdd:conventions-sidecar:E001-UNIT-002
 // Acceptance: acc:pi-atdd:E001-UNIT-002
 // The frozen convention sidecar stays pinned to the canonical YAML it was derived from.
 import assert from "node:assert/strict";
