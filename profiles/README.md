@@ -17,7 +17,7 @@ a tool, comes from the active stack's profile through a **profile key**.
 |---|---|---|
 | `roles` | role names, role locations, how a file gets a role | `roles.domain.path` (`**/domain/**`) |
 | `roots` | source, test, e2e and plan roots; the never-scanned trees | `roots.excluded` (`node_modules, dist, build, _generated`) |
-| `layout` | wagon, feature and commons directories; artifact placement | `layout.feature_dir` |
+| `layout` | capability, feature and commons directories; artifact placement | `layout.feature_dir` |
 | `suffix` | file-name suffixes per file kind | `suffix.source` (`.ts, .tsx`) |
 | `urn` | URN shapes, and the syntax that binds a file to one | `urn.binding.acceptance` (`// Acceptance: acc:…`) |
 | `idiom` | the stack's construct for a neutral concept | `idiom.auth_guard` |

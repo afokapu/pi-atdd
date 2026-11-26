@@ -10,6 +10,8 @@ export type ProfileGroup = typeof PROFILE_GROUPS[number];
 export type VocabularyKey = { key: string; group: ProfileGroup; type: string; doc: string; example?: string };
 export type Vocabulary = {
   schema: string; version: number; status?: string;
+  /** Older vocabulary versions whose key names still resolve, and the old-key to current-key map (ATD-45). */
+  aliasVersions?: number[]; aliases?: Record<string, string>;
   groups: Record<ProfileGroup, { doc: string; params?: Record<string, string[]>; keys: Record<string, { type: string; doc: string; example?: string }> }>;
 };
 
@@ -45,9 +47,16 @@ export function expandKeys(v: Vocabulary = loadVocabulary()): VocabularyKey[] {
   return out;
 }
 
-/** A key is a vocabulary key, or '<map key>#<entry>' where the base key has type map (v3). */
+/** The current name of a key: a legacy alias resolves to its renamed key, any other key is returned unchanged. */
+export function canonicalKey(key: string, v: Vocabulary = loadVocabulary()): string {
+  const [base, ...entry] = key.split("#");
+  const now = v.aliases?.[base!];
+  return now ? [now, ...entry].join("#") : key;
+}
+
+/** A key is a vocabulary key (or a legacy alias of one), or '<map key>#<entry>' where the base key has type map (v3). */
 export function isVocabularyKey(key: string, v: Vocabulary = loadVocabulary()): boolean {
-  const [base, entry, ...rest] = key.split("#");
+  const [base, entry, ...rest] = canonicalKey(key, v).split("#");
   const k = expandKeys(v).find(x => x.key === base);
   if (!k) return false;
   if (entry === undefined) return true;

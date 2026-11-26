@@ -11,9 +11,9 @@ const ROOT = new URL("..", import.meta.url).pathname;
 const bun = loadProfile(join(ROOT, "profiles/stacks/default.json"));
 const hex = loadProfile(join(ROOT, "tests/fixtures/swap/ts-hexagon.profile.json"));
 
-test("vocabulary v3 is frozen: the file matches its pinned digest", () => {
+test("vocabulary v4 is frozen: the file matches its pinned digest", () => {
   const lock = JSON.parse(readFileSync(join(ROOT, "profiles/vocabulary.lock.json"), "utf8"));
-  assert.equal(lock.version, 3);
+  assert.equal(lock.version, 4);
   assert.equal(createHash("sha256").update(readFileSync(join(ROOT, "profiles/vocabulary.yaml"))).digest("hex"), lock.sha256);
 });
 

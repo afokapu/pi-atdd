@@ -3,7 +3,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { expandKeys, loadVocabulary } from "./profile-vocabulary.ts";
+import { canonicalKey, expandKeys, loadVocabulary } from "./profile-vocabulary.ts";
 import { GraphError, matchesGlob, type Selector } from "./catalog.ts";
 
 export type StructureProfile = { schema: string; stack: string; vocabularyVersion: number; extends?: string; values: Record<string, unknown> };
@@ -16,7 +16,9 @@ export function loadProfile(path: string): StructureProfile {
   const p = JSON.parse(readFileSync(path, "utf8")) as StructureProfile;
   const problems = profileProblems(p);
   if (problems.length) throw new GraphError("invalid profile " + path + ": " + problems.join("; "));
-  return p;
+  // A profile written against an older vocabulary may use legacy key names; consumers read the current names.
+  const v = loadVocabulary();
+  return { ...p, values: Object.fromEntries(Object.entries(p.values ?? {}).map(([k, val]) => [canonicalKey(k, v), val])) };
 }
 /** Resolve a profile by stack name (profiles/stacks/<name>.json) or by a project-local path. */
 export function profileByName(name: string): StructureProfile { return loadProfile(join(ROOT, "profiles/stacks", name + ".json")); }
@@ -26,10 +28,12 @@ export function profileProblems(p: StructureProfile): string[] {
   const out: string[] = [];
   if (p.schema !== "pi-atdd/structure-profile/v1") out.push("schema must be pi-atdd/structure-profile/v1");
   if (!/^[a-z0-9-]+$/.test(p.stack ?? "")) out.push("stack must match [a-z0-9-]+");
-  if (p.vocabularyVersion !== v.version) out.push("vocabularyVersion " + p.vocabularyVersion + " is not the frozen " + v.version);
+  const older = p.vocabularyVersion !== v.version && (v.aliasVersions ?? []).includes(p.vocabularyVersion);
+  if (p.vocabularyVersion !== v.version && !older) out.push("vocabularyVersion " + p.vocabularyVersion + " is not the frozen " + v.version);
   const strings = (x: unknown) => Array.isArray(x) && x.every(y => typeof y === "string");
   for (const [k, val] of Object.entries(p.values ?? {})) {
-    const type = keys.get(k);
+    if (!older && v.aliases?.[k]) { out.push("legacy key " + k + ": vocabulary version " + v.version + " names it " + v.aliases[k]); continue; }
+    const type = keys.get(canonicalKey(k, v));
     if (!type) { out.push("not a vocabulary key: " + k); continue; }
     const ok = type === "list" ? strings(val)
       : type === "map" ? typeof val === "object" && val !== null && !Array.isArray(val)
