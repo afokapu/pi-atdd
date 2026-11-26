@@ -1,5 +1,5 @@
 // URN: test:pi-atdd:PLT-103:A0-001
-// Acceptance: acc:pi-atdd:PLT-103-A0-001
+// Acceptance: acc:pi-atdd:plt-103-a0-001
 // Every legacy split-part id (46, from the PLT-81 split sidecars) resolves at runtime to its profile-first part id.
 import assert from "node:assert/strict";
 import { test } from "node:test";

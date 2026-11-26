@@ -1,4 +1,4 @@
-// Acceptance: acc:pi-atdd:PLT-84-SN-002
+// Acceptance: acc:pi-atdd:plt-84-sn-002
 // The structure-profile key vocabulary that SN-002 cores depend on is closed and documented, and the schema is generated from it.
 import assert from "node:assert/strict";
 import { test } from "node:test";

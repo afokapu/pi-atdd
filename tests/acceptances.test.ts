@@ -15,15 +15,16 @@ addFormats(ajv);
 const appendix = JSON.parse(readFileSync(join(root, "tests/fixtures/schema/appendix.schema.json"), "utf8"));
 ajv.addSchema(appendix, "appendix.schema.json");
 const validate = ajv.compile(schema);
+const nested = (): Array<{ file: string; doc: Record<string, unknown> }> =>
+  readdirSync(join(root, "plan/pi-atdd")).filter(f => /^[DLPCEMYRK]\d{3}\.yaml$/.test(f)).sort().flatMap(f =>
+    ((readYaml(join(root, "plan/pi-atdd", f)).acceptances ?? []) as Array<Record<string, unknown>>).map(doc => ({ file: f, doc })));
 
 test("all formal implementation criteria follow the existing ATDD-Bun V2 template", () => {
-  const dir = join(root, "plan/acceptances");
-  const files = readdirSync(dir).filter(file => file.endsWith(".acceptance.yaml")).sort();
-  assert.equal(files.length, 22);
+  const all = nested();
+  assert.equal(all.length, 79);
   const urns = new Set<string>();
   const ids = new Set<string>();
-  for (const file of files) {
-    const doc = readYaml(join(dir, file));
+  for (const { file, doc } of all) {
     assert.equal(validate(doc), true, file + " " + JSON.stringify(validate.errors));
     const identity = doc.identity as { urn: string; phase: string; id: string };
     assert.ok(!urns.has(identity.urn), "duplicate acceptance " + identity.urn);
@@ -36,19 +37,17 @@ test("all formal implementation criteria follow the existing ATDD-Bun V2 templat
 });
 
 test("the acceptance schema rejects absent proof fields, not just malformed YAML", () => {
-  const valid = readYaml(join(root, "plan/acceptances/E001-UNIT-001.acceptance.yaml"));
+  const valid = nested().find(x => (x.doc.identity as { urn: string }).urn === "acc:pi-atdd:E001-UNIT-001")!.doc;
   const incomplete = { ...valid, then: { abstract: ["passed"] } };
   assert.equal(validate(incomplete), false);
   assert.ok(validate.errors?.some(e => e.instancePath.startsWith("/then")));
 });
 
-test("every acceptance has an explicit test binding, not just a generated YAML record", () => {
-  const plan = join(root, "plan/acceptances");
-  const expected = readdirSync(plan).filter(f => f.endsWith(".acceptance.yaml")).map(f =>
-    (readYaml(join(plan, f)).identity as { urn: string }).urn);
+test("every acceptance has an explicit test binding, and every bound acceptance is declared once", () => {
+  const expected = nested().map(x => (x.doc.identity as { urn: string }).urn);
   const tests = readdirSync(join(root, "tests")).filter(f => f.endsWith(".test.ts") || f.endsWith("-smoke.ts"));
   const text = tests.map(path => readFileSync(join(root, "tests", path), "utf8")).join("\n");
-  for (const urn of expected) {
-    assert.ok(text.includes("// Acceptance: " + urn), "acceptance lacks a test binding: " + urn);
-  }
+  for (const urn of expected) assert.ok(text.includes("// Acceptance: " + urn), "acceptance lacks a test binding: " + urn);
+  const bound = [...text.matchAll(/^\/\/ Acceptance: (acc:pi-atdd:[\w-]+)/gm)].map(m => m[1]);
+  for (const urn of new Set(bound)) assert.equal(expected.filter(e => e === urn).length, 1, "bound acceptance is not declared exactly once: " + urn);
 });

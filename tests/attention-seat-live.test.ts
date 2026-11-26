@@ -1,7 +1,7 @@
 // URN: test:pi-atdd:attention-seat-live:PLT-118
-// Acceptance: acc:pi-atdd:PLT-118-A02
-// Acceptance: acc:pi-atdd:PLT-118-A05
-// Acceptance: acc:pi-atdd:PLT-118-A06
+// Acceptance: acc:pi-atdd:plt-118-a02
+// Acceptance: acc:pi-atdd:plt-118-a05
+// Acceptance: acc:pi-atdd:plt-118-a06
 // PLT-118 PR #31 return: the worker route follows the CURRENT authorized seat binding, and
 // attention writes are fenced against a seat transfer. Real seat lease, real child process.
 import assert from "node:assert/strict";

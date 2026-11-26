@@ -1,8 +1,8 @@
-// Acceptance: acc:pi-atdd:PLT-100-C-001 (naming label, seeded "Coach" launch is flagged)
-// Acceptance: acc:pi-atdd:PLT-100-C-002 (action tiers, seeded "merge without owner" is owner-only)
-// Acceptance: acc:pi-atdd:PLT-100-C-003 (unclear risk takes the higher tier; decision log; trivial requests)
-// Acceptance: acc:pi-atdd:PLT-100-C-004 (the coach rules load from the package source and are selected)
-// Acceptance: acc:pi-atdd:PLT-100-C-005 (seeded "Coach edits repo code or opens a code PR itself" is flagged)
+// Acceptance: acc:pi-atdd:plt-100-c-001 (naming label, seeded "Coach" launch is flagged)
+// Acceptance: acc:pi-atdd:plt-100-c-002 (action tiers, seeded "merge without owner" is owner-only)
+// Acceptance: acc:pi-atdd:plt-100-c-003 (unclear risk takes the higher tier; decision log; trivial requests)
+// Acceptance: acc:pi-atdd:plt-100-c-004 (the coach rules load from the package source and are selected)
+// Acceptance: acc:pi-atdd:plt-100-c-005 (seeded "Coach edits repo code or opens a code PR itself" is flagged)
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";

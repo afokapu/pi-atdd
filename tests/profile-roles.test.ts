@@ -1,4 +1,4 @@
-// Acceptance: acc:pi-atdd:PLT-84-SN-003
+// Acceptance: acc:pi-atdd:plt-84-sn-003
 // A structure profile maps roles to paths; role selectors expand through it; the frozen vocabulary is pinned.
 import assert from "node:assert/strict";
 import { test } from "node:test";

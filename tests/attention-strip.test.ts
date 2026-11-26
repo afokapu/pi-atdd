@@ -1,8 +1,8 @@
 // URN: test:pi-atdd:attention-strip:PLT-101-ACC-1
-// Acceptance: acc:pi-atdd:PLT-101-ACC-1
-// Acceptance: acc:pi-atdd:PLT-101-ACC-2
-// Acceptance: acc:pi-atdd:PLT-101-ACC-3
-// Acceptance: acc:pi-atdd:PLT-101-ACC-4
+// Acceptance: acc:pi-atdd:plt-101-acc-1
+// Acceptance: acc:pi-atdd:plt-101-acc-2
+// Acceptance: acc:pi-atdd:plt-101-acc-3
+// Acceptance: acc:pi-atdd:plt-101-acc-4
 // PLT-101 (Linear): 1 a worker raises each of the 4 types and the Coach strip lists each one; 2 ack, snooze,
 // resolve, cancel and TTL change state, and closed items leave memory; 3 restart rebuild from hidden session
 // entries gives the same open set; 4 the worker sees a Coach resolution on its next turn without agent-say.

@@ -1,11 +1,11 @@
 // URN: test:pi-atdd:routed-attention:PLT-118
-// Acceptance: acc:pi-atdd:PLT-118-A01
-// Acceptance: acc:pi-atdd:PLT-118-A02
-// Acceptance: acc:pi-atdd:PLT-118-A03
-// Acceptance: acc:pi-atdd:PLT-118-A04
-// Acceptance: acc:pi-atdd:PLT-118-A05
-// Acceptance: acc:pi-atdd:PLT-118-A06
-// Acceptance: acc:pi-atdd:PLT-118-A07
+// Acceptance: acc:pi-atdd:plt-118-a01
+// Acceptance: acc:pi-atdd:plt-118-a02
+// Acceptance: acc:pi-atdd:plt-118-a03
+// Acceptance: acc:pi-atdd:plt-118-a04
+// Acceptance: acc:pi-atdd:plt-118-a05
+// Acceptance: acc:pi-atdd:plt-118-a06
+// Acceptance: acc:pi-atdd:plt-118-a07
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";

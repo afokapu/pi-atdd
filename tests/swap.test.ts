@@ -1,4 +1,4 @@
-// Acceptance: acc:pi-atdd:PLT-84-SN-003
+// Acceptance: acc:pi-atdd:plt-84-sn-003
 // Swap test: a differently structured fixture, only the profile changes, zero rule or selector edits.
 import assert from "node:assert/strict";
 import { test } from "node:test";

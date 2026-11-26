@@ -1,8 +1,8 @@
 // URN: test:pi-atdd:model-tiers:PLT-97-ACC-1
-// Acceptance: acc:pi-atdd:PLT-97-ACC-1
-// Acceptance: acc:pi-atdd:PLT-97-ACC-2
-// Acceptance: acc:pi-atdd:PLT-97-ACC-3
-// Acceptance: acc:pi-atdd:PLT-97-ACC-4
+// Acceptance: acc:pi-atdd:plt-97-acc-1
+// Acceptance: acc:pi-atdd:plt-97-acc-2
+// Acceptance: acc:pi-atdd:plt-97-acc-3
+// Acceptance: acc:pi-atdd:plt-97-acc-4
 // PLT-97 (Linear): 1 rules selected for every launching profile; 2 resolver (tier -> model per active
 // family, tier-level and per-run override, fail-closed); 3 a seeded brief that hard-codes a model name is
 // flagged; 4 no model names in the repo's rules. Criterion 5 (draft PR, green suite, nothing merged) is

@@ -1,8 +1,8 @@
-// Acceptance: acc:pi-atdd:PLT-87-N-001
-// Acceptance: acc:pi-atdd:PLT-87-N-002
-// Acceptance: acc:pi-atdd:PLT-87-N-003
-// Acceptance: acc:pi-atdd:PLT-87-N-004
-// Acceptance: acc:pi-atdd:PLT-87-N-005
+// Acceptance: acc:pi-atdd:plt-87-n-001
+// Acceptance: acc:pi-atdd:plt-87-n-002
+// Acceptance: acc:pi-atdd:plt-87-n-003
+// Acceptance: acc:pi-atdd:plt-87-n-004
+// Acceptance: acc:pi-atdd:plt-87-n-005
 // Profile-first convention ids: lint, lossless alias map, profile selection, same activation.
 import assert from "node:assert/strict";
 import { test } from "node:test";

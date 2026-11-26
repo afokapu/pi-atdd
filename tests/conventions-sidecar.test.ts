@@ -1,4 +1,4 @@
-// Acceptance: acc:pi-atdd:PLT-81-SIDECAR-001
+// Acceptance: acc:pi-atdd:E001-UNIT-002
 // The frozen convention sidecar stays pinned to the canonical YAML it was derived from.
 import assert from "node:assert/strict";
 import { test } from "node:test";

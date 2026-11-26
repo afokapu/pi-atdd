@@ -1,4 +1,4 @@
-// Acceptance: acc:pi-atdd:PLT-84-SN-004
+// Acceptance: acc:pi-atdd:plt-84-sn-004
 // Rendering for a stack without a curated realization: core + profile idioms + Bun reference example, labelled agent-derived.
 import assert from "node:assert/strict";
 import { test } from "node:test";

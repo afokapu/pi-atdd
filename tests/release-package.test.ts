@@ -1,5 +1,5 @@
 // URN: test:pi-atdd:release:ATD-20-ACC-1
-// Acceptance: acc:pi-atdd:ATD-20-ACC-1
+// Acceptance: acc:pi-atdd:atd-20-acc-1
 // ATD-20: pi-atdd is a versioned Pi package. These checks support ACC-1 (a tagged git source installs).
 // Item 3 (licence record) supports no ATD-20 acceptance: it is a release checklist check.
 // ACC-2 and ACC-3 are pending and are not claimed here. Checks:

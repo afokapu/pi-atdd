@@ -1,8 +1,8 @@
 // URN: test:pi-atdd:execution-lifecycle:PLT-117
-// Acceptance: acc:pi-atdd:PLT-117-A01
-// Acceptance: acc:pi-atdd:PLT-117-A02
-// Acceptance: acc:pi-atdd:PLT-117-A03
-// Acceptance: acc:pi-atdd:PLT-117-A04
+// Acceptance: acc:pi-atdd:plt-117-a01
+// Acceptance: acc:pi-atdd:plt-117-a02
+// Acceptance: acc:pi-atdd:plt-117-a03
+// Acceptance: acc:pi-atdd:plt-117-a04
 // Pure contract tests; real Pi/Flow adapters and concurrency evidence remain pending.
 import assert from "node:assert/strict";
 import { test } from "node:test";

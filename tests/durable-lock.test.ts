@@ -1,6 +1,6 @@
 // URN: test:pi-atdd:durable-lock:PLT-117
-// Acceptance: acc:pi-atdd:PLT-117-A03
-// Acceptance: acc:pi-atdd:PLT-117-A05
+// Acceptance: acc:pi-atdd:plt-117-a03
+// Acceptance: acc:pi-atdd:plt-117-a05
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
