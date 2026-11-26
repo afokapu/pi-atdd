@@ -154,14 +154,97 @@ test("N-004 the activation probe delivers the same rules (by alias) as v0.2.0", 
       ...Object.fromEntries(WRITE_SCENARIOS.map(k => [k, OBLIGATION])),
       "09 Coordinator: set up a jujutsu worktree for the integration branch": ["coder.tracker.issue-in-branch-and-pr", ...OBLIGATION],
     };
+    // ATD-45: selectors generated from the activation facts add the topology rules (and their mandatory prerequisites) to
+    // edit scenarios, and the review tier to the review scenario that names a path. Listed by scenario so any other
+    // new activation still fails this test.
+    const ATD45_ADDITIONS: Record<string, string[]> = {
+          "01 Review the integration branch before merge readiness": [
+                "coder.architecture.hierarchy-import",
+                "coder.boundaries.http-client",
+                "coder.commons.cross-feature-imports-in",
+                "coder.commons.domain-no-framework-import",
+                "coder.commons.domain-no-outbound",
+                "coder.complexity.cyclomatic",
+                "coder.complexity.length",
+                "coder.complexity.nesting",
+                "coder.composition.consumer",
+                "coder.composition.root",
+                "coder.dead-code.reachability",
+                "coder.dto.placement",
+                "coder.dto.purity",
+                "coder.error-response.bare-string",
+                "coder.green-urn.marker",
+                "coder.hypermedia.verb-endpoint-same-origin",
+                "coder.layer.naming",
+                "coder.quality.comments",
+                "coder.runtime.server-is-bun-serve",
+                "coder.security.hardcoded-secret",
+                "coder.security.missing-auth",
+                "planner.capability.features",
+                "planner.desired-outcome.step-code-vocabulary",
+                "planner.desired-outcome.urn-naming",
+                "planner.subject.invariants",
+                "planner.user-system-flow.naming",
+                "planner.user-system-flow.registry",
+                "planner.user-system-flow.theme-orchestrator-urn",
+                "shared.topology.plan-location",
+                "shared.topology.source-location",
+                "tester.topology.feature-test-coverage",
+                "tester.topology.test-location"
+          ],
+          "02 Implement acceptance for checkout, go green": [
+                "planner.capability.features",
+                "shared.topology.plan-location",
+                "shared.topology.source-location"
+          ],
+          "03 Update order model": [
+                "planner.capability.features",
+                "shared.topology.plan-location",
+                "shared.topology.source-location"
+          ],
+          "04 Make the green test pass": [
+                "planner.capability.features",
+                "shared.topology.plan-location",
+                "shared.topology.source-location"
+          ],
+          "05 Add authentication to the payment endpoint": [
+                "planner.capability.features",
+                "shared.topology.plan-location",
+                "shared.topology.source-location"
+          ],
+          "06 Fix layer boundary imports in integration": [
+                "planner.capability.features",
+                "shared.topology.plan-location",
+                "shared.topology.source-location"
+          ],
+          "07 Add acceptance test binding and coverage": [
+                "planner.capability.features",
+                "shared.topology.plan-location",
+                "tester.topology.test-location"
+          ],
+          "08 Write e2e journey": [
+                "planner.journey.definition",
+                "tester.topology.e2e-location"
+          ],
+          "11 Persist runtime state": [
+                "planner.capability.features",
+                "shared.topology.plan-location",
+                "shared.topology.source-location"
+          ],
+          "13 Refactor the presentation view": [
+                "planner.capability.features",
+                "shared.topology.plan-location",
+                "shared.topology.source-location"
+          ]
+    };
     const rekey = (ids: string[]) => ids.map(id => aliases[id] ?? id).sort();
     const after = Object.fromEntries(Object.entries(probe(cwd)).map(([k, v]) => {
-      const extra = PLT96_ADDITIONS[k] ?? [];
+      const extra = [...(PLT96_ADDITIONS[k] ?? []), ...(ATD45_ADDITIONS[k] ?? [])];
       const minus = (ids: string[]) => ids.filter(id => !extra.includes(id));
       return [k, { context: minus(v.context), reasoning: minus(v.reasoning), added: extra.filter(id => v.context.includes(id) || v.reasoning.includes(id)) }];
     }));
     for (const [k, v] of Object.entries<any>(after)) {
-      assert.deepEqual(v.added, PLT96_ADDITIONS[k] ?? [], "PLT-96 addition set for " + k);
+      assert.deepEqual(v.added, [...(PLT96_ADDITIONS[k] ?? []), ...(ATD45_ADDITIONS[k] ?? [])], "PLT-96 and ATD-45 addition set for " + k);
       delete v.added;
     }
     const expected = Object.fromEntries(Object.entries<any>(before).map(([k, v]) =>

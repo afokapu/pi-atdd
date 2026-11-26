@@ -429,13 +429,17 @@ function selectorFile(file: string): Selector[] {
     throw new GraphError("invalid selectors schema: " + file);
   return data.selectors as Selector[];
 }
+/** The bundled registry: hand-written selectors plus those generated from the activation facts (ATD-45). */
+function bundledSelectors(): Selector[] {
+  return [...selectorFile(join(packageRoot, "selectors/default.yaml")), ...selectorFile(join(packageRoot, "selectors/generated.yaml"))];
+}
 export function loadConfig(cwd: string, profile?: StructureProfile): { sources: SourceSpec[]; selectors: Selector[]; profile: StructureProfile } {
   const configPath = resolve(cwd, "atdd-pi.yaml");
   const defaults = bundledSources();
   const defaultSelectors = join(packageRoot, "selectors/default.yaml");
   if (!existsSync(configPath)) {
     const prof = profile ?? profileByName(DEFAULT_PROFILE);
-    return { sources: defaults, selectors: expandRoleSelectors(selectorFile(defaultSelectors), prof), profile: prof };
+    return { sources: defaults, selectors: expandRoleSelectors(bundledSelectors(), prof), profile: prof };
   }
   const cfg = readYaml(configPath);
   if (cfg.schema !== "pi-atdd/config/v2") throw new GraphError("invalid atdd-pi.yaml schema (expected v2)");
@@ -457,7 +461,7 @@ export function loadConfig(cwd: string, profile?: StructureProfile): { sources: 
       isAbsolute(localSelectorPath) || relative(cwd, selectorPath) === ".."
       || relative(cwd, selectorPath).startsWith("../")))
     throw new GraphError("selector path outside project");
-  const selectors = selectorFile(selectorPath);
+  const selectors = localSelectorPath === undefined ? bundledSelectors() : selectorFile(selectorPath);
   if (cfg.extraSelectors !== undefined) {
     if (!Array.isArray(cfg.extraSelectors) || !cfg.extraSelectors.every(x => typeof x === "string"))
       throw new GraphError("extraSelectors must be local path strings");

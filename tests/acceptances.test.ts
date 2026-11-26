@@ -19,7 +19,7 @@ const validate = ajv.compile(schema);
 test("all formal implementation criteria follow the existing ATDD-Bun V2 template", () => {
   const dir = join(root, "plan/acceptances");
   const files = readdirSync(dir).filter(file => file.endsWith(".acceptance.yaml")).sort();
-  assert.equal(files.length, 20);
+  assert.equal(files.length, 21);
   const urns = new Set<string>();
   const ids = new Set<string>();
   for (const file of files) {
