@@ -88,8 +88,10 @@ function harness(cwd: string, branch: unknown[] = []) {
   return { handlers, commands, sent, notes, ctx,
     start: () => handlers.get("session_start")!({}, ctx),
     stop: () => handlers.get("session_shutdown")?.({}, ctx),
+    // ATD-37: a coach is asked once for its state before the switch; its next settle writes the record
     cycle: async () => { await handlers.get("turn_end")!({ message: { content: [] } }, ctx);
-      await handlers.get("agent_settled")!({ aborted: false }, ctx); },
+      await handlers.get("agent_settled")!({ aborted: false }, ctx);
+      if (sent.length === 1 && sent[0]!.startsWith("[from atdd-pi")) await handlers.get("agent_settled")!({ aborted: false }, ctx); },
     command: (args: string, newSession: Function) => commands.get("atdd-handoff")!.handler(args, { cwd, ui: ctx.ui,
       sessionManager: ctx.sessionManager, newSession }) };
 }

@@ -2,7 +2,7 @@
 // faux 20k-token model) with role/identity/profile and model tier unchanged, the attention tool callable in the
 // successor, the original task kept, and a fresh process relaunching from the kept record with /atdd-handoff latest.
 import { spawn, execSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -12,15 +12,35 @@ const cwd = mkdtempSync(join(tmpdir(), "pi-renew-cwd-"));
 const extDir = mkdtempSync(join(tmpdir(), "pi-renew-ext-"));
 process.on("exit", () => { for (const d of [agentDir, cwd, extDir]) rmSync(d, { recursive: true, force: true }); });
 execSync("git init -q && git commit -q --allow-empty -m init", { cwd });
-writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ compaction: { enabled: false } }));
+// reserveTokens 2000: Pi's compaction line (window minus reserve) must sit above the handoff thresholds used here.
+writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ compaction: { enabled: false, reserveTokens: 2000 } }));
 const aiPath = resolve(root, "node_modules/@earendil-works/pi-ai/dist/index.js");
+// ATD-37: the state the faux coach writes into .atdd-pi/coach-state.json when asked before the switch.
+const COACH_STATE = { workers: ["worker-atd-37 (ATD-37 coder)"], prs: ["#45"], decisions: ["Draft PR only; no merge, tag or install move"], nextSteps: ["Review PR #45 when ready"] };
 writeFileSync(join(extDir, "faux.ts"), `
 import { fauxProvider, fauxAssistantMessage, fauxToolCall } from ${JSON.stringify(aiPath)};
+import { mkdirSync, writeFileSync } from "node:fs";
 export default function (pi: any) {
   const f = fauxProvider({ provider: "renew-faux", models: [{ id: "tier-low", contextWindow: 20000 }, { id: "tier-med", contextWindow: 20000 }] });
   const g = globalThis as any; // the extension is re-instantiated for every session; the process is not
-  const reply = () => { const n = g.__renewCalls = (g.__renewCalls ?? 0) + 1; return n === 2 ? fauxAssistantMessage(fauxToolCall("attention_ack", { id: "no-such-item" }), { stopReason: "toolUse" }) : fauxAssistantMessage("ok " + "x".repeat(300)); };
-  f.setResponses(Array.from({ length: 60 }, () => reply));
+  // ATD-37: a coach asked for its state writes .atdd-pi/coach-state.json. The write is a side effect of the faux turn,
+  // not a tool call: a scoped coach without a bound seat has every tool refused (ATD-36), and this smoke binds no seat.
+  const STATE_TEXT = ${JSON.stringify(JSON.stringify(COACH_STATE))};
+  const textOf = (m: any): string => typeof m.content === "string" ? m.content : (m.content ?? []).filter((b: any) => b.type === "text").map((b: any) => b.text).join(" ");
+  const writeState = () => { mkdirSync(".atdd-pi", { recursive: true }); writeFileSync(".atdd-pi/coach-state.json", STATE_TEXT); return fauxAssistantMessage("coach state written"); };
+  const reply = (context: any) => {
+    // Pi adds its own context messages around the user's message, so look at everything since the last assistant turn.
+    const since = context.messages.slice(context.messages.map((m: any) => m.role).lastIndexOf("assistant") + 1);
+    const last = [...since].reverse().find((m: any) => m.role === "toolResult");
+    const asked = since.some((m: any) => m.role === "user" && textOf(m).includes("coach-state.json"));
+    if (last && last.role === "toolResult") {
+      return fauxAssistantMessage("ok");
+    }
+    if (asked) return writeState();
+    const n = g.__renewCalls = (g.__renewCalls ?? 0) + 1;
+    return n === 2 ? fauxAssistantMessage(fauxToolCall("attention_ack", { id: "no-such-item" }), { stopReason: "toolUse" }) : fauxAssistantMessage("ok " + "x".repeat(300));
+  };
+  f.setResponses(Array.from({ length: 60 }, () => (context: any) => reply(context)));
   pi.registerProvider(f.provider);
 }`);
 
@@ -32,9 +52,9 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 const failures: string[] = [];
 const check = (ok: boolean, what: string) => { console.log((ok ? "ok   " : "FAIL ") + what); if (!ok) failures.push(what); };
 
-async function session(run: (send: (o: object) => void, events: any[]) => Promise<void>, workdir = cwd) {
+async function session(run: (send: (o: object) => void, events: any[]) => Promise<void>, workdir = cwd, extraEnv: Record<string, string> = {}) {
   const child = spawn(resolve(root, "node_modules/.bin/pi"), ["--offline", "--approve", "-e", resolve(root, "extensions/atdd.ts"),
-    "-e", join(extDir, "faux.ts"), "--mode", "rpc", "--model", "renew-faux/tier-med"], { cwd: workdir, env: ENV, stdio: ["pipe", "pipe", "pipe"] });
+    "-e", join(extDir, "faux.ts"), "--mode", "rpc", "--model", "renew-faux/tier-med"], { cwd: workdir, env: { ...ENV, ...extraEnv }, stdio: ["pipe", "pipe", "pipe"] });
   const events: any[] = []; let buf = "";
   child.stdout.on("data", d => { buf += d; let i; while ((i = buf.indexOf("\n")) >= 0) { try { events.push(JSON.parse(buf.slice(0, i))); } catch {} buf = buf.slice(i + 1); } });
   child.stderr.on("data", () => {});
@@ -58,7 +78,7 @@ await session(async (send, events) => {
   check(/Hop: 2/.test(records[1] ?? "") && (records[1] ?? "").includes("Coordinate PLT-122 and PLT-117 for the Coach"), "review P1: the original task survives hop 2 in a real session");
   check(!/Task[^\n]*\n<<<TASK\nContinue /.test(records[1] ?? ""), "review P1: the kickoff did not replace the task");
   check(/Coach state:/.test(records[0] ?? "") && /Role: coach \(main@pi-atdd, profile forge\)/.test(records[0] ?? ""), "A04 coach-state section with role/identity/profile");
-  check(/Workers: UNKNOWN/.test(records[0] ?? "") && /PLT-122, PLT-117/.test(records[0] ?? ""), "A04 unknowns say UNKNOWN; issues listed");
+  check(/^Workers: worker-atd-37/m.test(records[0] ?? "") && /PLT-122, PLT-117/.test(records[0] ?? ""), "A04 workers from the coach-written state; issues listed");
   const tool = events.find(e => e.type === "tool_execution_end" && e.toolName === "attention_ack");
   check(!!tool && !/not found|unknown tool/i.test(JSON.stringify(tool.result ?? "")), "A01 attention tool is registered and runs in the successor");
   const sessionFile = after?.sessionFile ? readFileSync(after.sessionFile, "utf8") : "";
@@ -74,6 +94,35 @@ await session(async (send, events) => {
   const file = after?.sessionFile ? readFileSync(after.sessionFile, "utf8") : "";
   check(file.includes("ATDD context handoff") && file.includes("Coordinate PLT-122"), "A05 relaunched session is seeded with the record and original task");
 });
+
+// ATD-37: a coach gets an agent relay as its last input before the threshold is crossed. The record keeps the
+// brief as the task, and the coach state the coach wrote before the switch reaches the record and the successor.
+const BRIEF = "ATD-37: keep the coach brief as the task across hops; review draft PR #45.";
+const RELAY = "[from 🧩 PI-ATDD AF8 · Coach | reply-to block:01a20396-2cca-7bbf-a090-c07b41cac010] Send again. " + "detail ".repeat(1200);
+const cwd3 = mkdtempSync(join(tmpdir(), "pi-renew-cwd3-"));
+process.on("exit", () => rmSync(cwd3, { recursive: true, force: true }));
+execSync("git init -q && git commit -q --allow-empty -m init", { cwd: cwd3 });
+const taskOf = (rec: string) => /<<<TASK\n([\s\S]*?)\n<<<END TASK>>>/.exec(rec)?.[1];
+const recordsIn = (dir: string) => { try { return readdirSync(join(dir, ".atdd-pi", "handoffs")).sort().map(f => readFileSync(join(dir, ".atdd-pi", "handoffs", f), "utf8")); } catch { return []; } };
+await session(async (send, events) => {
+  const before = await state(send, events, "g");
+  send({ type: "prompt", message: BRIEF });
+  await sleep(5000);
+  check(!existsSync(join(cwd3, ".atdd-pi", "handoffs")), "relay-last: the brief alone does not hand off");
+  send({ type: "prompt", message: RELAY });
+  await sleep(20000);
+  const after = await state(send, events, "h");
+  check(!!before?.sessionId && before.sessionId !== after?.sessionId, "relay-last: the threshold crossed after the relay and a successor started");
+  const records = recordsIn(cwd3);
+  const rec = records[0] ?? "";
+  check(records.length >= 1 && taskOf(rec) === BRIEF, "Acceptance-01: the record's task is the original brief, not the relay");
+  check(/^Workers: worker-atd-37 \(ATD-37 coder\)$/m.test(rec), "Acceptance-02: workers are listed from the coach-written state");
+  check(/^PRs: #45$/m.test(rec), "Acceptance-02: PRs are listed from the coach-written state");
+  check(/^Owner decisions: Draft PR only/m.test(rec) && /^Next steps: Review PR #45/m.test(rec), "Acceptance-02: owner decisions and next steps are listed");
+  check(!existsSync(join(cwd3, ".atdd-pi", "coach-state.json")), "the coach state file is removed after it is read");
+  const succ = after?.sessionFile ? readFileSync(after.sessionFile, "utf8") : "";
+  check(succ.includes(BRIEF) && succ.includes("Workers: worker-atd-37"), "Acceptance-03: the successor session carries the brief and the coach state");
+}, cwd3, { PI_ATDD_HANDOFF_AT: "35", PI_ATDD_HANDOFF_NOTIFY_AT: "30" }); // relay crosses 35%; the brief alone sits near 29%
 
 // Review P1: a handoff directory redirected outside the workspace is refused, in a real session.
 const stray = mkdtempSync(join(tmpdir(), "pi-renew-stray-"));

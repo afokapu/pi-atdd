@@ -93,7 +93,8 @@ test("PLT-123 P2: a task mentioning an unknown id and PR fills no Issues/PRs fie
   try {
     await handlers.get("session_start")!({}, ctx);
     await handlers.get("turn_end")!({ message: { content: [] } }, ctx);
-    await handlers.get("agent_settled")!({ aborted: false }, ctx);
+    await handlers.get("agent_settled")!({ aborted: false }, ctx); // ATD-37: the coach's state request
+    await handlers.get("agent_settled")!({ aborted: false }, ctx); // the record, after the coach's reply
     const d = join(cwd, ".atdd-pi", "handoffs");
     const rec = readFileSync(join(d, readdirSync(d)[0]!), "utf8");
     assert.match(rec, /^Issue: unknown/m, "header issue is not taken from chat text");

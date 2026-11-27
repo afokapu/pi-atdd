@@ -5,7 +5,7 @@
  */
 import { createHash, randomUUID } from "node:crypto";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadCatalog, loadConfig, type Catalog, type Selector } from "./catalog.ts";
 import type { StructureProfile } from "./profile.ts";
@@ -27,7 +27,8 @@ import { MODE_FILE, guardsAtdd, modeFromText, recordMode, repositoryRoot, resolv
 import {
   buildHandoff, clampToCompaction, decideContextAction, decideSettle, INITIAL_HANDOFF_STATE, kickoffText,
   parseHop, resolveCompactionReserve, DEFAULT_COMPACTION_RESERVE, resolveMaxHops, resolveThresholds,
-  RECORD_HEADER, type HandoffInput, type HandoffState, type CoachState, resolveTask, isKickoff, extractIssueIds, extractPullRequests,
+  RECORD_HEADER, type HandoffInput, type HandoffState, type CoachState, resolveTask, taskFromPrompt, extractIssueIds, extractPullRequests,
+  parseCoachStateFile, COACH_STATE_MAX_BYTES, type AgentCoachState,
 } from "./context-handoff.ts";
 
 /** Text of a user message entry in the session branch; empty for anything else. */
@@ -102,6 +103,8 @@ export default function atdd(pi:ExtensionAPI):void {
   // from a registered command because ctx.newSession is available only to commands.
   let handoffState:HandoffState=INITIAL_HANDOFF_STATE;
   let requestedHandoff:HandoffInput|undefined;
+  // ATD-37: the coach is asked once, before the switch, to write its state; see agent_settled.
+  let coachStateAsked=false;
   let readyHandoff:{text:string;path:string;kickoff:string;seatCheckpoint?:ExecutionCheckpoint}|undefined;
   /** Hop index of this session in its chain, read back from the record that seeded it. */
   let handoffHop=0;
@@ -272,7 +275,7 @@ export default function atdd(pi:ExtensionAPI):void {
   }
   function restoreFromBranch(ctx:{cwd:string;sessionManager:{getBranch:()=>unknown[]}}):void{
     serial++;reset();
-    handoffState=INITIAL_HANDOFF_STATE;requestedHandoff=undefined;readyHandoff=undefined;
+    handoffState=INITIAL_HANDOFF_STATE;requestedHandoff=undefined;readyHandoff=undefined;coachStateAsked=false;
     const entries=ctx.sessionManager.getBranch();
     handoffHop=Math.max(0,...entries.map(value=>parseHop(userText(value))));
     task=resolveTask(entries.map(userText));
@@ -333,8 +336,8 @@ export default function atdd(pi:ExtensionAPI):void {
     const newTask=event.messageType==="user";
     if(newTask){
       serial++;
-      // The kickoff this extension generated points at the record; it is not a new task.
-      if(!(event.prompt&&isKickoff(event.prompt)&&task))task=event.prompt||"unknown task";
+      // A kickoff this extension generated points at the record, and a relay from another agent is not the owner's brief (ATD-37).
+      task=taskFromPrompt(task,event.prompt);
       reset();
       if(active(ctx.cwd))observedRepo=observeRepository(ctx.cwd).snapshot;
     }
@@ -400,6 +403,32 @@ export default function atdd(pi:ExtensionAPI):void {
     return {coach:{role:"coach",identity:process.env.PI_ATDD_ATTENTION_IDENTITY,profile:process.env.PI_ATDD_ATTENTION_PROFILE,
       taskRefs:[...extractIssueIds(text),...extractPullRequests(text)],attention:attentionStrip.liveItems()}};
   }
+  // ATD-37: the coach's state file. Read only as a regular file inside the workspace's .atdd-pi directory;
+  // a link, a redirected directory or an oversized file is never read. The file is discarded after one read.
+  // The file's path, only when .atdd-pi resolves inside the workspace; a redirected directory is never touched.
+  function ownCoachStateFile(cwd:string):string|undefined{
+    try{
+      const root=realpathSync(cwd), dir=realpathSync(join(cwd,".atdd-pi"));
+      return relative(root,dir)===join(".atdd-pi")?join(dir,"coach-state.json"):undefined;
+    }catch{return undefined;}
+  }
+  function discardCoachStateFile(cwd:string):void{
+    const file=ownCoachStateFile(cwd);
+    if(file)try{rmSync(file,{force:true});}catch{}
+  }
+  function readCoachStateFile(cwd:string):{state?:AgentCoachState;writtenAt?:string}{
+    const file=ownCoachStateFile(cwd);
+    if(!file)return {};
+    try{
+      const link=lstatSync(file);
+      if(link.isSymbolicLink()||!link.isFile()||link.size>COACH_STATE_MAX_BYTES)return {};
+      const state=parseCoachStateFile(readFileSync(file,"utf8"));
+      return state?{state,writtenAt:link.mtime.toISOString()}:{};
+    }catch{return {};}
+    finally{discardCoachStateFile(cwd);}
+  }
+  /** The request to the coach. Tagged as a relay, so it is never taken as the task. */
+  const coachStateRequest=()=>"[from atdd-pi · context handoff] Automatic context handoff is starting. Before the switch, write this coach's state as JSON to .atdd-pi/coach-state.json in this workspace: {\"workers\": [...], \"prs\": [...], \"decisions\": [...], \"nextSteps\": [...]}. Each list holds at most 10 short strings, only facts verified in this session (worker identities, PR numbers or links, owner decisions, next steps). Use [] for an empty list. Never write secrets. Then reply with one line.";
   pi.on("turn_end",(_event,ctx)=>{
     if(!ctx.isProjectTrusted())return;
     let thresholds,maxHops;
@@ -413,27 +442,41 @@ export default function atdd(pi:ExtensionAPI):void {
       ctx.ui.notify("Context at "+usage!.percent!.toFixed(0)+"%; automatic ATDD handoff at "+effective.handoffAt.toFixed(0)+"%","warning");
     if(decision.action==="limit")
       ctx.ui.notify("ATDD handoff chain limit ("+maxHops+" hops) reached; continue manually or raise PI_ATDD_HANDOFF_MAX_HOPS","warning");
-    if(decision.action==="handoff")
+    if(decision.action==="handoff"){
       requestedHandoff={task,cwd:ctx.cwd,percent:usage!.percent!,contextWindow:usage!.contextWindow,
         revision:currentRevision(),hop:handoffHop+1,...coachState(task)};
+      coachStateAsked=false;
+    }
   });
   // agent_settled is the idle boundary. The request was latched at turn_end with the
   // usage that crossed the threshold; Pi may compact before the run settles and must not
   // cancel it. Only an aborted run drops the request (and a dropped request may re-arm).
   pi.on("agent_settled",(event,ctx)=>{
     if(!requestedHandoff||!ctx.isProjectTrusted())return;
-    const request=requestedHandoff;requestedHandoff=undefined;
+    const request=requestedHandoff;
     try{
       if(decideSettle(event.aborted)==="drop"){
+        requestedHandoff=undefined;
         handoffState={...handoffState,handoffRequested:false};
         ctx.ui.notify("ATDD context handoff not started: the run was aborted","info");
         return;
       }
+      // ATD-37: a coach writes its state before the switch. It is asked once; the record waits for its next settle.
+      // A coach that writes nothing still hands off on that settle, with UNKNOWN coach fields (no loop).
+      if(request.coach&&!coachStateAsked){
+        coachStateAsked=true;
+        discardCoachStateFile(ctx.cwd);
+        pi.sendUserMessage(coachStateRequest());
+        return;
+      }
+      requestedHandoff=undefined;
       const path=join(ctx.cwd,".atdd-pi","handoffs",new Date().toISOString().replace(/[:.]/g,"-")+".md");
       // If a task seat is launch-bound, checkpoint its authoritative revision and
       // task-scoped attention before starting a successor. Unknown items fail closed.
       const seatCheckpoint=executionSeat?.checkpoint(ctx,executionSeat.snapshotAttention());
-      const record=buildHandoff({...request,handoffPath:path});
+      const agent=request.coach?readCoachStateFile(ctx.cwd):{};
+      const coach=request.coach?{...request.coach,...agent.state,...(agent.writtenAt?{stateFile:{writtenAt:agent.writtenAt}}:{})}:undefined;
+      const record=buildHandoff({...request,coach,handoffPath:path});
       const text=seatCheckpoint ? record+"\n\nVerified seat checkpoint: task "+
         seatCheckpoint.taskId+"; source session "+seatCheckpoint.sourceSessionId+
         "; exact "+seatCheckpoint.revision.vcs+" revision "+seatCheckpoint.revision.head+
@@ -447,6 +490,7 @@ export default function atdd(pi:ExtensionAPI):void {
         ...(seatCheckpoint?{seatCheckpoint}:{})};
       pi.sendUserMessage("/atdd-handoff",{expandPromptTemplates:true});
     }catch(e){
+      requestedHandoff=undefined;
       ctx.ui.notify("ATDD context handoff failed: "+String(e)+"; no handoff was written.","error");
     }
   });
