@@ -1,3 +1,5 @@
+// URN: test:pi-atdd:bind-tracker-issue:plt-96-a02
+// Acceptance: acc:pi-atdd:plt-96-a02
 // PLT-96: every code-changing task is bound to an issue in the configured tracker.
 // Acceptance (PLT-96 Telemetry): 1 rules exist, carry ids/statements/terms and are selected for
 // coder, planner and coach sessions; 2 a seeded "code change without a tracker issue" is flagged;

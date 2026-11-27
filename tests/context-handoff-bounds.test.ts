@@ -1,3 +1,5 @@
+// URN: test:pi-atdd:hand-off-context:plt-102-a02
+// Acceptance: acc:pi-atdd:plt-102-a02
 // PLT-102 review fixes: bounded handoff chains and handoff before Pi's own compaction.
 import assert from "node:assert/strict";
 import { test } from "node:test";

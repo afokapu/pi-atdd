@@ -1,3 +1,5 @@
+// URN: test:pi-atdd:evaluate-delivery:plt-126-a01
+// Acceptance: acc:pi-atdd:plt-126-a01
 // PLT-126: post-tool reconciliation must stay bounded.
 import assert from "node:assert/strict";
 import { test } from "node:test";

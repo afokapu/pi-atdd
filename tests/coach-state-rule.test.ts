@@ -1,5 +1,6 @@
+// URN: test:pi-atdd:hand-off-context:plt-123-a01
+// Acceptance: acc:pi-atdd:plt-123-a01
 // PLT-123: the optional coach-state section in shared.handoff.record-contents.
-// Acceptance: the old obligations stay; the new text names the section and its fields; the PLT-122 coach record satisfies it.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readFileSync } from "node:fs";

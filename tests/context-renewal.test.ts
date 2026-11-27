@@ -1,3 +1,7 @@
+// URN: test:pi-atdd:hand-off-context:plt-122-a01
+// Acceptance: acc:pi-atdd:plt-122-a01
+// Acceptance: acc:pi-atdd:plt-122-a02
+// Acceptance: acc:pi-atdd:plt-122-a03
 // PLT-122: automatic context renewal for Coach and worker sessions (builds on PLT-102 + PLT-117).
 import assert from "node:assert/strict";
 import { test } from "node:test";

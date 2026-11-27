@@ -1,4 +1,10 @@
-// Acceptance: PLT-93 AP-001..AP-006 (ATDD or plain: ask at the start, remember per repo, switch by saying so)
+// URN: test:pi-atdd:deliver-guidance:plt-93-ap-001
+// Acceptance: acc:pi-atdd:plt-93-ap-001
+// Acceptance: acc:pi-atdd:plt-93-ap-002
+// Acceptance: acc:pi-atdd:plt-93-ap-003
+// Acceptance: acc:pi-atdd:plt-93-ap-004
+// Acceptance: acc:pi-atdd:plt-93-ap-005
+// Acceptance: acc:pi-atdd:plt-93-ap-006
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { execFileSync } from "node:child_process";

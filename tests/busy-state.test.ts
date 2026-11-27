@@ -1,3 +1,5 @@
+// URN: test:pi-atdd:hand-off-context:plt-121-a01
+// Acceptance: acc:pi-atdd:plt-121-a01
 // PLT-121: the pi-atdd extension writes a per-identity busy/idle state file so the relaunch script can read a
 // real idle signal. Tests: state follows the run lifecycle; a dead pid is unknown; a busy record that stops
 // getting turn events goes stale (unknown) instead of sticking; the file name is one shared derivation.
