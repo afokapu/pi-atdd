@@ -4,6 +4,9 @@
  * checks the project trust gate; tools fail closed when they receive no extension context.
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { statSync } from "node:fs";
+import { join } from "node:path";
+import { DurableLockBusy } from "./durable-lock.ts";
 import {
   ATTENTION_TYPES, CUSTOM_TYPE, RESOLUTION_TYPE, WIDGET_KEY, appendSpool, effectiveState, ensureKey,
   expiryRecords, fold, foldAll, newItem, operational, readLaunchConfig, readSpool, signEvent, transition,
@@ -285,6 +288,21 @@ function registerCoach(api: Api, cfg: LaunchConfig, now: () => Date, options: St
       + "Use the original unscoped coach or an owner-reviewed migration; no coach will receive them automatically.", "warning");
   };
   let items: string[] | undefined;
+  let warnedLock: string | undefined;
+  const inspectLock = (ctx: Ctx) => {
+    const lock = cfg.spool + ".lock";
+    try {
+      const stat = statSync(lock);
+      const identity = `${stat.dev}:${stat.ino}:${stat.birthtimeMs}`;
+      if (Date.now() - stat.mtimeMs >= 1000 && warnedLock !== identity) {
+        warnedLock = identity;
+        ctx.ui.notify(`ATDD attention lock remains held; inspect ${join(lock, "owner.json")}`, "warning");
+      }
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+      warnedLock = undefined;
+    }
+  };
 
   /** Ingest verified spool records into the session, then return every verified record. */
   const ingest = (ctx: Ctx): SignedEvent[] => {
@@ -317,14 +335,6 @@ function registerCoach(api: Api, cfg: LaunchConfig, now: () => Date, options: St
     return [...before, ...added];
   };
 
-  /** The durable spool is authoritative: append it before session snapshots. */
-  const commit = (rec: StateRecord): SignedEvent => {
-    const ev = signEvent({ event: "state", rec }, key());
-    withAttentionLock(cfg.spool, () => appendSpool(cfg.spool, ev));
-    api.appendEntry(CUSTOM_TYPE, ev);
-    return ev;
-  };
-
   const render = (ctx: Ctx, all: Map<string, AttentionItem>, at: Date) => {
     const visible = [...operational(all, at).values()]
       .sort((a, b) => a.type.localeCompare(b.type) || a.createdAt.localeCompare(b.createdAt));
@@ -343,24 +353,50 @@ function registerCoach(api: Api, cfg: LaunchConfig, now: () => Date, options: St
     const at = now();
     const data = ingest(ctx);
     warnQuarantine(ctx, at);
+    inspectLock(ctx);
     if (cfg.route) {
-      // Recheck expiry under the same writer lock as Coach actions. Two coach
-      // processes can never append the same revision for one live item.
-      const expired = fenced(ctx, options, () => withAttentionLock(cfg.spool, () => {
-        if (!authorized(ctx, cfg, options)) return [] as SignedEvent[];
-        const latest = readSpool(cfg.spool, cfg, key()).events;
-        const due = expiryRecords(foldAll(latest), at, cfg);
-        return due.map(rec => {
-          const ev = signEvent({ event: "state", rec }, key());
-          appendSpool(cfg.spool, ev);
-          return ev;
-        });
-      }));
+      let expired: SignedEvent[] = [];
+      if (expiryRecords(foldAll(data), at, cfg).length) {
+        try {
+          // Recheck under the same writer lock as Coach actions.
+          expired = fenced(ctx, options, () => withAttentionLock(cfg.spool, () => {
+            if (!authorized(ctx, cfg, options)) return [] as SignedEvent[];
+            const latest = readSpool(cfg.spool, cfg, key()).events;
+            return expiryRecords(foldAll(latest), at, cfg).map(rec => {
+              const ev = signEvent({ event: "state", rec }, key());
+              appendSpool(cfg.spool, ev);
+              return ev;
+            });
+          }, 150));
+        } catch (e) {
+          if (!(e instanceof DurableLockBusy)) throw e;
+          inspectLock(ctx);
+        }
+      }
       for (const ev of expired) api.appendEntry(CUSTOM_TYPE, ev);
       render(ctx, foldAll(readSpool(cfg.spool, cfg, key()).events), at);
     } else {
-      const expired = expiryRecords(foldAll(data), at, cfg).map(commit);
-      render(ctx, foldAll([...data, ...expired]), at);
+      let latest = data;
+      if (expiryRecords(foldAll(data), at, cfg).length) {
+        try {
+          const result = withAttentionLock(cfg.spool, () => {
+            if (!authorized(ctx, cfg, options)) return { latest: data, expired: [] as SignedEvent[] };
+            const current = [...data, ...readSpool(cfg.spool, cfg, key()).events];
+            const expired = expiryRecords(foldAll(current), at, cfg).map(rec => {
+              const ev = signEvent({ event: "state", rec }, key());
+              appendSpool(cfg.spool, ev);
+              return ev;
+            });
+            return { latest: current, expired };
+          }, 150);
+          latest = [...result.latest, ...result.expired];
+          for (const ev of result.expired) api.appendEntry(CUSTOM_TYPE, ev);
+        } catch (e) {
+          if (!(e instanceof DurableLockBusy)) throw e;
+          inspectLock(ctx);
+        }
+      }
+      render(ctx, foldAll(latest), at);
     }
   };
 
