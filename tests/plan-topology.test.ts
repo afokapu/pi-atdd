@@ -9,6 +9,7 @@ import { readYaml } from "../src/catalog.ts";
 
 const ROOT = join(fileURLToPath(new URL("..", import.meta.url)));
 const PLAN = join(ROOT, "plan/pi-atdd");
+const ACCEPTANCE_BASELINE = JSON.parse(readFileSync(join(ROOT, "tests/fixtures/acceptance-urn-baseline-09975bb5.json"), "utf8")) as string[];
 const FEATURES = ["bind-tracker-issue", "deliver-guidance", "evaluate-delivery", "guide-coach", "hand-off-context",
   "manage-profiles", "manage-seats", "resolve-activation", "route-attention"];
 // Every acceptance a test header binds is declared exactly once; the declared set equals the bound set.
@@ -40,14 +41,32 @@ test("desired outcomes sit at <plan_root>/<capability>/<STEP><NNN>.yaml and each
   }
 });
 
-test("every acceptance is nested in an outcome, its URN is unchanged and unique", () => {
+test("every outcome acceptance is bound once, the pre-move URN baseline remains, and all feature entries resolve", () => {
   const urns: string[] = [];
+  const ownerByUrn = new Map<string, string>();
   for (const file of outcomeFiles()) {
     const doc = readYaml(join(PLAN, file));
-    for (const acc of (doc.acceptances ?? []) as Array<{ identity: { urn: string } }>) urns.push(acc.identity.urn);
+    for (const acc of (doc.acceptances ?? []) as Array<{ identity: { urn: string }; metadata?: { feature?: string } }>) {
+      urns.push(acc.identity.urn);
+      ownerByUrn.set(acc.identity.urn, acc.metadata?.feature ?? String(doc.feature));
+    }
   }
-  assert.deepEqual([...urns].sort(), bound().map(a => "acc:pi-atdd:" + a), "declared acceptances equal the acceptances the test headers bind");
+  assert.deepEqual([...urns].sort(), bound().map(a => "acc:pi-atdd:" + a).sort(), "declared acceptances equal the acceptances the test headers bind");
   assert.equal(new Set(urns).size, urns.length, "no acceptance is declared twice");
+  assert.ok(ACCEPTANCE_BASELINE.every(urn => urns.includes(urn)), "every acceptance URN from commit 09975bb5 remains declared");
+
+  const owners = new Map<string, string[]>();
+  for (const feature of FEATURES) {
+    const doc = readYaml(join(PLAN, feature + ".yaml"));
+    for (const item of (doc.acceptance ?? []) as Array<string | { urn: string }>) {
+      const urn = typeof item === "string" ? item : item.urn;
+      owners.set(urn, [...(owners.get(urn) ?? []), feature]);
+      assert.ok(ownerByUrn.has(urn), feature + " lists undeclared acceptance " + urn);
+    }
+  }
+  for (const [urn, feature] of ownerByUrn) {
+    assert.deepEqual(owners.get(urn), [feature], urn + " must appear exactly once in its owning feature " + feature);
+  }
 });
 
 test("the flat plan/acceptances folder is gone", () => {

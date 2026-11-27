@@ -1,5 +1,5 @@
-// URN: test:pi-atdd:acceptances:E001-INTEGRATION-007
-// Acceptance: acc:pi-atdd:E001-INTEGRATION-007
+// URN: test:pi-atdd:evaluate-delivery:atd-45-a01
+// Acceptance: acc:pi-atdd:atd-45-a01
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { readdirSync, readFileSync } from "node:fs";
@@ -22,7 +22,7 @@ const nested = (): Array<{ file: string; doc: Record<string, unknown> }> =>
 
 test("all formal implementation criteria follow the existing ATDD-Bun V2 template", () => {
   const all = nested();
-  assert.equal(all.length, 108);
+  assert.equal(all.length, 109);
   const urns = new Set<string>();
   const ids = new Set<string>();
   for (const { file, doc } of all) {
