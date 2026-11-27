@@ -1,6 +1,6 @@
 // PLT-119: each legacy split-part id resolves, through the catalog, to a loaded rule: the loaded parent (option 2).
 // URN: test:pi-atdd:PLT-119:A1-001
-// Acceptance: acc:pi-atdd:PLT-119-A1-001
+// Acceptance: acc:pi-atdd:plt-119-a1-001
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";

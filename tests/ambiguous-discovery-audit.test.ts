@@ -1,5 +1,7 @@
 // Characterization audit for PLT-105. The authored labels are independent of the matcher.
 // Missing intended activations are reported as gaps, not disguised as successful assertions.
+// URN: test:pi-atdd:resolve-activation:plt-105-a02
+// Acceptance: acc:pi-atdd:plt-105-a02
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";

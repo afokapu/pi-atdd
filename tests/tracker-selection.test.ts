@@ -1,5 +1,6 @@
 // PLT-96 review RETURN on PR #19 (P1 selection, P1 no-tracker notice, P2 CLI omission).
-// Acceptance: acc:pi-atdd:PLT-96-A1 (rules reach code-changing work), acc:pi-atdd:PLT-96-A3 (no tracker is said, never passed).
+// URN: test:pi-atdd:tracker-selection:plt-96-a1
+// Acceptance: acc:pi-atdd:plt-96-a1
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { execFileSync } from "node:child_process";

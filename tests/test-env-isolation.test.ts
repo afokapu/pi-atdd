@@ -1,4 +1,5 @@
-// Acceptance: ATD-43 Acceptance-01 — the suite gives the same result inside and outside a launched session.
+// URN: test:pi-atdd:evaluate-delivery:atd-43-a01
+// Acceptance: acc:pi-atdd:atd-43-a01
 // A launched session exports PI_ATDD_* to its children; no test may inherit them.
 import assert from "node:assert/strict";
 import { test } from "node:test";

@@ -57,7 +57,7 @@ export function renderSidecar(s: Record<string, unknown>): string {
 
 export type Rendered = { rule_id: string; stack: string; realization: "curated" | "agent-derived (unverified)"; text: string };
 export type RenderOptions = { profile?: StructureProfile; bunReference?: boolean; root?: string };
-const isBun = (stack: string) => stack === "bun" || stack === "atdd-bun";
+const isBun = (stack: string) => stack === "bun" || stack === "default";
 const show = (v: unknown) => Array.isArray(v) ? v.join(", ") : typeof v === "object" && v !== null ? JSON.stringify(v) : String(v);
 
 /** The profile's value for a requirement key; `<map key>#<entry>` reads an entry of a map value. */

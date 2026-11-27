@@ -1,3 +1,5 @@
+// URN: test:pi-atdd:resolve-activation:plt-105-a01
+// Acceptance: acc:pi-atdd:plt-105-a01
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync } from "node:fs";

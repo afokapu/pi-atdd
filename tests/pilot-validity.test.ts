@@ -1,3 +1,5 @@
+// URN: test:pi-atdd:evaluate-delivery:d008-a01
+// Acceptance: acc:pi-atdd:d008-a01
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { assessPilotPair, inspectPiJsonl, type SmokeEvidence } from '../src/pilot-validity.ts';

@@ -1,3 +1,4 @@
+// URN: test:pi-atdd:render-reasoning:E002-UNIT-004
 // Acceptance: acc:pi-atdd:E002-UNIT-004
 import assert from "node:assert/strict";
 import { test } from "node:test";

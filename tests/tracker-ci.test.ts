@@ -1,7 +1,7 @@
 // URN: test:pi-atdd:tracker-ci:ATD-24-ACC-1
-// Acceptance: acc:pi-atdd:ATD-24-ACC-1
-// Acceptance: acc:pi-atdd:ATD-24-ACC-2
-// Acceptance: acc:pi-atdd:ATD-24-ACC-3
+// Acceptance: acc:pi-atdd:atd-24-acc-1
+// Acceptance: acc:pi-atdd:atd-24-acc-2
+// Acceptance: acc:pi-atdd:atd-24-acc-3
 // ATD-24 (PLT-106): CI runs the tracker-issue check on each PR.
 // 1 a PR changing code with no issue id in branch and body is reported; 2 a PR with the id in both
 // passes; 3 with no tracker configured the notice is shown and never reported as tracked.

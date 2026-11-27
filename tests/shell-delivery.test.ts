@@ -1,3 +1,5 @@
+// URN: test:pi-atdd:resolve-activation:plt-79-a01
+// Acceptance: acc:pi-atdd:plt-79-a01
 // PLT-79 prerequisite 1: graph delivery for shell edits, word-boundary selector
 // terms and a post-tool page budget that keeps the target rule.
 // Reproduces the PLT-78 trial t10 miss: claude-opus-5-5 wrote

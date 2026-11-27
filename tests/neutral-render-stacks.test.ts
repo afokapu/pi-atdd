@@ -1,4 +1,5 @@
-// Acceptance: acc:pi-atdd:PLT-84-SN-004
+// URN: test:pi-atdd:neutral-render-stacks:plt-84-sn-004
+// Acceptance: acc:pi-atdd:plt-84-sn-004
 // Rendering for a stack without a curated realization: core + profile idioms + Bun reference example, labelled agent-derived.
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -8,7 +9,7 @@ import { loadProfile } from "../src/profile.ts";
 
 const ROOT = new URL("..", import.meta.url).pathname;
 const hex = loadProfile(join(ROOT, "tests/fixtures/swap/ts-hexagon.profile.json"));
-const bun = loadProfile(join(ROOT, "profiles/stacks/atdd-bun.json"));
+const bun = loadProfile(join(ROOT, "profiles/stacks/default.json"));
 const rec = (id: string) => loadNeutralRecords().find(r => r.rule_id === id)!;
 
 test("SN-004: another stack gets core + profile + labelled Bun reference, flagged agent-derived and unverified", () => {

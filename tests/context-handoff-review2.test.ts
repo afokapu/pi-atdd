@@ -1,3 +1,6 @@
+// URN: test:pi-atdd:hand-off-context:plt-102-a04
+// Acceptance: acc:pi-atdd:plt-102-a04
+// Acceptance: acc:pi-atdd:plt-102-a03
 // PLT-102 independent re-review (RETURN at 8c02bb28): per-model compaction reserve, wider redaction labels.
 import assert from "node:assert/strict";
 import { test } from "node:test";

@@ -1,5 +1,5 @@
 // URN: test:pi-atdd:PLT-103:A2-001
-// Acceptance: acc:pi-atdd:PLT-103-A2-001
+// Acceptance: acc:pi-atdd:plt-103-a2-001
 // Every legacy name the PLT-103 vocabulary rename changed still resolves: rule ids (PLT-87 ids and v0.2.0 ids),
 // moved paths, the URN-scheme and field-key maps, and the acceptance field key, read in both forms during the transition.
 import assert from "node:assert/strict";
@@ -68,7 +68,7 @@ test("the acceptance metadata key is read in both forms during the transition; n
   ajv.addSchema(JSON.parse(readFileSync(join(ROOT, "tests/fixtures/schema/appendix.schema.json"), "utf8")), "appendix.schema.json");
   const schema = JSON.parse(readFileSync(join(ROOT, "tests/fixtures/schema/acceptance.schema.json"), "utf8"));
   const validate = ajv.compile(schema);
-  const doc = parse(readFileSync(join(ROOT, "plan/acceptances/E001-UNIT-001.acceptance.yaml"), "utf8"));
+  const doc = parse(readFileSync(join(ROOT, "plan/pi-atdd/E002.yaml"), "utf8")).acceptances.find((a: any) => a.identity.urn === "acc:pi-atdd:E001-UNIT-001");
   assert.equal(validate(doc), true, JSON.stringify(validate.errors));
   const legacy = structuredClone(doc);
   delete legacy.metadata.capability;

@@ -1,5 +1,8 @@
 /** Bounded, provenance-preserving reasoning packages for Pi agents. */
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { parse } from "yaml";
 import type { Proof } from "./inference.ts";
 import type { Reconciliation, Activation } from "./reasoning-context.ts";
 
@@ -49,6 +52,24 @@ function section(item:Activation, r:Reconciliation):string {
     "Required evidence: relevant acceptance assertions, independently executed tests and "+
       "observed behavior; context delivery does not establish compliance.",
   ].filter(Boolean).join("\n");
+}
+/** ATD-45: imperative one-line pointers for the location rules, delivered instead of the full text at edit and create. */
+export function loadPointers(file=fileURLToPath(new URL("../selectors/pointers.yaml",import.meta.url))):Record<string,string>{
+  const doc=parse(readFileSync(file,"utf8")) as {schema?:string;pointers?:Record<string,string>};
+  if(doc.schema!=="pi-atdd/pointers/v1"||!doc.pointers)throw new Error("invalid pointers file: "+file);
+  return doc.pointers;
+}
+const POINTERS=loadPointers();
+function pointerSection(item:Activation,r:Reconciliation,text:string):string {
+  const rule=item.convention;
+  const source=r.provenance.find(p=>p.id===rule.source);
+  const suffix=rule.file.slice(rule.source.length+1);
+  return [
+    "Convention "+item.id+" — "+text,
+    "Canonical source: "+(source?join(source.path,suffix):rule.file),
+    "Pinned provenance SHA-256: "+(source?.digest??"UNKNOWN")+"; treatment: "+(rule.disposition??"unspecified"),
+    "[pointer rendering at edit: the reviewer receives the full rule; read the canonical file for exceptions]",
+  ].join("\n");
 }
 /** Explicit page receipt; no activation is "delivered" merely because it was
  * requested for rendering. This is a presentation receipt, not proof of reading.
@@ -149,7 +170,8 @@ export function renderReasonedPage(r:Reconciliation,ids?:readonly string[],maxCh
       emittedIds,omittedIds:activations.map(a=>a.id)};
   let text=warnings;
   for(const [i,a] of activations.entries()){
-    const item="\n\n"+section(a,r);
+    const pointer=/:file:/.test(r.scope)?POINTERS[a.id]:undefined;
+    const item="\n\n"+(pointer?pointerSection(a,r,pointer):section(a,r));
     if(omittedIds.length) {
       omittedIds.push(a.id); // strict relevance order: never skip a rule to fit a less relevant one
     } else if(text.length+item.length<=maxChars-reserve) {

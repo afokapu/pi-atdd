@@ -45,10 +45,14 @@ export type Selector = {
   paths?: string[]; terms?: string[]; always?: boolean;
   /** PLT-84: roles (domain, application, ...) resolved to path globs through the active structure profile. */
   roles?: string[];
+  /** ATD-45: profile roots (source, plan, test, e2e) resolved to `<root>/**` through the active structure profile. */
+  roots?: string[];
 };
 export type Context = {
   status: "matched" | "unresolved"; rules: Array<Convention & { reasons: string[] }>;
-  matchingIds: string[]; truncated: boolean; sourceLocks: Catalog["provenance"];
+  matchingIds: string[]; truncated: boolean;
+  /** ATD-45: start of the next page of rule bodies (pass as offset), or null when every matched rule was delivered. */
+  nextOffset: number | null; sourceLocks: Catalog["provenance"];
   unresolvedReferences: Relation[]; relatedRelations: Relation[]; note: string;
 };
 const edgeTypes = new Set(["requires", "blocks", "enables", "follows", "awaits",
@@ -364,9 +368,10 @@ export function validateSelectors(catalog: Catalog, selectors: Selector[]): void
   }
 }
 export function resolveContext(catalog: Catalog, selectors: Selector[], task: string,
-    paths: string[], operation = "task", limit = 12): Context {
+    paths: string[], operation = "task", limit = 12, offset = 0): Context {
   validateSelectors(catalog, selectors);
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new GraphError("invalid limit");
+  if (!Number.isInteger(offset) || offset < 0) throw new GraphError("invalid offset");
   const reasons = new Map<string, Set<string>>(), selected = new Set<string>();
   for (const item of selectors) {
     if (item.operations?.length && !item.operations.includes(operation)) continue;
@@ -398,10 +403,11 @@ export function resolveContext(catalog: Catalog, selectors: Selector[], task: st
   const matchingIds = [...selected].sort();
   return {
     status: matchingIds.length ? "matched" : "unresolved",
-    matchingIds, truncated: matchingIds.length > limit, sourceLocks: catalog.provenance,
+    matchingIds, truncated: matchingIds.length > offset + limit,
+    nextOffset: matchingIds.length > offset + limit ? offset + limit : null, sourceLocks: catalog.provenance,
     unresolvedReferences: catalog.unresolvedEdges,
     relatedRelations: catalog.edges.filter(edge => selected.has(edge.source) && selected.has(edge.target)),
-    rules: matchingIds.slice(0, limit).map(id => ({ ...catalog.rules.get(id)!, reasons: [...reasons.get(id)!].sort() })),
+    rules: matchingIds.slice(offset, offset + limit).map(id => ({ ...catalog.rules.get(id)!, reasons: [...reasons.get(id)!].sort() })),
     note: matchingIds.length
       ? "Context is guidance, not proof of compliance; validate required checks independently."
       : "Unresolved applicability is a coverage gap; do not assume there are no obligations.",
@@ -420,7 +426,7 @@ export function bundledSources(): SourceSpec[] {
     // Package-authored conventions (PLT-87): rules owned by pi-atdd itself, not mirrored upstream.
     // PLT-96 added the shared/coder/planner tracker rules and catalog/pi-atdd/relationships.yaml; pin re-reviewed.
     { id: "pi-atdd", path: join(packageRoot, "catalog/pi-atdd"), kind: "extension",
-      sha256: "d4ee78363897a26301b3e496021238a771d08818f6151c20c7ca96e1cd8e7b74" },
+      sha256: "b9b6722569547cf4d0a81a1bbffd9532909a3d6273333b5e36366e7176009e26" },
   ];
 }
 function selectorFile(file: string): Selector[] {
@@ -429,13 +435,17 @@ function selectorFile(file: string): Selector[] {
     throw new GraphError("invalid selectors schema: " + file);
   return data.selectors as Selector[];
 }
+/** The bundled registry: hand-written selectors plus those generated from the activation facts (ATD-45). */
+function bundledSelectors(): Selector[] {
+  return [...selectorFile(join(packageRoot, "selectors/default.yaml")), ...selectorFile(join(packageRoot, "selectors/generated.yaml"))];
+}
 export function loadConfig(cwd: string, profile?: StructureProfile): { sources: SourceSpec[]; selectors: Selector[]; profile: StructureProfile } {
   const configPath = resolve(cwd, "atdd-pi.yaml");
   const defaults = bundledSources();
   const defaultSelectors = join(packageRoot, "selectors/default.yaml");
   if (!existsSync(configPath)) {
     const prof = profile ?? profileByName(DEFAULT_PROFILE);
-    return { sources: defaults, selectors: expandRoleSelectors(selectorFile(defaultSelectors), prof), profile: prof };
+    return { sources: defaults, selectors: expandRoleSelectors(bundledSelectors(), prof), profile: prof };
   }
   const cfg = readYaml(configPath);
   if (cfg.schema !== "pi-atdd/config/v2") throw new GraphError("invalid atdd-pi.yaml schema (expected v2)");
@@ -457,7 +467,7 @@ export function loadConfig(cwd: string, profile?: StructureProfile): { sources: 
       isAbsolute(localSelectorPath) || relative(cwd, selectorPath) === ".."
       || relative(cwd, selectorPath).startsWith("../")))
     throw new GraphError("selector path outside project");
-  const selectors = selectorFile(selectorPath);
+  const selectors = localSelectorPath === undefined ? bundledSelectors() : selectorFile(selectorPath);
   if (cfg.extraSelectors !== undefined) {
     if (!Array.isArray(cfg.extraSelectors) || !cfg.extraSelectors.every(x => typeof x === "string"))
       throw new GraphError("extraSelectors must be local path strings");

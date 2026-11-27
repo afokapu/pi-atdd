@@ -1,4 +1,9 @@
-// Acceptance: PLT-94 MI-001..MI-005 (mode by intent: set_atdd_mode tool, instruction, ATDD-repo guard).
+// URN: test:pi-atdd:deliver-guidance:plt-94-mi-001
+// Acceptance: acc:pi-atdd:plt-94-mi-001
+// Acceptance: acc:pi-atdd:plt-94-mi-002
+// Acceptance: acc:pi-atdd:plt-94-mi-003
+// Acceptance: acc:pi-atdd:plt-94-mi-004
+// Acceptance: acc:pi-atdd:plt-94-mi-005
 // The model's reading of intent (any wording or language) is checked live; these tests pin
 // the extension side: tool exposure, instruction, guard, announcement and log.
 import assert from "node:assert/strict";

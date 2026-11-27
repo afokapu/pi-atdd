@@ -1,3 +1,4 @@
+// URN: test:pi-atdd:benchmark-inference:E002-UNIT-003
 // Acceptance: acc:pi-atdd:E002-UNIT-003
 import assert from "node:assert/strict";
 import { test } from "node:test";

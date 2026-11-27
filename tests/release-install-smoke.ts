@@ -1,5 +1,5 @@
 // URN: test:pi-atdd:release:ATD-20-ACC-1
-// Acceptance: acc:pi-atdd:ATD-20-ACC-1
+// Acceptance: acc:pi-atdd:atd-20-acc-1
 // Proves ATD-20 acceptance 1 with real Pi in an isolated PI_CODING_AGENT_DIR: a clean profile installs a
 // tagged git source, the extension loads and /atdd is registered.
 // Acceptance 2 (a pin bump shows "Extension Updates") is PENDING and NOT proven here. This file only asserts

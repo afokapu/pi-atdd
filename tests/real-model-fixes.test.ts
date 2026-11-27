@@ -1,7 +1,7 @@
 // URN: test:pi-atdd:real-model-fixes:PLT-125
-// Acceptance: acc:pi-atdd:PLT-125-A01
-// Acceptance: acc:pi-atdd:PLT-125-A02
-// Acceptance: acc:pi-atdd:PLT-125-A03
+// Acceptance: acc:pi-atdd:plt-125-a01
+// Acceptance: acc:pi-atdd:plt-125-a02
+// Acceptance: acc:pi-atdd:plt-125-a03
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { execFileSync, spawnSync } from "node:child_process";

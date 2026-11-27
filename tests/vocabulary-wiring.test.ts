@@ -2,7 +2,7 @@
 // (catalog loader, CLI), the detector refs report the pinned upstream name, and the advisory sunset is read by the
 // production catalog and CLI. The activation limit for plain-file edits is stated and tested.
 // URN: test:pi-atdd:PLT-103:A2-003
-// Acceptance: acc:pi-atdd:PLT-103-A2-003
+// Acceptance: acc:pi-atdd:plt-103-a2-003
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";

@@ -1,6 +1,6 @@
 // URN: test:pi-atdd:attention-seat-replacement:PLT-118
-// Acceptance: acc:pi-atdd:PLT-118-A05
-// Acceptance: acc:pi-atdd:PLT-118-A06
+// Acceptance: acc:pi-atdd:plt-118-a05
+// Acceptance: acc:pi-atdd:plt-118-a06
 // PLT-118 PR #31 second return: real Pi session replacement (AgentSessionRuntime + ctx.newSession) rebuilds the
 // extension runtime. The successor's NEW runtime must own the rotated seat and deliver a pending resolution.
 import assert from "node:assert/strict";

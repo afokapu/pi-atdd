@@ -2,7 +2,7 @@
 // Surfaces: URN schemes, field keys, detector refs, moved folders, identifiers in rule text, the advisory
 // legacy-vocabulary activation and its sunset transition.
 // URN: test:pi-atdd:PLT-103:A2-002
-// Acceptance: acc:pi-atdd:PLT-103-A2-002
+// Acceptance: acc:pi-atdd:plt-103-a2-002
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
@@ -48,7 +48,7 @@ function acceptanceValidator() {
 
 test("URN: the acceptance schema reads the legacy train scheme and the table's user-system-flow scheme, both valid", () => {
   const validate = acceptanceValidator();
-  const doc = parse(readFileSync(join(ROOT, "plan/acceptances/E001-UNIT-001.acceptance.yaml"), "utf8"));
+  const doc = parse(readFileSync(join(ROOT, "plan/pi-atdd/E002.yaml"), "utf8")).acceptances.find((a: any) => a.identity.urn === "acc:pi-atdd:E001-UNIT-001");
   for (const urn of ["acc:train:billing:pay:success", "acc:user-system-flow:billing:pay:success"]) {
     const d = structuredClone(doc);
     d.identity.urn = urn;

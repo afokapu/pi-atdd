@@ -1,8 +1,9 @@
-// Acceptance: acc:pi-atdd:PLT-87-N-001
-// Acceptance: acc:pi-atdd:PLT-87-N-002
-// Acceptance: acc:pi-atdd:PLT-87-N-003
-// Acceptance: acc:pi-atdd:PLT-87-N-004
-// Acceptance: acc:pi-atdd:PLT-87-N-005
+// URN: test:pi-atdd:profile-naming:plt-87-n-001
+// Acceptance: acc:pi-atdd:plt-87-n-001
+// Acceptance: acc:pi-atdd:plt-87-n-002
+// Acceptance: acc:pi-atdd:plt-87-n-003
+// Acceptance: acc:pi-atdd:plt-87-n-004
+// Acceptance: acc:pi-atdd:plt-87-n-005
 // Profile-first convention ids: lint, lossless alias map, profile selection, same activation.
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -154,14 +155,28 @@ test("N-004 the activation probe delivers the same rules (by alias) as v0.2.0", 
       ...Object.fromEntries(WRITE_SCENARIOS.map(k => [k, OBLIGATION])),
       "09 Coordinator: set up a jujutsu worktree for the integration branch": ["coder.tracker.issue-in-branch-and-pr", ...OBLIGATION],
     };
+    // ATD-45: selectors generated from the activation facts add the topology rules (and their mandatory prerequisites) to
+    // edit scenarios, and the review tier to the review scenario that names a path. Listed by scenario so any other
+    // new activation still fails this test.
+    const ATD45_ADDITIONS: Record<string, string[]> = {
+          "07 Add acceptance test binding and coverage": [
+                "planner.capability.features",
+                "shared.topology.plan-location",
+                "tester.topology.test-location"
+          ],
+          "08 Write e2e journey": [
+                "planner.journey.definition",
+                "tester.topology.e2e-location"
+          ]
+    };
     const rekey = (ids: string[]) => ids.map(id => aliases[id] ?? id).sort();
     const after = Object.fromEntries(Object.entries(probe(cwd)).map(([k, v]) => {
-      const extra = PLT96_ADDITIONS[k] ?? [];
+      const extra = [...(PLT96_ADDITIONS[k] ?? []), ...(ATD45_ADDITIONS[k] ?? [])];
       const minus = (ids: string[]) => ids.filter(id => !extra.includes(id));
       return [k, { context: minus(v.context), reasoning: minus(v.reasoning), added: extra.filter(id => v.context.includes(id) || v.reasoning.includes(id)) }];
     }));
     for (const [k, v] of Object.entries<any>(after)) {
-      assert.deepEqual(v.added, PLT96_ADDITIONS[k] ?? [], "PLT-96 addition set for " + k);
+      assert.deepEqual(v.added, [...(PLT96_ADDITIONS[k] ?? []), ...(ATD45_ADDITIONS[k] ?? [])], "PLT-96 and ATD-45 addition set for " + k);
       delete v.added;
     }
     const expected = Object.fromEntries(Object.entries<any>(before).map(([k, v]) =>

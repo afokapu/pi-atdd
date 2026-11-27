@@ -1,6 +1,6 @@
 // URN: test:pi-atdd:attention-reassign-reopen:ATD-35-A02
-// Acceptance: acc:pi-atdd:ATD-35-A02
-// Acceptance: acc:pi-atdd:ATD-35-A03
+// Acceptance: acc:pi-atdd:atd-35-a02
+// Acceptance: acc:pi-atdd:atd-35-a03
 // Phase: SMOKE
 // Layer: integration
 // Scope: ATD-35 Acceptance-02 (coach reassigns an item it holds; reassignment recorded) and

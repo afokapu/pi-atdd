@@ -1,5 +1,6 @@
-// Acceptance: acc:pi-atdd:PLT-84-SN-001
-// Acceptance: acc:pi-atdd:PLT-84-SN-002
+// URN: test:pi-atdd:neutral-bun-golden:plt-84-sn-001
+// Acceptance: acc:pi-atdd:plt-84-sn-001
+// Acceptance: acc:pi-atdd:plt-84-sn-002
 // Rendering a stack-neutral convention for stack=bun returns the frozen 0.2.0 text (golden test), and its core is neutral.
 import assert from "node:assert/strict";
 import { test } from "node:test";

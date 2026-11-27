@@ -1,8 +1,8 @@
 // URN: test:pi-atdd:execution-seat:PLT-117
-// Acceptance: acc:pi-atdd:PLT-117-A02
-// Acceptance: acc:pi-atdd:PLT-117-A03
-// Acceptance: acc:pi-atdd:PLT-117-A04
-// Acceptance: acc:pi-atdd:PLT-117-A05
+// Acceptance: acc:pi-atdd:plt-117-a02
+// Acceptance: acc:pi-atdd:plt-117-a03
+// Acceptance: acc:pi-atdd:plt-117-a04
+// Acceptance: acc:pi-atdd:plt-117-a05
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { execFileSync, spawnSync } from "node:child_process";

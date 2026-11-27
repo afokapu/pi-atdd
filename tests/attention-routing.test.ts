@@ -1,6 +1,6 @@
 // URN: test:pi-atdd:attention-routing:PLT-118
-// Acceptance: acc:pi-atdd:PLT-118-A01
-// Acceptance: acc:pi-atdd:PLT-118-A02
+// Acceptance: acc:pi-atdd:plt-118-a01
+// Acceptance: acc:pi-atdd:plt-118-a02
 // Pure routing tests; live spool, lease-fencing, and Pi wake integration remain pending.
 import assert from "node:assert/strict";
 import { test } from "node:test";

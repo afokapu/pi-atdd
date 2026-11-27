@@ -1,3 +1,5 @@
+// URN: test:pi-atdd:hand-off-context:plt-102-a03
+// Acceptance: acc:pi-atdd:plt-102-a03
 // PLT-102 review P1: the handoff record must not carry secrets or the predecessor's own output.
 import assert from "node:assert/strict";
 import { test } from "node:test";

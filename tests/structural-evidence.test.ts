@@ -1,3 +1,5 @@
+// URN: test:pi-atdd:resolve-activation:plt-105-a03
+// Acceptance: acc:pi-atdd:plt-105-a03
 import test from "node:test";
 import assert from "node:assert/strict";
 import { discoverSourceEvidence } from "../src/structural-evidence.ts";

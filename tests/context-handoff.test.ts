@@ -1,3 +1,5 @@
+// URN: test:pi-atdd:hand-off-context:plt-102-a01
+// Acceptance: acc:pi-atdd:plt-102-a01
 // PLT-102: automatic context handoff at 85% usage.
 import assert from "node:assert/strict";
 import { test } from "node:test";

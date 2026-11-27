@@ -1,8 +1,8 @@
 // URN: test:pi-atdd:launcher:ATD-36
-// Acceptance: acc:pi-atdd:ATD-36-A04
-// Acceptance: acc:pi-atdd:ATD-36-A05
-// Acceptance: acc:pi-atdd:ATD-36-A06
-// Acceptance: acc:pi-atdd:ATD-36-A07
+// Acceptance: acc:pi-atdd:atd-36-a04
+// Acceptance: acc:pi-atdd:atd-36-a05
+// Acceptance: acc:pi-atdd:atd-36-a06
+// Acceptance: acc:pi-atdd:atd-36-a07
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { spawnSync } from "node:child_process";
