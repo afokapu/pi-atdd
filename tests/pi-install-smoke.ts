@@ -1,6 +1,5 @@
 // URN: test:pi-atdd:deliver-guidance:E001-UNIT-001
 // Acceptance: acc:pi-atdd:E001-UNIT-001
-// Acceptance: acc:pi-atdd:E001-INTEGRATION-007
 /** Prove Pi package installation, not merely explicit -e loading.
 
  A fresh isolated HOME prevents changes to real user package settings. The install
