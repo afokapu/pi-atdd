@@ -2,6 +2,19 @@
 
 Headings use Pi's format (`## [x.y.z] - YYYY-MM-DD`), so Pi can read this file for its changelog notices. Pi 1.5.2 does not show a notice for a plain pin bump; see `docs/RELEASE-0.4.0.md`.
 
+## [0.5.0] - 2026-11-27
+
+### Added
+
+- A plan under `plan/pi-atdd` with 109 declared acceptances and test bindings.
+- Generated activation selectors and profile-aware root resolution.
+- A delivery-gate smoke combining type checks, tests and real Pi loads, plus a human reviewer checklist for draft migration claims.
+
+### Changed
+
+- Profile vocabulary v4 retains v3 aliases.
+- The plan uses the capability layout; the `src/` and `tests/` layout moves remain unfinished.
+
 ## [0.4.0] - 2026-11-22
 
 First versioned Pi package. Install with `pi install git:github.com/afokapu/pi-atdd@v0.4.0`; upgrade by bumping the pinned tag. Licence status and open items: `docs/RELEASE-0.4.0.md`.
