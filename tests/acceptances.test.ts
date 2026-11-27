@@ -44,14 +44,13 @@ test("the acceptance schema rejects absent proof fields, not just malformed YAML
   assert.ok(validate.errors?.some(e => e.instancePath.startsWith("/then")));
 });
 
-test("all acceptances except the recorded integration proof gap have a test binding", () => {
+test("all declared acceptances have a test binding", () => {
   const expected = nested().map(x => (x.doc.identity as { urn: string }).urn);
-  const knownUnbound = ["acc:pi-atdd:E001-INTEGRATION-007"];
   const tests = readdirSync(join(root, "tests")).filter(f => f.endsWith(".test.ts") || f.endsWith("-smoke.ts"));
   const text = tests.map(path => readFileSync(join(root, "tests", path), "utf8")).join("\n");
   const bound = [...text.matchAll(/^\/\/ Acceptance: (acc:pi-atdd:[\w-]+)/gm)].map(m => m[1]!);
   const unbound = expected.filter(urn => !bound.includes(urn));
-  assert.deepEqual(unbound, knownUnbound, "only the acceptance without CI plus real-Pi-load evidence may remain unbound");
-  for (const urn of expected.filter(urn => !knownUnbound.includes(urn))) assert.ok(bound.includes(urn), "acceptance lacks a test binding: " + urn);
+  assert.deepEqual(unbound, [], "every declared acceptance must have a test binding");
+  for (const urn of expected) assert.ok(bound.includes(urn), "acceptance lacks a test binding: " + urn);
   for (const urn of new Set(bound)) assert.equal(expected.filter(e => e === urn).length, 1, "bound acceptance is not declared exactly once: " + urn);
 });

@@ -12,8 +12,6 @@ const PLAN = join(ROOT, "plan/pi-atdd");
 const ACCEPTANCE_BASELINE = JSON.parse(readFileSync(join(ROOT, "tests/fixtures/acceptance-urn-baseline-09975bb5.json"), "utf8")) as string[];
 const FEATURES = ["bind-tracker-issue", "deliver-guidance", "evaluate-delivery", "guide-coach", "hand-off-context",
   "manage-profiles", "manage-seats", "resolve-activation", "route-attention"];
-// Every test binding resolves exactly once; E001-INTEGRATION-007 is the sole declared proof gap.
-const KNOWN_UNBOUND = ["E001-INTEGRATION-007"];
 const bound = (): string[] => [...new Set(readdirSync(join(ROOT, "tests")).filter(f => f.endsWith(".ts"))
   .flatMap(f => [...readFileSync(join(ROOT, "tests", f), "utf8").matchAll(/^\/\/ Acceptance: acc:pi-atdd:([\w-]+)/gm)].map(m => m[1]!)))].sort();
 const OUTCOME = /^[DLPCEMYRK]\d{3}\.yaml$/;
@@ -42,7 +40,7 @@ test("desired outcomes sit at <plan_root>/<capability>/<STEP><NNN>.yaml and each
   }
 });
 
-test("outcome acceptances preserve the pre-move URN baseline and bind all but the known proof gap", () => {
+test("outcome acceptances preserve the pre-move URN baseline and all bind", () => {
   const urns: string[] = [];
   const ownerByUrn = new Map<string, string>();
   for (const file of outcomeFiles()) {
@@ -54,10 +52,7 @@ test("outcome acceptances preserve the pre-move URN baseline and bind all but th
   }
   const declared = [...urns].sort();
   const boundUrns = bound().map(a => "acc:pi-atdd:" + a).sort();
-  assert.deepEqual(declared.filter(urn => !KNOWN_UNBOUND.some(id => urn === "acc:pi-atdd:" + id)), boundUrns,
-    "all declared acceptances except the known integration proof gap are bound");
-  assert.deepEqual(declared.filter(urn => !boundUrns.includes(urn)), KNOWN_UNBOUND.map(id => "acc:pi-atdd:" + id),
-    "only E001-INTEGRATION-007 may remain unbound pending CI and real-Pi-load evidence");
+  assert.deepEqual(declared, boundUrns, "all declared acceptances are bound and no binding is undeclared");
   assert.equal(new Set(urns).size, urns.length, "no acceptance is declared twice");
   assert.ok(ACCEPTANCE_BASELINE.every(urn => urns.includes(urn)), "every acceptance URN from commit 09975bb5 remains declared");
 
