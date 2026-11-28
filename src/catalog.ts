@@ -433,7 +433,7 @@ export function bundledSources(): SourceSpec[] {
     // Package-authored conventions (PLT-87): rules owned by pi-atdd itself, not mirrored upstream.
     // PLT-96 added the shared/coder/planner tracker rules and catalog/pi-atdd/relationships.yaml; pin re-reviewed.
     { id: "pi-atdd", path: join(packageRoot, "catalog/pi-atdd"), kind: "extension",
-      sha256: "e06750bf04d3c73e0faa127798167fcc79aab7f93564d8f17777fc42c62a76cd",
+      sha256: "0cd676894b4c8796ce288ac17b8993978115accd315926e66b5e8e2e2ad60e96",
       overrides: ["planner.plan.confirm-binds-an-issue"] },
   ];
 }
