@@ -2,6 +2,12 @@
 
 Headings use Pi's format (`## [x.y.z] - YYYY-MM-DD`), so Pi can read this file for its changelog notices. Pi 1.5.2 does not show a notice for a plain pin bump; see `docs/RELEASE-0.4.0.md`.
 
+## [0.6.1] - 2026-11-28
+
+### Fixed
+
+- Resolved or reassigned attention items are no longer re-announced by the poll and wake path; a reopened item is announced once. Already-queued wakes and the read-to-delivery race remain limits. (ATD-53)
+
 ## [0.6.0] - 2026-11-28
 
 ### Changed
