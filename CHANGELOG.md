@@ -2,6 +2,12 @@
 
 Headings use Pi's format (`## [x.y.z] - YYYY-MM-DD`), so Pi can read this file for its changelog notices. Pi 1.5.2 does not show a notice for a plain pin bump; see `docs/RELEASE-0.4.0.md`.
 
+## [0.6.2] - 2026-11-28
+
+### Fixed
+
+- Convention pages no longer omit the same low-ranked rules every turn: task guidance is tracked per rule, omitted rules are carried to later turns, and the post-tool redelivery cap is replaced by a bounded 256-entry queue with an explicit overflow notice. Non-blocking pages no longer promise a retry that cannot deliver the omitted rules. Rules are delivered once; a still-active rule is redelivered only when its proof changes. (ATD-46)
+
 ## [0.6.1] - 2026-11-28
 
 ### Fixed
