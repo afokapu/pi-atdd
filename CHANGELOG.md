@@ -2,6 +2,20 @@
 
 Headings use Pi's format (`## [x.y.z] - YYYY-MM-DD`), so Pi can read this file for its changelog notices. Pi 1.5.2 does not show a notice for a plain pin bump; see `docs/RELEASE-0.4.0.md`.
 
+## [0.6.0] - 2026-11-28
+
+### Changed
+
+- **BREAKING:** Removed external (Flow-owned) seat mode and `ownsFlowExecution`. `PI_ATDD_EXECUTION_MODE=external` now refuses startup with `external seat mode was removed in 0.6.0; start with atdd launch`. (ATD-50)
+
+### Removed
+
+- CI no longer checks out atdd-bun or atdd-flow or runs `smoke:catalog`; a vendored lock-based drift test replaces it. (ATD-50)
+
+### Fixed
+
+- Idle attention refresh no longer warns `durable ATDD state is locked` on brief collisions: it uses lock-free reads, a bounded wait, and one warning for a stuck lock. (ATD-47)
+
 ## [0.5.1] - 2026-11-28
 
 ### Fixed
