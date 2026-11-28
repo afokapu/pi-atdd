@@ -193,6 +193,10 @@ export function renderReasonedPage(r:Reconciliation,ids?:readonly string[],maxCh
       (!emittedIds.length?" No complete convention fit the budget: use the full canonical source or enlarge context.":"");
     const listed=" Omitted: "+omittedIds.join(", ")+".";
     text+=attention.length+listed.length+text.length<=maxChars?attention+listed:attention;
+    if(blocking){
+      const sources=activations.filter(a=>omittedIds.includes(a.id)).map(a=>a.convention.file);
+      text+="\n\nRemaining canonical source files (read before retrying): "+sources.join(", ");
+    }
   }
   return {text,emittedIds,omittedIds};
 }

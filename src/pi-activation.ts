@@ -141,6 +141,7 @@ export default function atdd(pi:ExtensionAPI):void {
   const TASK_RULE_CAP=256;
   const taskKnown=new Map<string,string>();
   const taskPending=new Set<string>();
+  const preflightDisclosures=new Map<string,string>();
   const pageReceipts=new Map<string,{item:Pending;result:ReturnType<ReasoningSession["observe"]>;page:RenderedPage}>();
   /** PLT-126: hard cap on post-tool hook text appended to one tool result. */
   const POST_TOOL_CAP=20_000;
@@ -266,7 +267,7 @@ export default function atdd(pi:ExtensionAPI):void {
   function reset(preserveTaskPages=false):void{
     reasoning=undefined;delivered.clear();unresolvedPaths.clear();observationWarning=false;
     pageReceipts.clear();
-    if(!preserveTaskPages){pendingPostTool.clear();taskKnown.clear();taskPending.clear();postQueueOverflow=0;}
+    if(!preserveTaskPages){pendingPostTool.clear();taskKnown.clear();taskPending.clear();preflightDisclosures.clear();postQueueOverflow=0;}
   }
   function ensure(cwd:string):ReasoningSession{
     if(!catalog||cwdKey!==cwd){
@@ -422,10 +423,16 @@ export default function atdd(pi:ExtensionAPI):void {
         return {block:true,reason:page.text+
           "\nMandatory graph dependencies unresolved. Do not proceed until authoritative sources are available."};
       }
+      const disclosureKey=JSON.stringify([task,path,operation]);
+      const activationSignature=digest(result.activations.map(a=>({id:a.id,
+        proof:JSON.stringify(a.proof).replaceAll(result.scope,"<scope>")})));
+      if(preflightDisclosures.get(disclosureKey)===activationSignature)return;
       if(fresh.length){
         const page=renderReasonedPage(result,fresh,budget,true);
         recordActualDelivery(result,page);
         recordReasoned(cwd,"pre_edit",operation,path,result,fresh,page,started);
+        if(page.omittedIds.length&&page.emittedIds.length)
+          preflightDisclosures.set(disclosureKey,activationSignature);
         return {block:true,reason:"ATDD contextual preflight for "+path+"; read reasoning before retrying:\n\n"+
           page.text};
       }
