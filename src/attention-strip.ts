@@ -16,6 +16,7 @@ import {
 } from "./attention.ts";
 import type { AttentionRouteBinding } from "./attention-routing.ts";
 import { seatAuthorizationRefusal } from "./execution-seat.ts";
+import { registerWorkerReminder } from "./worker-reminder.ts";
 
 export type StripOptions = {
   env?: NodeJS.ProcessEnv;
@@ -277,6 +278,11 @@ function registerCoach(api: Api, cfg: LaunchConfig, now: () => Date, options: St
   const setTimer = options.setInterval ?? ((fn: () => void, ms: number) => setInterval(fn, ms));
   const clearTimer = options.clearInterval ?? ((h: unknown) => clearInterval(h as ReturnType<typeof setInterval>));
   const key = () => ensureKey(cfg.keyPath);
+  const workerReminder = cfg.route?.role === "coach" ? registerWorkerReminder({
+    agentDir: options.env?.PI_CODING_AGENT_DIR, coachAddress: cfg.route.coachAddress,
+    projectId: cfg.route.projectId, now: () => now().getTime(), pollMs,
+    setInterval: options.setInterval, clearInterval: options.clearInterval,
+  }) : undefined;
   let live: Ctx | undefined;
   let timer: unknown;
   const announced = new Set<string>();
@@ -472,8 +478,9 @@ function registerCoach(api: Api, cfg: LaunchConfig, now: () => Date, options: St
   // authority, so a successor whose lease becomes current later is picked up by the next poll.
   const startPolling = (ctx: Ctx) => {
     live = ctx;
+    if (authorized(ctx, cfg, options)) workerReminder?.start(ctx, false);
     if (timer === undefined) timer = setTimer(() => {
-      if (live) try { refresh(live); alertNew(live); }
+      if (live) try { refresh(live); alertNew(live); workerReminder?.tick(); }
       catch (e) { live.ui.notify("ATDD attention refresh deferred: " + String(e), "warning"); }
     }, pollMs);
   };
@@ -526,6 +533,7 @@ function registerCoach(api: Api, cfg: LaunchConfig, now: () => Date, options: St
   api.on("session_shutdown", () => {
     if (timer !== undefined) clearTimer(timer);
     timer = undefined;
+    workerReminder?.stop();
     live = undefined;
   });
 
