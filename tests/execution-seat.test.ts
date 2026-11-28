@@ -100,16 +100,6 @@ test("PLT-117 A04/A05: unknown attention, wrong git head and active source fail 
   } finally { w.cleanup(); }
 });
 
-test("PLT-117 A03: external authority cannot be minted or replaced by standalone Pi", () => {
-  const w = world();
-  try {
-    const external = { ...w.config, mode: "external" as const };
-    assert.throws(() => bootstrapSeat(external), /external/);
-    assert.throws(() => replaceSeat(external, { nextSessionId: "s2", modelId: "m2",
-      checkpoint: {} as never, observedHead: "rev", sourceSettled: true, recoveryAuthorized: false }), /Flow/);
-  } finally { w.cleanup(); }
-});
-
 test("PLT-117 A03/A04: Pi hook blocks stale sessions and authorizes verified successor", () => {
   const w = world();
   try {
@@ -133,64 +123,6 @@ test("PLT-117 A03/A04: Pi hook blocks stale sessions and authorizes verified suc
     assert.equal(controller.owns(context("session-a")), false);
     assert.equal(controller.owns(context("session-b")), true);
     assert.equal(call("tool_call", context("session-b"))[0], undefined);
-  } finally { w.cleanup(); }
-});
-
-test("PLT-117 A03: Flow adapter reads the authoritative seat, task and owner token", () => {
-  const w = world();
-  try {
-    const desk = join(w.root, "flow");
-    const config = executionConfigFromEnv({ ...w.env, PI_ATDD_EXECUTION_MODE: "external",
-      ATDD_WORKFLOW_ROOT: desk })!;
-    mkdirSync(join(desk, ".atdd-flow", "pi-runtime"), { recursive: true });
-    mkdirSync(join(desk, "work", "pi-atdd", "seats", "driver.one"), { recursive: true });
-    mkdirSync(join(desk, "work", "pi-atdd", "tasks"), { recursive: true });
-    writeFileSync(config.leasePath, [
-      "schema: atdd-flow/pi-runtime-state/v1", "seat: driver.one@pi-atdd",
-      "owner_token: owner-token-a", "pi_session: session-a", "",
-    ].join("\n"));
-    writeFileSync(join(desk, "work", "pi-atdd", "seats", "driver.one", "seat.yaml"), [
-      "schema: atdd-workflow/seat/v1", "address: driver.one@pi-atdd",
-      "project: pi-atdd", "runtime:", "  pi_session: session-a", "",
-    ].join("\n"));
-    const taskFile = join(desk, "work", "pi-atdd", "tasks", "PLT-117.yaml");
-    writeFileSync(taskFile, [
-      "schema: atdd-workflow/task/v1", "coordinator: main@pi-atdd",
-      "assignee: driver.one@pi-atdd", "status: in_progress", "",
-    ].join("\n"));
-    assert.equal(ownsExecution(config, "session-a"), true);
-    assert.equal(ownsExecution(config, "session-b"), false);
-    assert.equal(ownsExecution({ ...config, binding: { ...config.binding, ownerToken: "stale" } }, "session-a"), false);
-    writeFileSync(taskFile, [
-      "schema: atdd-workflow/task/v1", "coordinator: main@pi-atdd",
-      "assignee: driver.other@pi-atdd", "status: in_progress", "",
-    ].join("\n"));
-    assert.equal(ownsExecution(config, "session-a"), false);
-  } finally { w.cleanup(); }
-});
-
-test("PLT-117 A02: project Coach seat is authorized across tasks without one task assignment", () => {
-  const w = world();
-  try {
-    const desk = join(w.root, "flow");
-    const config = executionConfigFromEnv({ ...w.env, PI_ATDD_EXECUTION_MODE: "external",
-      PI_ATDD_EXECUTION_TASK_ID: "*", PI_ATDD_EXECUTION_SEAT_ADDRESS: "main@pi-atdd",
-      ATDD_WORKFLOW_ROOT: desk })!;
-    mkdirSync(join(desk, ".atdd-flow", "pi-runtime"), { recursive: true });
-    mkdirSync(join(desk, "work", "pi-atdd", "seats", "main"), { recursive: true });
-    writeFileSync(config.leasePath, [
-      "schema: atdd-flow/pi-runtime-state/v1", "seat: main@pi-atdd",
-      "owner_token: owner-token-a", "pi_session: session-a", "",
-    ].join("\n"));
-    writeFileSync(join(desk, "work", "pi-atdd", "seats", "main", "seat.yaml"), [
-      "schema: atdd-workflow/seat/v1", "address: main@pi-atdd", "role: main",
-      "project: pi-atdd", "runtime:", "  pi_session: session-a", "",
-    ].join("\n"));
-    assert.equal(ownsExecution(config, "session-a"), true);
-    assert.equal(ownsExecution({ ...config, binding: { ...config.binding,
-      ownerToken: "obsolete" } }, "session-a"), false);
-    assert.equal(ownsExecution({ ...config, binding: { ...config.binding,
-      sessionId: "not-current" } }, "not-current"), false);
   } finally { w.cleanup(); }
 });
 

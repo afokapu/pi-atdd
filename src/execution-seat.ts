@@ -2,8 +2,7 @@
  * PLT-117 — durable, file-backed seat runtime for standalone Pi.
  *
  * This is an execution-ownership receipt, NOT a new task registry. Task and coach
- * assignment arrive from the trusted launcher. Flow-governed seats must use their
- * own authoritative adapter; a local receipt must never override Flow ownership.
+ * assignment arrive from the trusted launcher.
  *
  * Every mutation takes a per-seat filesystem lock and compares the exact prior
  * binding. Crash recovery and a new session require a verified checkpoint.
@@ -13,18 +12,15 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, hostname } from "node:os";
 import { dirname, join } from "node:path";
-import { parse as parseYaml } from "yaml";
 import { holderIsDead, withDurableLock } from "./durable-lock.ts";
 import { decideExecutionTransition, matchesSeatLease,
   type ExecutionBinding, type ExecutionCheckpoint, type SeatLeaseObservation } from "./execution-lifecycle.ts";
 
 export type SeatRuntimeConfig = {
-  mode: "standalone" | "external";
+  mode: "standalone";
   binding: ExecutionBinding;
   leasePath: string;
   checkpointDir: string;
-  /** Read-only Flow authority; the Flow controller owns changes to these records. */
-  flowRoot?: string;
   grantRef?: string;
 };
 /** The holder is the process that last wrote the lease. Recovery needs it provably dead. */
@@ -76,6 +72,8 @@ export function missingAttentionRouteVariables(env: NodeJS.ProcessEnv): string[]
 
 /** A scoped launch is all-or-nothing. No fields means that existing Pi is unaffected. */
 export function executionConfigFromEnv(env: NodeJS.ProcessEnv): SeatRuntimeConfig | undefined {
+  if (env.PI_ATDD_EXECUTION_MODE === "external")
+    throw new Error("external seat mode was removed in 0.6.0; start with atdd launch");
   const prefix = "PI_ATDD_EXECUTION_";
   const values = ["PROJECT_ID", "TASK_ID", "COACH_ADDRESS", "SEAT_ADDRESS", "EXECUTION_ID",
     "SESSION_ID", "MODEL_ID", "GENERATION", "OWNER_TOKEN"] as const;
@@ -95,22 +93,16 @@ export function executionConfigFromEnv(env: NodeJS.ProcessEnv): SeatRuntimeConfi
     modelId: get("MODEL_ID"), generation, ownerToken: get("OWNER_TOKEN"),
   };
   const mode = env.PI_ATDD_EXECUTION_MODE;
-  if (mode !== "standalone" && mode !== "external")
-    throw new Error("PI_ATDD_EXECUTION_MODE must be standalone or external");
+  if (mode !== "standalone")
+    throw new Error("PI_ATDD_EXECUTION_MODE must be standalone");
   const agentDir = env.PI_CODING_AGENT_DIR || join(homedir(), ".pi", "agent");
   const key = hash(binding.projectId + "\0" + binding.seatAddress);
-  const flowRoot = mode === "external" ? (env.ATDD_WORKFLOW_ROOT || env.PI_ATDD_EXECUTION_FLOW_ROOT)?.trim() : undefined;
-  const leasePath = mode === "external"
-    ? (env.PI_ATDD_EXECUTION_LEASE_FILE?.trim() || (flowRoot && join(flowRoot,
-        ".atdd-flow", "pi-runtime", encodeURIComponent(binding.seatAddress) + ".yaml")))
-    : join(agentDir, "execution", "seats", key + ".json");
-  if (!leasePath || !leasePath.startsWith("/")) throw new Error("execution lease file must be absolute");
-  if (mode === "external" && (!flowRoot || !flowRoot.startsWith("/")))
-    throw new Error("Flow-owned seat requires absolute ATDD_WORKFLOW_ROOT");
+  const leasePath = join(agentDir, "execution", "seats", key + ".json");
+  if (!leasePath.startsWith("/")) throw new Error("execution lease file must be absolute");
   const grantRef = env.PI_ATDD_EXECUTION_GRANT_REF?.trim();
   if (grantRef && !text(grantRef)) throw new Error("invalid execution grant reference");
   return { mode, binding, leasePath, checkpointDir: join(agentDir, "execution", "checkpoints", key),
-    ...(flowRoot ? { flowRoot } : {}), ...(grantRef ? { grantRef } : {}) };
+    ...(grantRef ? { grantRef } : {}) };
 }
 
 function parseLease(raw: string): LeaseFile {
@@ -151,7 +143,6 @@ function commitLease(path: string, binding: ExecutionBinding, holder: Holder = t
  * the launch environment alone cannot create authority.
  */
 export function bootstrapSeat(config: SeatRuntimeConfig): ExecutionBinding {
-  if (config.mode !== "standalone") throw new Error("external seat authority cannot be bootstrapped here");
   if (config.binding.generation !== 1) throw new Error("initial seat generation must be 1");
   return locked(config.leasePath, () => {
     const existing = readSeatLease(config.leasePath);
@@ -168,11 +159,9 @@ export function bootstrapSeat(config: SeatRuntimeConfig): ExecutionBinding {
 /**
  * Runs `work` while no seat transfer can commit: standalone seats hold the seat lock, so a
  * transfer fails closed instead of landing between a caller's ownership check and its write.
- * Flow-owned seats are changed by Flow, which this process cannot lock; the caller's own check
- * inside `work` is the best available fence there.
  */
 export function withSeatFence<T>(config: SeatRuntimeConfig, work: () => T): T {
-  return config.mode === "standalone" ? locked(config.leasePath, work) : work();
+  return locked(config.leasePath, work);
 }
 
 /**
@@ -192,53 +181,15 @@ export function adoptSuccessorLease(config: SeatRuntimeConfig, sessionId: string
 
 export function ownsExecution(config: SeatRuntimeConfig, sessionId: string): boolean {
   if (!text(sessionId)) return false;
-  if (config.mode === "external") return ownsFlowExecution(config, sessionId);
   const current = readSeatLease(config.leasePath);
   return current !== undefined && same(config.binding, current) &&
     config.binding.executionId === current.executionId &&
     matchesSeatLease(config.binding, source(current)) && sessionId === current.sessionId;
 }
 
-/**
- * A read-only adapter to the Flow Desk. Flow seat.yaml plus the current token-
- * fenced pi-runtime record are authoritative. We never mutate either file.
- * The task record must assign/co-ordinate this seat, or authority is unknown.
- */
-export function ownsFlowExecution(config: SeatRuntimeConfig, sessionId: string): boolean {
-  if (config.mode !== "external" || !config.flowRoot || !text(sessionId)) return false;
-  const b = config.binding;
-  const m = /^([a-zA-Z0-9_.-]+)@([a-zA-Z0-9_.-]+)$/.exec(b.seatAddress);
-  const projectCoach = b.taskId === "*"; // project-scoped main/coordinator may supervise multiple tasks
-  if (!m || m[2] !== b.projectId || (!projectCoach && !/^[a-zA-Z0-9_.-]+$/.test(b.taskId))) return false;
-  try {
-    const runtime = parseYaml(readFileSync(config.leasePath, "utf8")) as {
-      schema?: string; seat?: string; owner_token?: string; pi_session?: string;
-    };
-    const seat = parseYaml(readFileSync(join(config.flowRoot, "work", b.projectId,
-      "seats", m[1]!, "seat.yaml"), "utf8")) as {
-        address?: string; project?: string; role?: string; runtime?: { pi_session?: string };
-      };
-    const task = projectCoach ? undefined : parseYaml(readFileSync(join(config.flowRoot, "work", b.projectId,
-      "tasks", b.taskId + ".yaml"), "utf8")) as {
-        schema?: string; coordinator?: string; assignee?: string; status?: string;
-      };
-    return runtime?.schema === "atdd-flow/pi-runtime-state/v1" &&
-      runtime.seat === b.seatAddress && runtime.owner_token === b.ownerToken &&
-      runtime.pi_session === sessionId && b.sessionId === sessionId &&
-      seat?.address === b.seatAddress && seat.project === b.projectId &&
-      seat.runtime?.pi_session === sessionId &&
-      (projectCoach
-        ? (seat.role === "main" || seat.role === "coordinator")
-        : task?.schema === "atdd-workflow/task/v1" &&
-          (task.coordinator === b.seatAddress || task.assignee === b.seatAddress) &&
-          !["done", "superseded", "rejected"].includes(task.status ?? ""));
-  } catch { return false; }
-}
-
 /** Record an in-place model change only after the host confirms the model change succeeded. */
 export function recordSeatModel(config: SeatRuntimeConfig, sessionId: string, modelId: string): SeatRuntimeConfig {
   if (!text(modelId)) throw new Error("model identifier required");
-  if (config.mode === "external") return config; // Flow's owner controls external runtime observations.
   return locked(config.leasePath, () => {
     if (!ownsExecution(config, sessionId)) throw new Error("stale seat model update");
     const next = { ...config.binding, modelId };
@@ -330,12 +281,11 @@ function transitionSeatLocked(config: SeatRuntimeConfig, input: {
   return { ...config, binding: next };
 }
 
-/** Safe CAS and generation fencing. External Flow ownership must be changed by Flow. */
+/** Safe CAS and generation fencing. */
 export function replaceSeat(config: SeatRuntimeConfig, input: {
   nextSessionId: string; modelId: string; checkpoint: ExecutionCheckpoint;
   observedHead: string; sourceSettled: boolean; recoveryAuthorized: boolean;
 }): SeatRuntimeConfig {
-  if (config.mode !== "standalone") throw new Error("Flow-owned seat replacement requires Flow adapter");
   if (!text(input.nextSessionId) || !text(input.modelId)) throw new Error("replacement runtime incomplete");
   return locked(config.leasePath, () => transitionSeatLocked(config, input));
 }
@@ -377,7 +327,6 @@ export function resumeSeatFromCheckpoint(config: SeatRuntimeConfig, input: {
   nextSessionId: string; modelId: string; cwd: string;
   recheckAttention: () => ExecutionCheckpoint["attention"];
 }): RecoveredSeat {
-  if (config.mode !== "standalone") throw new Error("Flow-owned seat recovery requires Flow adapter");
   if (!text(input.nextSessionId) || !text(input.modelId)) throw new Error("resume runtime incomplete");
   return locked(config.leasePath, () => {
     const lease = readSeatLeaseFile(config.leasePath);
