@@ -142,6 +142,8 @@ export default function atdd(pi:ExtensionAPI):void {
   const taskKnown=new Map<string,string>();
   const taskPending=new Set<string>();
   const preflightDisclosures=new Map<string,string>();
+  const crossScopeDelivered=new Set(["shared.tracker.issue-mandatory","shared.tracker.unconfigured-notice"]);
+  const deliveredAcrossScopes=new Set<string>();
   const pageReceipts=new Map<string,{item:Pending;result:ReturnType<ReasoningSession["observe"]>;page:RenderedPage}>();
   /** PLT-126: hard cap on post-tool hook text appended to one tool result. */
   const POST_TOOL_CAP=20_000;
@@ -267,7 +269,7 @@ export default function atdd(pi:ExtensionAPI):void {
   function reset(preserveTaskPages=false):void{
     reasoning=undefined;delivered.clear();unresolvedPaths.clear();observationWarning=false;
     pageReceipts.clear();
-    if(!preserveTaskPages){pendingPostTool.clear();taskKnown.clear();taskPending.clear();preflightDisclosures.clear();postQueueOverflow=0;}
+    if(!preserveTaskPages){pendingPostTool.clear();taskKnown.clear();taskPending.clear();preflightDisclosures.clear();deliveredAcrossScopes.clear();postQueueOverflow=0;}
   }
   function ensure(cwd:string):ReasoningSession{
     if(!catalog||cwdKey!==cwd){
@@ -293,6 +295,10 @@ export default function atdd(pi:ExtensionAPI):void {
     const updated:string[]=[];
     for(const activation of result.activations){
       const signature=digest(activation.proof), k=key(result.scope,activation.id);
+      if(crossScopeDelivered.has(activation.id)&&deliveredAcrossScopes.has(activation.id)){
+        delivered.set(k,signature);
+        continue;
+      }
       if(delivered.get(k)!==signature)updated.push(activation.id);
     }
     return updated;
@@ -300,7 +306,10 @@ export default function atdd(pi:ExtensionAPI):void {
   function recordActualDelivery(result:ReturnType<typeof observe>,page:RenderedPage):void{
     for(const id of page.emittedIds){
       const activation=result.activations.find(item=>item.id===id);
-      if(activation)delivered.set(key(result.scope,id),digest(activation.proof));
+      if(activation){
+        delivered.set(key(result.scope,id),digest(activation.proof));
+        if(crossScopeDelivered.has(id))deliveredAcrossScopes.add(id);
+      }
     }
   }
   function restoreFromBranch(ctx:{cwd:string;sessionManager:{getBranch:()=>unknown[]}}):void{
