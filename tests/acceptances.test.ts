@@ -22,7 +22,7 @@ const nested = (): Array<{ file: string; doc: Record<string, unknown> }> =>
 
 test("all formal implementation criteria follow the existing ATDD-Bun V2 template", () => {
   const all = nested();
-  assert.equal(all.length, 121);
+  assert.equal(all.length, 124);
   const urns = new Set<string>();
   const ids = new Set<string>();
   for (const { file, doc } of all) {

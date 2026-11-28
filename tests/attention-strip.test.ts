@@ -3,6 +3,9 @@
 // Acceptance: acc:pi-atdd:plt-101-acc-2
 // Acceptance: acc:pi-atdd:plt-101-acc-3
 // Acceptance: acc:pi-atdd:plt-101-acc-4
+// Acceptance: acc:pi-atdd:atd-56-acceptance-01
+// Acceptance: acc:pi-atdd:atd-56-acceptance-02
+// Acceptance: acc:pi-atdd:atd-56-acceptance-03
 // PLT-101 (Linear): 1 a worker raises each of the 4 types and the Coach strip lists each one; 2 ack, snooze,
 // resolve, cancel and TTL change state, and closed items leave memory; 3 restart rebuild from hidden session
 // entries gives the same open set; 4 the worker sees a Coach resolution on its next turn without agent-say.
@@ -12,11 +15,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { randomBytes } from "node:crypto";
-import { appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { registerAttentionStrip } from "../src/attention-strip.ts";
 import { ensureKey, signEvent, type AttentionItem, type StateRecord } from "../src/attention.ts";
+import { busyStateFile, writeBusyState } from "../src/busy-state.ts";
+import { registerWorkerReminder } from "../src/worker-reminder.ts";
 
 type Entry = { type: string; customType?: string; data?: any };
 const WIDGET = "pi-atdd-attention";
@@ -445,6 +450,124 @@ test("support: same identity in another profile is invisible to the Coach and to
     assert.equal((await worker.tool("attention_status", {})).details.items.length, 0);
     assert.deepEqual(await worker.emit("before_agent_start", { messageType: "user", prompt: "x" }), [],
       "no delivery for another profile's item");
+  } finally { w.cleanup(); }
+});
+
+test("ATD-56 Acceptance-01: reminds about this Coach's live worker idle beyond the threshold", () => {
+  const w = world();
+  try {
+    const timers: Array<{ fn: () => void; ms: number }> = [];
+    const notices: string[] = [];
+    const id = "worker ATD-54";
+    const seats = join(w.agentDir, "execution", "seats");
+    mkdirSync(seats, { recursive: true });
+    writeFileSync(join(seats, "worker.json"), JSON.stringify({
+      schema: "pi-atdd/seat-lease/v1", binding: { projectId: "pi-atdd", taskId: "ATD-54",
+        coachAddress: "coach:af8/pi-atdd", seatAddress: "worker.atd-54@pi-atdd", executionId: "run-54",
+        sessionId: "session-54", modelId: "test", generation: 1, ownerToken: "token" },
+      holder: { pid: process.pid, host: hostname(), }, at: ISO(w.clock.t - HOUR),
+    }));
+    writeBusyState(busyStateFile(w.agentDir, id), "idle", process.pid, ISO(w.clock.t - 11 * 60_000), id);
+    const reminder = registerWorkerReminder({ agentDir: w.agentDir, coachAddress: "coach:af8/pi-atdd",
+      projectId: "pi-atdd", now: () => w.clock.t,
+      setInterval: (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, clearInterval: () => {} });
+    reminder.start({ isIdle: () => true, ui: { notify: (message: string) => notices.push(message) } });
+    timers[0]!.fn();
+    assert.equal(notices.length, 1);
+    assert.match(notices[0]!, /ATD-54/);
+    assert.match(notices[0]!, /check each pane.*unblock.*escalate.*confirm/i);
+    assert.equal(timers[0]!.ms, 5000);
+  } finally { w.cleanup(); }
+});
+
+test("ATD-56: routed Coach polling displays the transient worker reminder without recording attention", async () => {
+  const w = world();
+  try {
+    const id = "worker ATD-54";
+    const seats = join(w.agentDir, "execution", "seats"); mkdirSync(seats, { recursive: true });
+    writeFileSync(join(seats, "worker.json"), JSON.stringify({
+      schema: "pi-atdd/seat-lease/v1", binding: { projectId: "pi-atdd", taskId: "ATD-54",
+        coachAddress: "coach:af8/pi-atdd", seatAddress: "worker.atd-54@pi-atdd", executionId: "run-54",
+        sessionId: "session-54", modelId: "test", generation: 1, ownerToken: "token" },
+      holder: { pid: process.pid, host: hostname() }, at: ISO(w.clock.t - HOUR),
+    }));
+    writeBusyState(busyStateFile(w.agentDir, id), "idle", process.pid, ISO(w.clock.t - 11 * 60_000), id);
+    const handlers = new Map<string, Function[]>();
+    const timers: Array<() => void> = [];
+    const notices: string[] = [];
+    const entries: Entry[] = [];
+    registerAttentionStrip({
+      on: (name: string, fn: Function) => handlers.set(name, [...(handlers.get(name) ?? []), fn]),
+      registerTool: (_def: unknown) => {}, registerCommand: (_name: string, _def: unknown) => {},
+      appendEntry: (customType: string, data: unknown) => entries.push({ type: "custom", customType, data }),
+    } as any, {
+      env: { PI_CODING_AGENT_DIR: w.agentDir, PI_ATDD_ATTENTION_ROLE: "coach", PI_ATDD_ATTENTION_IDENTITY: "coach",
+        PI_ATDD_ATTENTION_PROFILE: "forge", PI_ATDD_ATTENTION_PROJECT_ID: "pi-atdd",
+        PI_ATDD_ATTENTION_COACH_ADDRESS: "coach:af8/pi-atdd" },
+      now: () => new Date(w.clock.t), authorize: () => true,
+      setInterval: fn => { timers.push(fn); return timers.length; }, clearInterval: () => {},
+    });
+    const ctx = { isProjectTrusted: () => true, isIdle: () => true, sessionManager: { getBranch: () => entries },
+      ui: { notify: (message: string) => notices.push(message), setWidget: () => {} } };
+    for (const fn of handlers.get("session_start") ?? []) await fn({}, ctx);
+    assert.equal(timers.length, 1, "reminders share the existing Coach poll timer");
+    timers[0]!();
+    assert.match(notices.join("\n"), /ATD-54.*check each pane/i);
+    assert.equal(records(w).length, 0, "transient reminder creates no durable attention record");
+    for (const fn of handlers.get("session_shutdown") ?? []) await fn({}, ctx);
+  } finally { w.cleanup(); }
+});
+
+test("ATD-56 Acceptance-02: remains silent with no qualifying workers and while Coach is busy", () => {
+  const w = world();
+  try {
+    const notices: string[] = [];
+    const timers: Array<() => void> = [];
+    let coachIdle = true;
+    const seats = join(w.agentDir, "execution", "seats"); mkdirSync(seats, { recursive: true });
+    writeFileSync(join(seats, "worker.json"), JSON.stringify({
+      schema: "pi-atdd/seat-lease/v1", binding: { projectId: "pi-atdd", taskId: "ATD-54",
+        coachAddress: "coach:af8/pi-atdd", seatAddress: "worker.atd-54@pi-atdd", executionId: "run-54",
+        sessionId: "session-54", modelId: "test", generation: 1, ownerToken: "token" },
+      holder: { pid: process.pid, host: hostname() }, at: ISO(w.clock.t - HOUR),
+    }));
+    const id = "worker ATD-54";
+    writeBusyState(busyStateFile(w.agentDir, id), "busy", process.pid, ISO(w.clock.t), id);
+    const reminder = registerWorkerReminder({ agentDir: w.agentDir, coachAddress: "coach:af8/pi-atdd",
+      projectId: "pi-atdd", now: () => w.clock.t,
+      setInterval: fn => { timers.push(fn); return timers.length; }, clearInterval: () => {} });
+    reminder.start({ isIdle: () => coachIdle, ui: { notify: (message: string) => notices.push(message) } });
+    timers[0]!();
+    assert.equal(notices.length, 0, "an active but visibly busy worker is silent");
+    coachIdle = false; timers[0]!();
+    assert.equal(notices.length, 0, "the Coach's busy state is also silent");
+  } finally { w.cleanup(); }
+});
+
+test("ATD-56 Acceptance-03: throttles notices and reports long-lived unknown as pane-check only", () => {
+  const w = world();
+  try {
+    const notices: string[] = [];
+    const timers: Array<() => void> = [];
+    const seats = join(w.agentDir, "execution", "seats"); mkdirSync(seats, { recursive: true });
+    writeFileSync(join(seats, "worker.json"), JSON.stringify({
+      schema: "pi-atdd/seat-lease/v1", binding: { projectId: "pi-atdd", taskId: "ATD-54",
+        coachAddress: "coach:af8/pi-atdd", seatAddress: "worker.atd-54@pi-atdd", executionId: "run-54",
+        sessionId: "session-54", modelId: "test", generation: 1, ownerToken: "token" },
+      holder: { pid: process.pid, host: hostname(), }, at: ISO(w.clock.t - 31 * 60_000),
+    }));
+    const reminder = registerWorkerReminder({ agentDir: w.agentDir, coachAddress: "coach:af8/pi-atdd",
+      projectId: "pi-atdd", now: () => w.clock.t,
+      setInterval: fn => { timers.push(fn); return timers.length; }, clearInterval: () => {} });
+    reminder.start({ isIdle: () => true, ui: { notify: (message: string) => notices.push(message) } });
+    timers[0]!();
+    assert.match(notices[0]!, /status unknown.*check pane/i);
+    timers[0]!();
+    assert.equal(notices.length, 1);
+    w.clock.t += 30 * 60_000;
+    timers[0]!();
+    assert.equal(notices.length, 2);
+    assert.equal(existsSync(w.spool), false, "reminder is not persisted as an attention item");
   } finally { w.cleanup(); }
 });
 
