@@ -39,19 +39,27 @@ export function holderIsDead(pid: number, host: string): boolean {
   return Number.isInteger(pid) && pid > 0 && host === hostname() && !alive(pid);
 }
 
-/** Fails closed on lock contention; call inside the worker action, never across awaits. */
-export function withDurableLock<T>(file: string, work: () => T): T {
+export class DurableLockBusy extends Error {
+  constructor(lock: string) { super(`durable ATDD state is locked; inspect ${ownerPath(lock)}`); }
+}
+
+/** Fails closed on contention; an optional bounded wait is used only by refresh. */
+export function withDurableLock<T>(file: string, work: () => T, waitMs = 0): T {
   mkdirSync(dirname(file), { recursive: true });
   const lock = file + ".lock";
+  const deadline = Date.now() + waitMs;
   let acquired = false;
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (;;) {
     try { mkdirSync(lock); acquired = true; break; }
     catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== "EEXIST" ||
-          !reclaimDeadLock(lock)) throw new Error("durable ATDD state is locked; retry or inspect abandoned owner");
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+      if (reclaimDeadLock(lock)) continue;
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) throw new DurableLockBusy(lock);
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, Math.min(remaining, 10 + Math.random() * 20));
     }
   }
-  if (!acquired) throw new Error("durable ATDD state is locked");
+  if (!acquired) throw new DurableLockBusy(lock);
   try {
     writeFileSync(ownerPath(lock), JSON.stringify({ pid: process.pid,
       host: hostname(), at: Date.now() } satisfies LockOwner), { flag: "wx", mode: 0o600 });
