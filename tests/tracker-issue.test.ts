@@ -44,6 +44,23 @@ test("A1 the four tracker rules load with profile-first ids and statements", () 
   assert.deepEqual(namingViolations(catalog), []);
 });
 
+test("ATD-55 delivered planner binding is tracker-neutral and remains required before ratification", () => {
+  const { catalog } = bundled();
+  const binding = catalog.rules.get("planner.plan.confirm-binds-an-issue")!;
+  assert.equal(binding.source, "pi-atdd");
+  const delivered = `${binding.statement}\n${binding.summary}\n${binding.guidance}`;
+  assert.match(delivered, /configured tracker/i);
+  assert.match(delivered, /record.{0,40}id.{0,40}plan/i);
+  assert.match(delivered, /issue.{0,20}branch.{0,20}worktree/i);
+  assert.match(delivered, /session removes the .*ceremony, not the issue/i);
+  assert.doesNotMatch(delivered, /atdd plan session bind-issue|local manifest|State Store/i);
+
+  const tracker = catalog.rules.get(RULE.planner)!;
+  assert.doesNotMatch(`${tracker.statement}\n${tracker.summary}\n${tracker.guidance}`, /local ATDD issue/i);
+  assert.ok(catalog.edges.some(edge => edge.source === RULE.planner && edge.target === binding.id
+    && edge.type === "requires" && edge.constraint === "mandatory"), "tracker ratification rule must still require the binding");
+});
+
 test("A1 rules are selected for coder, planner and coach sessions; shared rules reach every profile", () => {
   const { catalog } = bundled();
   assert.ok(rulesForProfile(catalog, "coder").includes(RULE.coder));
