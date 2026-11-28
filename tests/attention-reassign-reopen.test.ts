@@ -1,6 +1,9 @@
 // URN: test:pi-atdd:attention-reassign-reopen:ATD-35-A02
 // Acceptance: acc:pi-atdd:atd-35-a02
 // Acceptance: acc:pi-atdd:atd-35-a03
+// Acceptance: acc:pi-atdd:atd-53-a01
+// Acceptance: acc:pi-atdd:atd-53-a02
+// Acceptance: acc:pi-atdd:atd-53-a03
 // Phase: SMOKE
 // Layer: integration
 // Scope: ATD-35 Acceptance-02 (coach reassigns an item it holds; reassignment recorded) and
@@ -48,7 +51,8 @@ function launch(w: World, role: Kind, identity: string, coach: string,
     appendEntry: (customType: string, data: unknown) => entries.push({ type: "custom", customType, data }),
     sendMessage: (message: any, opts: any) => messages.push({ message, options: opts }),
   };
-  const ctx = { isProjectTrusted: () => true,
+  const status = { idle: true };
+  const ctx = { isProjectTrusted: () => true, isIdle: () => status.idle,
     sessionManager: { getBranch: () => entries },
     ui: { setWidget: (k: string, v: string[] | undefined) => widgets.set(k, v), notify: () => {} } };
   registerAttentionStrip(pi as any, { env: roleEnv(w, role, identity, coach, task, run),
@@ -60,7 +64,7 @@ function launch(w: World, role: Kind, identity: string, coach: string,
     setInterval: (fn, ms) => { intervals.push({ fn, ms }); return fn; },
     clearInterval: () => {} });
   return {
-    ctx, widgets, messages, intervals, entries,
+    ctx, widgets, messages, intervals, entries, status,
     tool: (name: string, params: Record<string, unknown> = {}) =>
       tools.get(name).execute("call", params, undefined, undefined, ctx),
     emit: async (name: string, evt: unknown = {}) => {
@@ -73,6 +77,61 @@ function launch(w: World, role: Kind, identity: string, coach: string,
     },
   };
 }
+test("ATD-53: busy polls do not queue stale wakes; resolved stays silent across refresh and restart; reopen wakes once", async () => {
+  const w = world();
+  try {
+    const worker = launch(w, "worker", "worker-a", "main@pi-atdd");
+    const coach = launch(w, "coach", "Coach A", "main@pi-atdd");
+    await coach.emit("session_start");
+    coach.status.idle = false;
+    const id = (await worker.tool("attention_raise", { type: "decision", summary: "pending" })).details.id;
+    for (let i = 0; i < 4; i++) { w.at += 61_000; coach.intervals[0]!.fn(); }
+    assert.equal(coach.messages.length, 0, "busy polls must not enqueue stale follow-ups");
+    await coach.tool("attention_resolve", { id, scope: "within_grant", note: "done" });
+    coach.status.idle = true;
+    await coach.emit("agent_settled");
+    for (let i = 0; i < 4; i++) { w.at += 61_000; coach.intervals[0]!.fn(); }
+    await coach.emit("session_tree");
+    assert.equal(coach.messages.length, 0);
+    assert.equal((await coach.tool("attention_list")).details.items.length, 0);
+    await coach.emit("session_shutdown");
+    const restarted = launch(w, "coach", "Coach A", "main@pi-atdd");
+    await restarted.emit("session_start");
+    restarted.intervals[0]!.fn();
+    assert.equal(restarted.messages.length, 0);
+    await restarted.tool("attention_reopen", { id, note: "new evidence" });
+    restarted.intervals[0]!.fn();
+    assert.equal(restarted.messages.length, 1);
+    await restarted.emit("before_agent_start");
+    w.at += 120_000;
+    restarted.intervals[0]!.fn();
+    assert.equal(restarted.messages.length, 1);
+    await restarted.tool("attention_resolve", { id, scope: "within_grant", note: "done again" });
+    await restarted.tool("attention_reopen", { id, note: "more evidence" });
+    restarted.intervals[0]!.fn();
+    assert.equal(restarted.messages.length, 2, "new reopen generation is announced");
+  } finally { w.cleanup(); }
+});
+
+test("ATD-53: settled delivery rechecks ownership and sends a still-open item", async () => {
+  const w = world();
+  try {
+    const worker = launch(w, "worker", "worker-a", "main@pi-atdd");
+    const coach = launch(w, "coach", "Coach A", "main@pi-atdd");
+    await coach.emit("session_start");
+    coach.status.idle = false;
+    const moved = (await worker.tool("attention_raise", { type: "review", summary: "move" })).details.id;
+    const kept = (await worker.tool("attention_raise", { type: "grant", summary: "keep" })).details.id;
+    coach.intervals[0]!.fn();
+    await coach.tool("attention_reassign", { id: moved, toCoach: "release@pi-atdd", note: "handoff" });
+    coach.status.idle = true;
+    await coach.emit("agent_settled");
+    assert.equal(coach.messages.length, 1);
+    assert.match(coach.messages[0]!.message.content, new RegExp(kept));
+    assert.doesNotMatch(coach.messages[0]!.message.content, new RegExp(moved));
+  } finally { w.cleanup(); }
+});
+
 const widget = (s: ReturnType<typeof launch>) => s.widgets.get("pi-atdd-attention") ?? [];
 const spoolLines = (w: World) => readFileSync(join(w.root, "attention", "spool.jsonl"), "utf8")
   .split("\n").filter(Boolean).map(line => JSON.parse(line));
