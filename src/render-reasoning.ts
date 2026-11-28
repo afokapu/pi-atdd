@@ -132,7 +132,7 @@ function compactSection(item:Activation,r:Reconciliation,budget:number):string {
   const text=head+guidance+tail;
   return text.length<=budget?text:text.slice(0,Math.max(0,budget-tail.length))+tail;
 }
-export function renderReasonedPage(r:Reconciliation,ids?:readonly string[],maxChars=14_000):RenderedPage {
+export function renderReasonedPage(r:Reconciliation,ids?:readonly string[],maxChars=14_000, blocking=false):RenderedPage {
   if(!Number.isInteger(maxChars)||maxChars<1200)
     throw new Error("reasoning budget too small for safety warnings");
   const header="ATDD graph reasoning — positive provenance-backed derivations, not a merge verdict.";
@@ -187,8 +187,9 @@ export function renderReasonedPage(r:Reconciliation,ids?:readonly string[],maxCh
   }
   if(omittedIds.length) {
     const attention="\n\nATTENTION: "+omittedIds.length+" activated convention(s) omitted by budget (lower relevance first). "+
-      "Their content has NOT been delivered or acknowledged. Retries must receive "+
-      "remaining reasoning before the edit can proceed."+
+      "Their content has NOT been delivered or acknowledged. "+
+      (blocking?"Retry the edit to receive the remaining reasoning before it can proceed.":
+        "This page does not block edits; consult the listed canonical convention sources or continue for further guidance.")+
       (!emittedIds.length?" No complete convention fit the budget: use the full canonical source or enlarge context.":"");
     const listed=" Omitted: "+omittedIds.join(", ")+".";
     text+=attention.length+listed.length+text.length<=maxChars?attention+listed:attention;

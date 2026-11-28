@@ -66,9 +66,9 @@ test("read-only tools never receive pending redelivery and the queue drains",()=
       const out=x.result("read","r"+i);
       assert.equal(out,"","read-only call "+i+" carried hook text");
     }
-    let last="";
-    for(let i=0;i<6;i++)last=x.result("bash","b"+i);
-    assert.equal(last,"","queue did not drain after bounded redeliveries");
+    let last="pending";
+    for(let i=0;i<100&&last;i++)last=x.result("bash","b"+i);
+    assert.equal(last,"","queue did not drain after delivering all bounded pages");
   }finally{x.cleanup();}
 });
 

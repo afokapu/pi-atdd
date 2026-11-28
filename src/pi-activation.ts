@@ -127,11 +127,21 @@ export default function atdd(pi:ExtensionAPI):void {
   /** Hop index of this session in its chain, read back from the record that seeded it. */
   let handoffHop=0;
   /** Post-tool pages whose budget omitted rules; delivered on the next tool result. */
-  type Pending={path:string;operation:"edit"|"create";provenance:string};
+  type Pending={path:string;operation:"edit"|"create";provenance:string;
+    queueKey?:string;result?:ReturnType<ReasoningSession["observe"]>;ids?:string[]};
   const pendingPostTool=new Map<string,Pending>();
-  /** PLT-126: redeliveries per path, so a pending queue always drains. */
-  const redeliveries=new Map<string,number>();
-  const MAX_REDELIVERIES=2;
+  let pendingSerial=0,postQueueOverflow=0;
+  const POST_QUEUE_CAP=256;
+  function queuePost(item:Pending):void{
+    if(!item.queueKey)return;
+    if(!pendingPostTool.has(item.queueKey)&&pendingPostTool.size>=POST_QUEUE_CAP){postQueueOverflow++;return;}
+    pendingPostTool.set(item.queueKey,item);
+  }
+  /** Task guidance is keyed by rule, not by the transient per-turn scope. */
+  const TASK_RULE_CAP=256;
+  const taskKnown=new Map<string,string>();
+  const taskPending=new Set<string>();
+  const pageReceipts=new Map<string,{item:Pending;result:ReturnType<ReasoningSession["observe"]>;page:RenderedPage}>();
   /** PLT-126: hard cap on post-tool hook text appended to one tool result. */
   const POST_TOOL_CAP=20_000;
   const key=(scope:string,id:string)=>scope+"\u0000"+id;
@@ -253,9 +263,10 @@ export default function atdd(pi:ExtensionAPI):void {
     try{return resolveCompactionReserve(pi.getSettings(),model);}
     catch{return DEFAULT_COMPACTION_RESERVE;}
   }
-  function reset():void{
+  function reset(preserveTaskPages=false):void{
     reasoning=undefined;delivered.clear();unresolvedPaths.clear();observationWarning=false;
-    pendingPostTool.clear();redeliveries.clear();
+    pageReceipts.clear();
+    if(!preserveTaskPages){pendingPostTool.clear();taskKnown.clear();taskPending.clear();postQueueOverflow=0;}
   }
   function ensure(cwd:string):ReasoningSession{
     if(!catalog||cwdKey!==cwd){
@@ -356,7 +367,7 @@ export default function atdd(pi:ExtensionAPI):void {
       serial++;
       // The kickoff this extension generated points at the record; it is not a new task.
       if(!(event.prompt&&isKickoff(event.prompt)&&task))task=event.prompt||"unknown task";
-      reset();
+      reset(true);
       if(active(ctx.cwd))observedRepo=observeRepository(ctx.cwd).snapshot;
     }
     if(!active(ctx.cwd)){
@@ -366,13 +377,29 @@ export default function atdd(pi:ExtensionAPI):void {
     const started=performance.now();
     try{
       const result=observe(ctx.cwd,"task","pi-event","Pi before_agent_start");
-      const newRules=newlyRelevant(result);
-      if(!newTask&&!newRules.length)return;
-      const page=renderReasonedPage(result,newRules,12_000);
+      const activeIds=new Set(result.activations.map(a=>a.id));
+      for(const id of taskKnown.keys())if(!activeIds.has(id)){taskKnown.delete(id);taskPending.delete(id);}
+      const added:string[]=[];
+      let overflow=0;
+      for(const activation of result.activations){
+        const id=activation.id;
+        // Scope IDs change each user turn; replace only that transient identity,
+        // keeping the evidence, derivations and provenance in the digest.
+        const signature=digest(JSON.stringify(activation.proof).replaceAll(result.scope,"<task-scope>"));
+        if(taskKnown.get(id)===signature)continue;
+        if(!taskKnown.has(id)&&taskKnown.size>=TASK_RULE_CAP){overflow++;continue;}
+        taskKnown.set(id,signature);taskPending.add(id);added.push(id);
+      }
+      const fresh=added.length?added:[...taskPending];
+      if(!newTask&&!fresh.length&&!overflow)return;
+      const page=renderReasonedPage(result,fresh,12_000);
       recordActualDelivery(result,page);
-      if(newTask)recordReasoned(ctx.cwd,"task_start","task",undefined,result,newRules,page,started);
+      for(const id of page.emittedIds)taskPending.delete(id);
+      if(newTask)recordReasoned(ctx.cwd,"task_start","task",undefined,result,fresh,page,started);
+      const notice=overflow?"\nATDD task guidance queue overflow: "+overflow+
+        " activated rule(s) exceed the 256-rule limit and are not queued. Inspect all applicable rules with atdd context --task <current task> --limit <count> --offset <offset>.":"";
       return {message:{customType:"pi-atdd-inference",
-        content:page.text,display:false}};
+        content:page.text+notice,display:false}};
     }catch(e){
       if(newTask)record(ctx.cwd,{point:"task_start",outcome:"error",reasonCode:"reasoner_error",durationMs:performance.now()-started});
       reset(); // no partially materialized conclusions survive a failed inference
@@ -389,14 +416,14 @@ export default function atdd(pi:ExtensionAPI):void {
       const result=observe(cwd,operation,"pi-event",provenance,path,sourceText);
       const fresh=newlyRelevant(result);
       if(result.status==="incomplete"){
-        const page=renderReasonedPage(result,fresh,budget);
+        const page=renderReasonedPage(result,fresh,budget,true);
         recordActualDelivery(result,page);
         recordReasoned(cwd,"pre_edit",operation,path,result,fresh,page,started);
         return {block:true,reason:page.text+
           "\nMandatory graph dependencies unresolved. Do not proceed until authoritative sources are available."};
       }
       if(fresh.length){
-        const page=renderReasonedPage(result,fresh,budget);
+        const page=renderReasonedPage(result,fresh,budget,true);
         recordActualDelivery(result,page);
         recordReasoned(cwd,"pre_edit",operation,path,result,fresh,page,started);
         return {block:true,reason:"ATDD contextual preflight for "+path+"; read reasoning before retrying:\n\n"+
@@ -602,26 +629,31 @@ export default function atdd(pi:ExtensionAPI):void {
   /** Render one post-tool page; rules omitted by the budget stay queued. */
   function postToolPage(cwd:string,item:Pending,budget:number):string|undefined{
     const started=performance.now();
-    const result=observe(cwd,item.operation,"repository-observation",item.provenance,item.path,sourceFor(cwd,item.path));
-    const fresh=newlyRelevant(result);
+    item.queueKey??=String(++pendingSerial);
+    const result=item.result??observe(cwd,item.operation,"repository-observation",item.provenance,item.path,sourceFor(cwd,item.path));
+    const fresh=item.ids??newlyRelevant(result);
     if(!fresh.length&&result.status==="matched"){
       recordReasoned(cwd,"post_tool",item.operation,item.path,result,fresh,undefined,started);
-      pendingPostTool.delete(item.path);redeliveries.delete(item.path);return undefined;
+      pendingPostTool.delete(item.queueKey);return undefined;
     }
     const page=renderReasonedPage(result,fresh,budget);
     recordActualDelivery(result,page);
     recordReasoned(cwd,"post_tool",item.operation,item.path,result,fresh,page,started);
-    if(page.omittedIds.length&&(redeliveries.get(item.path)??0)<MAX_REDELIVERIES)pendingPostTool.set(item.path,item);
-    else{pendingPostTool.delete(item.path);redeliveries.delete(item.path);}
-    return "ATDD post-tool reconciliation. Changed file "+item.path+":\n"+page.text;
+    item.result=result;item.ids=page.omittedIds;
+    if(page.omittedIds.length&&page.emittedIds.length)queuePost(item);
+    else pendingPostTool.delete(item.queueKey);
+    const text="ATDD post-tool reconciliation. Changed file "+item.path+":\n"+page.text;
+    const receipt={item,result,page};
+    pageReceipts.set(text,receipt);
+    pageReceipts.set(text.replace("ATDD post-tool reconciliation.","ATDD post-tool reconciliation (continued)."),receipt);
+    return text;
   }
   /** Deliver rules a previous post-tool page omitted by budget (next tool result, any tool). */
   function drainPending(cwd:string):string[]{
     const texts:string[]=[];
     for(const item of [...pendingPostTool.values()]){
-      redeliveries.set(item.path,(redeliveries.get(item.path)??0)+1);
       try{const t=postToolPage(cwd,item,4_500);if(t)texts.push(t.replace("ATDD post-tool reconciliation.","ATDD post-tool reconciliation (continued)."));}
-      catch(e){pendingPostTool.delete(item.path);texts.push("ATDD post-tool continuation failed for "+item.path+": "+String(e));}
+      catch(e){if(item.queueKey)pendingPostTool.delete(item.queueKey);texts.push("ATDD post-tool continuation failed for "+item.path+": "+String(e));}
     }
     return texts;
   }
@@ -630,10 +662,27 @@ export default function atdd(pi:ExtensionAPI):void {
     const out:string[]=[];let used=0,dropped=0;
     for(const t of texts){
       if(used+t.length<=POST_TOOL_CAP||!out.length&&!dropped){out.push(t);used+=t.length;}
-      else dropped++;
+      else {
+        dropped++;
+        const receipt=pageReceipts.get(t);
+        if(receipt){
+          for(const id of receipt.page.emittedIds)delivered.delete(key(receipt.result.scope,id));
+          receipt.item.ids=[...receipt.page.emittedIds,...(receipt.item.ids??[])];
+          if(receipt.item.queueKey){
+            pendingPostTool.delete(receipt.item.queueKey);
+            queuePost(receipt.item);
+          }
+        }
+      }
     }
+    pageReceipts.clear();
     if(dropped)out.push("ATDD: "+dropped+" more changed file notice(s) omitted to bound hook output. "+
-      "Their rules are delivered by the contextual preflight when you edit or write each file; retry the edit once to receive them.");
+      "Their guidance remains pending for a later non-read-only tool result unless the queue overflow notice says otherwise.");
+    if(postQueueOverflow){
+      out.push("ATDD post-tool guidance queue overflow: "+postQueueOverflow+
+        " page(s) could not be queued. Inspect changed files with version control and run atdd context --task <current task> --path <changed file> --operation edit --limit <count> --offset <offset>.");
+      postQueueOverflow=0;
+    }
     return out;
   }
   function reconcile(cwd:string,toolName:string):string[]{
