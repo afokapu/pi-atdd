@@ -8,6 +8,7 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "nod
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { loadCatalog, loadConfig, type Catalog, type Selector } from "./catalog.ts";
+import { readTrackerConfig } from "./tracker-issue.ts";
 import type { StructureProfile } from "./profile.ts";
 import { ReasoningSession, type ContextObservation } from "./reasoning-context.ts";
 import { renderReasonedPage, type RenderedPage } from "./render-reasoning.ts";
@@ -112,6 +113,7 @@ export default function atdd(pi:ExtensionAPI):void {
   registerBusyState(pi); // PLT-121: busy/idle state file for the relaunch script; inert without an identity
   let cwdKey="", task="", serial=0;
   let catalog:Catalog|undefined,selectors:Selector[]=[],profile:StructureProfile|undefined;
+  let trackerConfigured=false;
   let reasoning:ReasoningSession|undefined;
   let observedRepo:RepositorySnapshot|undefined;
   let observationWarning=false;
@@ -276,6 +278,7 @@ export default function atdd(pi:ExtensionAPI):void {
       const config=loadConfig(cwd);
       catalog=loadCatalog(config.sources,cwd);
       selectors=config.selectors;profile=config.profile;
+      trackerConfigured=readTrackerConfig(cwd)!==null;
       cwdKey=cwd;reset();
     }
     if(!reasoning)reasoning=new ReasoningSession(catalog,selectors,profile);
@@ -285,10 +288,12 @@ export default function atdd(pi:ExtensionAPI):void {
   const currentRevision=()=>observedRepo?.revision??undefined;
   function observe(cwd:string,operation:"task"|"edit"|"create"|"review",
     origin:ContextObservation["origin"],provenance:string,path?:string,sourceText?:string){
-    return ensure(cwd).observe({
+    const result=ensure(cwd).observe({
       scope:scopeFor(path),task:task||"unknown task",path,sourceText,operation,origin,provenance,
       ...(currentRevision()?{revision:currentRevision()}:{}),
     });
+    return trackerConfigured?{...result,activations:result.activations.filter(a=>
+      a.id!=="shared.tracker.unconfigured-notice")} : result;
   }
   function newlyRelevant(result:ReturnType<typeof observe>):string[]{
     for(const id of result.removed)delivered.delete(key(result.scope,id));

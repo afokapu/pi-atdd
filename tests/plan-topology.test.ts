@@ -13,7 +13,7 @@ const PLAN = join(ROOT, "plan/pi-atdd");
 const ACCEPTANCE_BASELINE = JSON.parse(readFileSync(join(ROOT, "tests/fixtures/acceptance-urn-baseline-09975bb5.json"), "utf8")) as string[];
 const FEATURES = ["bind-tracker-issue", "deliver-guidance", "evaluate-delivery", "guide-coach", "hand-off-context",
   "manage-profiles", "manage-seats", "resolve-activation", "route-attention"];
-const bound = (): string[] => [...new Set(readdirSync(join(ROOT, "tests")).filter(f => f.endsWith(".ts"))
+const bound = (): string[] => [...new Set(readdirSync(join(ROOT, "tests"), { recursive: true }).filter((f): f is string => typeof f === "string" && f.endsWith(".ts"))
   .flatMap(f => [...readFileSync(join(ROOT, "tests", f), "utf8").matchAll(/^\/\/ Acceptance: acc:pi-atdd:([\w-]+)/gm)].map(m => m[1]!)))].sort();
 const OUTCOME = /^[DLPCEMYRK]\d{3}\.yaml$/;
 const outcomeFiles = () => existsSync(PLAN) ? readdirSync(PLAN).filter(f => OUTCOME.test(f)).sort() : [];
