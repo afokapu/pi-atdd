@@ -22,7 +22,7 @@ const nested = (): Array<{ file: string; doc: Record<string, unknown> }> =>
 
 test("all formal implementation criteria follow the existing ATDD-Bun V2 template", () => {
   const all = nested();
-  assert.equal(all.length, 119);
+  assert.equal(all.length, 121);
   const urns = new Set<string>();
   const ids = new Set<string>();
   for (const { file, doc } of all) {
@@ -44,10 +44,14 @@ test("the acceptance schema rejects absent proof fields, not just malformed YAML
   assert.ok(validate.errors?.some(e => e.instancePath.startsWith("/then")));
 });
 
+const testFiles = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap(entry => {
+  const path = join(dir, entry.name);
+  return entry.isDirectory() ? testFiles(path) : entry.name.endsWith(".test.ts") || entry.name.endsWith("-smoke.ts") ? [path] : [];
+});
+
 test("all declared acceptances have a test binding", () => {
   const expected = nested().map(x => (x.doc.identity as { urn: string }).urn);
-  const tests = readdirSync(join(root, "tests")).filter(f => f.endsWith(".test.ts") || f.endsWith("-smoke.ts"));
-  const text = tests.map(path => readFileSync(join(root, "tests", path), "utf8")).join("\n");
+  const text = testFiles(join(root, "tests")).map(path => readFileSync(path, "utf8")).join("\n");
   const bound = [...text.matchAll(/^\/\/ Acceptance: (acc:pi-atdd:[\w-]+)/gm)].map(m => m[1]!);
   const unbound = expected.filter(urn => !bound.includes(urn));
   assert.deepEqual(unbound, [], "every declared acceptance must have a test binding");
