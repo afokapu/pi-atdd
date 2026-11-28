@@ -38,6 +38,7 @@ export type StripOptions = {
 /** The subset of Pi's extension context this module uses. */
 type Ctx = {
   isProjectTrusted: () => boolean;
+  isIdle?: () => boolean;
   sessionManager: { getBranch: () => unknown[] };
   ui: {
     notify: (message: string, level?: string) => void;
@@ -403,15 +404,26 @@ function registerCoach(api: Api, cfg: LaunchConfig, now: () => Date, options: St
   const visible = (at: Date) => [...operational(foldAll(readSpool(cfg.spool, cfg, key()).events), at).values()]
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   const actionable = (at: Date) => visible(at).filter(it => effectiveState(it, at) !== "snoozed");
+  // A new wake generation starts only on raise, reopen or reassignment, not ack/snooze.
+  const wakeKey = (it: AttentionItem, events: SignedEvent[]) => {
+    const revision = events.reduce((rev, ev) => ev.event === "state" && ev.rec.id === it.id &&
+      (ev.rec.state === "reopened" || ev.rec.state === "reassigned") && ev.rec.revision <= it.revision
+      ? Math.max(rev, ev.rec.revision) : rev, 1);
+    return `${it.id}:${revision}`;
+  };
   // A wake counts as announced only once a turn starts with it (before_agent_start). Until then it
   // is in flight and is re-sent after WAKE_WINDOW_MS, so a lost follow-up is not silent (PLT-118 review P2 A04).
   const wakeInFlight = new Map<string, number>();
   const WAKE_WINDOW_MS = 60_000;
   const alertNew = (ctx: Ctx) => {
-    if (!authorized(ctx, cfg, options)) return;
+    if (!authorized(ctx, cfg, options) || ctx.isIdle?.() === false) return;
     const nowMs = now().getTime();
-    const unseen = actionable(now()).filter(it => !announced.has(it.id) &&
-      nowMs - (wakeInFlight.get(it.id) ?? -Infinity) >= WAKE_WINDOW_MS);
+    const events = readSpool(cfg.spool, cfg, key()).events;
+    const unseen = [...operational(foldAll(events), now()).values()]
+      .filter(it => effectiveState(it, now()) !== "snoozed")
+      .map(it => ({ item: it, key: wakeKey(it, events) }))
+      .filter(({ key }) => !announced.has(key) &&
+        nowMs - (wakeInFlight.get(key) ?? -Infinity) >= WAKE_WINDOW_MS);
     if (!unseen.length || !api.sendMessage) return;
     // One custom follow-up per batch. A busy Pi queues it until the run ends;
     // an idle Pi starts a turn. The item IDs, not the notice, are the record.
@@ -419,11 +431,11 @@ function registerCoach(api: Api, cfg: LaunchConfig, now: () => Date, options: St
       api.sendMessage({
         customType: "pi-atdd-attention-alert", display: false,
         content: "SYSTEM: " + unseen.length + " new attention item(s) for this Coach: " +
-          unseen.slice(0, 20).map(it => it.id).join(", ") +
+          unseen.slice(0, 20).map(({ item }) => item.id).join(", ") +
           ". Inspect actionable items with attention_list and resolve within your grant.",
-        details: { ids: unseen.map(it => it.id) },
+        details: { ids: unseen.map(({ item }) => item.id) },
       }, { triggerTurn: true, deliverAs: "followUp" });
-      for (const item of unseen) wakeInFlight.set(item.id, nowMs);
+      for (const item of unseen) wakeInFlight.set(item.key, nowMs);
     } catch (e) {
       // The signed item stays durable and the next poll retries its notice.
       ctx.ui.notify("ATDD attention wake deferred: " + String(e), "warning");
@@ -472,6 +484,12 @@ function registerCoach(api: Api, cfg: LaunchConfig, now: () => Date, options: St
     refresh(ctx);
     alertNew(ctx);
   });
+  // Do not enqueue while Pi is busy: a follow-up cannot be withdrawn if the item closes.
+  // Recheck the authoritative spool at the settled boundary before sending.
+  api.on("agent_settled", (_event, ctx) => {
+    try { alertNew(ctx); }
+    catch (e) { ctx.ui.notify("ATDD attention refresh deferred: " + String(e), "warning"); }
+  });
   api.on("session_tree", (_event, ctx) => {
     if (!authorized(ctx, cfg, options)) return;
     live = ctx;
@@ -483,11 +501,14 @@ function registerCoach(api: Api, cfg: LaunchConfig, now: () => Date, options: St
     // The successor's first authorized turn must activate polling even if
     // session_start observed the predecessor's now-stale lease.
     startPolling(ctx);
-    // The turn that starts now carries any wake sent earlier: those items are announced.
-    for (const id of wakeInFlight.keys()) announced.add(id);
+    // The turn receives the current actionable set, even if it was started by the user.
     wakeInFlight.clear();
     refresh(ctx);
-    const items = actionable(now());
+    const events = readSpool(cfg.spool, cfg, key()).events;
+    const items = [...operational(foldAll(events), now()).values()]
+      .filter(it => effectiveState(it, now()) !== "snoozed")
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    for (const item of items) announced.add(wakeKey(item, events));
     if (!items.length) return undefined;
     return { message: {
       customType: "pi-atdd-attention-pending", display: false,
