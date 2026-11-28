@@ -2,6 +2,12 @@
 
 Headings use Pi's format (`## [x.y.z] - YYYY-MM-DD`), so Pi can read this file for its changelog notices. Pi 1.5.2 does not show a notice for a plain pin bump; see `docs/RELEASE-0.4.0.md`.
 
+## [0.6.3] - 2026-11-28
+
+### Changed
+
+- `planner.plan.confirm-binds-an-issue` is now a pi-atdd-owned, tool-neutral rule: before ratifying, bind the plan to an issue in the configured tracker (Linear is one example) and record its id on the plan. It no longer names a local manifest, State Store or `atdd plan session bind-issue`. The vendored ATDD-Bun source is unchanged, the rule id and the `planner.tracker.issue-before-ratify` requirement are kept. (ATD-55)
+
 ## [0.6.2] - 2026-11-28
 
 ### Fixed
