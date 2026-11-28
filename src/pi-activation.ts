@@ -20,6 +20,7 @@ import type { ExecutionCheckpoint } from "./execution-lifecycle.ts";
 import { registerBusyState } from "./busy-state.ts";
 import { appendActivation, activationPathCategory, formatActivationSummary, type ActivationEvent, type ActivationPoint } from "./activation-telemetry.ts";
 import { performance } from "node:perf_hooks";
+import { homedir } from "node:os";
 import type { Proof } from "./inference.ts";
 import { Type } from "typebox";
 import { StringEnum } from "@earendil-works/pi-ai";
@@ -75,6 +76,13 @@ function outsideRepository(cwd:string,supplied:string):boolean{
     rest.unshift(basename(cursor));cursor=dirname(cursor);
   }
   try{return outside(realpathSync(root),join(realpathSync(cursor),...rest));}catch{return false;}
+}
+/** Keep jj seat records out of the versioned tree, partitioned by canonical workspace. */
+function externalHandoffDir(cwd:string):string{
+  const agentDir=process.env.PI_CODING_AGENT_DIR || join(homedir(),".pi","agent");
+  const workspace=realpathSync(cwd);
+  const key=createHash("sha256").update(workspace).digest("hex");
+  return join(resolve(agentDir),"handoffs",key);
 }
 /** PLT-94: the model reads intent; the extension only exposes the switch, guarded. */
 const INTENT_TOOL="set_atdd_mode";
@@ -429,11 +437,17 @@ export default function atdd(pi:ExtensionAPI):void {
         ctx.ui.notify("ATDD context handoff not started: the run was aborted","info");
         return;
       }
-      const path=join(ctx.cwd,".atdd-pi","handoffs",new Date().toISOString().replace(/[:.]/g,"-")+".md");
       // If a task seat is launch-bound, checkpoint its authoritative revision and
       // task-scoped attention before starting a successor. Unknown items fail closed.
       const seatCheckpoint=executionSeat?.checkpoint(ctx,executionSeat.snapshotAttention());
-      const record=buildHandoff({...request,handoffPath:path});
+      const dir=seatCheckpoint?.revision.vcs==="jj" ? externalHandoffDir(ctx.cwd) : join(ctx.cwd,".atdd-pi","handoffs");
+      if(seatCheckpoint?.revision.vcs==="jj" && !outsideRepository(ctx.cwd,dir))
+        throw new Error("handoff directory must be outside the repository");
+      mkdirSync(dir,{recursive:true,mode:0o700});
+      if(seatCheckpoint?.revision.vcs==="jj" && !outsideRepository(ctx.cwd,realpathSync(dir)))
+        throw new Error("handoff directory must be outside the repository");
+      const path=join(dir,new Date().toISOString().replace(/[:.]/g,"-")+".md");
+      const record=buildHandoff({...request,revision:seatCheckpoint?.revision.head??request.revision,handoffPath:path});
       const text=seatCheckpoint ? record+"\n\nVerified seat checkpoint: task "+
         seatCheckpoint.taskId+"; source session "+seatCheckpoint.sourceSessionId+
         "; exact "+seatCheckpoint.revision.vcs+" revision "+seatCheckpoint.revision.head+
@@ -441,8 +455,7 @@ export default function atdd(pi:ExtensionAPI):void {
         "; acceptance remains "+seatCheckpoint.acceptance+
         "; grant "+seatCheckpoint.grant.state+
         (seatCheckpoint.grant.reference ? " (reference "+seatCheckpoint.grant.reference+")" : "")+"." : record;
-      mkdirSync(dirname(path),{recursive:true});
-      writeFileSync(path,text,{flag:"wx"});
+      writeFileSync(path,text,{flag:"wx",mode:0o600});
       readyHandoff={text,path,kickoff:kickoffText(undefined),
         ...(seatCheckpoint?{seatCheckpoint}:{})};
       pi.sendUserMessage("/atdd-handoff",{expandPromptTemplates:true});
@@ -458,14 +471,16 @@ export default function atdd(pi:ExtensionAPI):void {
       if(arg){
         // Manual relaunch (crashed or closed tab): seed from a record kept on disk. Only a file
         // directly inside this workspace's handoffs directory is accepted.
-        const dir=join(ctx.cwd,".atdd-pi","handoffs");
+        const external=externalHandoffDir(ctx.cwd);
+        const dir=existsSync(external)?external:join(ctx.cwd,".atdd-pi","handoffs");
         // The whole chain must stay inside the canonical workspace: a redirected .atdd-pi or
         // handoffs directory is refused before anything is listed or read.
         let realDir:string;
         try{
           const realRoot=realpathSync(ctx.cwd);
           realDir=realpathSync(dir);
-          if(relative(realRoot,realDir)!==join(".atdd-pi","handoffs"))throw new Error("redirected");
+          if(dir===external ? !outsideRepository(realRoot,realDir) || realDir!==join(realpathSync(dirname(dir)),basename(dir)) :
+            relative(realRoot,realDir)!==join(".atdd-pi","handoffs"))throw new Error("redirected");
         }catch(e){
           const redirected=String(e).includes("redirected");
           ctx.ui.notify(redirected?"Handoff directory resolves outside the workspace; refusing to read it: "+dir:"No ATDD context handoff record found in "+dir,redirected?"error":"info");

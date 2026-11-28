@@ -182,6 +182,61 @@ test("A05: with no kept record, /atdd-handoff latest says so", async () => {
   });
 });
 
+// ATD-48: exercise the actual adapter and lease transfer in a jj-colocated repository.
+test("jj handoff keeps its verified revision and rejects later source edits", async () => {
+  for (const changeSource of [false, true]) {
+  const root = mkdtempSync(join(tmpdir(), "pi-atdd-jj-handoff-"));
+  const repo = join(root, "repo");
+  execFileSync("git", ["init", "-q", repo]);
+  execFileSync("git", ["-C", repo, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--allow-empty", "-qm", "initial"]);
+  execFileSync("jj", ["git", "init", "--colocate", repo]);
+  writeFileSync(join(repo, "proof.txt"), "one\n");
+  const seatEnv = {
+    PI_CODING_AGENT_DIR: root, PI_ATDD_EXECUTION_MODE: "standalone", PI_ATDD_EXECUTION_PROJECT_ID: "pi-atdd",
+    PI_ATDD_EXECUTION_TASK_ID: "PLT-122", PI_ATDD_EXECUTION_COACH_ADDRESS: "main@pi-atdd",
+    PI_ATDD_EXECUTION_SEAT_ADDRESS: "driver.one@pi-atdd", PI_ATDD_EXECUTION_EXECUTION_ID: "run-a",
+    PI_ATDD_EXECUTION_SESSION_ID: "session-a", PI_ATDD_EXECUTION_MODEL_ID: "provider/model-a",
+    PI_ATDD_EXECUTION_GENERATION: "1", PI_ATDD_EXECUTION_OWNER_TOKEN: "owner-token-a",
+  };
+  try {
+    await withEnv({ ...NO_ATTN, ...seatEnv }, async () => {
+      bootstrapSeat(executionConfigFromEnv(process.env)!);
+      const h = harness(repo, [msg("Work on PLT-122")]);
+      await h.start();
+      await h.cycle();
+      let record = "";
+      let kicked = false;
+      const nextSession = async (o: any) => {
+        await o.setup({ appendMessage: (m: any) => { record = m.content[0].text; } });
+        await o.withSession({ cwd: repo, model: { provider: "provider", id: "model-a" }, isProjectTrusted: () => true,
+          sessionManager: { getSessionId: () => "session-b" }, ui: h.ctx.ui,
+          sendUserMessage: async () => { kicked = true; } });
+        return { cancelled: false };
+      };
+      if (changeSource) writeFileSync(join(repo, "proof.txt"), "two\n");
+      await h.command("", nextSession);
+      if (changeSource) {
+        assert.equal(kicked, false, "a real source change must refuse the successor");
+        assert.match(h.notes.at(-1)!, /exact source revision is unverified/);
+        const fresh = harness(repo);
+        let recovered = "";
+        await fresh.command("latest", async (o: any) => {
+          await o.setup({ appendMessage: (m: any) => { recovered = m.content[0].text; } });
+          return { cancelled: true };
+        });
+        assert.match(recovered, /ATDD context handoff/);
+        return;
+      }
+      assert.equal(kicked, true, h.notes.join("\n"));
+      const revision = /^Revision: (.+)$/m.exec(record)?.[1];
+      const verified = /exact jj revision ([a-f0-9]+)/.exec(record)?.[1];
+      assert.equal(revision, verified);
+      assert.ok(verified);
+    });
+  } finally { rmSync(root, { recursive: true, force: true }); }
+  }
+});
+
 // --- PLT-117 seat checkpoint path, launch-bound ----------------------------------------------
 test("A01 + PLT-117: a launch-bound seat is checkpointed at the handoff and the successor takes the lease", async () => {
   const root = mkdtempSync(join(tmpdir(), "pi-atdd-renew-seat-"));
