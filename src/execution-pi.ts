@@ -3,7 +3,7 @@
  * Inert without PI_ATDD_EXECUTION_* launch configuration.
  *
  * The launcher is the origin of task/seat identity. A model cannot select its
- * own task, seat or owner token. External Flow authority is read-only here.
+ * own task, seat or owner token.
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {

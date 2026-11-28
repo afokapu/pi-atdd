@@ -68,6 +68,9 @@ transition applies. A model's declaration of completion is never recovery author
 
 ## Authority adapters
 
+Historical note: the external Flow adapter described below is removed in 0.6.0.
+External mode refuses startup; use `atdd launch` for a standalone seat instead.
+
 - **Standalone Pi:** explicit `PI_ATDD_EXECUTION_MODE=standalone` plus a complete
   launcher-provided `PI_ATDD_EXECUTION_*` binding. Local lease receipts live under
   `PI_CODING_AGENT_DIR/execution/seats/`; bootstrapping generation 1 is explicit.
