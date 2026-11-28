@@ -4,9 +4,10 @@
 // Acceptance: acc:pi-atdd:plt-122-a03
 // PLT-122: automatic context renewal for Coach and worker sessions (builds on PLT-102 + PLT-117).
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { test } from "node:test";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readdirSync, symlinkSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, symlinkSync, writeFileSync, readFileSync, realpathSync, rmSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -184,7 +185,7 @@ test("A05: with no kept record, /atdd-handoff latest says so", async () => {
 
 // ATD-48: exercise the actual adapter and lease transfer in a jj-colocated repository.
 test("jj handoff keeps its verified revision and rejects later source edits", async () => {
-  for (const changeSource of [false, true]) {
+  for (const changeSource of [false, true, "symlink", "mode"] as const) {
   const root = mkdtempSync(join(tmpdir(), "pi-atdd-jj-handoff-"));
   const repo = join(root, "repo");
   execFileSync("git", ["init", "-q", repo]);
@@ -202,8 +203,21 @@ test("jj handoff keeps its verified revision and rejects later source edits", as
     await withEnv({ ...NO_ATTN, ...seatEnv }, async () => {
       bootstrapSeat(executionConfigFromEnv(process.env)!);
       const h = harness(repo, [msg("Work on PLT-122")]);
+      if (typeof changeSource === "string") {
+        const key = createHash("sha256").update(realpathSync(repo)).digest("hex");
+        mkdirSync(join(root, "handoffs"), { recursive: true });
+        mkdirSync(join(root, "redirected"));
+        if (changeSource === "symlink") symlinkSync(join(root, "redirected"), join(root, "handoffs", key));
+        else mkdirSync(join(root, "handoffs", key), { mode: 0o755 });
+      }
       await h.start();
       await h.cycle();
+      if (typeof changeSource === "string") {
+        assert.deepEqual(readdirSync(join(root, "redirected")), []);
+        assert.equal(h.sent.length, 0);
+        assert.match(h.notes.at(-1)!, /handoff directory.*(unsafe|symlink)/i);
+        return;
+      }
       let record = "";
       let kicked = false;
       const nextSession = async (o: any) => {
@@ -309,6 +323,32 @@ test("review P1: the generated kickoff is recognised and never replaces the rest
       assert.doesNotMatch(second!, /Continue PLT-122 from the ATDD/);
     } finally { for (const stop of stops) await stop(); rmSync(cwd, { recursive: true, force: true }); }
   });
+});
+
+test("ATD-48: manual recovery searches both stores and selects the newest valid record", async () => {
+  const root = mkdtempSync(join(tmpdir(), "pi-atdd-recovery-"));
+  const cwd = join(root, "repo"); mkdirSync(cwd);
+  try {
+    await withEnv({ ...NO_ATTN, PI_CODING_AGENT_DIR: root }, async () => {
+      const key = createHash("sha256").update(realpathSync(cwd)).digest("hex");
+      const external = join(root, "handoffs", key), legacy = join(cwd, ".atdd-pi", "handoffs");
+      mkdirSync(external, { recursive: true, mode: 0o700 }); mkdirSync(legacy, { recursive: true });
+      const record = (task: string) => buildHandoff({ ...base, task });
+      writeFileSync(join(external, "2026-01-01.md"), record("external old"));
+      writeFileSync(join(legacy, "2026-02-01.md"), record("legacy newer"));
+      writeFileSync(join(legacy, "2026-04-01.md"), "not a record");
+      for (const [dir, name, day] of [[external, "2026-01-01.md", 1], [legacy, "2026-02-01.md", 2], [legacy, "2026-04-01.md", 4]] as const)
+        utimesSync(join(dir, name), day, day);
+      const h = harness(cwd); let seeded = "";
+      const run = async (o: any) => { await o.setup({ appendMessage: (m: any) => { seeded = m.content[0].text; } }); return { cancelled: true }; };
+      await h.command("latest", run); assert.match(seeded, /legacy newer/);
+      await h.command("2026-01-01.md", run); assert.match(seeded, /external old/);
+      writeFileSync(join(external, "2026-03-01.md"), record("external newest"));
+      utimesSync(join(external, "2026-03-01.md"), 3, 3);
+      await h.command("latest", run); assert.match(seeded, /external newest/);
+      await h.command("2026-02-01.md", run); assert.match(seeded, /legacy newer/);
+    });
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 test("review P1: manual relaunch refuses symlinks and non-regular files", async () => {

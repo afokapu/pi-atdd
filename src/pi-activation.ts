@@ -84,6 +84,12 @@ function externalHandoffDir(cwd:string):string{
   const key=createHash("sha256").update(workspace).digest("hex");
   return join(resolve(agentDir),"handoffs",key);
 }
+function safeExternalHandoffDir(cwd:string,dir:string):void{
+  const stat=lstatSync(dir);
+  if(!stat.isDirectory() || stat.isSymbolicLink() || process.getuid?.()===undefined || stat.uid!==process.getuid() ||
+    (stat.mode & 0o7777)!==0o700 || !outsideRepository(cwd,realpathSync(dir)))
+    throw new Error("unsafe handoff directory (symlink, ownership, permissions or location)");
+}
 /** PLT-94: the model reads intent; the extension only exposes the switch, guarded. */
 const INTENT_TOOL="set_atdd_mode";
 const INTENT_RULE="Use set_atdd_mode when the user signals, in any wording or language, that the work is exploratory, "+
@@ -444,8 +450,7 @@ export default function atdd(pi:ExtensionAPI):void {
       if(seatCheckpoint?.revision.vcs==="jj" && !outsideRepository(ctx.cwd,dir))
         throw new Error("handoff directory must be outside the repository");
       mkdirSync(dir,{recursive:true,mode:0o700});
-      if(seatCheckpoint?.revision.vcs==="jj" && !outsideRepository(ctx.cwd,realpathSync(dir)))
-        throw new Error("handoff directory must be outside the repository");
+      if(seatCheckpoint?.revision.vcs==="jj")safeExternalHandoffDir(ctx.cwd,dir);
       const path=join(dir,new Date().toISOString().replace(/[:.]/g,"-")+".md");
       const record=buildHandoff({...request,revision:seatCheckpoint?.revision.head??request.revision,handoffPath:path});
       const text=seatCheckpoint ? record+"\n\nVerified seat checkpoint: task "+
@@ -469,38 +474,33 @@ export default function atdd(pi:ExtensionAPI):void {
       let ready=readyHandoff;
       const arg=typeof args==="string"?args.trim():"";
       if(arg){
-        // Manual relaunch (crashed or closed tab): seed from a record kept on disk. Only a file
-        // directly inside this workspace's handoffs directory is accepted.
-        const external=externalHandoffDir(ctx.cwd);
-        const dir=existsSync(external)?external:join(ctx.cwd,".atdd-pi","handoffs");
-        // The whole chain must stay inside the canonical workspace: a redirected .atdd-pi or
-        // handoffs directory is refused before anything is listed or read.
-        let realDir:string;
-        try{
-          const realRoot=realpathSync(ctx.cwd);
-          realDir=realpathSync(dir);
-          if(dir===external ? !outsideRepository(realRoot,realDir) || realDir!==join(realpathSync(dirname(dir)),basename(dir)) :
-            relative(realRoot,realDir)!==join(".atdd-pi","handoffs"))throw new Error("redirected");
-        }catch(e){
-          const redirected=String(e).includes("redirected");
-          ctx.ui.notify(redirected?"Handoff directory resolves outside the workspace; refusing to read it: "+dir:"No ATDD context handoff record found in "+dir,redirected?"error":"info");
-          return;
+        // Search both stores, refusing redirected directories and non-regular records.
+        const external=externalHandoffDir(ctx.cwd), legacy=join(ctx.cwd,".atdd-pi","handoffs");
+        const candidates:{file:string;text:string;mtime:number}[]=[];
+        for(const dir of [external,legacy]){
+          try{lstatSync(dir);}catch(e){if((e as NodeJS.ErrnoException).code==="ENOENT")continue;throw e;}
+          try{
+            const realRoot=realpathSync(ctx.cwd), realDir=realpathSync(dir);
+            if(dir===external)safeExternalHandoffDir(ctx.cwd,dir);
+            else if(relative(realRoot,realDir)!==join(".atdd-pi","handoffs"))throw new Error("redirected");
+            const names=arg==="latest"?readdirSync(realDir):[arg];
+            for(const name of names){
+              if(!/^[\w.-]+\.md$/.test(name))continue;
+              try{
+                const file=join(realDir,name), info=lstatSync(file);
+                if(!info.isFile()||info.isSymbolicLink()||dirname(realpathSync(file))!==realDir)continue;
+                const text=readFileSync(file,"utf8");
+                if(text.includes(RECORD_HEADER))candidates.push({file,text,mtime:info.mtimeMs});
+              }catch{ /* invalid or concurrently removed record */ }
+            }
+          }catch{
+            ctx.ui.notify("Handoff directory resolves outside the workspace or is unsafe; refusing to read it: "+dir,"error");return;
+          }
         }
-        let name=arg;
-        if(arg==="latest"){
-          try{name=readdirSync(realDir).filter(f=>f.endsWith(".md")&&lstatSync(join(realDir,f)).isFile()).sort().at(-1)??"";}catch{name="";}
-          if(!name){ctx.ui.notify("No ATDD context handoff record found in "+dir,"info");return;}
-        }
-        const file=join(dir,name);
-        let text="";
-        try{
-          if(!/^[\w.-]+\.md$/.test(name))throw new Error("bad name");
-          // Regular file directly in the real handoffs directory, never a link.
-          const realFile=realpathSync(join(realDir,name));
-          if(dirname(realFile)!==realDir||lstatSync(join(realDir,name)).isSymbolicLink()||!lstatSync(realFile).isFile())throw new Error("not a regular file in the handoff dir");
-          text=readFileSync(realFile,"utf8");
-        }catch{ctx.ui.notify(arg+" is not a handoff record in "+dir,"error");return;}
-        if(!text.includes(RECORD_HEADER)){ctx.ui.notify(arg+" is not a handoff record in "+dir,"error");return;}
+        candidates.sort((a,b)=>b.mtime-a.mtime || b.file.localeCompare(a.file));
+        const selected=candidates[0];
+        if(!selected){ctx.ui.notify(arg==="latest"?"No ATDD context handoff record found":arg+" is not a handoff record",arg==="latest"?"info":"error");return;}
+        const {file,text}=selected;
         if(!text.includes("\n<<<TASK\n"))
           ctx.ui.notify("Legacy handoff record (written before task markers): its task is UNKNOWN. Restate and verify the task before relying on it.","warning");
         ready={text,path:file,kickoff:kickoffText(undefined)};
