@@ -2,6 +2,12 @@
 
 Headings use Pi's format (`## [x.y.z] - YYYY-MM-DD`), so Pi can read this file for its changelog notices. Pi 1.5.2 does not show a notice for a plain pin bump; see `docs/RELEASE-0.4.0.md`.
 
+## [0.5.1] - 2026-11-28
+
+### Fixed
+
+- Automatic 85% handoff in jj-colocated repositories: records are written outside the working copy, with a validated directory chain and recovery from both stores. CI runs a smoke test with pinned jj-cli. (ATD-48)
+
 ## [0.5.0] - 2026-11-27
 
 ### Added
