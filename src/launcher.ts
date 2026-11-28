@@ -144,7 +144,8 @@ export function planLaunch(input: LaunchInput, deps: LaunchDeps = defaultDeps, p
   }
   return {
     role: role as LaunchRole, cwd: resolve(text(input.cwd) ?? "."),
-    piArgs: [...margs, "--name", label!, ...sessionArgs, ...(input.piArgs ?? [])],
+    piArgs: [...margs, ...(role === "worker" || role === "reviewer" ? ["--exclude-tools", "mcp__wispr*,mcp__granola*,mcp__google*"] : []),
+      "--name", label!, ...sessionArgs, ...(input.piArgs ?? [])],
     env, sessionId, executionId, seatAddress, modelId,
   };
 }

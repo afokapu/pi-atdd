@@ -16,13 +16,18 @@ addFormats(ajv);
 const appendix = JSON.parse(readFileSync(join(root, "tests/fixtures/schema/appendix.schema.json"), "utf8"));
 ajv.addSchema(appendix, "appendix.schema.json");
 const validate = ajv.compile(schema);
+const testFiles = (directory: string): string[] => readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
+  const path = join(directory, entry.name);
+  if (entry.isDirectory()) return testFiles(path);
+  return /(?:\.test|-smoke)\.ts$/.test(entry.name) ? [path] : [];
+});
 const nested = (): Array<{ file: string; doc: Record<string, unknown> }> =>
   readdirSync(join(root, "plan/pi-atdd")).filter(f => /^[DLPCEMYRK]\d{3}\.yaml$/.test(f)).sort().flatMap(f =>
     ((readYaml(join(root, "plan/pi-atdd", f)).acceptances ?? []) as Array<Record<string, unknown>>).map(doc => ({ file: f, doc })));
 
 test("all formal implementation criteria follow the existing ATDD-Bun V2 template", () => {
   const all = nested();
-  assert.equal(all.length, 119);
+  assert.equal(all.length, 123);
   const urns = new Set<string>();
   const ids = new Set<string>();
   for (const { file, doc } of all) {
@@ -46,8 +51,7 @@ test("the acceptance schema rejects absent proof fields, not just malformed YAML
 
 test("all declared acceptances have a test binding", () => {
   const expected = nested().map(x => (x.doc.identity as { urn: string }).urn);
-  const tests = readdirSync(join(root, "tests")).filter(f => f.endsWith(".test.ts") || f.endsWith("-smoke.ts"));
-  const text = tests.map(path => readFileSync(join(root, "tests", path), "utf8")).join("\n");
+  const text = testFiles(join(root, "tests")).map(path => readFileSync(path, "utf8")).join("\n");
   const bound = [...text.matchAll(/^\/\/ Acceptance: (acc:pi-atdd:[\w-]+)/gm)].map(m => m[1]!);
   const unbound = expected.filter(urn => !bound.includes(urn));
   assert.deepEqual(unbound, [], "every declared acceptance must have a test binding");
