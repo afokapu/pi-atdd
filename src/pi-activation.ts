@@ -84,11 +84,18 @@ function externalHandoffDir(cwd:string):string{
   const key=createHash("sha256").update(workspace).digest("hex");
   return join(resolve(agentDir),"handoffs",key);
 }
-function safeExternalHandoffDir(cwd:string,dir:string):void{
-  const stat=lstatSync(dir);
-  if(!stat.isDirectory() || stat.isSymbolicLink() || process.getuid?.()===undefined || stat.uid!==process.getuid() ||
-    (stat.mode & 0o7777)!==0o700 || !outsideRepository(cwd,realpathSync(dir)))
-    throw new Error("unsafe handoff directory (symlink, ownership, permissions or location)");
+function safeExternalHandoffDir(cwd:string,dir:string,create=false):void{
+  const agent=dirname(dirname(dir)), parent=dirname(dir), uid=process.getuid?.();
+  let previous:string|undefined;
+  for(const [index,path] of [agent,parent,dir].entries()){
+    if(create && index>0){try{mkdirSync(path,{mode:0o700});}catch(e){if((e as NodeJS.ErrnoException).code!=="EEXIST")throw e;}}
+    const stat=lstatSync(path), real=realpathSync(path);
+    if(!stat.isDirectory() || stat.isSymbolicLink() || uid===undefined || stat.uid!==uid ||
+      (index===2 && (stat.mode & 0o7777)!==0o700) || !outsideRepository(cwd,real) ||
+      (previous!==undefined && real!==join(previous,basename(path))))
+      throw new Error("unsafe handoff directory (symlink, ownership, permissions or location)");
+    previous=real;
+  }
 }
 /** PLT-94: the model reads intent; the extension only exposes the switch, guarded. */
 const INTENT_TOOL="set_atdd_mode";
@@ -449,8 +456,8 @@ export default function atdd(pi:ExtensionAPI):void {
       const dir=seatCheckpoint?.revision.vcs==="jj" ? externalHandoffDir(ctx.cwd) : join(ctx.cwd,".atdd-pi","handoffs");
       if(seatCheckpoint?.revision.vcs==="jj" && !outsideRepository(ctx.cwd,dir))
         throw new Error("handoff directory must be outside the repository");
-      mkdirSync(dir,{recursive:true,mode:0o700});
-      if(seatCheckpoint?.revision.vcs==="jj")safeExternalHandoffDir(ctx.cwd,dir);
+      if(seatCheckpoint?.revision.vcs==="jj")safeExternalHandoffDir(ctx.cwd,dir,true);
+      else mkdirSync(dir,{recursive:true,mode:0o700});
       const path=join(dir,new Date().toISOString().replace(/[:.]/g,"-")+".md");
       const record=buildHandoff({...request,revision:seatCheckpoint?.revision.head??request.revision,handoffPath:path});
       const text=seatCheckpoint ? record+"\n\nVerified seat checkpoint: task "+

@@ -185,7 +185,7 @@ test("A05: with no kept record, /atdd-handoff latest says so", async () => {
 
 // ATD-48: exercise the actual adapter and lease transfer in a jj-colocated repository.
 test("jj handoff keeps its verified revision and rejects later source edits", async () => {
-  for (const changeSource of [false, true, "symlink", "mode"] as const) {
+  for (const changeSource of [false, true, "symlink", "parent-symlink", "mode"] as const) {
   const root = mkdtempSync(join(tmpdir(), "pi-atdd-jj-handoff-"));
   const repo = join(root, "repo");
   execFileSync("git", ["init", "-q", repo]);
@@ -205,10 +205,13 @@ test("jj handoff keeps its verified revision and rejects later source edits", as
       const h = harness(repo, [msg("Work on PLT-122")]);
       if (typeof changeSource === "string") {
         const key = createHash("sha256").update(realpathSync(repo)).digest("hex");
-        mkdirSync(join(root, "handoffs"), { recursive: true });
         mkdirSync(join(root, "redirected"));
-        if (changeSource === "symlink") symlinkSync(join(root, "redirected"), join(root, "handoffs", key));
-        else mkdirSync(join(root, "handoffs", key), { mode: 0o755 });
+        if (changeSource === "parent-symlink") symlinkSync(join(root, "redirected"), join(root, "handoffs"));
+        else {
+          mkdirSync(join(root, "handoffs"), { recursive: true });
+          if (changeSource === "symlink") symlinkSync(join(root, "redirected"), join(root, "handoffs", key));
+          else mkdirSync(join(root, "handoffs", key), { mode: 0o755 });
+        }
       }
       await h.start();
       await h.cycle();
