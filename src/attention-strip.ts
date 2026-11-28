@@ -132,12 +132,16 @@ export function registerAttentionStrip(pi: ExtensionAPI, options: StripOptions =
 }
 
 const LIST_LIMIT = 25;
+const ACTOR_MARKERS: Record<string, string> = {
+  decision: "🧑", grant: "🧑", review: "🤖", intervention: "🤖",
+};
+const actorMarker = (type: string): string => ACTOR_MARKERS[type] ?? "";
 const squash = (t: string) => t.toLowerCase().replace(/\s+/g, " ").trim();
 
 /** Model-visible attention list: bounded details a Coach can read and resolve from (PLT-125). */
 function listText(items: ReadonlyArray<AttentionItem>, at: Date): string {
   if (!items.length) return "0 current attention item(s)";
-  const lines = items.slice(0, LIST_LIMIT).map(it => `- ${it.id} [${it.type}] ${effectiveState(it, at)}` +
+  const lines = items.slice(0, LIST_LIMIT).map(it => `${actorMarker(it.type)}- ${it.id} [${it.type}] ${effectiveState(it, at)}` +
     (it.issue ? ` ${it.issue}` : "") + ` from ${it.from}: ${it.summary.slice(0, 280)}`);
   const more = items.length > LIST_LIMIT ? `\n${items.length - LIST_LIMIT} more item(s) not shown.` : "";
   return `${items.length} current attention item(s):\n${lines.join("\n")}${more}\n` +
@@ -344,7 +348,7 @@ function registerCoach(api: Api, cfg: LaunchConfig, now: () => Date, options: St
     const lines = [`Attention · ${visible.length} live`, ...visible.map(it => {
       const state = effectiveState(it, at);
       const until = state === "snoozed" && it.snoozedUntil ? ` until ${it.snoozedUntil}` : "";
-      return `• [${it.type}] ${it.id}${it.issue ? " " + it.issue : ""} ${state}${until} — ${it.summary}`;
+      return `${actorMarker(it.type)}• [${it.type}] ${it.id}${it.issue ? " " + it.issue : ""} ${state}${until} — ${it.summary}`;
     })];
     ctx.ui.setWidget(WIDGET_KEY, lines);
   };
