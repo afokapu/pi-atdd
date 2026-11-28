@@ -1,4 +1,9 @@
-/** Transient Coach prompts derived from live task seats and each worker's busy-state heartbeat. */
+/**
+ * Transient Coach prompts derived from live task seats and each worker's busy-state heartbeat.
+ * Eligibility uses a live seat scoped to this Coach/project plus the worker's busy-state signal. It does not
+ * query Linear and cannot verify issue status (including In Progress): a live seat is the proxy for active work;
+ * a closed/removed seat is inactive and is not reminded.
+ */
 import { readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
