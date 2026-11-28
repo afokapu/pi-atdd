@@ -11,14 +11,18 @@ import { readYaml } from "../src/catalog.ts";
 const ROOT = join(fileURLToPath(new URL("..", import.meta.url)));
 const PLAN = join(ROOT, "plan/pi-atdd");
 const ACCEPTANCE_BASELINE = JSON.parse(readFileSync(join(ROOT, "tests/fixtures/acceptance-urn-baseline-09975bb5.json"), "utf8")) as string[];
-const FEATURES = ["bind-tracker-issue", "deliver-guidance", "evaluate-delivery", "guide-coach", "hand-off-context",
+const FEATURES = ["bind-tracker-issue", "deliver-guidance", "evaluate-delivery", "exclude-personal-mcp", "guide-coach", "hand-off-context",
   "manage-profiles", "manage-seats", "resolve-activation", "route-attention"];
-const bound = (): string[] => [...new Set(readdirSync(join(ROOT, "tests")).filter(f => f.endsWith(".ts"))
-  .flatMap(f => [...readFileSync(join(ROOT, "tests", f), "utf8").matchAll(/^\/\/ Acceptance: acc:pi-atdd:([\w-]+)/gm)].map(m => m[1]!)))].sort();
+const testFiles = (directory: string): string[] => readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
+  const path = join(directory, entry.name);
+  return entry.isDirectory() ? testFiles(path) : entry.name.endsWith(".ts") ? [path] : [];
+});
+const bound = (): string[] => [...new Set(testFiles(join(ROOT, "tests"))
+  .flatMap(path => [...readFileSync(path, "utf8").matchAll(/^\/\/ Acceptance: acc:pi-atdd:([\w-]+)/gm)].map(m => m[1]!)))].sort();
 const OUTCOME = /^[DLPCEMYRK]\d{3}\.yaml$/;
 const outcomeFiles = () => existsSync(PLAN) ? readdirSync(PLAN).filter(f => OUTCOME.test(f)).sort() : [];
 
-test("the plan declares the capability and its nine features at their canonical paths", () => {
+test("the plan declares the capability and its ten features at their canonical paths", () => {
   const cap = readYaml(join(PLAN, "_pi-atdd.yaml"));
   assert.equal(cap.urn, "capability:pi-atdd");
   const listed = (cap.features as Array<{ urn: string }>).map(f => f.urn).sort();
