@@ -11,7 +11,7 @@ import {
 
 export class GraphError extends Error {}
 export type SourceKind = "bun" | "flow" | "extension";
-export type SourceSpec = { id: string; path: string; kind: SourceKind; sha256: string; revision?: string };
+export type SourceSpec = { id: string; path: string; kind: SourceKind; sha256: string; revision?: string; overrides?: string[] };
 export type Convention = {
   id: string; file: string; source: string; statement: string; kind: string;
   disposition: string | null; exceptions: string[]; summary: string; guidance: string;
@@ -231,9 +231,15 @@ export function loadCatalog(sources: SourceSpec[], cwd: string, options: Catalog
     provenance.push({ id: src.id, digest, revision: src.revision, path: root });
     const files = filesFor(root, src.kind).filter(f => f.endsWith(".convention.yaml"));
     const localIds = new Set<string>();
+    const declaredOverrides = new Set(src.overrides ?? []);
+    if (declaredOverrides.size !== (src.overrides ?? []).length || (declaredOverrides.size > 0 && src.kind !== "extension"))
+      throw new GraphError("invalid convention overrides for " + src.id);
     for (const file of files) {
       const yaml = readYaml(file), id = str(yaml.rule_id);
-      if (!id || localIds.has(id) || rules.has(id)) throw new GraphError("missing/duplicate convention ID " + id + " at " + file);
+      if (!id || localIds.has(id)) throw new GraphError("missing/duplicate convention ID " + id + " at " + file);
+      const replacing = rules.has(id);
+      if (replacing && (!declaredOverrides.delete(id) || src.kind !== "extension"))
+        throw new GraphError("missing/unauthorized convention override " + id + " at " + file);
       const metadata = obj(yaml.metadata), content = obj(yaml.content), implementation = obj(yaml.implementation), disposition = metadata.disposition ?? null;
       if (disposition !== null && !dispositions.has(String(disposition))) throw new GraphError("unknown disposition " + String(disposition));
       const exceptions = yaml.exceptions ?? content.exceptions ?? [];
@@ -247,6 +253,7 @@ export function loadCatalog(sources: SourceSpec[], cwd: string, options: Catalog
       });
       localIds.add(id);
     }
+    if (declaredOverrides.size) throw new GraphError("declared convention override does not exist in " + src.id + ": " + [...declaredOverrides].join(", "));
     if (src.kind === "flow" || (src.kind === "extension" && !existsSync(join(root, "relationships.yaml")))) continue;
     const path = join(root, "relationships.yaml");
     const graph = readYaml(path), nodes = graph.nodes, relations = graph.edges;
@@ -426,7 +433,8 @@ export function bundledSources(): SourceSpec[] {
     // Package-authored conventions (PLT-87): rules owned by pi-atdd itself, not mirrored upstream.
     // PLT-96 added the shared/coder/planner tracker rules and catalog/pi-atdd/relationships.yaml; pin re-reviewed.
     { id: "pi-atdd", path: join(packageRoot, "catalog/pi-atdd"), kind: "extension",
-      sha256: "b9b6722569547cf4d0a81a1bbffd9532909a3d6273333b5e36366e7176009e26" },
+      sha256: "0cd676894b4c8796ce288ac17b8993978115accd315926e66b5e8e2e2ad60e96",
+      overrides: ["planner.plan.confirm-binds-an-issue"] },
   ];
 }
 function selectorFile(file: string): Selector[] {

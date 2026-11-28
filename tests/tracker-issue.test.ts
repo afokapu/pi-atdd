@@ -44,6 +44,25 @@ test("A1 the four tracker rules load with profile-first ids and statements", () 
   assert.deepEqual(namingViolations(catalog), []);
 });
 
+test("ATD-55 delivered planner binding is tracker-neutral and remains required before ratification", () => {
+  const { catalog } = bundled();
+  const binding = catalog.rules.get("planner.plan.confirm-binds-an-issue")!;
+  assert.equal(binding.source, "pi-atdd");
+  const delivered = `${binding.statement}\n${binding.summary}\n${binding.guidance}`;
+  assert.match(delivered, /configured tracker/i);
+  assert.match(delivered, /record.{0,40}id.{0,40}plan/i);
+  assert.match(delivered, /issue.{0,20}branch.{0,20}worktree/i);
+  assert.match(delivered, /session removes the .*ceremony, not the issue/i);
+  assert.doesNotMatch(delivered, /atdd plan session bind-issue|local manifest|State Store/i);
+
+  const tracker = catalog.rules.get(RULE.planner)!;
+  assert.doesNotMatch(`${tracker.statement}\n${tracker.summary}\n${tracker.guidance}`, /local ATDD issue/i);
+  const bindingEdge = catalog.edges.find(edge => edge.source === RULE.planner && edge.target === binding.id
+    && edge.type === "requires" && edge.constraint === "mandatory");
+  assert.ok(bindingEdge, "tracker ratification rule must still require the binding");
+  assert.doesNotMatch(bindingEdge.reason, /local binding/i, "the delivered relationship rationale must be tool-neutral");
+});
+
 test("A1 rules are selected for coder, planner and coach sessions; shared rules reach every profile", () => {
   const { catalog } = bundled();
   assert.ok(rulesForProfile(catalog, "coder").includes(RULE.coder));
@@ -62,7 +81,7 @@ test("A1 selectors deliver the rules at task start, with their mandatory depende
   assert.ok(write.matchingIds.includes(RULE.core), "core rule must reach edit/create: " + write.matchingIds.join(","));
   const planner = resolveContext(catalog, selectors, "Ratify the plan decomposition", [], "task");
   assert.ok(planner.matchingIds.includes(RULE.planner), planner.matchingIds.join(","));
-  assert.ok(planner.matchingIds.includes("planner.plan.confirm-binds-an-issue"), "planner rule must extend the local binding");
+  assert.ok(planner.matchingIds.includes("planner.plan.confirm-binds-an-issue"), "planner rule must require the plan-binding rule");
   const coach = resolveContext(catalog, selectors, "Coordinator: update the tracker status for the integration branch", [], "task");
   assert.ok(coach.matchingIds.includes(RULE.core) && coach.matchingIds.includes(RULE.notice), coach.matchingIds.join(","));
 });

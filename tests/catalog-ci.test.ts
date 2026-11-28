@@ -18,10 +18,10 @@ test("CI runs offline catalog drift check without legacy checkouts or smoke scri
 
 test("vendored lock pins sources, content and offline catalog resolution", () => {
   const lock = JSON.parse(readFileSync(new URL("vendor/catalog.lock.json", root), "utf8")) as {
-    sources: Array<{ id: string; kind: string; revision?: string; sha256: string }>;
+    sources: Array<{ id: string; kind: string; revision?: string; sha256: string; overrides?: string[] }>;
   };
   const bundled = bundledSources();
-  const tuples = (sources: typeof lock.sources) => sources.map(s => [s.id, s.kind, s.revision ?? null, s.sha256]);
+  const tuples = (sources: typeof lock.sources) => sources.map(s => [s.id, s.kind, s.revision ?? null, s.sha256, s.overrides ?? []]);
   assert.deepEqual(tuples(bundled), tuples(lock.sources));
   assert.deepEqual(bundled.map(s => s.id), ["ATDD-Bun", "ATDD-Flow", "pi-atdd"]);
   for (const s of bundled) assert.equal(digestSource(s.path, s.kind), s.sha256, s.id);
